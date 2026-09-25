@@ -1,0 +1,3 @@
+antes
+Exception in thread "main" java.lang.NullPointerException: Cannot invoke "String.hashCode()" because "<local2>" is null
+	at flow16_switch_string_null.main(flow16_switch_string_null.java:5)

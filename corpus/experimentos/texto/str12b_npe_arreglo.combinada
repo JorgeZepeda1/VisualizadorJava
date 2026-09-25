@@ -1,0 +1,3 @@
+antes
+Exception in thread "main" java.lang.NullPointerException: Cannot load from int array because "arr" is null
+	at str12b_npe_arreglo.main(str12b_npe_arreglo.java:5)

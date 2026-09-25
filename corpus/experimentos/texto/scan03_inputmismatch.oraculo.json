@@ -1,0 +1,9 @@
+{
+  "nombreArchivo": "scan03_inputmismatch.java",
+  "paquete": null,
+  "compilo": true,
+  "codigoSalida": 1,
+  "agotoTiempo": false,
+  "desenlace": "excepcion",
+  "version": "17.0.18"
+}

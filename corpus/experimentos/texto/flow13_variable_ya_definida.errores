@@ -1,0 +1,4 @@
+flow13_variable_ya_definida.java:5: error: variable x is already defined in method main(String[])
+        int x = 10;
+            ^
+1 error

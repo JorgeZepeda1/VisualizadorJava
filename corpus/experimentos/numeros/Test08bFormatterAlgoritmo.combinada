@@ -1,0 +1,33 @@
+=== correccion caracter y booleano con un solo argumento ===
+caracter desde int 66 -> B
+booleano con null -> false
+booleano con objeto no boolean -> true
+booleano con Boolean.FALSE -> false
+=== EXPERIMENTO: %f usa digitos mas cortos (shortest round-trip), NO el valor binario exacto ===
+v=2.675 | Double.toString=2.675 | BigDecimal EXACTO=2.67499999999999982236431605997495353221893310546875 | %.2f=2.68
+v=1.005 | Double.toString=1.005 | BigDecimal EXACTO=1.00499999999999989341858963598497211933135986328125 | %.2f=1.01
+v=8.005 | Double.toString=8.005 | BigDecimal EXACTO=8.0050000000000007815970093361102044582366943359375 | %.2f=8.01
+v=35.855 | Double.toString=35.855 | BigDecimal EXACTO=35.85499999999999687361196265555918216705322265625 | %.2f=35.86
+v=0.1 | Double.toString=0.1 | BigDecimal EXACTO=0.1000000000000000055511151231257827021181583404541015625 | %.2f=0.10
+v=0.3333333333333333 | Double.toString=0.3333333333333333 | BigDecimal EXACTO=0.333333333333333314829616256247390992939472198486328125 | %.2f=0.33
+v=100.25 | Double.toString=100.25 | BigDecimal EXACTO=100.25 | %.2f=100.25
+v=1.615 | Double.toString=1.615 | BigDecimal EXACTO=1.6149999999999999911182158029987476766109466552734375 | %.2f=1.62
+v=5.015 | Double.toString=5.015 | BigDecimal EXACTO=5.01499999999999968025576890795491635799407958984375 | %.2f=5.02
+v=2.0000000000000004 | Double.toString=2.0000000000000004 | BigDecimal EXACTO=2.000000000000000444089209850062616169452667236328125 | %.2f=2.00
+=== EXPERIMENTO: pedir mas decimales que los que tiene la representacion mas corta -> rellena con CEROS, no revela el valor binario exacto ===
+0.1 con 20 decimales -> 0.10000000000000000000
+BigDecimal exacto de 0.1 -> 0.1000000000000000055511151231257827021181583404541015625
+1.0 con 25 decimales -> 1.0000000000000000000000000
+2.675 con 20 decimales -> 2.67500000000000000000
+1.0/3.0 con 30 decimales -> 0.333333333333333300000000000000
+=== mas casos de redondeo .2f para confirmar HALF_UP sobre digitos cortos ===
+v=0.005 shortest=0.005 con2decimales=0.01
+v=0.015 shortest=0.015 con2decimales=0.02
+v=0.025 shortest=0.025 con2decimales=0.03
+v=0.035 shortest=0.035 con2decimales=0.04
+v=0.045 shortest=0.045 con2decimales=0.05
+v=0.055 shortest=0.055 con2decimales=0.06
+v=0.065 shortest=0.065 con2decimales=0.07
+v=0.075 shortest=0.075 con2decimales=0.08
+v=0.085 shortest=0.085 con2decimales=0.09
+v=0.095 shortest=0.095 con2decimales=0.10

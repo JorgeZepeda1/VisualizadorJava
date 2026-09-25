@@ -1,0 +1,4 @@
+err05_variable_no_inicializada_simple.java:4: error: variable x might not have been initialized
+        System.out.println(x);
+                           ^
+1 error

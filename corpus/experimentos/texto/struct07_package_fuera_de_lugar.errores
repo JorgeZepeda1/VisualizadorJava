@@ -1,0 +1,4 @@
+struct07_package_fuera_de_lugar.java:2: error: class, interface, enum, or record expected
+package paquetedeprueba;
+^
+1 error

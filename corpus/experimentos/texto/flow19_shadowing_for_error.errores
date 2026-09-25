@@ -1,0 +1,4 @@
+flow19_shadowing_for_error.java:4: error: variable i is already defined in method main(String[])
+        for (int i = 0; i < 3; i++) {
+                 ^
+1 error

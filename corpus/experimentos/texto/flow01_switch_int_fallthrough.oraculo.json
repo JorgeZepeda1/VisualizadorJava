@@ -1,0 +1,9 @@
+{
+  "nombreArchivo": "flow01_switch_int_fallthrough.java",
+  "paquete": null,
+  "compilo": true,
+  "codigoSalida": 0,
+  "agotoTiempo": false,
+  "desenlace": "normal",
+  "version": "17.0.18"
+}

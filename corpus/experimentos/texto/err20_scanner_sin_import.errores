@@ -1,0 +1,11 @@
+err20_scanner_sin_import.java:3: error: cannot find symbol
+        Scanner sc = new Scanner(System.in);
+        ^
+  symbol:   class Scanner
+  location: class err20_scanner_sin_import
+err20_scanner_sin_import.java:3: error: cannot find symbol
+        Scanner sc = new Scanner(System.in);
+                         ^
+  symbol:   class Scanner
+  location: class err20_scanner_sin_import
+2 errors

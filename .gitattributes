@@ -1,0 +1,4 @@
+# Goldens del oráculo (ADR 011): capturas binarias exactas del JDK 17 real — nunca se normalizan
+# los finales de línea ni se tratan como texto. "Bytes idénticos" (ADR 011 punto 4) solo es cierto
+# si git no toca un solo byte al hacer checkout, sin importar el sistema operativo.
+corpus/** -text

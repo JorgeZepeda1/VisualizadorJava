@@ -1,0 +1,2 @@
+Exception in thread "main" java.lang.NullPointerException: Cannot read field "nombre" because "p" is null
+	at str12_npe_util.main(str12_npe_util.java:8)

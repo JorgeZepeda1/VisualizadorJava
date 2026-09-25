@@ -1,0 +1,4 @@
+err06_variable_no_inicializada_if_sin_else.java:8: error: variable x might not have been initialized
+        System.out.println(x);
+                           ^
+1 error

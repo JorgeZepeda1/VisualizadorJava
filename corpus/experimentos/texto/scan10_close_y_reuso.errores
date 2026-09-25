@@ -1,0 +1,4 @@
+Exception in thread "main" java.lang.IllegalStateException: Scanner closed
+	at java.base/java.util.Scanner.ensureOpen(Scanner.java:1150)
+	at java.base/java.util.Scanner.next(Scanner.java:1465)
+	at scan10_close_y_reuso.main(scan10_close_y_reuso.java:8)

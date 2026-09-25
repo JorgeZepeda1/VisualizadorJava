@@ -1,0 +1,3 @@
+new String("hola") == "hola": false
+new String(...).equals: true
+new String(...).intern() == literal: true

@@ -1,0 +1,24 @@
+'A'+1 -> 66
+(char)('A'+1) -> B
+char c='A'; c++ -> B
+char c2=65; -> A
+char c3='z'; c3-- -> y
+'a'+'b'+"" -> 195
+""+'a'+'b' -> ab
+Character.isDigit('5') -> true
+Character.isDigit('a') -> false
+Character.isLetter('a') -> true
+Character.isLetter('5') -> false
+Character.isLetterOrDigit('_') -> false
+Character.isWhitespace(' ') -> true
+Character.isUpperCase('A') -> true
+Character.toUpperCase('a') -> A
+Character.toLowerCase('A') -> a
+(char)-1 como entero -> 65535
+(char)65536 (=(char)0) como entero -> 0
+char 0; cw-- -> (int) 65535
+Character.MAX_VALUE como int -> 65535
+'0'+5 (trampa comun) -> 53
+(char)('0'+5) -> 5
+Character.getNumericValue('7') -> 7
+int chAsInt = ch (sin cast, char->int es ensanchamiento) -> 65

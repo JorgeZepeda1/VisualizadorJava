@@ -1,0 +1,4 @@
+err29_break_fuera_de_ciclo.java:5: error: break outside switch or loop
+        break;
+        ^
+1 error

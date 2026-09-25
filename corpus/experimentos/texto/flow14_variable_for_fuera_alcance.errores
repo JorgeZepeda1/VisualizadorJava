@@ -1,0 +1,6 @@
+flow14_variable_for_fuera_alcance.java:6: error: cannot find symbol
+        System.out.println(i);
+                           ^
+  symbol:   variable i
+  location: class flow14_variable_for_fuera_alcance
+1 error

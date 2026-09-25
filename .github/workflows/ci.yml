@@ -1,0 +1,50 @@
+name: CI
+
+# Flujo principal (design.md §9): cada push/PR a main. ubuntu-latest, Node fijado por .nvmrc,
+# `npm run ci` (lint + tipos + test + build + presupuesto + licencias) y las suites que necesitan
+# navegadores reales (test:navegadores, e2e, rendimiento con umbral holgado).
+#
+# Nota para quien cierre el lote 0: los pasos `test:navegadores` (proyecto Vitest de la tarea
+# 2.22), `e2e` (pruebas de la tarea 0.15 en adelante) y `rendimiento` (lote 3) no tienen todavía
+# nada que ejecutar en las tareas 0.5-0.10 de este sub-lote — fallarán o no encontrarán pruebas
+# hasta que esas tareas existan. Es intencional: design.md §9 fija el flujo completo desde el
+# lote 0 y este archivo no puede correr de verdad hasta que exista el repositorio remoto (P1,
+# bloqueado). Verificado aquí solo de forma estructural (YAML válido + revisión contra la tarea
+# 0.8); la corrida real queda para cuando el orquestador abra el remoto.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar el repositorio
+        uses: actions/checkout@v7
+
+      - name: Node (versión de .nvmrc)
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: '.nvmrc'
+          cache: npm
+
+      - name: Instalar dependencias (reproducible, package-lock.json)
+        run: npm ci
+
+      - name: Instalar navegadores de Playwright
+        run: npx playwright install --with-deps
+
+      - name: npm run ci (lint + tipos + test + build + presupuesto + licencias)
+        run: npm run ci
+
+      - name: Motor en navegadores reales (Chromium/Firefox/WebKit — C17)
+        run: npm run test:navegadores
+
+      - name: End-to-end (Playwright ×3 motores)
+        run: npm run e2e
+
+      - name: Rendimiento (umbral holgado; oficial solo en la máquina de referencia)
+        run: npm run rendimiento

@@ -1,0 +1,22 @@
+length: 14
+charAt(2): H
+substring(2): [Hola Mundo  ]
+substring(2,6): [Hola]
+indexOf(Mundo): 7
+indexOf(zzz): -1
+equals: false
+equalsIgnoreCase: true
+compareTo: -1
+compareTo igual: 0
+toUpperCase:   HOLA MUNDO  
+toLowerCase:   hola mundo  
+trim: [Hola Mundo]
+isEmpty: true
+isEmpty(no vacio): false
+contains: true
+startsWith: true
+replace:   Hola Java  
+String.valueOf(int): 42
+String.valueOf(double): 3.5
+String.valueOf(boolean): true
+String.valueOf(char): z

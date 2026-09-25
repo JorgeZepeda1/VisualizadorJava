@@ -1,0 +1,4 @@
+flow18_shadowing_bloque_anidado_error.java:5: error: variable x is already defined in method main(String[])
+            int x = 10;
+                ^
+1 error

@@ -1,0 +1,4 @@
+err25_metodo_no_retorna_valor.java:4: error: missing return statement
+    }
+    ^
+1 error

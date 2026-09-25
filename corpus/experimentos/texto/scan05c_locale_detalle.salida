@@ -1,0 +1,7 @@
+user.language=es
+user.country=MX
+l.getLanguage()=es
+l.getCountry()=MX
+l.toString()=es_MX
+separador decimal=[.]
+separador miles=[,]

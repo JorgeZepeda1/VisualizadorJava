@@ -1,0 +1,2 @@
+Exception in thread "main" java.lang.ArithmeticException: / by zero
+	at exc01_division_entera_cero.main(exc01_division_entera_cero.java:5)

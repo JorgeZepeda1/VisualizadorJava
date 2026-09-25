@@ -1,0 +1,2 @@
+Exception in thread "main" java.lang.ArrayIndexOutOfBoundsException: Index -1 out of bounds for length 3
+	at exc05_array_index_negativo.main(exc05_array_index_negativo.java:5)

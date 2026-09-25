@@ -1,0 +1,4 @@
+E2_round_double_a_int.java:3: error: incompatible types: possible lossy conversion from long to int
+        int r = Math.round(2.5); // Math.round(double) devuelve long
+                          ^
+1 error

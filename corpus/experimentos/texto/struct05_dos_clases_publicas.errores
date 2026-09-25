@@ -1,0 +1,4 @@
+struct05_dos_clases_publicas.java:7: error: class OtraPublica is public, should be declared in a file named OtraPublica.java
+public class OtraPublica {
+       ^
+1 error

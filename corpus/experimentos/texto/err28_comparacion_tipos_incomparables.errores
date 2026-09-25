@@ -1,0 +1,6 @@
+err28_comparacion_tipos_incomparables.java:5: error: bad operand types for binary operator '=='
+        if (s == n) {
+              ^
+  first type:  String
+  second type: int
+1 error

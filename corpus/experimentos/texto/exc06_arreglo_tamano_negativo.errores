@@ -1,0 +1,2 @@
+Exception in thread "main" java.lang.NegativeArraySizeException: -5
+	at exc06_arreglo_tamano_negativo.main(exc06_arreglo_tamano_negativo.java:4)

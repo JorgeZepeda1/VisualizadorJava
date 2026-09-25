@@ -1,0 +1,17 @@
+Long.MAX_VALUE=9223372036854775807
+Long.MAX_VALUE+1=-9223372036854775808
+7L/2L=3
+3.5f=3.5
+0.1f+0.2f=0.3
+(double)(0.1f+0.2f)=0.30000001192092896
+16777216f+1f=1.6777216E7
+16777216f+1f == 16777216f? true
+byte 127++ -> -128
+byte -128-- -> 127
+short 32767++ -> -32768
+byte+byte (promovido a int) = 30
+long r1 = Math.round(2.5) -> 3
+int r2 = Math.round(2.5f) -> 3
+literal 10L es long; 10 es int; 3.5f es float; 3.5 es double (verificado por overloads abajo)
+Float.toString(1.0f/3.0f)=0.33333334
+Double.toString(1.0/3.0)=0.3333333333333333

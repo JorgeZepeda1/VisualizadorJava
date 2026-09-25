@@ -1,0 +1,4 @@
+Exception in thread "main" java.lang.StringIndexOutOfBoundsException: begin 1, end 10, length 3
+	at java.base/java.lang.String.checkBoundsBeginEnd(String.java:4606)
+	at java.base/java.lang.String.substring(String.java:2709)
+	at str09_substring_fuera_rango.main(str09_substring_fuera_rango.java:5)

@@ -1,0 +1,5 @@
+Exception in thread "main" java.lang.NullPointerException: Cannot invoke "String.trim()" because "s" is null
+	at exc08_npe_multiples_marcos.paso3(exc08_npe_multiples_marcos.java:3)
+	at exc08_npe_multiples_marcos.paso2(exc08_npe_multiples_marcos.java:6)
+	at exc08_npe_multiples_marcos.paso1(exc08_npe_multiples_marcos.java:9)
+	at exc08_npe_multiples_marcos.main(exc08_npe_multiples_marcos.java:14)

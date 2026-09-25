@@ -1,0 +1,4 @@
+err15_cadena_sin_cerrar.java:3: error: unclosed string literal
+        String s = "hola mundo;
+                   ^
+1 error

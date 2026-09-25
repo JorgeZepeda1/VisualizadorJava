@@ -23,7 +23,7 @@ phases:
   design: completed     # design.md + docs/adr/001..016; hallazgos verificados por el orquestador
   conciliacion: completed   # 73 requisitos, 96 escenarios; C4 y C7 reformulados (verificado)
   tasks: completed      # tasks.md: 7 lotes, 101 tareas, 17–24 sesiones; trazabilidad 73/73 y C1–C20 (verificado)
-  apply: in_progress    # lote 0 en 3 sub-lotes: 0-A (0.1–0.4 + LICENSE), 0-B (0.5–0.10), 0-C (0.11–0.15); 0.16 al cierre
+  apply: in_progress    # lote 0: 0-A HECHO (0.1–0.4 + LICENSE; 14/14 pruebas, lint y tipos en 0; commit 6260a3a a petición del PO); 0-B HECHO (0.5–0.10; 62 pruebas + 1 saltada por Docker; 176/176 goldens idénticos a Temurin 17.0.18); 0-C en curso (0.11–0.15); 0.16 al cierre
   verify: pending
   archive: pending
 updated: 2026-09-25

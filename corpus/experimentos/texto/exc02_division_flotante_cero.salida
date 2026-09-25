@@ -1,0 +1,5 @@
+a/b = Infinity
+-a/b = -Infinity
+0.0/0.0 = NaN
+es NaN: true
+es infinito: true

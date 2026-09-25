@@ -15,6 +15,7 @@
 - **Bloqueos del PO:** una tarea "BLOQUEADA POR Pn" no detiene el resto del lote; se implementa con la recomendación por omisión ya aplicada donde el diseño lo permite, y se cierra en cuanto el PO resuelve Pn.
 - **Cierre estándar de cada lote:** `sdd-verify` del lote → (lotes 2, 5 y 6: revisión adversarial `judgment-day`, mínimo exigido por el orquestador — 2 por ser el núcleo de fidelidad numérica/biblioteca, 5 y 6 por ser los hitos de validación en aula y publicación v1) → commit con confirmación EXPLÍCITA del PO (conventional commits, sin atribución de IA) → actualizar `openspec/changes/visualizador-java/state.yaml` (`phases.tasks`/avance del lote).
 - **Sesiones:** estimación heredada de `design.md` §10 / `proposal.md` §6 (ya conciliadas con el PO), no recalculada por lote de tareas.
+- **CI al día con lo que existe** (orquestador, 2026-09-25): un workflow solo invoca scripts y suites que ya existen. La tarea que crea una suite nueva (`test:navegadores`, `rendimiento`, `oraculo:generados`, `oraculo:mutantes`, datos completos del oráculo…) agrega su paso al workflow correspondiente en el mismo cambio. Así el CI remoto está verde de verdad en cada cierre de lote, sin `continue-on-error` ni pasos vacíos.
 
 ## Lote 0 — Cimientos + rebanada vertical
 
@@ -22,54 +23,54 @@
 **Criterio de entrada:** ninguno — greenfield, repo en `main` sin commits de producto.
 **Sesiones:** 2–3 (design.md §10).
 
-**0.1 Andamiaje raíz y versiones fijadas**
+**0.1 Andamiaje raíz y versiones fijadas** — ✅ hecha (2026-09-25)
 - RED `pruebas/arquitectura/andamiaje.test.ts`: `package.json` fija exactamente las versiones verificadas de design.md §9 (`react`/`react-dom` 19.3.0, `typescript` 6.0.3, `vite` 8.3.1, `vitest` 5.0.2, `@playwright/test` 1.63.0, `@codemirror/lang-java` 6.0.2, `typescript-eslint` 8.70.1, `vite-plugin-pwa` 1.3.0, `lz-string` 1.5.0, `fast-check` 4.10.2) y `.nvmrc` dice `22.23.1`; falla (nada existe).
 - GREEN: `package.json`, `.nvmrc`, `tsconfig.base.json` + `tsconfig.{motor,trabajador,interfaz,herramientas}.json` (con el `lib` de la tabla §1.1), `vite.config.ts`, `vitest.config.ts`, `playwright.config.ts`, `index.html` con CSP `connect-src 'self'`, carpetas `src/{motor,textos,presentacion,trabajador,interfaz}` con `index.ts` mínimo.
 - REFACTOR: la lista de versiones queda como constante compartida con `herramientas/licencias.ts` (0.4).
 - Verif: `pruebas/arquitectura/andamiaje`
 
-**0.2 Guardas de capa con ESLint (ADR 001)** · depende: 0.1
+**0.2 Guardas de capa con ESLint (ADR 001)** · depende: 0.1 — ✅ hecha (2026-09-25)
 - RED `pruebas/arquitectura/fronteras.test.ts`: ESLint programático sobre un fixture `src/motor/__fixture__/toca-dom.ts` (usa `document.title`) espera un error de regla; falla sin regla.
 - GREEN: `eslint.config.js` + `herramientas/eslint/` con la matriz "puede importar" de design.md §1.1 (motor: nada; textos: tipos de motor/vista; presentacion: motor/vista+textos; trabajador: motor+protocolo; interfaz: presentacion+textos+trabajador/cliente+motor/vista).
 - REFACTOR: la matriz como tabla de datos, no cascada de reglas.
 - Verif: `pruebas/arquitectura/fronteras`
 
-**0.3 `CLAUDE.md` y `README.md` del proyecto** · depende: 0.1
+**0.3 `CLAUDE.md` y `README.md` del proyecto** · depende: 0.1 — ✅ hecha (2026-09-25)
 - Documentación, sin RED/GREEN de código — exigida por la Definición de Terminado #4 antes de escribir código de producto. `CLAUDE.md` MUST cubrir: idioma es-MX en todo texto de usuario; identificadores en español ASCII con las excepciones de design §1.4; TDD estricto obligatorio; fidelidad contra JDK 17 real como criterio de aceptación; "fuera de U3–U7 = aviso, nunca inventar" (D2); cero red en runtime; commits convencionales SIN atribución de IA; confirmación explícita del PO antes de cada commit; ruta del JDK real; comandos del proyecto.
 - Verif: revisión manual contra proposal.md §13 · Archivos: `CLAUDE.md`, `README.md`.
 
-**0.4 Avisos de terceros y licencias** · depende: 0.1
+**0.4 Avisos de terceros y licencias** · depende: 0.1 — ✅ hecha (2026-09-25)
 - RED `herramientas/licencias.test.ts`: corre `licencias.ts` contra un `package.json` fixture con una dependencia `GPL-3.0` simulada y espera fallo con mensaje claro; falla (script no existe).
 - GREEN: `herramientas/licencias.ts` (audita licencias permisivas reales) + `AVISOS-DE-TERCEROS.md` con espacio reservado para el aviso de Sun/fdlibm (se llena en 2.5).
 - REFACTOR: ninguno relevante.
 - Verif: `herramientas/licencias`
 
-**0.5 Oráculo — ejecución del JDK real (ADR 011)** — REQ-DIFF-001 · depende: 0.1
+**0.5 Oráculo — ejecución del JDK real (ADR 011)** — REQ-DIFF-001 · depende: 0.1 — ✅ hecha (2026-09-25)
 - RED `herramientas/oraculo/ejecutar.test.ts`: compila y corre `System.out.println("hola");` contra Temurin real con `-Duser.language=es -Duser.country=MX -Dfile.encoding=UTF-8`, captura `stdout` en binario, afirma que termina en `\n`; aborta si la versión detectada no es `17.0.18`; falla sin `jdk.ts`/`ejecutar.ts`.
 - GREEN: `herramientas/oraculo/jdk.ts` (verifica versión) + `ejecutar.ts` (`child_process.spawn` con timeout propio, nunca `$(...)`; `javac -encoding UTF-8 -g`; segunda corrida con un solo descriptor para el orden combinado).
 - REFACTOR: flags de locale como constante compartida con 0.9.
 - Verif: `herramientas/oraculo/ejecutar`
 
-**0.6 Migración y regeneración binaria de goldens (ADR 011)** — REQ-DIFF-002 · depende: 0.5
+**0.6 Migración y regeneración binaria de goldens (ADR 011)** — REQ-DIFF-002 · depende: 0.5 — ✅ hecha (2026-09-25)
 - RED `herramientas/oraculo/generar-goldens.test.ts`: regenera el golden de `u3-hola-mundo` y afirma que termina en `\n` (el `.salida.txt` heredado no); falla contra el estado actual.
 - GREEN: `generar-goldens.ts` + `verificar-goldens.ts`; migra `exploracion/corpus-candidato/` (35 programas) → `corpus/curso/` y `exploracion/experimentos/{numeros,texto}/` → `corpus/experimentos/`; `npm run oraculo:goldens` regenera TODOS los `.salida`/`.errores`/`.combinada`/`.oraculo.json` en binario.
 - REFACTOR: ninguno relevante.
 - Verif: `herramientas/oraculo/generar-goldens` + `npm run oraculo:verificar`
 
-**0.7 `.gitattributes` para goldens binarios** · depende: 0.6
+**0.7 `.gitattributes` para goldens binarios** · depende: 0.6 — ✅ hecha (2026-09-25)
 - RED `pruebas/arquitectura/gitattributes.test.ts`: `git check-attr -a` sobre un archivo de `corpus/curso/` afirma `-text`; falla sin el archivo.
 - GREEN: `.gitattributes` con `corpus/** -text`.
 - Verif: `pruebas/arquitectura/gitattributes`
 
-**0.8 CI — `ci.yml` (esqueleto)** · depende: 0.1, 0.2
+**0.8 CI — `ci.yml` (esqueleto)** · depende: 0.1, 0.2 — ✅ hecha (2026-09-25)
 - Configuración, sin RED/GREEN de código; verificación por corrida real en Actions. Contenido: `ubuntu-latest`, Node de `.nvmrc`, `npm ci`, navegadores de Playwright, `npm run ci` (lint+tipos+test+build+presupuesto+licencias), `test:navegadores`, `e2e`, `rendimiento` (umbral holgado).
 - Verif: corrida verde en GitHub Actions tras el primer push (bloqueada por P1 para el repo remoto real; localmente, revisión estructural del YAML) · Archivos: `.github/workflows/ci.yml`.
 
-**0.9 CI — `oraculo.yml`** — REQ-DIFF-008(parte arm64) · depende: 0.6
+**0.9 CI — `oraculo.yml`** — REQ-DIFF-008(parte arm64) · depende: 0.6 — ✅ hecha (2026-09-25)
 - Configuración. Disparo por cambios en `corpus/`/`herramientas/oraculo/`/datos, nocturno, manual; `macos-14` (arm64) + `actions/setup-java@v6` Temurin `17.0.18+8`; corre `oraculo:verificar`; de noche `oraculo:generados` + `oraculo:mutantes`.
 - Verif: corrida verde en Actions (local: `npm run oraculo:verificar`) · Archivos: `.github/workflows/oraculo.yml`.
 
-**0.10 Medición de `Math.pow` en x86_64** — REQ-DIFF-008(parte x86_64) · depende: 0.5
+**0.10 Medición de `Math.pow` en x86_64** — REQ-DIFF-008(parte x86_64) · depende: 0.5 — ✅ hecha (verificación x86_64 pendiente de CI)
 - RED `herramientas/oraculo/medir-plataforma.test.ts`: corre `MedirPow.java` contra un CSV de smoke (5 pares) vía `docker run --rm --platform linux/amd64 eclipse-temurin:17` y afirma una fila por par con `Math.pow`/`StrictMath.pow`/coinciden; falla sin `MedirPow.java` ni `medir-plataforma.ts`.
 - GREEN: `herramientas/oraculo/java/MedirPow.java` + `medir-plataforma.ts` + `.github/workflows/plataforma.yml` (matriz `ubuntu-latest`/`windows-latest`, Temurin 17.0.18, `continue-on-error`, semanal+manual). El CSV completo (`corpus/datos/pow/pares.csv`) llega en 2.1.
 - REFACTOR: ninguno relevante.
@@ -553,6 +554,7 @@
 - Verif: `npm run e2e -- despliegue` contra la URL publicada.
 
 **5.13 `LICENSE`** — REQ-PLAT-008(legal) · depende: 0.4
+- ✅ adelantada al lote 0 (sub-lote 0-A)
 - **BLOQUEADA POR P4** (licencia). Recomendación por omisión: MIT (compatible con fdlibm/Sun, React, CodeMirror, lz-string, e integración futura a AprendiendoJava).
 - Sin RED/GREEN (documento legal). Al desbloquear: agrega `LICENSE` (MIT) en la raíz y referencia en `README.md`/`AVISOS-DE-TERCEROS.md`.
 - Verif: revisión manual.

@@ -1,0 +1,69 @@
+name: Oráculo
+
+# Job dedicado del arnés diferencial (ADR 010/011, design.md §9). Corre en macOS arm64 con el JDK
+# de referencia exacto (Temurin 17.0.18+8) — nunca en el flujo principal (ci.yml), que compara
+# goldens ya escritos SIN necesitar el JDK (design.md §7.2). Los minutos de macOS cuestan más si
+# el repositorio es privado (P1 abierta): por eso el disparo es solo por cambios relevantes,
+# nocturno, o manual — nunca en cada push a cualquier archivo.
+#
+# Nota para quien cierre el lote 0: `oraculo:generados` (tarea 2.21) y `oraculo:mutantes` (tarea
+# 1.16) todavía no existen como scripts reales en las tareas 0.5-0.10 de este sub-lote — los pasos
+# nocturnos fallarán hasta que esas tareas los creen. Intencional, misma razón que en ci.yml:
+# design.md §9 fija el flujo completo desde el lote 0; verificado aquí solo de forma estructural,
+# la corrida real queda para cuando exista el repositorio remoto y esas tareas posteriores.
+
+on:
+  push:
+    paths:
+      - 'corpus/**'
+      - 'herramientas/oraculo/**'
+      - 'src/motor/biblioteca/datos/**'
+  pull_request:
+    paths:
+      - 'corpus/**'
+      - 'herramientas/oraculo/**'
+      - 'src/motor/biblioteca/datos/**'
+  schedule:
+    # 08:00 UTC ≈ 02:00 hora del centro de México (sin horario de verano) — corrida nocturna.
+    - cron: '0 8 * * *'
+  workflow_dispatch:
+
+jobs:
+  oraculo:
+    runs-on: macos-14
+    steps:
+      - name: Descargar el repositorio
+        uses: actions/checkout@v7
+
+      - name: Node (versión de .nvmrc)
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: '.nvmrc'
+          cache: npm
+
+      - name: JDK 17 real de referencia (Temurin 17.0.18+8, ADR 011)
+        id: jdk
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17.0.18+8'
+
+      - name: Instalar dependencias (reproducible, package-lock.json)
+        run: npm ci
+
+      - name: Verificar goldens contra una regeneración real (bytes idénticos, ADR 011 punto 4)
+        env:
+          JDK17_HOME: ${{ steps.jdk.outputs.path }}
+        run: npm run oraculo:verificar
+
+      - name: Fuzzing nocturno contra el JDK real (C3, tarea 2.21) — solo en la corrida programada
+        if: github.event_name == 'schedule'
+        env:
+          JDK17_HOME: ${{ steps.jdk.outputs.path }}
+        run: npm run oraculo:generados
+
+      - name: Regenerar veredictos de mutantes (C7, tarea 1.16) — solo en la corrida programada
+        if: github.event_name == 'schedule'
+        env:
+          JDK17_HOME: ${{ steps.jdk.outputs.path }}
+        run: npm run oraculo:mutantes

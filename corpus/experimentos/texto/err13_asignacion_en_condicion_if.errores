@@ -1,0 +1,4 @@
+err13_asignacion_en_condicion_if.java:4: error: incompatible types: int cannot be converted to boolean
+        if (x = 5) {
+              ^
+1 error

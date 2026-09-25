@@ -1,0 +1,64 @@
+name: Plataforma
+
+# Medición AUTORITATIVA de Math.pow vs StrictMath.pow en x86_64 real (ADR 009, design.md §8) —
+# HotSpot podría escoger una implementación intrínseca distinta de pow() ahí frente a la máquina
+# de referencia (arm64, donde coinciden 26 336/26 336 pares). NUNCA bloquea nada
+# (`continue-on-error` a nivel de job): la verdad del motor sigue siendo fdlibm (D3) pase lo que
+# pase aquí — esto documenta el riesgo real medido, nunca cambia el intérprete.
+#
+# Nota para quien cierre el lote 0: `corpus/datos/pow/pares.csv` (el conjunto completo, ≥ 26 000
+# pares) lo genera el oráculo en la tarea 2.1 (ADR 010) — no existe todavía en las tareas
+# 0.5-0.10 de este sub-lote. Este flujo fallará (archivo no encontrado) hasta que esa tarea lo
+# cree; intencional, la misma razón que ci.yml/oraculo.yml — no puede correr de verdad hasta que
+# exista el repositorio remoto de todas formas (P1, bloqueada). Verificado aquí solo de forma
+# estructural (YAML válido + revisión contra la tarea 0.10); localmente, `npm run
+# medir:plataforma <csv-de-humo>` sí corre hoy con el JDK real de esta Mac (medirPowLocal, sin
+# Docker) — ver herramientas/oraculo/medir-plataforma.test.ts.
+
+on:
+  schedule:
+    # 09:00 UTC los lunes — semanal, no bloquea nada si falla o si el conjunto aún no existe.
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+
+jobs:
+  medir:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    continue-on-error: true
+    steps:
+      - name: Descargar el repositorio
+        uses: actions/checkout@v7
+
+      - name: Node (versión de .nvmrc)
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: '.nvmrc'
+          cache: npm
+
+      - name: JDK 17 real (Temurin 17.0.18) — x86_64 REAL de este runner, no Rosetta
+        id: jdk
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17.0.18'
+
+      - name: Instalar dependencias (reproducible, package-lock.json)
+        run: npm ci
+
+      - name: Medir Math.pow vs StrictMath.pow en x86_64 real (ADR 009, design.md §8)
+        env:
+          JDK17_HOME: ${{ steps.jdk.outputs.path }}
+        run: npm run medir:plataforma
+
+      - name: Publicar el informe completo como artefacto
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: informe-pow-${{ matrix.os }}
+          path: informe-plataforma-pow-*.csv
+          if-no-files-found: ignore
+          retention-days: 30

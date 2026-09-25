@@ -1,0 +1,4 @@
+err30_continue_fuera_de_ciclo.java:5: error: continue outside of loop
+        continue;
+        ^
+1 error

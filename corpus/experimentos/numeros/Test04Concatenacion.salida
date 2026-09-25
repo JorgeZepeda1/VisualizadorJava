@@ -1,0 +1,16 @@
+""+1.0 -> 1.0
+"Suma: "+a+b -> Suma: 23
+a+b+" suma" -> 5 suma
+'A'+1 (sin string) -> 66
+""+'A'+1 -> A1
+'A'+1+"" -> 66
+"x="+flag -> x=true
+"value: "+s -> value: null
+'A'+"bc" -> Abc
+1+2+"3" -> 33
+"1"+2+3 -> 123
+c1+c2+"" -> 195
+""+c1+c2 -> ab
+""+ (char)(c1+1) -> b
+"obj="+o -> obj=null
+"arr="+new int[]{1,2} contiene [I@ -> true

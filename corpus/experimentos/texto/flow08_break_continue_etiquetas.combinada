@@ -1,0 +1,13 @@
+--- break simple en anidado ---
+i=0 j=0
+i=1 j=0
+i=2 j=0
+--- break con etiqueta ---
+i=0 j=0
+i=0 j=1
+i=0 j=2
+i=1 j=0
+--- continue con etiqueta ---
+i=0 j=0
+i=1 j=0
+i=2 j=0

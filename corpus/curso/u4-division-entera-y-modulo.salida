@@ -1,0 +1,4 @@
+resultado1 (10 / 3): 3
+resultado2 (10.0 / 3): 3.3333333333333335
+residuo (10 % 3): 1
+esPar (8 % 2 == 0): true

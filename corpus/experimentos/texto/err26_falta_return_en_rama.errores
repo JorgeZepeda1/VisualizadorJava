@@ -1,0 +1,4 @@
+err26_falta_return_en_rama.java:8: error: missing return statement
+    }
+    ^
+1 error
