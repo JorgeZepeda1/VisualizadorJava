@@ -6,18 +6,15 @@ name: Plataforma
 # (`continue-on-error` a nivel de job): la verdad del motor sigue siendo fdlibm (D3) pase lo que
 # pase aquí — esto documenta el riesgo real medido, nunca cambia el intérprete.
 #
-# Nota para quien cierre el lote 0: `corpus/datos/pow/pares.csv` (el conjunto completo, ≥ 26 000
-# pares) lo genera el oráculo en la tarea 2.1 (ADR 010) — no existe todavía en las tareas
-# 0.5-0.10 de este sub-lote. Este flujo fallará (archivo no encontrado) hasta que esa tarea lo
-# cree; intencional, la misma razón que ci.yml/oraculo.yml — no puede correr de verdad hasta que
-# exista el repositorio remoto de todas formas (P1, bloqueada). Verificado aquí solo de forma
-# estructural (YAML válido + revisión contra la tarea 0.10); localmente, `npm run
-# medir:plataforma <csv-de-humo>` sí corre hoy con el JDK real de esta Mac (medirPowLocal, sin
-# Docker) — ver herramientas/oraculo/medir-plataforma.test.ts.
+# "CI al día con lo que existe" (orquestador, 2026-09-25 — tasks.md → Convenciones): al cerrar el
+# lote 0 (sub-lote 0-C), `corpus/datos/pow/pares.csv` (el conjunto completo, ≥26 000 pares, ADR 010)
+# TODAVÍA no existe — lo genera el oráculo en la tarea 2.1. Mientras tanto este flujo mide con el
+# CSV de humo de la tarea 0.10 (5 pares, `corpus/datos/pow/pares-smoke.csv`, el mismo conjunto que
+# `herramientas/oraculo/medir-plataforma.test.ts`); la tarea 2.1 lo cambia por el completo.
 
 on:
   schedule:
-    # 09:00 UTC los lunes — semanal, no bloquea nada si falla o si el conjunto aún no existe.
+    # 09:00 UTC los lunes — semanal, no bloquea nada si falla.
     - cron: '0 9 * * 1'
   workflow_dispatch:
 
@@ -49,10 +46,10 @@ jobs:
       - name: Instalar dependencias (reproducible, package-lock.json)
         run: npm ci
 
-      - name: Medir Math.pow vs StrictMath.pow en x86_64 real (ADR 009, design.md §8)
+      - name: Medir Math.pow vs StrictMath.pow en x86_64 real (ADR 009, design.md §8) — CSV de humo
         env:
           JDK17_HOME: ${{ steps.jdk.outputs.path }}
-        run: npm run medir:plataforma
+        run: npm run medir:plataforma -- corpus/datos/pow/pares-smoke.csv
 
       - name: Publicar el informe completo como artefacto
         if: always()

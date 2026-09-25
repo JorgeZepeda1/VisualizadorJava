@@ -1,12 +1,23 @@
 import { defineConfig, devices } from '@playwright/test';
 
 // E2E en los tres motores (proposal.md P3, design.md §7.1 C17): Chromium, Firefox y WebKit.
-// `testDir` apunta a las suites que llegan en la tarea 0.15 (rebanada vertical) en adelante.
+// `testDir` apunta a las suites que llegan desde la tarea 0.15 (rebanada vertical) en adelante.
+//
+// `webServer` (tarea 0.15): la prueba "sin red" necesita el build real con el service worker
+// activo (CLAUDE.md regla 8 — el único caso permitido de `vite build`). `npm run preview` sirve
+// `dist/` tal cual sale del build, con `base` por omisión ("/") porque BASE_PUBLICA solo se fija
+// en desplegar.yml — coincide con `baseURL` de aquí abajo.
 export default defineConfig({
   testDir: 'pruebas/e2e',
   reporter: 'dot',
   use: {
     baseURL: 'http://localhost:4173',
+  },
+  webServer: {
+    command: 'npm run build && npm run preview -- --port 4173 --strictPort',
+    url: 'http://localhost:4173',
+    reuseExistingServer: !process.env.CI,
+    timeout: 120_000,
   },
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },

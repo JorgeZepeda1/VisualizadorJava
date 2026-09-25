@@ -3,14 +3,15 @@ name: Oráculo
 # Job dedicado del arnés diferencial (ADR 010/011, design.md §9). Corre en macOS arm64 con el JDK
 # de referencia exacto (Temurin 17.0.18+8) — nunca en el flujo principal (ci.yml), que compara
 # goldens ya escritos SIN necesitar el JDK (design.md §7.2). Los minutos de macOS cuestan más si
-# el repositorio es privado (P1 abierta): por eso el disparo es solo por cambios relevantes,
-# nocturno, o manual — nunca en cada push a cualquier archivo.
+# el repositorio es privado (P1: público desde 2026-09-25, JorgeZepeda1/VisualizadorJava): por eso
+# el disparo es solo por cambios relevantes, nocturno, o manual — nunca en cada push a cualquier
+# archivo.
 #
-# Nota para quien cierre el lote 0: `oraculo:generados` (tarea 2.21) y `oraculo:mutantes` (tarea
-# 1.16) todavía no existen como scripts reales en las tareas 0.5-0.10 de este sub-lote — los pasos
-# nocturnos fallarán hasta que esas tareas los creen. Intencional, misma razón que en ci.yml:
-# design.md §9 fija el flujo completo desde el lote 0; verificado aquí solo de forma estructural,
-# la corrida real queda para cuando exista el repositorio remoto y esas tareas posteriores.
+# "CI al día con lo que existe" (orquestador, 2026-09-25 — tasks.md → Convenciones): al cerrar el
+# lote 0 (sub-lote 0-C), `oraculo:generados` (fuzzing nocturno contra el JDK, tarea 2.21) y
+# `oraculo:mutantes` (veredictos de mutantes, tarea 1.16) TODAVÍA no existen como scripts reales —
+# solo `oraculo:verificar` (tarea 0.6) corre hoy. Los pasos nocturnos se agregan de vuelta cuando
+# esas tareas creen sus scripts.
 
 on:
   push:
@@ -56,14 +57,6 @@ jobs:
           JDK17_HOME: ${{ steps.jdk.outputs.path }}
         run: npm run oraculo:verificar
 
-      - name: Fuzzing nocturno contra el JDK real (C3, tarea 2.21) — solo en la corrida programada
-        if: github.event_name == 'schedule'
-        env:
-          JDK17_HOME: ${{ steps.jdk.outputs.path }}
-        run: npm run oraculo:generados
-
-      - name: Regenerar veredictos de mutantes (C7, tarea 1.16) — solo en la corrida programada
-        if: github.event_name == 'schedule'
-        env:
-          JDK17_HOME: ${{ steps.jdk.outputs.path }}
-        run: npm run oraculo:mutantes
+      # Pasos nocturnos pendientes — se agregan cuando sus tareas creen los scripts reales:
+      #   - Fuzzing contra el JDK real (C3): npm run oraculo:generados — tarea 2.21.
+      #   - Regenerar veredictos de mutantes (C7): npm run oraculo:mutantes — tarea 1.16.

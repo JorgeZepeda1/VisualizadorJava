@@ -1,16 +1,17 @@
 name: CI
 
-# Flujo principal (design.md §9): cada push/PR a main. ubuntu-latest, Node fijado por .nvmrc,
-# `npm run ci` (lint + tipos + test + build + presupuesto + licencias) y las suites que necesitan
-# navegadores reales (test:navegadores, e2e, rendimiento con umbral holgado).
+# Flujo principal (design.md §9): cada push/PR a main. ubuntu-latest, Node fijado por .nvmrc.
 #
-# Nota para quien cierre el lote 0: los pasos `test:navegadores` (proyecto Vitest de la tarea
-# 2.22), `e2e` (pruebas de la tarea 0.15 en adelante) y `rendimiento` (lote 3) no tienen todavía
-# nada que ejecutar en las tareas 0.5-0.10 de este sub-lote — fallarán o no encontrarán pruebas
-# hasta que esas tareas existan. Es intencional: design.md §9 fija el flujo completo desde el
-# lote 0 y este archivo no puede correr de verdad hasta que exista el repositorio remoto (P1,
-# bloqueado). Verificado aquí solo de forma estructural (YAML válido + revisión contra la tarea
-# 0.8); la corrida real queda para cuando el orquestador abra el remoto.
+# "CI al día con lo que existe" (orquestador, 2026-09-25 — tasks.md → Convenciones): un workflow
+# solo invoca scripts y suites que ya existen, para que el CI remoto esté verde de verdad en cada
+# cierre de lote, sin `continue-on-error` ni pasos vacíos. Estado al cerrar el lote 0 (sub-lote 0-C):
+#   - `npm run ci` (composite: lint+tipos+test+build+presupuesto+licencias, design.md §9) TODAVÍA no
+#     se puede llamar de un solo golpe: encadena `presupuesto` (`herramientas/presupuesto-tamano.ts`),
+#     que crea el lote 5. Abajo van sus pasos reales por separado (lint, tipos, test, build,
+#     licencias) — quien cierre el lote 5 los vuelve a colapsar en un solo `npm run ci`.
+#   - `test:navegadores` (proyecto Vitest en Chromium/Firefox/WebKit reales) lo crea la tarea 2.22.
+#   - `rendimiento` (Playwright, umbral holgado) lo crea la tarea 3.8.
+#   - `e2e` YA es real desde la tarea 0.15: rebanada vertical `u3-hola-mundo` en los tres motores.
 
 on:
   push:
@@ -37,14 +38,20 @@ jobs:
       - name: Instalar navegadores de Playwright
         run: npx playwright install --with-deps
 
-      - name: npm run ci (lint + tipos + test + build + presupuesto + licencias)
-        run: npm run ci
+      - name: Lint (eslint . --quiet)
+        run: npm run lint
 
-      - name: Motor en navegadores reales (Chromium/Firefox/WebKit — C17)
-        run: npm run test:navegadores
+      - name: Tipos (tsc por cada una de las 4 capas)
+        run: npm run tipos
 
-      - name: End-to-end (Playwright ×3 motores)
+      - name: Pruebas (Vitest — proyectos motor + interfaz, --reporter=dot)
+        run: npm test
+
+      - name: Build de producción (valida que compile; BASE_PUBLICA real solo en desplegar.yml)
+        run: npm run build
+
+      - name: Licencias (audita dependencias permisivas)
+        run: npm run licencias
+
+      - name: End-to-end (Playwright ×3 motores — rebanada vertical desde la tarea 0.15)
         run: npm run e2e
-
-      - name: Rendimiento (umbral holgado; oficial solo en la máquina de referencia)
-        run: npm run rendimiento

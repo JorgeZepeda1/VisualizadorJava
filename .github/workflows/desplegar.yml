@@ -1,0 +1,68 @@
+name: Desplegar
+
+# Publica en GitHub Pages (design.md §9, ADR 014). P1 ya resuelta (2026-09-25): repositorio público
+# JorgeZepeda1/VisualizadorJava → BASE_PUBLICA=/VisualizadorJava/ (ya no un marcador de posición).
+# El build real con esa ruta base solo puede confirmarse cuando exista el remoto; aquí queda listo
+# y verificado de forma estructural (YAML válido + revisión contra design.md §9).
+#
+# Revertir una versión: volver a ejecutar este flujo manualmente con `ref` apuntando a la etiqueta
+# anterior (propuesta §11) — Pages sirve lo último desplegado, nunca hace falta "deshacer" un commit.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Etiqueta o rama a desplegar (para revertir, usa la etiqueta anterior)'
+        required: true
+        default: 'main'
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Un solo despliegue de Pages a la vez; nunca cancelar uno a medias (podría dejar el sitio servido
+# a medio publicar).
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar el repositorio
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.inputs.ref || github.ref }}
+
+      - name: Node (versión de .nvmrc)
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: '.nvmrc'
+          cache: npm
+
+      - name: Instalar dependencias (reproducible, package-lock.json)
+        run: npm ci
+
+      - name: Build de producción con la ruta base real de Pages (P1)
+        run: BASE_PUBLICA=/VisualizadorJava/ npm run build
+
+      - name: Empaquetar el artefacto de Pages
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Publicar en GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

@@ -76,31 +76,31 @@
 - REFACTOR: ninguno relevante.
 - Verif: `herramientas/oraculo/medir-plataforma` (requiere Docker Desktop corriendo)
 
-**0.11 `desplegar.yml` + PWA mínima** — REQ-PLAT-008(scaffold) · depende: 0.1
+**0.11 `desplegar.yml` + PWA mínima** — REQ-PLAT-008(scaffold) · depende: 0.1 — ✅ hecha (2026-09-25)
 - RED `src/interfaz/pwa/registro.test.ts` (jsdom): el *service worker* se registra y existe manifiesto con `name`/`icons`; falla sin `vite-plugin-pwa`.
 - GREEN: `vite-plugin-pwa` con precache mínimo + `.github/workflows/desplegar.yml` (etiqueta `v*`, manual con `ref`; `BASE_PUBLICA=/<repo>/ vite build` con marcador de posición hasta que P1 fije el repo real → `upload-pages-artifact` → `deploy-pages`).
 - REFACTOR: ninguno relevante.
 - Verif: `src/interfaz/pwa/registro`
 - Nota: el despliegue real queda **bloqueado por P1** (cuenta/nombre/visibilidad del repositorio; recomendación por omisión: repo público `VisualizadorJava`); el workflow y la PWA se construyen y prueban igual con el marcador de posición.
 
-**0.12 Rebanada vertical — motor mínimo (`u3-hola-mundo`)** — REQ-SUB-001(parcial) · depende: 0.2
+**0.12 Rebanada vertical — motor mínimo (`u3-hola-mundo`)** — REQ-SUB-001(parcial) · depende: 0.2 — ✅ hecha (2026-09-25)
 - RED `pruebas/diferencial/u3-hola-mundo.test.ts`: compila y ejecuta `public class HolaMundo { public static void main(String[] args) { System.out.println("Hola"); } }` y afirma un único `Paso` clase `impresion` con salida `"Hola\n"`; falla (nada existe).
 - GREEN: `src/motor/fuente/{rango,tabla-de-lineas}.ts`, `lexico/` (tokens de clase/`main`/`println`/cadena/llaves/`;`), `sintaxis/` (Programa→Clase→Main→Bloque→`System.out.println(literal)`), `ir/` mínimo, `interprete/` mínimo, `compilador.ts`, `index.ts`, `vista.ts`.
 - REFACTOR: el contrato público §1.3 queda fijo en `index.ts` para que el lote 1 solo amplíe, no rompa la firma.
 - Verif: `pruebas/diferencial/u3-hola-mundo`
 
-**0.13 Rebanada vertical — traza y trabajador mínimos** · depende: 0.12
+**0.13 Rebanada vertical — traza y trabajador mínimos** · depende: 0.12 — ✅ hecha (2026-09-25)
 - RED `src/trabajador/trabajador.test.ts`: manda `{tipo:'ejecutar', fuente:<hola-mundo>}` y espera `compilado`→`pasos`→`fin`; falla sin protocolo.
 - GREEN: `src/motor/traza/{paso,traza}.ts` mínimo (`agregar`/`estadoEn` sin puntos de control — se completan en 3.1), `src/trabajador/{protocolo,trabajador,cliente}.ts` con los mensajes básicos de la tabla §5.
 - Verif: `src/trabajador/trabajador`
 
-**0.14 Rebanada vertical — interfaz mínima** — REQ-VIS-001(parcial) · depende: 0.13
+**0.14 Rebanada vertical — interfaz mínima** — REQ-VIS-001(parcial) · depende: 0.13 — ✅ hecha (2026-09-25)
 - RED `src/interfaz/App.test.tsx`: renderiza `<App/>`, pega `hola-mundo`, pulsa "Visualizar", espera "Hola" en consola; falla sin componentes.
 - GREEN: `src/interfaz/{main.tsx,App.tsx}` + `editor/EditorJava.tsx` (CodeMirror 6 de solo texto) + `componentes/Consola.tsx` mínima + `contenedores/Visualizador.tsx` + controles ◀▶ mínimos.
 - REFACTOR: separa contenedor/presentacional desde el inicio (ADR 013) para que el lote 4 solo amplíe.
 - Verif: `src/interfaz/App`
 
-**0.15 Cierre de la rebanada — diferencial + E2E en 3 motores** — REQ-PLAT-006(parcial) · depende: 0.14
+**0.15 Cierre de la rebanada — diferencial + E2E en 3 motores** — REQ-PLAT-006(parcial) · depende: 0.14 — ✅ hecha (2026-09-25; E2E offline saltado en WebKit por límite real de Playwright — ver PROGRESO/Engram)
 - RED `pruebas/e2e/u3-hola-mundo.spec.ts` (Playwright, proyectos Chromium/Firefox/WebKit, `offline: true` tras la primera carga): pega el programa, pulsa Visualizar, afirma "Hola" en consola y cero peticiones de red tras la carga inicial; falla sin precache real.
 - GREEN: conecta 0.11 + 0.12–0.14 para que pase en los tres motores.
 - Verif: `npm run e2e -- u3-hola-mundo`
