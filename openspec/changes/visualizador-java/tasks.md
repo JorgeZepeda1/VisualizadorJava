@@ -105,9 +105,15 @@
 - GREEN: conecta 0.11 + 0.12–0.14 para que pase en los tres motores.
 - Verif: `npm run e2e -- u3-hola-mundo`
 
-**0.16 Refrescar `sdd-init`** · depende: 0.1–0.15 (cierre del lote)
+**0.16 Refrescar `sdd-init`** · depende: 0.1–0.15 (cierre del lote) — ✅ hecha (2026-09-25)
 - Última tarea del lote: relanza `sdd-init` para registrar el runner de pruebas real (Vitest + Playwright ya instalados, `npm test` ejecutable, no solo "planeado") en `openspec/config.yaml` → `testing` y en Engram (`sdd-init/visualizadorjava`, `sdd/visualizadorjava/testing-capabilities`). Sin RED/GREEN — no es código de producto.
 - Verif: `openspec/config.yaml` → `testing.test_runner` deja de decir "planeado".
+
+**0.17 Textos visibles al catálogo `es-MX` y guarda de lint** (agregada por el orquestador: WARNING-2 de `sdd-verify` del lote 0; ADR 015) · depende: 0.14 — ✅ hecha (2026-09-25)
+- RED `pruebas/arquitectura/textos-en-catalogo.test.ts`: ESLint programático sobre un fixture `src/interfaz/__fixture__/texto-literal.tsx` (JSX con texto visible literal y un `aria-label` literal) espera un error de regla; falla sin regla.
+- GREEN: regla con `no-restricted-syntax` (sin dependencias nuevas) para `src/interfaz/**/*.tsx` que prohíbe texto visible literal en JSX (con letras; los símbolos sueltos como `◀` no cuentan) y cadenas literales en atributos visibles (`aria-label`, `title`, `placeholder`, `alt`); mueve los textos de `App.tsx:8` y `Visualizador.tsx:69,84,102,111,121` al catálogo tipado `src/textos/es-MX` del ADR 015 y consúmelos desde ahí.
+- REFACTOR: ninguno relevante.
+- Verif: `pruebas/arquitectura/textos-en-catalogo` + `npm run lint` · Nota: la tarea 5.11 conserva la auditoría completa de textos; esta solo pone la guarda desde el inicio.
 
 **Criterio de salida:** `npm run ci` verde sobre lo existente; `oraculo.yml`/`plataforma.yml` verdes; `u3-hola-mundo` verde en diferencial + E2E×3 motores; C12 cumplido de forma inicial; `sdd-init` refrescado.
 **Cierre:** `sdd-verify` del lote 0 → commit (`feat(cimientos): ...`) con confirmación del PO → actualizar `state.yaml`.

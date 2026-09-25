@@ -3,11 +3,11 @@ schema: spec-driven
 
 context: |
   Producto: visualizador de ejecucion paso a paso de Java para bachillerato (sin experiencia previa), en espanol de Mexico.
-  Stack: Vite + React + TypeScript estricto; SPA estatica publicable en GitHub Pages; cero CDNs en runtime.
-  Motor: interprete de subconjunto de Java (curriculo U3-U7) en TypeScript puro, corre en el navegador.
-  Fidelidad: comportamiento identico a Java 17; JDK 17 real en /Library/Java/JavaVirtualMachines/temurin-17.jdk/Contents/Home/bin/ para pruebas diferenciales.
-  Pruebas planeadas: Vitest + Testing Library (unit/integration) y Playwright (E2E); no instaladas aun, llegan en el primer lote de implementacion.
-  Estado: proyecto greenfield, repo git en rama main sin commits todavia.
+  Stack: Vite 8 + React 19 + TypeScript 6 estricto; SPA estatica publicable en GitHub Pages; cero CDNs en runtime.
+  Motor: interprete de subconjunto de Java (curriculo U3-U7) en TypeScript puro, corre en un Web Worker del navegador.
+  Fidelidad: comportamiento identico a Java 17; JDK 17 real (Temurin 17.0.18+8) en /Library/Java/JavaVirtualMachines/temurin-17.jdk/Contents/Home/bin/ para el oraculo diferencial.
+  Pruebas instaladas y en uso: Vitest 5 + Testing Library + jsdom (unit/integration, proyectos motor/interfaz), Playwright 1.63 (E2E Chromium/Firefox/WebKit), oraculo diferencial contra JDK 17 real.
+  Estado: lote 0 (cimientos + rebanada vertical) en cierre — tareas 0.1-0.15 hechas, commits reales en main, sdd-init refrescado en 0.16.
 
 strict_tdd: true
 
@@ -36,7 +36,6 @@ rules:
       - Cero dependencias de red en tiempo de ejecución
       - Conventional commits SIN atribución de IA (sin Co-Authored-By); pedir confirmación explícita al usuario antes de cada commit
       - Salidas de pruebas y linters acotadas (--reporter=dot, --silent/--quiet)
-    tdd: true
     test_command: "npm test"
   verify:
     notes:
@@ -50,31 +49,45 @@ rules:
     - Advertir antes de fusionar deltas destructivos (eliminaciones grandes)
 
 testing:
-  strict_tdd: true
   detected: 2026-09-25
   test_runner:
     command: "npm test"
-    framework: "Vitest (planeado; no instalado — llega en el primer lote de implementación)"
+    framework: "Vitest 5.0.2 (proyectos `motor` en Node y `interfaz` en jsdom, --reporter=dot)"
   layers:
     unit:
-      available: false
-      tool: "Vitest (planeado)"
+      available: true
+      tool: "Vitest 5.0.2 — proyecto `motor` (entorno node: src/motor, src/textos, src/presentacion, src/trabajador, herramientas/, pruebas/)"
     integration:
-      available: false
-      tool: "Vitest + Testing Library (planeado)"
+      available: true
+      tool: "Vitest 5.0.2 — proyecto `interfaz` (entorno jsdom) + @testing-library/react 16.3.3 + @testing-library/user-event 14.6.7"
     e2e:
-      available: false
-      tool: "Playwright (planeado)"
+      available: true
+      tool: "Playwright 1.63.0 — chromium/firefox/webkit (`npm run e2e`, --reporter=dot); proyecto `navegadores` de Vitest con @vitest/browser-playwright llega en la tarea 2.22"
   coverage:
-    available: false
-    command: ""
+    available: true
+    command: "npx vitest run --coverage"
+    note: "@vitest/coverage-v8 5.0.2 instalado; sin script npm dedicado ni bloque coverage en vitest.config.ts todavía"
   quality:
     linter:
-      available: false
-      command: ""
+      available: true
+      command: "npm run lint"
     type_checker:
-      available: false
-      command: "tsc --noEmit (TypeScript estricto planeado; sin configurar aún)"
+      available: true
+      command: "npm run tipos"
     formatter:
       available: false
       command: ""
+  extra:
+    oraculo_diferencial:
+      available: true
+      command: "npm run oraculo:verificar"
+      note: "compara contra JDK 17 real (Temurin 17.0.18+8, REQ-DIFF-*); ver también oraculo:goldens, oraculo:datos, oraculo:mutantes, oraculo:generados"
+    accesibilidad:
+      available: true
+      tool: "@axe-core/playwright 4.13.0"
+    pruebas_por_propiedades:
+      available: true
+      tool: "fast-check 4.10.2"
+    ci_local:
+      command: "npm run ci"
+      note: "lint + tipos + test + build + presupuesto + licencias"
