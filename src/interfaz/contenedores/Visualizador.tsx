@@ -8,6 +8,7 @@ import { useRef, useState, useSyncExternalStore } from 'react';
 import { Traza } from '../../motor/vista.ts';
 import { crearClienteTrabajador, type ClienteTrabajador } from '../../trabajador/cliente.ts';
 import type { ConfigEjecucion, MensajeTrabajadorAUi } from '../../trabajador/protocolo.ts';
+import { textosInterfaz } from '../../textos/es-MX/interfaz.ts';
 import { EditorJava } from '../editor/EditorJava.tsx';
 import { Consola } from '../componentes/Consola.tsx';
 
@@ -65,9 +66,7 @@ export function Visualizador() {
         switch (mensaje.tipo) {
           case 'compilado':
             if (!mensaje.ok) {
-              setMensajeCompilacion(
-                'El programa no compila todavía (el catálogo completo de errores en español llega en el lote 1).',
-              );
+              setMensajeCompilacion(textosInterfaz.noCompilaTodavia());
               setModo('edicion');
             }
             return;
@@ -81,7 +80,7 @@ export function Visualizador() {
             setModo('visualizacion');
             return;
           case 'error-interno':
-            setMensajeCompilacion('Algo falló dentro del visualizador.');
+            setMensajeCompilacion(textosInterfaz.errorInterno());
             setModo('edicion');
             return;
         }
@@ -98,7 +97,7 @@ export function Visualizador() {
     <div className="visualizador">
       <EditorJava valor={codigo} soloLectura={modo !== 'edicion'} onCambio={setCodigo} />
       <button type="button" onClick={visualizar} disabled={modo === 'compilando'}>
-        Visualizar
+        {textosInterfaz.botonVisualizar()}
       </button>
       {mensajeCompilacion && <p role="alert">{mensajeCompilacion}</p>}
       <Consola segmentos={segmentos} />
@@ -108,17 +107,15 @@ export function Visualizador() {
           onClick={() => setPasoActual((p) => Math.max(0, p - 1))}
           disabled={!puedeRetroceder}
         >
-          ◀ Anterior
+          {textosInterfaz.botonAnterior()}
         </button>
-        <span>
-          Paso {pasoActual} de {total}
-        </span>
+        <span>{textosInterfaz.pasoActualDeTotal(pasoActual, total)}</span>
         <button
           type="button"
           onClick={() => setPasoActual((p) => Math.min(total, p + 1))}
           disabled={!puedeAvanzar}
         >
-          Siguiente ▶
+          {textosInterfaz.botonSiguiente()}
         </button>
       </div>
     </div>

@@ -8,6 +8,7 @@ import {
   GLOBALES_DOM_PROHIBIDOS,
   patronesProhibidosPara,
 } from './herramientas/eslint/matriz-capas.ts';
+import { REGLAS_DE_TEXTOS_EN_CATALOGO } from './herramientas/eslint/reglas-de-textos.ts';
 
 // Un bloque de configuración por capa, generado desde la matriz de datos de
 // herramientas/eslint/matriz-capas.ts (tarea 0.2, REFACTOR: tabla de datos, no cascada de reglas).
@@ -73,6 +74,12 @@ export default tseslint.config(
       'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'warn',
     },
+  },
+  {
+    // Tarea 0.17 / ADR 015: solo tiene sentido en JSX, así que se limita a `.tsx` (a diferencia del
+    // bloque de arriba, que también cubre `.ts` para los hooks de React).
+    files: ['src/interfaz/**/*.tsx'],
+    rules: REGLAS_DE_TEXTOS_EN_CATALOGO,
   },
   ...configuracionesDeFrontera,
 );
