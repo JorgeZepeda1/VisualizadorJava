@@ -51,7 +51,7 @@
 
 **Contras honestos:**
 - Esfuerzo: hay que escribir toda la gramática, incluida la recuperación de errores — no se hereda gratis el trabajo de un equipo dedicado a esto.
-- No está "probado en batalla" contra millones de repositorios reales como sí lo está `tree-sitter-java`. Mitigación: la suite de 70 frases + el arnés diferencial contra JDK 17 (§7, que ya tiene semilla real) hace ese trabajo de validación, acotado a nuestro subconjunto.
+- No está "probado en batalla" contra millones de repositorios reales como sí lo está `tree-sitter-java`. Mitigación: el corpus curricular de 35 programas + el arnés diferencial contra JDK 17 (§7, que ya tiene semilla real) hace ese trabajo de validación, acotado a nuestro subconjunto.
 - Si el alcance creciera mucho más allá de U3–U7 (clases, herencia, genéricos…), el costo de mantener la gramática a mano crece rápido — ese es el punto en el que valdría reabrir esta decisión.
 
 **Alternativa de respaldo** si el recobro de errores a mano sale más caro de lo previsto: `web-tree-sitter` + `tree-sitter-java` (WASM, un solo hilo, no pide COOP/COEP) — su gramática está activa y ahora además validada por el hecho de que el propio `prettier-java` migró a ella. El costo es adoptar una gramática completa de Java y filtrar lo fuera de alcance en una pasada aparte.
@@ -193,7 +193,7 @@ Ya existe un corpus real en `exploracion/experimentos/{numeros,texto}/` (obra de
 
 - **Arnés diferencial:** un script de Node que recorra `corpus/**/*.java`, compile con `javac` y ejecute con `java` del JDK 17 en `/Library/Java/JavaVirtualMachines/temurin-17.jdk/Contents/Home/bin/` (alimentando `.entrada.txt` por stdin cuando exista), y escriba `.salida.txt` — commiteados al repo para que `npm test` local no necesite JDK instalado en cada máquina. Una prueba de Vitest separada, con JDK disponible (local o CI), regenera y diffea contra lo commiteado para detectar goldens desactualizados.
 - **CI:** `actions/setup-java@v6` (versión vigente confirmada hoy) con `distribution: temurin, java-version: '17'` — coincide exactamente con el JDK 17.0.18 ya instalado en local, evitando divergencias entre lo que se prueba en CI y lo que valida el PO en su laptop.
-- **`fast-check`** (4.10.2, MIT, confirmado) para pruebas basadas en propiedades: generar programas pequeños **válidos dentro de la gramática del subconjunto** (un generador de AST válido, no de texto Java arbitrario) y comparar contra el oráculo de JDK 17 en lote. Recomendado como job de CI aparte (más lento, invoca `javac`/`java` por caso), no en cada commit — análogo al patrón que ya usa el proyecto hermano `Distribucion` para separar su suite de voz pesada del resto de pruebas.
+- **`fast-check`** (4.10.2, MIT, confirmado) para pruebas basadas en propiedades: generar programas pequeños **válidos dentro de la gramática del subconjunto** (un generador de AST válido, no de texto Java arbitrario) y comparar contra el oráculo de JDK 17 en lote. Recomendado como job de CI aparte (más lento, invoca `javac`/`java` por caso), no en cada commit.
 - **Vitest** 5.0.2 + `@vitest/coverage-v8` para unidad/cobertura, **Testing Library** para componentes React, **Playwright** 1.63.0 para E2E — todas confirmadas como versiones vigentes hoy (§10).
 
 **Contras honestos:** mantener un arnés diferencial contra JDK real es infraestructura extra (JDK 17 disponible en CI, captura de `stdin`/`stdout` exactamente igual que Java, codificación y saltos de línea consistentes) — pero es la única forma creíble de sostener "fidelidad idéntica a Java 17" en el tiempo, y el corpus ya iniciado reduce mucho el costo de arrancar.
@@ -262,7 +262,7 @@ Es Screaming/Hexagonal: `motor/` no importa nada de `react`, `vite` ni del DOM �
 
 ### Riesgo verificado #2 — Node del proyecto
 
-El Node global de esta máquina es 20.20.2; `vitest@5` exige Node ≥22.12 (o ≥24, o ≥26) — confirmado en su campo `engines.node`. El proyecto necesita fijarse a Node 22 (ya disponible vía `nvm`: 22.23.1) con un `.nvmrc`, igual que ya hace el proyecto hermano `Distribucion`. Sin eso, `npm test` falla en el Node global.
+El Node global de esta máquina es 20.20.2; `vitest@5` exige Node ≥22.12 (o ≥24, o ≥26) — confirmado en su campo `engines.node`. El proyecto necesita fijarse a Node 22 (ya disponible vía `nvm`: 22.23.1) con un `.nvmrc`. Sin eso, `npm test` falla en el Node global.
 
 ---
 

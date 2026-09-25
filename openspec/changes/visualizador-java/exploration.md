@@ -60,8 +60,10 @@
 
 ## 4. Correcciones del orquestador
 
-1. **El hueco de `Double.toString` NO se acepta como "límite conocido".** Análisis del archivo `experimentos/numeros/generado/diferencias-double-tostring.csv`: **85 de las 86 diferencias son dobles con valor entero en [2^53, 2^63)**, la banda de la ruta rápida de enteros largos del algoritmo `FloatingDecimal` de JDK 17, que imprime los dígitos exactos del entero (p. ej. `-2.1347700531594672E16` frente al más corto `-2.134770053159467E16`). Un ciclo de U6 con `Math.pow(2, n)` cae ahí. La regla es determinista: se implementa por comportamiento (sin copiar código de OpenJDK, GPLv2+CE) y se valida al 100 % contra el conjunto de 45 293 dobles como prueba de propiedad. El único caso residual (3.5082457001091196E25) queda documentado como límite con su frecuencia medida (1 de 45 293, magnitud 10^25).
-2. `float`, `long`, `byte` y `short` no están en el currículo, pero `long` es inevitable (`Math.round(double)` devuelve `long`, y `int r = Math.round(x);` es un error de compilación que el alumno SÍ comete). El diseño debe decidir el soporte mínimo de `long` y el aviso para los demás.
+1. **El hueco de `Double.toString` NO se acepta como "límite conocido".** Análisis del archivo `experimentos/numeros/generado/diferencias-double-tostring.csv`: **85 de las 86 diferencias son dobles con valor entero en [2^53, 2^63)**, la banda de la ruta rápida de enteros largos del algoritmo `FloatingDecimal` de JDK 17 (p. ej. JDK 17 imprime `-2.1347700531594672E16` frente al más corto `-2.134770053159467E16`). Un ciclo de U6 con `Math.pow(2, n)` cae ahí. La regla es determinista y la precisó la fase de propuesta: se parte de los dígitos del entero exacto y se quitan de 0 a 2 dígitos finales con redondeo HALF_UP según el exponente binario (ninguno en los exponentes 53–57); reproducida en 122/122 valores. Se implementa por comportamiento (sin copiar código de OpenJDK, GPLv2+CE) y se valida contra el conjunto de 45 293 dobles más un conjunto denso de la banda. El único caso residual queda documentado como límite con su frecuencia medida (1 de 45 293, magnitud 10^25): JDK 17 imprime `3.5082457001091195E25` donde el más corto sería `3.5082457001091196E25`.
+2. **`Math.pow` no se delega a JavaScript** (hallazgo de la propuesta, verificado por el orquestador): V8 da `0.00009999999999999999` para `Math.pow(10, -4)` y JDK 17 da `1.0E-4`; difieren en el 4.1 % de 26 336 pares. En esta Mac `Math.pow` = `StrictMath.pow` (fdlibm): el intérprete implementa la semántica de fdlibm. Pendiente medirlo en x86_64 (las laptops Windows del plantel).
+3. **Las salidas de `corpus-candidato/*.salida.txt` perdieron el `\n` final** (verificado: `u3-hola-mundo.salida.txt` termina en `o`; la salida real termina en `\n`). No sirven como goldens byte a byte: el arnés las regenera capturando en binario con `-Duser.language=es -Duser.country=MX -Dfile.encoding=UTF-8`.
+4. `float`, `long`, `byte` y `short` no están en el currículo, pero `long` es inevitable (`Math.round(double)` devuelve `long`, y `int r = Math.round(x);` es un error de compilación que el alumno SÍ comete). El diseño debe decidir el soporte mínimo de `long` y el aviso para los demás.
 
 ## 5. Riesgos principales
 
@@ -72,9 +74,11 @@
 | Divergencia sutil intérprete ↔ JDK | Arnés diferencial obligatorio en CI + conjuntos de propiedades (45 293 dobles, Random) |
 | Programas desbocados (ciclo infinito de la propia lección U6) | Límite de pasos + Web Worker terminable; macOS no trae `timeout`, el generador de goldens debe usar el timeout de `child_process` |
 
-## 6. Preguntas abiertas para el PO (se presentan al revisar el plan)
+## 6. Preguntas del PO — RESUELTAS (2026-09-25)
 
-1. Modo "predice antes de avanzar": ¿activo por omisión o lo activa el docente?
-2. ¿Tiene programas propios de NetBeans (p. ej. el juego de adivinar el número) para la galería y el corpus?
-3. Separador decimal en la entrada: ¿sus alumnos capturan `3.5` o `3,5`? (Recomendación: punto, como `es_MX`, con opción de coma.)
-4. ¿Puede compartir una captura de la consola de NetBeans pidiendo datos, para copiar su apariencia?
+| # | Pregunta | Decisión del PO |
+|---|---|---|
+| D4 | Modo "predice antes de avanzar" | **Apagado por omisión; lo activa el docente**: interruptor visible y enlace compartible que abre el simulador con el modo ya activo. |
+| D5 | Separador decimal en la entrada (`nextDouble()`) | **Punto (`3.5`), como `es_MX`**: `3,5` produce el mismo `InputMismatchException` que NetBeans. La coma queda como opción de configuración. |
+| D6 | Programas propios de NetBeans | **No hay**: se escriben ejemplos nuevos por unidad (U3–U7), incluidos `Math`, `Random` y `printf`, verificados contra JDK 17 y marcados como de autoría. |
+| D7 | Apariencia de la consola de NetBeans | **Apariencia inferida**: el mensaje del `print` y lo que teclea el alumno en el mismo renglón, con la entrada en otro color; se ajusta después si no se parece. |

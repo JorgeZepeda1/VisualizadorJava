@@ -550,9 +550,10 @@ ejecución).
    que se muestre al alumno sea claro y no un número silenciosamente incorrecto.
 2. **Hueco de 0.19% en `Double.toString`** en la banda de magnitud 10¹⁶–10¹⁸ (enteros grandes como double) —
    cero impacto en el uso pedagógico normal, pero es una discrepancia real y medida frente a "fidelidad
-   idéntica a Java 17" si algún ejercicio de la suite de 70 frases (o del corpus de este cambio) cae ahí sin
+   idéntica a Java 17" si algún programa del corpus de este cambio cae ahí sin
    querer. Recomendación: el corpus diferencial general (no sólo el de este documento) debería evitar
    valores de prueba en esa banda salvo que sea a propósito para documentar el límite conocido.
+   **[Superado por el orquestador, 2026-09-25]** la banda NO queda como límite: se implementa la ruta de enteros largos y se valida contra el conjunto de dobles (ver `exploration.md` §4).
 3. Licencia: si en el futuro se decide cerrar el hueco anterior implementando el algoritmo completo,
    **no copiar código de OpenJDK** (`FloatingDecimal`/`FDBigInteger`, GPLv2+CE) — implementar desde la
    especificación (el javadoc citado) o portar un algoritmo de otra licencia (ej. Ryu, Apache 2.0).

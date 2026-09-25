@@ -7,14 +7,23 @@ decisiones_po:
   ubicacion: proyecto independiente en /Users/desarrollo/VisualizadorJava (Vite + React + TS, estático)
   alcance: currículo U3-U7 (AprendiendoJava/docs/02-curriculum.md); lo demás, aviso claro
   motor: intérprete TypeScript en el navegador; fidelidad verificada contra JDK 17 real
+  prediccion: D4 apagado por omisión; lo activa el docente (interruptor + enlace)
+  decimales: D5 punto (es_MX); coma como opción
+  ejemplos: D6 de autoría por unidad U3-U7, verificados contra JDK 17
+  consola: D7 apariencia inferida de NetBeans (mismo renglón, entrada en otro color)
+  repositorio: P1 público JorgeZepeda1/VisualizadorJava (BASE_PUBLICA=/VisualizadorJava/)
+  licencia: P4 MIT (LICENSE adelantada al lote 0)
+  aula: P5 validación al cerrar el lote 5 (clase de U5 o U6)
+  plan: aprobado por el PO el 2026-09-25
 phases:
   init: completed       # openspec/config.yaml + .atl/skill-registry.md; strict_tdd=true (marcador global)
   explore: completed    # exploration.md (índice) + exploracion/01..05
-  proposal: in_progress
-  spec: pending
-  design: pending
-  tasks: pending
-  apply: pending         # requiere aprobación explícita del PO
+  proposal: completed   # proposal.md (D1–D7 vinculantes; P1–P5 nuevas)
+  spec: completed       # specs/ (8 capacidades, 72 requisitos, 83 escenarios; verificado)
+  design: completed     # design.md + docs/adr/001..016; hallazgos verificados por el orquestador
+  conciliacion: completed   # 73 requisitos, 96 escenarios; C4 y C7 reformulados (verificado)
+  tasks: completed      # tasks.md: 7 lotes, 101 tareas, 17–24 sesiones; trazabilidad 73/73 y C1–C20 (verificado)
+  apply: in_progress    # lote 0 en 3 sub-lotes: 0-A (0.1–0.4 + LICENSE), 0-B (0.5–0.10), 0-C (0.11–0.15); 0.16 al cierre
   verify: pending
   archive: pending
 updated: 2026-09-25
