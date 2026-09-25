@@ -1,0 +1,4 @@
+err34_case_no_constante.java:6: error: constant expression required
+            case base:
+                 ^
+1 error

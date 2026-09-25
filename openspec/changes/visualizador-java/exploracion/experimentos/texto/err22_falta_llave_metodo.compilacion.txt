@@ -1,0 +1,13 @@
+err22_falta_llave_metodo.java:2: error: ';' expected
+    public static void main(String[] args)
+                                          ^
+err22_falta_llave_metodo.java:4: error: <identifier> expected
+        System.out.println(x);
+                          ^
+err22_falta_llave_metodo.java:4: error: <identifier> expected
+        System.out.println(x);
+                            ^
+err22_falta_llave_metodo.java:6: error: class, interface, enum, or record expected
+}
+^
+4 errors

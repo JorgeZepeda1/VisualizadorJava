@@ -1,0 +1,6 @@
+err02_simbolo_no_encontrado_variable.java:3: error: cannot find symbol
+        System.out.println(edad);
+                           ^
+  symbol:   variable edad
+  location: class err02_simbolo_no_encontrado_variable
+1 error

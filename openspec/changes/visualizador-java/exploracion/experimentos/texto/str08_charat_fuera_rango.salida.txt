@@ -1,0 +1,5 @@
+antes
+Exception in thread "main" java.lang.StringIndexOutOfBoundsException: String index out of range: 5
+	at java.base/java.lang.StringLatin1.charAt(StringLatin1.java:48)
+	at java.base/java.lang.String.charAt(String.java:1517)
+	at str08_charat_fuera_rango.main(str08_charat_fuera_rango.java:5)

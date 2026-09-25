@@ -1,0 +1,7 @@
+edad: 17
+estatura: 1.68
+esEstudiante: true
+grupo: B
+nombre: Carlos
+contador: 0
+IVA: 0.16

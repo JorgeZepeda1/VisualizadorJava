@@ -1,0 +1,1 @@
+Elige una operación (1=suma, 2=resta, 3=multiplicación): Primer número: Segundo número: Resultado: 15.0

@@ -1,0 +1,2 @@
+palabra=[primera]
+resto de la linea=[ segunda tercera]

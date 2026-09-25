@@ -1,0 +1,4 @@
+err23_parentesis_faltante_for.java:3: error: ')' expected
+        for (int i = 0; i < 5; i++ {
+                                  ^
+1 error

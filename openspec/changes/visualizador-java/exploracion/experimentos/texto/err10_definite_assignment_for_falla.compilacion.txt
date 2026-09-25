@@ -1,0 +1,4 @@
+err10_definite_assignment_for_falla.java:7: error: variable x might not have been initialized
+        System.out.println(x);
+                           ^
+1 error

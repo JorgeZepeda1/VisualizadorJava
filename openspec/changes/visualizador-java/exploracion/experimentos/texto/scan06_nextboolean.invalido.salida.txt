@@ -1,0 +1,5 @@
+Activo (true/false): Exception in thread "main" java.util.InputMismatchException
+	at java.base/java.util.Scanner.throwFor(Scanner.java:939)
+	at java.base/java.util.Scanner.next(Scanner.java:1594)
+	at java.base/java.util.Scanner.nextBoolean(Scanner.java:1893)
+	at scan06_nextboolean.main(scan06_nextboolean.java:6)

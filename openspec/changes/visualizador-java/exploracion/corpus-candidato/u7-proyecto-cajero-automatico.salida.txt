@@ -1,0 +1,36 @@
+===== CAJERO =====
+1. Consultar saldo
+2. Depositar
+3. Retirar
+4. Salir
+Elige una opción: Tu saldo es: 1000
+===== CAJERO =====
+1. Consultar saldo
+2. Depositar
+3. Retirar
+4. Salir
+Elige una opción: ¿Cuánto quieres depositar? Depósito realizado. Tu saldo es: 1500
+===== CAJERO =====
+1. Consultar saldo
+2. Depositar
+3. Retirar
+4. Salir
+Elige una opción: ¿Cuánto quieres retirar? Fondos insuficientes
+===== CAJERO =====
+1. Consultar saldo
+2. Depositar
+3. Retirar
+4. Salir
+Elige una opción: ¿Cuánto quieres retirar? Retiro realizado. Tu saldo es: 1200
+===== CAJERO =====
+1. Consultar saldo
+2. Depositar
+3. Retirar
+4. Salir
+Elige una opción: Opción no válida
+===== CAJERO =====
+1. Consultar saldo
+2. Depositar
+3. Retirar
+4. Salir
+Elige una opción: Gracias por usar el cajero

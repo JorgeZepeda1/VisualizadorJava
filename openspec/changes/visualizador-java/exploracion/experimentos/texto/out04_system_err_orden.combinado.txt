@@ -1,0 +1,4 @@
+out 1
+err 1
+out 2
+err 2

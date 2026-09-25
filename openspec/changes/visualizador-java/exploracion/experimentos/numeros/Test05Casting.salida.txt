@@ -1,0 +1,27 @@
+(int)3.99 -> 3
+(int)-3.99 -> -3
+(int)3.5 -> 3
+(int)-3.5 -> -3
+(int)1e10 -> 2147483647
+(int)-1e10 -> -2147483648
+(int)Double.NaN -> 0
+(int)Double.POSITIVE_INFINITY -> 2147483647
+(int)Double.NEGATIVE_INFINITY -> -2147483648
+(long)Double.NaN -> 0
+(long)1e30 -> 9223372036854775807
+(long)-1e30 -> -9223372036854775808
+(int)(long)1e30 -> -1
+(char)66 -> B
+(int)'A' -> 65
+(double)5/2 -> 2.5
+(double)(5/2) -> 2.0
+double d = 5/2; -> 2.0
+double d2 = 5/2.0; -> 2.5
+(byte)200 -> -56
+(byte)127+1 sin cast luego cast -> -128
+(short)70000 -> 4464
+(float)1.0/3.0 -> 0.3333333333333333
+(float)(1.0/3.0) -> 0.33333334
+(int)(float)1e30 -> 2147483647
+(int)Float.NaN -> 0
+(int)3.9999999999999996 -> 3

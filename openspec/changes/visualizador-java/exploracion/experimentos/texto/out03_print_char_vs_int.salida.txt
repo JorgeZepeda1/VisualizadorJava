@@ -1,0 +1,8 @@
+print(char 'A'): 
+A
+print(int 65): 
+65
+print(char + 1, promocion aritmetica): 
+66
+print((char)(c + 1), cast de vuelta a char): 
+B

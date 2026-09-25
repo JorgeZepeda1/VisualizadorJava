@@ -1,0 +1,2 @@
+Escribe si o no: resp == "si": false
+resp.equals("si"): true

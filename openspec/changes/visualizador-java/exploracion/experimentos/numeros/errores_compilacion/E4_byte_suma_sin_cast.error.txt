@@ -1,0 +1,4 @@
+/Users/desarrollo/VisualizadorJava/openspec/changes/visualizador-java/exploracion/experimentos/numeros/errores_compilacion/E4_byte_suma_sin_cast.java:4: error: incompatible types: possible lossy conversion from int to byte
+        byte b3 = b1 + b2; // byte+byte se promueve a int; falta cast
+                     ^
+1 error

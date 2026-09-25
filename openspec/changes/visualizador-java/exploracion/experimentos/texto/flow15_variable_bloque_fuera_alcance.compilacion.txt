@@ -1,0 +1,6 @@
+flow15_variable_bloque_fuera_alcance.java:6: error: cannot find symbol
+        System.out.println(y);
+                           ^
+  symbol:   variable y
+  location: class flow15_variable_bloque_fuera_alcance
+1 error

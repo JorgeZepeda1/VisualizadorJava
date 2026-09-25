@@ -1,0 +1,80 @@
+# openspec/config.yaml
+schema: spec-driven
+
+context: |
+  Producto: visualizador de ejecucion paso a paso de Java para bachillerato (sin experiencia previa), en espanol de Mexico.
+  Stack: Vite + React + TypeScript estricto; SPA estatica publicable en GitHub Pages; cero CDNs en runtime.
+  Motor: interprete de subconjunto de Java (curriculo U3-U7) en TypeScript puro, corre en el navegador.
+  Fidelidad: comportamiento identico a Java 17; JDK 17 real en /Library/Java/JavaVirtualMachines/temurin-17.jdk/Contents/Home/bin/ para pruebas diferenciales.
+  Pruebas planeadas: Vitest + Testing Library (unit/integration) y Playwright (E2E); no instaladas aun, llegan en el primer lote de implementacion.
+  Estado: proyecto greenfield, repo git en rama main sin commits todavia.
+
+strict_tdd: true
+
+rules:
+  proposal:
+    - Incluir plan de rollback para cambios riesgosos
+    - Identificar módulos/paquetes afectados
+  specs:
+    - Usar formato Given/When/Then para escenarios
+    - Usar palabras clave RFC 2119 (MUST, SHALL, SHOULD, MAY)
+    - Cada comportamiento del intérprete se respalda con una prueba diferencial contra el JDK 17 real
+  design:
+    - Incluir diagramas de secuencia para flujos complejos
+    - Documentar decisiones de arquitectura con justificación
+    - Cero dependencias de red en tiempo de ejecución — ninguna decisión de arquitectura puede introducir una CDN o llamada externa
+  tasks:
+    - Agrupar tareas por fase (infraestructura, implementación, pruebas)
+    - Numeración jerárquica (1.1, 1.2, etc.)
+    - Tareas completables en una sola sesión
+  apply:
+    notes:
+      - Seguir los patrones y convenciones existentes del proyecto
+      - Cargar skills de codificación relevantes para el stack
+      - Todo texto visible u oíble por el usuario en español de México
+      - Lo que el subconjunto de Java no soporta se reporta con un aviso claro en español; nunca resultados inventados
+      - Cero dependencias de red en tiempo de ejecución
+      - Conventional commits SIN atribución de IA (sin Co-Authored-By); pedir confirmación explícita al usuario antes de cada commit
+      - Salidas de pruebas y linters acotadas (--reporter=dot, --silent/--quiet)
+    tdd: true
+    test_command: "npm test"
+  verify:
+    notes:
+      - Ejecutar pruebas si existe infraestructura de pruebas
+      - Comparar la implementación contra cada escenario del spec, incluidas las pruebas diferenciales contra JDK 17
+      - Salidas de pruebas y linters acotadas (--reporter=dot, --silent/--quiet)
+    test_command: "npm test"
+    build_command: ""
+    coverage_threshold: 0
+  archive:
+    - Advertir antes de fusionar deltas destructivos (eliminaciones grandes)
+
+testing:
+  strict_tdd: true
+  detected: 2026-09-25
+  test_runner:
+    command: "npm test"
+    framework: "Vitest (planeado; no instalado — llega en el primer lote de implementación)"
+  layers:
+    unit:
+      available: false
+      tool: "Vitest (planeado)"
+    integration:
+      available: false
+      tool: "Vitest + Testing Library (planeado)"
+    e2e:
+      available: false
+      tool: "Playwright (planeado)"
+  coverage:
+    available: false
+    command: ""
+  quality:
+    linter:
+      available: false
+      command: ""
+    type_checker:
+      available: false
+      command: "tsc --noEmit (TypeScript estricto planeado; sin configurar aún)"
+    formatter:
+      available: false
+      command: ""

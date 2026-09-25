@@ -1,0 +1,6 @@
+err18_string_minuscula.java:3: error: cannot find symbol
+        string nombre = "Ana";
+        ^
+  symbol:   class string
+  location: class err18_string_minuscula
+1 error

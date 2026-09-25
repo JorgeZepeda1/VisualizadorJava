@@ -1,0 +1,1 @@
+Ingresa la base: Ingresa la altura: El área del rectángulo es: 15.0

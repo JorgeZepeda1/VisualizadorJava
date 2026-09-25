@@ -1,0 +1,4 @@
+err10c_final_reasignada.java:5: error: cannot assign a value to final variable x
+        x = 10;
+        ^
+1 error

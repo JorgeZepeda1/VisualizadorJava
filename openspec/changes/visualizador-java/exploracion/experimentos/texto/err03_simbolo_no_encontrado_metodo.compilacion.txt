@@ -1,0 +1,6 @@
+err03_simbolo_no_encontrado_metodo.java:3: error: cannot find symbol
+        saludar();
+        ^
+  symbol:   method saludar()
+  location: class err03_simbolo_no_encontrado_metodo
+1 error

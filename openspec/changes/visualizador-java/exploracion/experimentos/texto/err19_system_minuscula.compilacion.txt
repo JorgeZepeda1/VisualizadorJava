@@ -1,0 +1,4 @@
+err19_system_minuscula.java:3: error: package system does not exist
+        system.out.println("hola");
+              ^
+1 error

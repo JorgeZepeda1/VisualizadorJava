@@ -1,0 +1,4 @@
+err24_tipos_incompatibles_boolean_int.java:3: error: incompatible types: int cannot be converted to boolean
+        boolean activo = 5;
+                         ^
+1 error

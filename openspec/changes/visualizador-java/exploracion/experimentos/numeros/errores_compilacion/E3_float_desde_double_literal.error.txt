@@ -1,0 +1,4 @@
+/Users/desarrollo/VisualizadorJava/openspec/changes/visualizador-java/exploracion/experimentos/numeros/errores_compilacion/E3_float_desde_double_literal.java:3: error: incompatible types: possible lossy conversion from double to float
+        float f = 3.5; // literal double sin sufijo f
+                  ^
+1 error

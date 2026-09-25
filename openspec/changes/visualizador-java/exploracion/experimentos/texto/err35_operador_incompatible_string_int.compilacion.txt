@@ -1,0 +1,6 @@
+err35_operador_incompatible_string_int.java:5: error: bad operand types for binary operator '-'
+        int resultado = s - n;
+                          ^
+  first type:  String
+  second type: int
+1 error

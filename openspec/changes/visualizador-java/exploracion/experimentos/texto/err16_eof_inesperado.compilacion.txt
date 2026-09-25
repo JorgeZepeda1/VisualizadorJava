@@ -1,0 +1,4 @@
+err16_eof_inesperado.java:5: error: reached end of file while parsing
+    }
+     ^
+1 error

@@ -1,0 +1,2 @@
+Error: el método principal no es static en la clase err21_main_sin_static, defina el método principal del siguiente modo:
+   public static void main(String[] args)

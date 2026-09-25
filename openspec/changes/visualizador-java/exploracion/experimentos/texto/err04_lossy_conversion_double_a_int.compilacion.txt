@@ -1,0 +1,4 @@
+err04_lossy_conversion_double_a_int.java:4: error: incompatible types: possible lossy conversion from double to int
+        int x = d;
+                ^
+1 error

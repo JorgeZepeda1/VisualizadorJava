@@ -1,0 +1,2 @@
+B: el else se asocia al if MAS CERCANO (y>30), no al externo
+fin

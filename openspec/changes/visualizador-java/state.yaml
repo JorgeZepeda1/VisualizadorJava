@@ -1,0 +1,20 @@
+# Estado del DAG del cambio (lo mantiene el orquestador)
+change: visualizador-java
+project: visualizadorjava
+artifact_store: hybrid
+execution_mode: planeacion-automatica-y-aprobacion-del-po-antes-de-apply
+decisiones_po:
+  ubicacion: proyecto independiente en /Users/desarrollo/VisualizadorJava (Vite + React + TS, estático)
+  alcance: currículo U3-U7 (AprendiendoJava/docs/02-curriculum.md); lo demás, aviso claro
+  motor: intérprete TypeScript en el navegador; fidelidad verificada contra JDK 17 real
+phases:
+  init: completed       # openspec/config.yaml + .atl/skill-registry.md; strict_tdd=true (marcador global)
+  explore: completed    # exploration.md (índice) + exploracion/01..05
+  proposal: in_progress
+  spec: pending
+  design: pending
+  tasks: pending
+  apply: pending         # requiere aprobación explícita del PO
+  verify: pending
+  archive: pending
+updated: 2026-09-25

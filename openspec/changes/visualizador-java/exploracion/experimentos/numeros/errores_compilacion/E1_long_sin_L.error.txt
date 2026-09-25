@@ -1,0 +1,4 @@
+/Users/desarrollo/VisualizadorJava/openspec/changes/visualizador-java/exploracion/experimentos/numeros/errores_compilacion/E1_long_sin_L.java:3: error: integer number too large
+        long big = 5000000000; // excede rango de int, falta sufijo L
+                   ^
+1 error

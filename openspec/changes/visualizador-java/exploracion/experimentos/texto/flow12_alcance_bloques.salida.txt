@@ -1,0 +1,4 @@
+dentro del bloque x=1 y=2
+i=0
+i=1
+x sigue viva=1

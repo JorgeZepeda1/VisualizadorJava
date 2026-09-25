@@ -1,0 +1,4 @@
+flow05_switch_casos_duplicados.java:8: error: duplicate case label
+            case 1:
+            ^
+1 error

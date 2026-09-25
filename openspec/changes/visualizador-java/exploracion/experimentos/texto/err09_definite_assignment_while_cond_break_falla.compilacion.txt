@@ -1,0 +1,4 @@
+err09_definite_assignment_while_cond_break_falla.java:9: error: variable x might not have been initialized
+        System.out.println(x);
+                           ^
+1 error

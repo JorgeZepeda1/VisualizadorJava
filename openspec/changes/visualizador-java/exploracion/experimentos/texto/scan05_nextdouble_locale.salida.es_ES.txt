@@ -1,0 +1,6 @@
+Locale por omision de la JVM: es_ES
+Precio: Exception in thread "main" java.util.InputMismatchException
+	at java.base/java.util.Scanner.throwFor(Scanner.java:939)
+	at java.base/java.util.Scanner.next(Scanner.java:1594)
+	at java.base/java.util.Scanner.nextDouble(Scanner.java:2564)
+	at scan05_nextdouble_locale.main(scan05_nextdouble_locale.java:8)

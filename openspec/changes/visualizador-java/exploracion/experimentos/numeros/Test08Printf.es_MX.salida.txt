@@ -1,0 +1,47 @@
+42
+42
+3.140000
+1.000000
+.2f de 0.125 -> 0.13
+.2f de 0.135 -> 0.14
+.2f de 1.005 -> 1.01
+.2f de 2.675 -> 2.68
+.2f de 1.115 -> 1.12
+.2f de 10.555 -> 10.56
+.2f de 0.045 -> 0.05
+.0f de 0.5 -> 1
+.0f de 1.5 -> 2
+.0f de 2.5 -> 3
+.0f de -0.5 -> -1
+.0f de -1.5 -> -2
+hola
+A
+B con int -> fmt=[%c con int -> %c] EXCEPCION java.util.MissingFormatArgumentException: Format specifier '%c'
+true
+false con null -> fmt=[%b con null -> %b] EXCEPCION java.util.MissingFormatArgumentException: Format specifier '%b'
+true con objeto -> fmt=[%b con objeto -> %b] EXCEPCION java.util.MissingFormatArgumentException: Format specifier '%b'
+ancho [   42]
+ancho neg [hi        ]|
+ceros [00042]
+ceros neg [-0042]
+float ancho [    3.14]
+1,234,567
+1,234,567.89
+1.234568e+04
+1.234e-04
+ff
+FF
+0xff
+%50
++42
+-42
+fmt=[%d] EXCEPCION java.util.IllegalFormatConversionException: d != java.lang.Double
+fmt=[%y] EXCEPCION java.util.UnknownFormatConversionException: Conversion = 'y'
+5 fmt=[%d %d] EXCEPCION java.util.MissingFormatArgumentException: Format specifier '%d'
+fmt=[%d] EXCEPCION java.util.IllegalFormatConversionException: d != java.lang.String
+--- locale explicito en el formato ---
+1,234,567.89
+1.234.567,89
+1,234,567.89
+1,234,567
+1.234.567

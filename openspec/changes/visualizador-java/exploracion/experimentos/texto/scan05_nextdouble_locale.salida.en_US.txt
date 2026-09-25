@@ -1,0 +1,2 @@
+Locale por omision de la JVM: en_US
+Precio: d=3.5

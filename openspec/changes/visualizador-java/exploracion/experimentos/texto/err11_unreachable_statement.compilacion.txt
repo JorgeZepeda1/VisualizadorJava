@@ -1,0 +1,4 @@
+err11_unreachable_statement.java:5: error: unreachable statement
+        System.out.println(x);
+        ^
+1 error

@@ -1,0 +1,4 @@
+err33_condicion_if_no_booleana.java:4: error: incompatible types: int cannot be converted to boolean
+        if (x) {
+            ^
+1 error

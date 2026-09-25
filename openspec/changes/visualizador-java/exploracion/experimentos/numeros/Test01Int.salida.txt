@@ -1,0 +1,43 @@
+MAX_VALUE=2147483647
+MIN_VALUE=-2147483648
+MAX+1=-2147483648
+MIN-1=2147483647
+MAX*2=-2
+MIN*-1=-2147483648
+-MIN_VALUE=-2147483648
+MIN/-1=-2147483648
+7/2=3
+-7/2=-3
+7/-2=-3
+-7/-2=3
+7%3=1
+-7%3=-1
+7%-3=1
+-7%-3=-1
+5/0 excepcion clase=java.lang.ArithmeticException mensaje=/ by zero
+5%0 excepcion clase=java.lang.ArithmeticException mensaje=/ by zero
+a++ resultado_expr=5 a_final=6
+++b resultado_expr=6 b_final=6
+c-- resultado_expr=5 c_final=4
+--d resultado_expr=4 d_final=4
+x=x++ -> x=5
+y=y++ + ++y -> y=12
+w=1; w=w++ + w++ + ++w -> w=7
+int cx=5; cx+=1.7 -> 6
+int cx2=5; cx2*=1.5 -> 7
+int cx3=10; cx3/=3.0 -> 3
+int cx4=10; cx4+='A' -> 75
+1<<35=8
+1<<33=2
+1<<31=-2147483648
+1<<32=1
+1<<-1=-2147483648
+1<<-33=-2147483648
+-1>>>1=2147483647
+-1>>1=-1
+-8>>1=-4
+-8>>>1=2147483644
+-8>>>32=-8
+1L<<35=34359738368
+1L<<65=2 (esperado como 1L<<1 por mascara de 6 bits)
+compound MAX_VALUE+=1 -> -2147483648

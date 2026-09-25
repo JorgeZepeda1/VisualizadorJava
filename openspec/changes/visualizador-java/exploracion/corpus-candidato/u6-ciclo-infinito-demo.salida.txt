@@ -1,0 +1,6 @@
+Vuelta número 1
+Vuelta número 1
+Vuelta número 1
+Vuelta número 1
+Vuelta número 1
+[...] (ciclo infinito intencional — se detuvo manualmente tras 2s; ver 04-corpus-curricular.md)
