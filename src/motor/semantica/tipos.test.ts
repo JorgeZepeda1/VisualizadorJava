@@ -84,6 +84,45 @@ describe('tipoDeExpresion (pura) — lo que 1.7 todavía no resuelve da "descono
   });
 });
 
+// Corrección descubierta en la tarea 1.14 (JLS 15.26.1: "el tipo de una expresión de asignación es
+// el tipo de la variable"): al conectar atribución de punta a punta contra el catálogo real de
+// exploracion/03, "if (x = 5)" (err13, `x` es "int") debía dar "condicion-no-booleana" pero
+// `verificarCondicionBooleana` (atribucion.ts) recibía 'desconocido' de aquí y NUNCA reportaba
+// nada (D2: 'desconocido' suprime la cascada a propósito) -- el programa caía en el catch-all
+// genérico de IR no implementada en vez del error de tipos real. Alcance MÍNIMO a propósito (mismo
+// estilo angosto que el resto de este archivo): solo el tipo del OBJETIVO, nunca evalúa el valor
+// ni verifica asignabilidad aquí (eso ya lo hace `verificarOperandosBinaria`/`visitarDeclaracionLocal`
+// en su propio punto, esta función solo tipa expresiones).
+describe('tipoDeExpresion (pura) — asignación (JLS 15.26.1, corrección de la tarea 1.14, err13)', () => {
+  it('"x = 5" da el tipo de "x" (int), no "desconocido" -- necesario para que "if (x = 5)" se rechace como condición no booleana', () => {
+    const alcance = new Alcance();
+    alcance.entrarBloque();
+    alcance.declarar({ nombre: 'x', tipo: 'int', esFinal: false, rango: R });
+    const nodo: NodoExpresion = {
+      tipo: 'asignacion',
+      operador: '=',
+      objetivo: { tipo: 'nombre', nombre: 'x', rango: R },
+      valor: { tipo: 'literal-entero', valor: 5n, rango: R },
+      rango: R,
+    };
+    expect(tipoDeExpresion(nodo, alcance)).toBe('int');
+  });
+
+  it('triangulación: "b = true" da "boolean" (tipo distinto, del objetivo, no del literal por coincidencia)', () => {
+    const alcance = new Alcance();
+    alcance.entrarBloque();
+    alcance.declarar({ nombre: 'b', tipo: 'boolean', esFinal: false, rango: R });
+    const nodo: NodoExpresion = {
+      tipo: 'asignacion',
+      operador: '=',
+      objetivo: { tipo: 'nombre', nombre: 'b', rango: R },
+      valor: { tipo: 'literal-booleano', valor: true, rango: R },
+      rango: R,
+    };
+    expect(tipoDeExpresion(nodo, alcance)).toBe('boolean');
+  });
+});
+
 describe('tipoDeExpresion (pura) — 1.8: llamadas resueltas por sobrecarga real (Math.*)', () => {
   it('Math.round(2.5) da "long" (round(double), coincidencia exacta)', () => {
     const nodo: NodoExpresion = {

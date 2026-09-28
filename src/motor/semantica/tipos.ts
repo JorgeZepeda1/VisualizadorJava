@@ -54,10 +54,16 @@ export function tipoDeExpresion(expresion: NodoExpresion, alcance: Alcance): Tip
       return tipoDeLlamada(expresion, alcance);
     case 'acceso-miembro':
       return tipoDeAccesoMiembro(expresion, alcance);
-    // binaria/unaria/asignacion/incremento-decremento/nueva-instancia/expresion-no-soportada: la
-    // promoción numérica binaria/unaria (JLS 5.6) queda fuera de 1.7/1.8 — aquí, 'desconocido' en
-    // vez de adivinar (D2). Ninguna de las dos tareas la necesita: 1.7 solo tipaba el selector de
-    // `switch` (literal/variable/cast) y 1.8 solo amplía llamadas/campos reales de biblioteca.
+    // Corrección de la tarea 1.14 (JLS 15.26.1, err13 de exploracion/03): "el tipo de una expresión
+    // de asignación es el tipo de la variable asignada" -- necesario para que "if (x = 5)" (con "x"
+    // int) se reconozca como condición NO booleana en vez de caer en el "desconocido" que suprime
+    // la cascada (D2). Descubierto al conectar atribución de punta a punta contra el catálogo real.
+    case 'asignacion':
+      return tipoDeExpresion(expresion.objetivo, alcance);
+    // binaria/unaria/incremento-decremento/nueva-instancia/expresion-no-soportada: la promoción
+    // numérica binaria/unaria (JLS 5.6) queda fuera de 1.7/1.8 — aquí, 'desconocido' en vez de
+    // adivinar (D2). Ninguna de las dos tareas la necesita: 1.7 solo tipaba el selector de `switch`
+    // (literal/variable/cast) y 1.8 solo amplía llamadas/campos reales de biblioteca.
     default:
       return 'desconocido';
   }

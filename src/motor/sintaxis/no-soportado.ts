@@ -256,8 +256,12 @@ export function recolectarNoSoportados(
   for (const otro of programa.importacionesNoSoportadas) salida.push(otro);
   for (const otro of programa.otrosTiposDeNivelSuperior) salida.push(otro);
   for (const otro of programa.clase.otrosMiembros) salida.push(otro);
-  if (programa.clase.main.clausulaThrows) salida.push(programa.clase.main.clausulaThrows);
-  recolectarDeElemento(programa.clase.main.cuerpo, salida);
+  // Tarea 1.15 (REQ-COMP-008): sin "main" no hay nada más que recolectar aquí (el AST ya no lanza
+  // por "sin main" -- ver analizador-sintactico.ts).
+  if (programa.clase.main !== null) {
+    if (programa.clase.main.clausulaThrows) salida.push(programa.clase.main.clausulaThrows);
+    recolectarDeElemento(programa.clase.main.cuerpo, salida);
+  }
 
   salida.sort((a, b) => a.rango.inicio - b.rango.inicio);
   return salida;

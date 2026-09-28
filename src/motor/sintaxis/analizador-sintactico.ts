@@ -203,16 +203,9 @@ function analizarClase(cursor: CursorDeTokens): NodoClase {
   }
   const cierre = cursor.esperarTexto('}');
 
-  if (main === null) {
-    // Sin ningún "main" reconocible: hoy sigue siendo un error de sintaxis genérico (igual que
-    // antes de la tarea 1.5). REQ-COMP-008 (clasificarlo como error de ARRANQUE, no de compilación)
-    // llega con la tarea 1.15 — fuera del alcance de este sub-lote.
-    throw new ErrorDeCompilacion('la clase no tiene un método "main" reconocible', {
-      inicio,
-      fin: cierre.rango.fin,
-    });
-  }
-
+  // Tarea 1.15 (REQ-COMP-008): "sin main" ya NO es un error de sintaxis -- javac compila esa clase
+  // limpio (verificado, exploracion/03 §4.2); `main: null` sigue hasta `semantica/arranque.ts`
+  // (pasada 5, ADR 004), que es quien de verdad lo rechaza, como error de ARRANQUE al ejecutar.
   return { tipo: 'clase', nombre: nombre.texto, main, otrosMiembros, rango: { inicio, fin: cierre.rango.fin } };
 }
 
@@ -224,7 +217,8 @@ function pareceMain(cursor: CursorDeTokens): boolean {
 
 function analizarMain(cursor: CursorDeTokens): NodoMain {
   const inicio = cursor.actual().rango.inicio;
-  consumirModificadores(cursor, MODIFICADORES_MAIN, 'void');
+  const modificadores = consumirModificadores(cursor, MODIFICADORES_MAIN, 'void');
+  const esEstatico = modificadores.has('static');
   cursor.esperarTexto('void');
   cursor.esperarTexto('main');
   cursor.esperarTexto('(');
@@ -251,6 +245,7 @@ function analizarMain(cursor: CursorDeTokens): NodoMain {
   return {
     tipo: 'main',
     parametro,
+    esEstatico,
     clausulaThrows,
     cuerpo,
     rango: { inicio, fin: cuerpo.rango.fin },
@@ -723,12 +718,17 @@ function envolverComoSentenciaExpresion(expresion: NodoExpresion): NodoSentencia
   return { tipo: 'sentencia-expresion', expresion, rango: expresion.rango };
 }
 
+// Tarea 1.15 (REQ-COMP-007): devuelve los modificadores REALMENTE vistos (antes, `void` -- el
+// llamador de `analizarClase` no necesita saber cuáles vio, pero `analizarMain` sí necesita saber
+// si "static" estaba presente, para `NodoMain.esEstatico`).
 function consumirModificadores(
   cursor: CursorDeTokens,
   permitidos: ReadonlySet<string>,
   hasta: string,
-): void {
+): ReadonlySet<string> {
+  const vistos = new Set<string>();
   while (!cursor.coincideTexto(hasta) && permitidos.has(cursor.actual().texto)) {
-    cursor.avanzar();
+    vistos.add(cursor.avanzar().texto);
   }
+  return vistos;
 }

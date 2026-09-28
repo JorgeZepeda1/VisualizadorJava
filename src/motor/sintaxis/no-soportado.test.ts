@@ -14,7 +14,7 @@ function analizar(fuente: string) {
 
 function primeraSentencia(cuerpoDeMain: string) {
   const programa = analizar(`class C { public static void main(String[] a) { ${cuerpoDeMain} } }`);
-  return programa.clase.main.cuerpo.elementos[0];
+  return programa.clase.main!.cuerpo.elementos[0];
 }
 
 describe('no-soportado — otra clase/interfaz/enum/record de nivel superior', () => {
@@ -41,7 +41,7 @@ describe('no-soportado — miembros de clase distintos de main (campos, métodos
     );
     expect(programa.clase.otrosMiembros).toHaveLength(1);
     expect(programa.clase.otrosMiembros[0].codigo).toBe('miembro-de-clase-no-soportado');
-    expect(programa.clase.main.parametro).toBe('a');
+    expect(programa.clase.main!.parametro).toBe('a');
   });
 
   it('un campo de clase (antes de main)', () => {
@@ -56,7 +56,7 @@ describe('no-soportado — miembros de clase distintos de main (campos, métodos
       'class C { int x; public static void main(String[] a) { } static int y() { return 1; } }',
     );
     expect(programa.clase.otrosMiembros).toHaveLength(2);
-    expect(programa.clase.main.parametro).toBe('a');
+    expect(programa.clase.main!.parametro).toBe('a');
   });
 });
 
@@ -65,8 +65,8 @@ describe('no-soportado — "throws" en main (REQ-SUB-007)', () => {
     const programa = analizar(
       'class C { public static void main(String[] args) throws Exception { } }',
     );
-    expect(programa.clase.main.clausulaThrows).not.toBeNull();
-    expect(programa.clase.main.clausulaThrows?.codigo).toBe('throws-no-soportado');
+    expect(programa.clase.main!.clausulaThrows).not.toBeNull();
+    expect(programa.clase.main!.clausulaThrows?.codigo).toBe('throws-no-soportado');
   });
 });
 
@@ -172,7 +172,7 @@ describe('no-soportado — try/catch/throw (REQ-SUB-007)', () => {
     const programa = analizar(
       'class C { public static void main(String[] a) { try { } catch (Exception e) { } System.out.println("ok"); } }',
     );
-    expect(programa.clase.main.cuerpo.elementos[1]).toMatchObject({ tipo: 'impresion' });
+    expect(programa.clase.main!.cuerpo.elementos[1]).toMatchObject({ tipo: 'impresion' });
   });
 
   it('"throw new RuntimeException(\\"error\\");" es NO-DISP', () => {
@@ -251,7 +251,7 @@ describe('no-soportado — lambdas (REQ-SUB-007, corrección obligatoria del sub
     const programa = analizar(
       'class C { public static void main(String[] a) { Runnable r = () -> { total = 1; }; System.out.println("después"); } }',
     );
-    expect(programa.clase.main.cuerpo.elementos[1]).toMatchObject({ tipo: 'impresion' });
+    expect(programa.clase.main!.cuerpo.elementos[1]).toMatchObject({ tipo: 'impresion' });
   });
 
   it('una llamada normal con paréntesis NUNCA se confunde con una lambda (regresión: "foo(1, 2);")', () => {
@@ -307,7 +307,7 @@ describe('no-soportado — combinaciones que confirman "cero errores de sintaxis
     ].join('\n');
     expect(() => analizar(fuente)).not.toThrow();
     const programa = analizar(fuente);
-    const tipos = programa.clase.main.cuerpo.elementos.map((e) => e.tipo);
+    const tipos = programa.clase.main!.cuerpo.elementos.map((e) => e.tipo);
     expect(tipos).toEqual(['no-soportado', 'no-soportado', 'no-soportado', 'no-soportado', 'impresion']);
   });
 

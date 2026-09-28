@@ -9,4 +9,6 @@ export type { VistaPrograma } from './compilador.ts';
 // Tarea 1.11: el catálogo de textos (`src/textos/es-MX/problemas.ts`, ADR 015) necesita estos
 // tipos para tipar sus funciones por sus datos — nunca el motor completo, solo las formas.
 export type { Categoria, CodigoProblema, Problema } from './problemas.ts';
+// Tarea 1.15: idem para el catálogo de arranque (`src/textos/es-MX/arranque.ts`, ADR 015).
+export type { CodigoArranque, ProblemaArranque } from './problemas.ts';
 export type { Tipo } from './semantica/tipos.ts';

@@ -1,12 +1,26 @@
-// Orquesta compilar(): léxico+sintaxis → IR (design.md §1.3, §2.1). Las 5 pasadas completas
-// (atribución, alcanzabilidad, asignación definitiva, arranque) llegan en la tarea 1.14; léxico+
-// sintaxis ya son un subconjunto real de esas pasadas, en el mismo orden. El contrato público
-// `ResultadoCompilacion` queda fijo desde aquí (REFACTOR de la tarea 0.12) para que el lote 1 solo
-// lo amplíe.
+// Orquesta compilar(): léxico+sintaxis → atribución → alcanzabilidad → asignación definitiva → IR
+// (design.md §1.3, §2.1, ADR 004). El contrato público `ResultadoCompilacion` queda fijo desde la
+// tarea 0.12 (REFACTOR de esa tarea) para que el lote 1 solo lo amplíe.
+//
+// Tarea 1.14 (REQ-COMP-005/006/009): conecta las pasadas 2-4 (`atribucion.ts`/`alcanzabilidad.ts`/
+// `asignacion-definitiva.ts`) por primera vez -- hasta ahora cada una tenía su propia prueba
+// unitaria, pero NINGUNA la llamaba `compilar()`. ADR 004 punto 2: "se informa el primer problema
+// de la PRIMERA pasada que falla" -- nunca el primero por posición cruda en el texto entre pasadas
+// distintas (verificado con javac 17 real en `sdd-design`, engram `orden-fases-javac`/
+// `orden-flujo-javac`): un error de tipos oculta una variable sin asignar aunque esté antes en el
+// texto, y la alcanzabilidad se informa antes que la asignación definitiva. Por eso las 3 pasadas
+// son una lista ORDENADA de funciones `(programa) => ProblemaAtribucion[]` (REFACTOR pedido por la
+// tarea): se prueban en orden y la PRIMERA con algo que reportar gana, sin mirar las demás.
 import { tokenizar } from './lexico/analizador-lexico.ts';
 import type { Token } from './lexico/tokens.ts';
 import { analizarPrograma } from './sintaxis/analizador-sintactico.ts';
+import type { NodoPrograma } from './sintaxis/ast.ts';
 import { recolectarNoSoportados, type NoSoportadoColectado } from './sintaxis/no-soportado.ts';
+import { atribuir } from './semantica/atribucion.ts';
+import { verificarAlcanzabilidad } from './semantica/alcanzabilidad.ts';
+import { verificarAsignacionDefinitiva } from './semantica/asignacion-definitiva.ts';
+import { verificarArranque } from './semantica/arranque.ts';
+import type { ProblemaAtribucion } from './semantica/diagnostico.ts';
 import { generarIr } from './ir/generar-ir.ts';
 import type { ProgramaCompilado } from './ir/ir.ts';
 import type { CodigoProblema, Problema } from './problemas.ts';
@@ -21,6 +35,17 @@ export interface VistaPrograma {
 export type ResultadoCompilacion =
   | { readonly ok: true; readonly programa: ProgramaCompilado; readonly vista: VistaPrograma }
   | { readonly ok: false; readonly problema: Problema; readonly adicionales: number };
+
+// ADR 004: pasadas 2-4, EN ORDEN -- "atribuir" (símbolos/tipos/alcance/switch), luego
+// "verificarAlcanzabilidad" (JLS 14.22), luego "verificarAsignacionDefinitiva" (JLS 16). Cada una
+// recorre TODO el árbol y devuelve su lista COMPLETA (nunca se detiene en el primer problema, ver
+// la cabecera de cada módulo) -- aquí, y SOLO aquí, se decide quedarse con el primero de la PRIMERA
+// pasada que reportó algo.
+const PASADAS_SEMANTICAS: readonly ((programa: NodoPrograma) => readonly ProblemaAtribucion[])[] = [
+  atribuir,
+  verificarAlcanzabilidad,
+  verificarAsignacionDefinitiva,
+];
 
 // Tarea 1.17 (C8, REQ-SUB-006, REQ-SUB-008): detecta lo NO-DISP (léxico y sintáctico) ANTES de
 // intentar bajar a IR, para que un programa fuera del subconjunto NUNCA produzca "cero pasos, cero
@@ -45,8 +70,15 @@ export function compilar(fuente: string): ResultadoCompilacion {
     if (noSoportados.length > 0) {
       return construirResultadoNoDisponible(noSoportados, fuente);
     }
+    for (const pasada of PASADAS_SEMANTICAS) {
+      const problemas = pasada(programaAst);
+      if (problemas.length > 0) {
+        return construirResultadoDeAtribucion(problemas[0]!, fuente);
+      }
+    }
     const ir = generarIr(programaAst);
-    return { ok: true, programa: { ir }, vista: { fuente } };
+    const arranque = verificarArranque(programaAst.clase);
+    return { ok: true, programa: { ir, arranque }, vista: { fuente } };
   } catch (error) {
     const rangoError = error instanceof ErrorDeCompilacion ? error.rango : null;
     const avisosAntesDelError = rangoError
@@ -60,6 +92,25 @@ export function compilar(fuente: string): ResultadoCompilacion {
     }
     return { ok: false, problema: construirProblema(error, fuente), adicionales: 0 };
   }
+}
+
+// Tarea 1.14: `ProblemaAtribucion` (semantica/diagnostico.ts) es deliberadamente angosto -- ni
+// `categoria` (siempre 'error-compilacion', las pasadas 2-4 nunca producen NO-DISP ni arranque) ni
+// `linea` (se calcula aquí, mismo patrón que ya usa `construirResultadoNoDisponible`).
+function construirResultadoDeAtribucion(problema: ProblemaAtribucion, fuente: string): ResultadoCompilacion {
+  const tabla = new TablaDeLineas(fuente);
+  const { linea } = tabla.ubicar(problema.rango.inicio);
+  return {
+    ok: false,
+    adicionales: 0,
+    problema: {
+      categoria: 'error-compilacion',
+      codigo: problema.codigo,
+      rango: problema.rango,
+      linea,
+      datos: problema.datos,
+    },
+  };
 }
 
 function construirResultadoNoDisponible(

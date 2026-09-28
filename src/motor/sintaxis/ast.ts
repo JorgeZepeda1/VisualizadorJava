@@ -30,7 +30,11 @@ export interface NodoImportacion {
 export interface NodoClase {
   readonly tipo: 'clase';
   readonly nombre: string;
-  readonly main: NodoMain;
+  /** `null` si la clase no tiene ningún método `main` reconocible (design.md §2.3: `Clase = ...
+   * "{" { Main | ";" } "}"` acepta CERO Main). Antes de la tarea 1.15 esto era un error de sintaxis
+   * genérico -- REQ-COMP-008 exige aceptarlo como programa BIEN FORMADO (javac lo compila limpio) y
+   * rechazarlo recién en la pasada de arranque (`semantica/arranque.ts`), nunca en sintaxis. */
+  readonly main: NodoMain | null;
   /** Campos, métodos propios, clases internas, inicializadores, anotaciones (tarea 1.6). */
   readonly otrosMiembros: readonly NodoNoSoportado[];
   readonly rango: Rango;
@@ -39,6 +43,10 @@ export interface NodoClase {
 export interface NodoMain {
   readonly tipo: 'main';
   readonly parametro: string;
+  /** Tarea 1.15 (REQ-COMP-007): si el modificador `static` está presente. `public void main` (sin
+   * `static`) es un programa BIEN FORMADO para javac -- solo el LANZADOR (`java`, no `javac`) lo
+   * rechaza al intentar ejecutarlo (exploracion/03 §4.2). `semantica/arranque.ts` lee este campo. */
+  readonly esEstatico: boolean;
   /** `throws Tipo, Tipo…` tras los paréntesis, si el programa lo trae (tarea 1.6, NO-DISP). */
   readonly clausulaThrows: NodoNoSoportado | null;
   readonly cuerpo: NodoBloque;

@@ -25,7 +25,7 @@ function analizar(fuente: string) {
 
 function primeraSentencia(fuente: string) {
   const programa = analizar(`class C { public static void main(String[] a) { ${fuente} } }`);
-  return programa.clase.main.cuerpo.elementos[0];
+  return programa.clase.main!.cuerpo.elementos[0];
 }
 
 describe('sentencias — if / else / else if (REQ-SUB-004)', () => {
@@ -77,7 +77,7 @@ describe('sentencias — sentencia vacía ";" (REQ-SUB-004)', () => {
   it('"if (x > 5);" seguido de un bloque: el ";" ES el cuerpo del if (bug clásico verificado, flow10)', () => {
     // El bloque "{ }" que sigue es una sentencia SUELTA, sin relación con la condición.
     const programa = analizar('class C { public static void main(String[] a) { if (x > 5); { return; } } }');
-    const [ifNodo, bloqueSuelto] = programa.clase.main.cuerpo.elementos as [NodoIf, { tipo: string }];
+    const [ifNodo, bloqueSuelto] = programa.clase.main!.cuerpo.elementos as [NodoIf, { tipo: string }];
     expect(ifNodo.entonces.tipo).toBe('sentencia-vacia');
     expect(bloqueSuelto.tipo).toBe('bloque');
   });

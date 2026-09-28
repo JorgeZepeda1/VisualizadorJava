@@ -17,7 +17,7 @@ import type { NodoDeclaracionLocal, NodoExpresion } from '../sintaxis/ast.ts';
 function expresionDe(expr: string): NodoExpresion {
   const fuente = `class C { public static void main(String[] a) { int x = ${expr}; } }`;
   const programa = analizarPrograma(tokenizar(fuente));
-  const decl = programa.clase.main.cuerpo.elementos[0] as NodoDeclaracionLocal;
+  const decl = programa.clase.main!.cuerpo.elementos[0] as NodoDeclaracionLocal;
   return decl.declaradores[0]!.inicializador!;
 }
 
@@ -235,7 +235,7 @@ describe('valorConstante — lo que NO es una expresión constante da null (D2: 
   it('una variable local NO "final" da null (sigue sin ser una expresión constante, JLS 4.12.4)', () => {
     const fuente = 'class C { public static void main(String[] a) { int n = 5; int x = n; } }';
     const programa = analizarPrograma(tokenizar(fuente));
-    const decl = programa.clase.main.cuerpo.elementos[1] as NodoDeclaracionLocal;
+    const decl = programa.clase.main!.cuerpo.elementos[1] as NodoDeclaracionLocal;
     const expr = decl.declaradores[0]!.inicializador!;
     expect(valorConstante(expr, new Alcance())).toBeNull();
   });
@@ -281,7 +281,7 @@ describe('valorConstante — variables "final" CON inicializador constante SÍ p
       '}',
     ].join('\n');
     const programa = analizarPrograma(tokenizar(fuente));
-    const cuerpo = programa.clase.main.cuerpo.elementos;
+    const cuerpo = programa.clase.main!.cuerpo.elementos;
     const declX = cuerpo[0] as NodoDeclaracionLocal;
     const declY = cuerpo[1] as NodoDeclaracionLocal;
     const declR = cuerpo[2] as NodoDeclaracionLocal;

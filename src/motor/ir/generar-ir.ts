@@ -13,6 +13,9 @@ import type { NodoElementoBloque, NodoPrograma } from '../sintaxis/ast.ts';
 import type { ProgramaIr, SentenciaIr } from './ir.ts';
 
 export function generarIr(programa: NodoPrograma): ProgramaIr {
+  // Tarea 1.15 (REQ-COMP-008): sin "main" no hay cuerpo que bajar a IR -- `compilador.ts` reporta
+  // el error de ARRANQUE (pasada 5) usando este programa vacío; nunca se ejecuta.
+  if (programa.clase.main === null) return { sentencias: [] };
   const sentencias = programa.clase.main.cuerpo.elementos.map(generarSentenciaIr);
   return { sentencias };
 }

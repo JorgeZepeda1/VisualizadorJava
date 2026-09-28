@@ -214,13 +214,13 @@
 - Verif: `motor/semantica/asignacion-definitiva`
 - Nota: "final sin inicializador" es NO-DISP desde la sintaxis (1.6) — nunca llega a esta pasada, así que el estado se simplificó a un solo conjunto (DA); "final" reasignada se detecta sin necesitar flujo (siempre tiene inicializador). `switch`/`&&`/`||`/`!` no estaban en exploracion/03 §4.4: verificados ad-hoc contra javac 17 real en carpetas temporales (borradas) antes de implementar.
 
-**1.14 Orquestación de las 5 pasadas** — REQ-COMP-005, REQ-COMP-006, REQ-COMP-009 · depende: 1.6, 1.11, 1.12, 1.13
+**1.14 Orquestación de las 5 pasadas** — REQ-COMP-005, REQ-COMP-006, REQ-COMP-009 · depende: 1.6, 1.11, 1.12, 1.13 — ✅ hecha (2026-09-28)
 - RED `compilador.test.ts`: "atribución oculta asignación definitiva anterior" y "alcanzabilidad se informa antes que asignación definitiva" (escenarios verificados de REQ-COMP-006); `;` faltante reporta la línea de `javac`; clase pública con nombre distinto al archivo NO se rechaza; falla.
 - GREEN: `compilador.ts` orquesta léxico+sintaxis → atribución → alcanzabilidad → asignación definitiva → arranque, deteniéndose en la primera pasada con problemas.
 - REFACTOR: pasadas como lista de funciones `(programa) => Problema[]`, orden como dato.
 - Verif: `motor/compilador`
 
-**1.15 Arranque — `main` sin `static` / sin `main`** — REQ-COMP-007, REQ-COMP-008 · depende: 1.9, 1.14
+**1.15 Arranque — `main` sin `static` / sin `main`** — REQ-COMP-007, REQ-COMP-008 · depende: 1.9, 1.14 — ✅ hecha (2026-09-28)
 - RED `arranque.test.ts`: `public void main` compila limpio y falla solo al ejecutar con el texto del lanzador (saltos `\n` literales, la rareza de Temurin); clase sin `main` falla bien formada con saltos reales; falla.
 - GREEN: `semantica/arranque.ts` usando `corpus/datos/marcos/` (1.9).
 - Verif: `motor/semantica/arranque`

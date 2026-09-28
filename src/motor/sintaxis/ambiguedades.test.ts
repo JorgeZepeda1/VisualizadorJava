@@ -65,7 +65,7 @@ describe('ambigüedades — declaración vs. expresión (design.md §2.5.2)', ()
     // se reconoce sintácticamente como intento de declaración, igual que "String nombre".
     const fuente = 'class C { public static void main(String[] a) { string nombre = "Ana"; } }';
     const programa = analizar(fuente);
-    const [declaracion] = programa.clase.main.cuerpo.elementos as [NodoDeclaracionLocal];
+    const [declaracion] = programa.clase.main!.cuerpo.elementos as [NodoDeclaracionLocal];
     expect(declaracion.tipo).toBe('declaracion-local');
     expect(declaracion.nombreTipo).toBe('string');
   });
@@ -77,7 +77,7 @@ describe('ambigüedades — declaración vs. expresión (design.md §2.5.2)', ()
     // se malinterpreta como intento de DeclLocal: se analiza como una sentencia de asignación.
     const fuente = 'class C { public static void main(String[] a) { x = 5; } }';
     const programa = analizar(fuente);
-    const [sentencia] = programa.clase.main.cuerpo.elementos;
+    const [sentencia] = programa.clase.main!.cuerpo.elementos;
     expect(sentencia.tipo).toBe('sentencia-expresion');
     expect((sentencia as { expresion: { tipo: string } }).expresion.tipo).toBe('asignacion');
   });
@@ -85,7 +85,7 @@ describe('ambigüedades — declaración vs. expresión (design.md §2.5.2)', ()
   it('una declaración de tipo primitivo sigue funcionando (regresión, sin ambigüedad real)', () => {
     const fuente = 'class C { public static void main(String[] a) { int x = 1; } }';
     const programa = analizar(fuente);
-    expect(programa.clase.main.cuerpo.elementos[0].tipo).toBe('declaracion-local');
+    expect(programa.clase.main!.cuerpo.elementos[0].tipo).toBe('declaracion-local');
   });
 });
 

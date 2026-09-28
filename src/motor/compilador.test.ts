@@ -359,3 +359,162 @@ describe('compilar — corrección: "falta-punto-y-coma"/"falta-parentesis-cierr
     expect(resultado.problema.linea).toBe(3);
   });
 });
+
+// Tarea 1.14 (Orquestación de las 5 pasadas, ADR 004, REQ-COMP-005/006/009): conecta atribución →
+// alcanzabilidad → asignación definitiva → arranque a `compilar()` por primera vez — ninguna de
+// las 4 estaba wireada hasta ahora (cada una tiene su propia prueba unitaria, pero `compilar()`
+// nunca las llamaba). Fuentes inline (idénticas a `corpus/experimentos/texto/`, línea verificada
+// contra el `.errores` real de javac correspondiente) -- el barrido completo que SÍ lee esos
+// archivos directamente vive en `pruebas/compilacion/catalogo-semantico.test.ts` (ver nota debajo).
+describe('compilar — pasada 2 (atribución) conectada por primera vez (tarea 1.14)', () => {
+  it('err02 de exploracion/03: variable no declarada -> "variable-no-declarada" en la línea real de javac (3), no el catch-all genérico', () => {
+    const fuente = [
+      'public class err02_simbolo_no_encontrado_variable {',
+      '    public static void main(String[] args) {',
+      '        System.out.println(edad);',
+      '    }',
+      '}',
+    ].join('\n');
+    const resultado = compilar(fuente);
+    expect(resultado.ok).toBe(false);
+    if (resultado.ok) throw new Error('se esperaba ok:false');
+    expect(resultado.problema.categoria).toBe('error-compilacion');
+    expect(resultado.problema.codigo).toBe('variable-no-declarada');
+    expect(resultado.problema.linea).toBe(3);
+  });
+});
+
+describe('compilar — pasada 3 (alcanzabilidad) conectada por primera vez (tarea 1.14)', () => {
+  it('err11 de exploracion/03: sentencia tras "return" incondicional -> "sentencia-inalcanzable" en la línea real de javac (5)', () => {
+    const fuente = [
+      'public class err11_unreachable_statement {',
+      '    public static void main(String[] args) {',
+      '        int x = 5;',
+      '        return;',
+      '        System.out.println(x);',
+      '    }',
+      '}',
+    ].join('\n');
+    const resultado = compilar(fuente);
+    expect(resultado.ok).toBe(false);
+    if (resultado.ok) throw new Error('se esperaba ok:false');
+    expect(resultado.problema.codigo).toBe('sentencia-inalcanzable');
+    expect(resultado.problema.linea).toBe(5);
+  });
+});
+
+describe('compilar — pasada 4 (asignación definitiva) conectada por primera vez (tarea 1.14)', () => {
+  it('err05 de exploracion/03: variable sin inicializar usada -> "variable-posiblemente-no-asignada" en la línea real de javac (4)', () => {
+    const fuente = [
+      'public class err05_variable_no_inicializada_simple {',
+      '    public static void main(String[] args) {',
+      '        int x;',
+      '        System.out.println(x);',
+      '    }',
+      '}',
+    ].join('\n');
+    const resultado = compilar(fuente);
+    expect(resultado.ok).toBe(false);
+    if (resultado.ok) throw new Error('se esperaba ok:false');
+    expect(resultado.problema.codigo).toBe('variable-posiblemente-no-asignada');
+    expect(resultado.problema.linea).toBe(4);
+  });
+});
+
+// REQ-COMP-006, escenarios verificados de design.md §2.1 (engram discovery orden-fases-javac/
+// orden-flujo-javac, sdd-design 2026-09-25): cuando dos pasadas DISTINTAS tendrían, cada una, algo
+// que reportar, javac SOLO informa la de la pasada MÁS TEMPRANA -- sin importar que el problema de
+// la pasada posterior esté en una línea ANTERIOR del texto.
+describe('compilar — ADR 004: solo el primer problema de la primera pasada que falla (REQ-COMP-006)', () => {
+  it('un error de TIPOS (pasada 2) oculta una variable sin asignar (pasada 4) en una línea ANTERIOR', () => {
+    const fuente = [
+      'public class Prueba {',
+      '    public static void main(String[] args) {',
+      '        int x;',
+      '        System.out.println(x);',
+      '        int y = "hola";',
+      '    }',
+      '}',
+    ].join('\n');
+    const resultado = compilar(fuente);
+    expect(resultado.ok).toBe(false);
+    if (resultado.ok) throw new Error('se esperaba ok:false');
+    // Gana el de tipos (línea 5, pasada 2) — NUNCA "variable-posiblemente-no-asignada" de "x"
+    // (línea 4, pasada 4), aunque esa línea sea anterior en el texto.
+    expect(resultado.problema.codigo).toBe('tipos-incompatibles-en-asignacion');
+    expect(resultado.problema.linea).toBe(5);
+  });
+
+  it('la ALCANZABILIDAD (pasada 3) se informa antes que la asignación definitiva (pasada 4), aunque esté en una línea posterior', () => {
+    const fuente = [
+      'public class Prueba {',
+      '    public static void main(String[] args) {',
+      '        int x;',
+      '        System.out.println(x);',
+      '        return;',
+      '        System.out.println("fin");',
+      '    }',
+      '}',
+    ].join('\n');
+    const resultado = compilar(fuente);
+    expect(resultado.ok).toBe(false);
+    if (resultado.ok) throw new Error('se esperaba ok:false');
+    // Gana la sentencia inalcanzable (línea 6, pasada 3) — NUNCA "variable-posiblemente-no-asignada"
+    // de "x" (línea 4, pasada 4), aunque esa línea sea anterior en el texto.
+    expect(resultado.problema.codigo).toBe('sentencia-inalcanzable');
+    expect(resultado.problema.linea).toBe(6);
+  });
+});
+
+// Tarea 1.15 (REQ-COMP-007/008): "compila limpio" (`ok:true`) es justo lo que exige la decisión
+// del orquestador (design.md §2.2) -- el problema de arranque viaja en `programa.arranque`, listo
+// para que `crearEjecucion` lo convierta en una "excepción en ejecución" (ver ejecucion.test.ts).
+describe('compilar — arranque (tarea 1.15): "sin main" / "main sin static" compilan limpio, con el problema en programa.arranque', () => {
+  it('REQ-COMP-008: una clase sin ningún "main" da ok:true, con programa.arranque = "sin-main"', () => {
+    const resultado = compilar('public class Ejercicio3 { }');
+    expect(resultado.ok).toBe(true);
+    if (!resultado.ok) throw new Error('se esperaba ok:true (javac SÍ compila esto)');
+    expect(resultado.programa.ir.sentencias).toEqual([]);
+    expect(resultado.programa.arranque?.codigo).toBe('sin-main');
+    expect(resultado.programa.arranque?.nombreClase).toBe('Ejercicio3');
+  });
+
+  it('REQ-COMP-007: "public void main" (sin "static") da ok:true, con programa.arranque = "main-no-static"', () => {
+    const resultado = compilar('public class Demo { public void main(String[] args) { } }');
+    expect(resultado.ok).toBe(true);
+    if (!resultado.ok) throw new Error('se esperaba ok:true (javac SÍ compila esto)');
+    expect(resultado.programa.arranque?.codigo).toBe('main-no-static');
+    expect(resultado.programa.arranque?.nombreClase).toBe('Demo');
+  });
+
+  it('triangulación: un "main" static normal sigue dando programa.arranque = null (el caso de siempre no cambió)', () => {
+    const resultado = compilar('class C { public static void main(String[] a) { System.out.println("x"); } }');
+    expect(resultado.ok).toBe(true);
+    if (!resultado.ok) throw new Error('se esperaba ok:true');
+    expect(resultado.programa.arranque).toBeNull();
+  });
+});
+
+// REQ-COMP-009: el visualizador no representa archivos -- nunca debe existir un chequeo de "el
+// nombre de la clase pública debe coincidir con el archivo" (ese error de javac no tiene sentido
+// sin sistema de archivos real).
+describe('compilar — REQ-COMP-009: el nombre de la clase pública nunca se valida contra ningún archivo', () => {
+  it('una clase pública con cualquier nombre compila igual (sin preguntar ni validar un nombre de archivo)', () => {
+    const fuente = [
+      'public class CalculadoraVueltos {',
+      '    public static void main(String[] args) {',
+      '        System.out.println("hola");',
+      '    }',
+      '}',
+    ].join('\n');
+    const resultado = compilar(fuente);
+    expect(resultado.ok).toBe(true);
+  });
+});
+
+// Tarea 1.14: el barrido de extremo a extremo contra el catálogo de 42 casos verificados de
+// exploracion/03 §4 (leyendo `corpus/experimentos/texto/` real) vive en
+// `pruebas/compilacion/catalogo-semantico.test.ts` -- `node:fs`/`node:path` no type-checan dentro
+// de `src/motor/**` (tsconfig.motor.json fija `types: []`, ADR 001: el motor no toca Node/DOM ni
+// siquiera en sus pruebas), mismo patrón ya establecido por `pruebas/compilacion/catalogo.test.ts`
+// (tarea 1.17) para el mismo problema.

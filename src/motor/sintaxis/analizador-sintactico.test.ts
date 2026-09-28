@@ -36,9 +36,9 @@ describe('analizarPrograma', () => {
     const programa = analizar(fuente);
 
     expect(programa.clase.nombre).toBe('MiPrograma');
-    expect(programa.clase.main.parametro).toBe('args');
-    expect(programa.clase.main.cuerpo.elementos).toHaveLength(1);
-    const [sentencia] = programa.clase.main.cuerpo.elementos as NodoImpresion[];
+    expect(programa.clase.main!.parametro).toBe('args');
+    expect(programa.clase.main!.cuerpo.elementos).toHaveLength(1);
+    const [sentencia] = programa.clase.main!.cuerpo.elementos as NodoImpresion[];
     expect(sentencia.tipo).toBe('impresion');
     expect(valorLiteralCadena(sentencia.argumento)).toBe('Hola, mundo');
   });
@@ -47,9 +47,9 @@ describe('analizarPrograma', () => {
     const fuente =
       'class OtraClase { static public void main(String[] parametros) { System.out.println("otra"); } }';
     const programa = analizar(fuente);
-    const [sentencia] = programa.clase.main.cuerpo.elementos as NodoImpresion[];
+    const [sentencia] = programa.clase.main!.cuerpo.elementos as NodoImpresion[];
     expect(programa.clase.nombre).toBe('OtraClase');
-    expect(programa.clase.main.parametro).toBe('parametros');
+    expect(programa.clase.main!.parametro).toBe('parametros');
     expect(valorLiteralCadena(sentencia.argumento)).toBe('otra');
   });
 
@@ -57,7 +57,7 @@ describe('analizarPrograma', () => {
     const fuente =
       'class C { public static void main(String[] a) { System.out.println("uno"); System.out.println("dos"); } }';
     const programa = analizar(fuente);
-    const valores = (programa.clase.main.cuerpo.elementos as NodoImpresion[]).map((s) =>
+    const valores = (programa.clase.main!.cuerpo.elementos as NodoImpresion[]).map((s) =>
       valorLiteralCadena(s.argumento),
     );
     expect(valores).toEqual(['uno', 'dos']);
@@ -105,24 +105,50 @@ describe('analizarPrograma — núcleo del programa (tarea 1.2, REQ-SUB-001)', (
 
   it('acepta las 3 formas de parámetro de main: String[] args', () => {
     const programa = analizar('class C { public static void main(String[] args) { return; } }');
-    expect(programa.clase.main.parametro).toBe('args');
+    expect(programa.clase.main!.parametro).toBe('args');
   });
 
   it('acepta las 3 formas de parámetro de main: String args[]', () => {
     const programa = analizar('class C { public static void main(String args[]) { return; } }');
-    expect(programa.clase.main.parametro).toBe('args');
+    expect(programa.clase.main!.parametro).toBe('args');
   });
 
   it('acepta las 3 formas de parámetro de main: String... args (varargs)', () => {
     const programa = analizar('class C { public static void main(String... args) { return; } }');
-    expect(programa.clase.main.parametro).toBe('args');
+    expect(programa.clase.main!.parametro).toBe('args');
   });
 
   it('acepta "return;" como sentencia dentro de main', () => {
     const fuente =
       'class C { public static void main(String[] a) { System.out.println("x"); return; } }';
     const programa = analizar(fuente);
-    expect(programa.clase.main.cuerpo.elementos.map((e) => e.tipo)).toEqual(['impresion', 'retorno']);
+    expect(programa.clase.main!.cuerpo.elementos.map((e) => e.tipo)).toEqual(['impresion', 'retorno']);
+  });
+});
+
+// Tarea 1.15 (REQ-COMP-007/008, ADR 004 pasada 5 "arranque"): javac SÍ compila un programa sin
+// "static" en "main", o incluso sin ningún "main" -- el lanzador (java, no javac) es quien lo
+// rechaza, al EJECUTAR (exploracion/03 §4.2, verificado contra el JDK real). Antes de esta tarea,
+// `analizarClase` trataba "sin main" como un error de SINTAXIS genérico (ver el comentario que
+// dejó la tarea 1.5 en `analizador-sintactico.ts`, "REQ-COMP-008... llega con la tarea 1.15") --
+// eso violaba REQ-COMP-006 (javac SÍ acepta ese programa) y hacía el error indistinguible de un
+// "class, interface, enum, or record expected" real.
+describe('analizarPrograma — arranque (tarea 1.15, REQ-COMP-007/008): "main" opcional, "static" registrado', () => {
+  it('una clase sin ningún "main" NO lanza -- el AST la marca con clase.main === null (antes: ErrorDeCompilacion genérico)', () => {
+    const programa = analizar('public class SinMain { }');
+    expect(programa.clase.nombre).toBe('SinMain');
+    expect(programa.clase.main).toBeNull();
+  });
+
+  it('"public void main" (sin "static") no lanza; NodoMain.esEstatico es false', () => {
+    const programa = analizar('public class Demo { public void main(String[] args) { } }');
+    expect(programa.clase.main).not.toBeNull();
+    expect(programa.clase.main?.esEstatico).toBe(false);
+  });
+
+  it('triangulación: "public static void main" (con "static") da esEstatico true -- el caso normal sigue intacto', () => {
+    const programa = analizar('public class MiPrograma { public static void main(String[] args) { } }');
+    expect(programa.clase.main?.esEstatico).toBe(true);
   });
 });
 
@@ -130,7 +156,7 @@ describe('analizarPrograma — declaraciones locales (tarea 1.2, DeclLocal)', ()
   it('acepta una declaración de tipo primitivo con inicializador literal', () => {
     const fuente = 'class C { public static void main(String[] a) { int x = 5; } }';
     const programa = analizar(fuente);
-    const [declaracion] = programa.clase.main.cuerpo.elementos;
+    const [declaracion] = programa.clase.main!.cuerpo.elementos;
     expect(declaracion).toMatchObject({
       tipo: 'declaracion-local',
       esFinal: false,
@@ -142,7 +168,7 @@ describe('analizarPrograma — declaraciones locales (tarea 1.2, DeclLocal)', ()
   it('acepta "final" y varios declaradores separados por coma', () => {
     const fuente = 'class C { public static void main(String[] a) { final double x = 1.5, y = 2.5; } }';
     const programa = analizar(fuente);
-    const [declaracion] = programa.clase.main.cuerpo.elementos as [
+    const [declaracion] = programa.clase.main!.cuerpo.elementos as [
       import('./ast.ts').NodoDeclaracionLocal,
     ];
     expect(declaracion.esFinal).toBe(true);
@@ -152,7 +178,7 @@ describe('analizarPrograma — declaraciones locales (tarea 1.2, DeclLocal)', ()
   it('acepta un declarador sin inicializador', () => {
     const fuente = 'class C { public static void main(String[] a) { boolean listo; } }';
     const programa = analizar(fuente);
-    const [declaracion] = programa.clase.main.cuerpo.elementos as [
+    const [declaracion] = programa.clase.main!.cuerpo.elementos as [
       import('./ast.ts').NodoDeclaracionLocal,
     ];
     expect(declaracion.declaradores[0].inicializador).toBeNull();
@@ -161,7 +187,7 @@ describe('analizarPrograma — declaraciones locales (tarea 1.2, DeclLocal)', ()
   it('acepta una declaración con tipo por referencia (String) — triangulación de "Nombre Id"', () => {
     const fuente = 'class C { public static void main(String[] a) { String s = "hola"; } }';
     const programa = analizar(fuente);
-    const [declaracion] = programa.clase.main.cuerpo.elementos as [
+    const [declaracion] = programa.clase.main!.cuerpo.elementos as [
       import('./ast.ts').NodoDeclaracionLocal,
     ];
     expect(declaracion.nombreTipo).toBe('String');
@@ -172,7 +198,7 @@ describe('analizarPrograma — declaraciones locales (tarea 1.2, DeclLocal)', ()
     const fuente =
       'class C { public static void main(String[] a) { Scanner sc = new Scanner(System.in); } }';
     const programa = analizar(fuente);
-    const [declaracion] = programa.clase.main.cuerpo.elementos as [
+    const [declaracion] = programa.clase.main!.cuerpo.elementos as [
       import('./ast.ts').NodoDeclaracionLocal,
     ];
     expect(declaracion.nombreTipo).toBe('Scanner');
@@ -191,7 +217,7 @@ describe('analizarPrograma — declaraciones locales (tarea 1.2, DeclLocal)', ()
       '} }',
     ].join('\n');
     const programa = analizar(fuente);
-    expect(programa.clase.main.cuerpo.elementos.map((e) => e.tipo)).toEqual([
+    expect(programa.clase.main!.cuerpo.elementos.map((e) => e.tipo)).toEqual([
       'declaracion-local',
       'impresion',
       'declaracion-local',
@@ -213,14 +239,14 @@ describe('analizarImpresion — generalización a print/println con cualquier ex
   it('"System.out.println(x)" con una VARIABLE como argumento (no solo un literal-cadena)', () => {
     const fuente = 'class C { public static void main(String[] a) { int x = 5; System.out.println(x); } }';
     const programa = analizar(fuente);
-    const [, sentencia] = programa.clase.main.cuerpo.elementos as [unknown, NodoImpresion];
+    const [, sentencia] = programa.clase.main!.cuerpo.elementos as [unknown, NodoImpresion];
     expect(sentencia).toMatchObject({ tipo: 'impresion', metodo: 'println', argumento: { tipo: 'nombre', nombre: 'x' } });
   });
 
   it('triangulación: "println" de una expresión aritmética (n + 1)', () => {
     const fuente = 'class C { public static void main(String[] a) { int n = 1; System.out.println(n + 1); } }';
     const programa = analizar(fuente);
-    const [, sentencia] = programa.clase.main.cuerpo.elementos as [unknown, NodoImpresion];
+    const [, sentencia] = programa.clase.main!.cuerpo.elementos as [unknown, NodoImpresion];
     expect(sentencia.argumento).not.toBeNull();
     expect(sentencia.argumento?.tipo).toBe('binaria');
   });
@@ -260,5 +286,5 @@ describe('analizarImpresion — generalización a print/println con cualquier ex
 
 function primeraSentenciaDe(cuerpoDeMain: string) {
   const programa = analizar(`class C { public static void main(String[] a) { ${cuerpoDeMain} } }`);
-  return programa.clase.main.cuerpo.elementos;
+  return programa.clase.main!.cuerpo.elementos;
 }

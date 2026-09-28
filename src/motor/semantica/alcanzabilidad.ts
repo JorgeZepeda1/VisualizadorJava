@@ -46,6 +46,9 @@ import { valorConstante } from './constantes.ts';
 import type { ProblemaAtribucion } from './diagnostico.ts';
 
 export function verificarAlcanzabilidad(programa: NodoPrograma): ProblemaAtribucion[] {
+  // Tarea 1.15 (REQ-COMP-008): sin "main" no hay cuerpo que recorrer -- nada que reportar aquí (el
+  // error real es de ARRANQUE, pasada 5, no de alcanzabilidad).
+  if (programa.clase.main === null) return [];
   const problemas: ProblemaAtribucion[] = [];
   const alcance = new Alcance();
   alcance.entrarBloque();

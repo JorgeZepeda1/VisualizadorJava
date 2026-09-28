@@ -66,6 +66,9 @@ const CONTEXTO_INICIAL: ContextoFlujo = { enCiclo: false, enCicloOSwitch: false 
 const CONTEXTO_DENTRO_DE_CICLO: ContextoFlujo = { enCiclo: true, enCicloOSwitch: true };
 
 export function atribuir(programa: NodoPrograma): ProblemaAtribucion[] {
+  // Tarea 1.15 (REQ-COMP-008): sin "main" no hay cuerpo que recorrer -- nada que reportar aquí (el
+  // error real es de ARRANQUE, pasada 5, no de atribución).
+  if (programa.clase.main === null) return [];
   const problemas: ProblemaAtribucion[] = [];
   const alcance = new Alcance();
   const importadas = nombresJavaUtilImportados(programa.importaciones);

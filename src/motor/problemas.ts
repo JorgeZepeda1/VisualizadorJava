@@ -92,3 +92,25 @@ export type CausaFin =
   | 'limite-caracteres'
   | 'limite-tiempo'
   | 'error-interno';
+
+// Tarea 1.15 (REQ-COMP-007/008, ADR 004 pasada 5 "arranque"; decisión del orquestador, design.md
+// §2.2): a diferencia de `CodigoProblema` (categoría `error-compilacion`), esto NUNCA hace que
+// `compilar()` devuelva `ok:false` -- javac SÍ compila un `main` sin `static` o una clase sin
+// `main` (verificado, exploracion/03 §4.2). El problema real solo aparece al EJECUTAR, por eso
+// vive junto a `CausaFin` (que ya tenía `'error-arranque'` reservado desde la rebanada vertical) y
+// no junto a `CodigoProblema`.
+export type CodigoArranque = 'sin-main' | 'main-no-static';
+
+export interface ProblemaArranque {
+  readonly codigo: CodigoArranque;
+  /** El nombre REAL de la clase del alumno (`NodoClase.nombre`) -- nunca el nombre de ejemplo que
+   * usó el oráculo para capturar `textoLanzador` (design.md §2.2: "se muestra tal cual" se refiere
+   * a la ESTRUCTURA del mensaje real de Java, no a mostrarle al alumno la clase de otro). */
+  readonly nombreClase: string;
+  /** El texto EXACTO que capturó el oráculo del lanzador de JDK 17 real (es-MX), con el nombre de
+   * clase de ejemplo sustituido por `nombreClase` -- incluidas sus rarezas (el `\n` LITERAL del
+   * caso "sin main", ver `marcos-arranque.generado.ts`), sin reinterpretar nada más. Es el
+   * "detalle secundario" de la decisión del orquestador; el texto amable ("texto principal") sale
+   * del catálogo es-MX (`src/textos/es-MX/arranque.ts`) a partir de `codigo` + `nombreClase`. */
+  readonly textoLanzador: string;
+}

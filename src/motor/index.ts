@@ -7,5 +7,5 @@ export type { ResultadoCompilacion, VistaPrograma } from './compilador.ts';
 export { crearEjecucion } from './interprete/ejecucion.ts';
 export type { Avance, ConfigEjecucion, Ejecucion } from './interprete/ejecucion.ts';
 export type { ProgramaCompilado } from './ir/ir.ts';
-export type { CausaFin, Categoria, CodigoProblema, Problema } from './problemas.ts';
+export type { CausaFin, Categoria, CodigoArranque, CodigoProblema, Problema, ProblemaArranque } from './problemas.ts';
 export type { Cambio, ClasePaso, FinEjecucion, Paso, Segmento, Valor } from './traza/paso.ts';

@@ -18,7 +18,7 @@ function configPorOmision(): ConfigEjecucion {
 }
 
 function programaDeUnaImpresion(texto: string): ProgramaCompilado {
-  return { ir: { sentencias: [{ tipo: 'impresion', texto }] } };
+  return { ir: { sentencias: [{ tipo: 'impresion', texto }] }, arranque: null };
 }
 
 describe('crearEjecucion', () => {
@@ -42,6 +42,7 @@ describe('crearEjecucion', () => {
           { tipo: 'impresion', texto: 'dos' },
         ],
       },
+      arranque: null,
     };
     const ejecucion = crearEjecucion(programa, configPorOmision());
     const avance = ejecucion.avanzar(100_000);
@@ -56,6 +57,7 @@ describe('crearEjecucion', () => {
           { tipo: 'impresion', texto: 'dos' },
         ],
       },
+      arranque: null,
     };
     const ejecucion = crearEjecucion(programa, configPorOmision());
     const primerAvance = ejecucion.avanzar(1);
@@ -71,5 +73,43 @@ describe('crearEjecucion', () => {
     ejecucion.avanzar(100_000);
     const otraVez = ejecucion.avanzar(100_000);
     expect(otraVez).toEqual({ estado: 'fin', pasos: [], fin: { causa: 'terminado' } });
+  });
+});
+
+// Tarea 1.15 (REQ-COMP-007/008, ADR 004 pasada 5, decisión del orquestador design.md §2.2): un
+// problema de ARRANQUE se presenta como una excepción EN EJECUCIÓN -- `compilar()` ya devolvió
+// `ok:true` (las pasadas 1-4 no encontraron nada), pero el `ProgramaCompilado` que produjo trae
+// `arranque` distinto de null. `avanzar()` debe reportarlo en su PRIMER llamado, sin ejecutar
+// ninguna sentencia (que, en este caso, `generar-ir.ts` siempre deja vacía).
+describe('crearEjecucion — arranque inválido (tarea 1.15)', () => {
+  function programaConArranqueInvalido(): ProgramaCompilado {
+    return {
+      ir: { sentencias: [] },
+      arranque: { codigo: 'sin-main', nombreClase: 'Ejercicio3', textoLanzador: 'texto exacto del lanzador' },
+    };
+  }
+
+  it('avanzar() reporta "error-arranque" en el PRIMER llamado, con el detalle completo y CERO pasos', () => {
+    const ejecucion = crearEjecucion(programaConArranqueInvalido(), configPorOmision());
+    const avance = ejecucion.avanzar(100_000);
+    expect(avance.estado).toBe('fin');
+    expect(avance.pasos).toHaveLength(0);
+    if (avance.estado !== 'fin') throw new Error('se esperaba estado:fin');
+    expect(avance.fin).toEqual({
+      causa: 'error-arranque',
+      arranque: { codigo: 'sin-main', nombreClase: 'Ejercicio3', textoLanzador: 'texto exacto del lanzador' },
+    });
+  });
+
+  it('triangulación: "main-no-static" también se reporta igual (mismo mecanismo, código distinto)', () => {
+    const programa: ProgramaCompilado = {
+      ir: { sentencias: [] },
+      arranque: { codigo: 'main-no-static', nombreClase: 'Demo', textoLanzador: 'otro texto exacto' },
+    };
+    const ejecucion = crearEjecucion(programa, configPorOmision());
+    const avance = ejecucion.avanzar(100_000);
+    if (avance.estado !== 'fin') throw new Error('se esperaba estado:fin');
+    expect(avance.fin.causa).toBe('error-arranque');
+    expect(avance.fin.arranque?.codigo).toBe('main-no-static');
   });
 });
