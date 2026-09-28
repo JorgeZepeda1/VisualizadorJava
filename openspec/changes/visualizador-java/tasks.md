@@ -130,25 +130,25 @@
 **Criterio de entrada:** lote 0 cerrado (CI verde, oráculo funcional, rebanada vertical navegable).
 **Sesiones:** 3–4 (design.md §10).
 
-**1.1 Léxico completo** — REQ-SUB-002, REQ-SUB-006, REQ-SUB-007(léxico) · depende: 0.12
+**1.1 Léxico completo** — REQ-SUB-002, REQ-SUB-006, REQ-SUB-007(léxico) · depende: 0.12 — ✅ hecha (2026-09-25)
 - RED `src/motor/lexico/analizador-lexico.test.ts`: tokeniza cada literal de proposal §2.1 (enteros con `_`, `long` con `L`, `double` punto/exponente/`d`, `char`/`String` con escapes válidos) y afirma que `010` produce `NoSoportado` con nota "Java lo lee como octal: 8"; falla (lexer mínimo de 0.12).
 - GREEN: amplía `analizador-lexico.ts`/`tokens.ts`/`literales.ts` con hex/octal/binario, `float`, bloques `"""`, `\uXXXX`, escapes no soportados (`\r \b \f \s \0–\377`) como `NoSoportado{codigo,rango}` sin abortar.
 - REFACTOR: tabla de escapes válidos/no soportados aislada en `literales.ts`.
 - Verif: `motor/lexico`
 
-**1.2 Sintaxis — núcleo del programa** — REQ-SUB-001 · depende: 1.1
+**1.2 Sintaxis — núcleo del programa** — REQ-SUB-001 · depende: 1.1 — ✅ hecha (2026-09-25)
 - RED `analizador-sintactico.test.ts`: clase con cualquier nombre, `public` opcional, 3 formas de `main`, imports de `Scanner`/`Random`/`*`, `package` ignorado, comentarios, `return;`; falla (parser mínimo de 0.12).
 - GREEN: `sintaxis/{analizador-sintactico,ast}.ts` con `Programa/Importacion/Clase/Main/ParamMain/Bloque/DeclLocal` (design §2.3).
 - REFACTOR: `ParamMain` (3 formas) como función reusada por 1.15.
 - Verif: `motor/sintaxis`
 
-**1.3 Sintaxis — expresiones Pratt** — REQ-SUB-003, REQ-SUB-007(bits, `?:`, `instanceof`) · depende: 1.2
+**1.3 Sintaxis — expresiones Pratt** — REQ-SUB-003, REQ-SUB-007(bits, `?:`, `instanceof`) · depende: 1.2 — ✅ hecha (2026-09-25)
 - RED `expresiones.test.ts`: los 14 niveles de precedencia de design §2.4, cortocircuito `&&`/`||`, `& | ^ << >> >>> ?: instanceof` → `NoSoportado`; falla.
 - GREEN: `sintaxis/expresiones.ts` (Pratt).
 - REFACTOR: tabla de precedencia como dato.
 - Verif: `motor/sintaxis/expresiones`
 
-**1.4 Ambigüedades del parser** — REQ-SUB-002(literal `long`/`MIN_VALUE`) · depende: 1.3
+**1.4 Ambigüedades del parser** — REQ-SUB-002(literal `long`/`MIN_VALUE`) · depende: 1.3 — ✅ hecha (2026-09-25)
 - RED `ambiguedades.test.ts`: cast-vs-paréntesis (JLS 15.16), declaración-vs-expresión, `-2147483648`/`-9223372036854775808L` válidos solo tras `-` unario, `5000000000` sin `L` → error; falla.
 - GREEN: las 3 reglas de design §2.5 en el parser.
 - REFACTOR: función compartida "abre expresión unaria".
