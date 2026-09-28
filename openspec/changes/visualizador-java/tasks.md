@@ -208,10 +208,11 @@
 - REFACTOR: evaluador de "condición constante" compartido con 1.13.
 - Verif: `motor/semantica/alcanzabilidad`
 
-**1.13 Asignación definitiva (JLS 16)** — REQ-COMP-004 · depende: 1.12
+**1.13 Asignación definitiva (JLS 16)** — REQ-COMP-004 · depende: 1.12 — ✅ hecha (2026-09-28)
 - RED `asignacion-definitiva.test.ts`: `if`/`else` completo, `while`/`for(cond)` nunca garantizan, `while(true)`+`break` sí, `do-while` garantiza si el cuerpo asigna, `switch` con `default`, "asignada si verdadero/si falso" en `&&`/`||`/`!`; falla.
 - GREEN: `semantica/asignacion-definitiva.ts`.
 - Verif: `motor/semantica/asignacion-definitiva`
+- Nota: "final sin inicializador" es NO-DISP desde la sintaxis (1.6) — nunca llega a esta pasada, así que el estado se simplificó a un solo conjunto (DA); "final" reasignada se detecta sin necesitar flujo (siempre tiene inicializador). `switch`/`&&`/`||`/`!` no estaban en exploracion/03 §4.4: verificados ad-hoc contra javac 17 real en carpetas temporales (borradas) antes de implementar.
 
 **1.14 Orquestación de las 5 pasadas** — REQ-COMP-005, REQ-COMP-006, REQ-COMP-009 · depende: 1.6, 1.11, 1.12, 1.13
 - RED `compilador.test.ts`: "atribución oculta asignación definitiva anterior" y "alcanzabilidad se informa antes que asignación definitiva" (escenarios verificados de REQ-COMP-006); `;` faltante reporta la línea de `javac`; clase pública con nombre distinto al archivo NO se rechaza; falla.

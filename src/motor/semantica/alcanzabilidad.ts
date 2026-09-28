@@ -33,11 +33,13 @@ import type {
   NodoBloque,
   NodoDeclaracionLocal,
   NodoElementoBloque,
+  NodoElementoSwitch,
   NodoExpresion,
   NodoFor,
   NodoIf,
   NodoPrograma,
   NodoSentencia,
+  NodoSwitch,
 } from '../sintaxis/ast.ts';
 import { Alcance } from './alcance.ts';
 import { valorConstante } from './constantes.ts';
@@ -133,15 +135,66 @@ function visitarSentencia(
     case 'for':
       return visitarFor(sentencia, alcance, alcanzable, problemas);
     case 'switch':
-      // Fuera de alcance a propósito (D2, conservador): JLS 14.22 define la alcanzabilidad de un
-      // switch en términos de sus etiquetas + un break alcanzable — bastante más intrincado que el
-      // resto de esta tarea, y NINGÚN escenario pedido (ni por el orquestador ni por design.md
-      // §2.7) lo necesita. Un switch NUNCA se marca "no completa normalmente" por sí mismo, así
-      // que NUNCA genera un falso positivo en lo que sigue (mejor no reportar que inventar, regla
-      // 5 de CLAUDE.md) — el costo es un falso NEGATIVO documentado (no detecta el caso raro de un
-      // switch exhaustivo donde TODAS las ramas terminan en "return").
-      return alcanzable;
+      return visitarSwitch(sentencia, alcance, alcanzable, problemas);
   }
+}
+
+/**
+ * Corrección obligatoria (sub-lote 1-D2a, JLS 14.22): reemplaza el conservador "return alcanzable"
+ * de antes (que NUNCA bajaba a los elementos del switch). Reglas reales, verificadas contra javac
+ * 17 real (carpetas temporales, borradas al terminar): un switch completa normalmente sii (a) NO
+ * tiene "default" (el selector podría no coincidir con ningún "case": el switch entero se salta) —
+ * O (b) tiene un "break" que estructuralmente le pertenece (`contieneBreakQueSaleDelSwitch`, SIN
+ * filtrar por si ese break en sí es alcanzable — un break MUERTO tras un "return" en el mismo grupo
+ * TODAVÍA cuenta, igual que ya hacen los ciclos de 1.12: javac reporta un único error, el del break
+ * muerto, no un segundo error en lo que sigue) — O (c) el ÚLTIMO grupo (el que quedó procesado al
+ * final del recorrido secuencial) completa normal por sí mismo (cae al fondo del switch sin
+ * return/throw/break, incluido un grupo vacío al final).
+ *
+ * El recorrido secuencial honra la caída real (fallthrough, design.md §2.3: "el cuerpo es una
+ * secuencia PLANA de etiquetas y elementos"): cada etiqueta ("case"/"default") es un destino de
+ * salto válido por sí misma — verificado contra javac que un "return" en un grupo NUNCA vuelve
+ * inalcanzable la PRIMERA sentencia del grupo siguiente (se puede saltar ahí directo) — así que
+ * "actual" se REINICIA a `alcanzable` (el del switch en sí, nunca el estado de caída del grupo
+ * anterior) en cada etiqueta; dentro de un mismo grupo (sin etiqueta de por medio) la reachability
+ * es secuencial normal, igual que un bloque.
+ */
+function visitarSwitch(sentencia: NodoSwitch, alcance: Alcance, alcanzable: boolean, problemas: ProblemaAtribucion[]): boolean {
+  const tieneDefault = sentencia.elementos.some((elemento) => elemento.tipo === 'etiqueta-default');
+  const tieneBreakQueSale = contieneBreakQueSaleDelSwitch(sentencia.elementos);
+  alcance.entrarBloque();
+  let actual = alcanzable;
+  // switch vacío, o que termina en una etiqueta sin sentencias tras ella (grupo final vacío): cae
+  // al fondo sii el switch en sí es alcanzable.
+  let completaUltimoGrupo = alcanzable;
+  for (const elemento of sentencia.elementos) {
+    if (elemento.tipo === 'etiqueta-case' || elemento.tipo === 'etiqueta-default') {
+      actual = alcanzable;
+      completaUltimoGrupo = alcanzable;
+      continue;
+    }
+    if (!actual) {
+      problemas.push({ codigo: 'sentencia-inalcanzable', rango: elemento.rango, datos: {} });
+    }
+    completaUltimoGrupo = visitarElemento(elemento, alcance, actual, problemas);
+    actual = completaUltimoGrupo;
+  }
+  alcance.salirBloque();
+  return alcanzable && (!tieneDefault || tieneBreakQueSale || completaUltimoGrupo);
+}
+
+/** ¿Hay un `break` que estructuralmente pertenece a ESTE switch (nunca a un ciclo/switch anidado —
+ * reusa `contieneBreakQueSaleDelCiclo`, misma frontera de JLS 14.21) en alguno de sus elementos?
+ * PURAMENTE estructural, sin filtrar por alcanzabilidad — verificado contra javac 17 real que un
+ * "break" ya muerto (p. ej. tras un "return" incondicional en el mismo grupo, sin etiqueta de por
+ * medio) TODAVÍA cuenta para esta regla. */
+function contieneBreakQueSaleDelSwitch(elementos: readonly NodoElementoSwitch[]): boolean {
+  return elementos.some((elemento) => {
+    if (elemento.tipo === 'etiqueta-case' || elemento.tipo === 'etiqueta-default' || elemento.tipo === 'declaracion-local') {
+      return false;
+    }
+    return contieneBreakQueSaleDelCiclo(elemento);
+  });
 }
 
 function visitarIf(sentencia: NodoIf, alcance: Alcance, alcanzable: boolean, problemas: ProblemaAtribucion[]): boolean {

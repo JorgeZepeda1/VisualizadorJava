@@ -1,10 +1,11 @@
 // Catálogo de biblioteca reconocida (tarea 1.8, REQ-SUB-005/007) sobre los hechos reales del JDK
 // (tarea 1.9, ADR 010) — nunca una lista de miembros "soportados" escrita a mano sin cruzarla
 // contra lo que el JDK realmente tiene (`catalogo-api.test.ts` lo verifica: cada entrada de
-// `MIEMBROS_SOPORTADOS` DEBE existir en `FIRMAS_JDK`). El catálogo REAL de sobrecargas (2.15,
-// design.md §7.3) reemplaza este archivo — aquí es el "stub" que menciona el GREEN de 1.8: no una
-// tabla simulada, sino la superficie exacta de REQ-SUB-005 sobre datos reales, ya usable para
-// resolver sobrecargas (1.8) y reconocer miembros NO-DISP (REQ-SUB-007).
+// `MIEMBROS_SOPORTADOS` DEBE existir en `FIRMAS_JDK`). No es un simulacro provisional: es la
+// superficie EXACTA de REQ-SUB-005 (qué miembros del JDK reconoce este subconjunto) calculada
+// sobre datos reales del oráculo, ya usable tal cual para resolver sobrecargas (1.8) y reconocer
+// miembros NO-DISP (REQ-SUB-007). El catálogo de sobrecargas de EJECUCIÓN (2.15, design.md §7.3)
+// es trabajo aparte, sobre estos mismos hechos del JDK.
 import { FIRMAS_JDK, type FirmaMiembro } from '../biblioteca/datos/firmas-jdk.generado.ts';
 
 // REQ-SUB-005: la superficie exacta que el subconjunto reconoce. Cada clave es "Clase.miembro"

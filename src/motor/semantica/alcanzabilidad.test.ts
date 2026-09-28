@@ -152,3 +152,70 @@ describe('verificarAlcanzabilidad — varios problemas: se devuelven TODOS, orde
     expect(problemas[0]!.rango.inicio).toBeLessThan(problemas[1]!.rango.inicio);
   });
 });
+
+// Corrección obligatoria (sub-lote 1-D2a, JLS 14.22): antes, "switch" era CONSERVADOR a propósito
+// (D2, "case 'switch': return alcanzable;" sin bajar a sus elementos) y NUNCA marcaba inalcanzable
+// lo que sigue, aunque javac SÍ lo rechace cuando el switch tiene "default" y NINGÚN grupo puede
+// completar normalmente. Reglas reales verificadas contra javac 17 real (carpetas temporales,
+// borradas al terminar, CLAUDE.md): un switch completa normalmente sii (a) NO tiene "default" (el
+// selector podría no coincidir con ningún "case", el switch entero se salta), O (b) tiene un
+// "break" que estructuralmente le pertenece (sin filtrar por si ese break en sí es alcanzable dentro
+// de su propio grupo -- verificado que un "break" muerto tras un "return" en el MISMO grupo TODAVÍA
+// cuenta, igual que ya hacían los ciclos de 1.12: un solo error, el del break muerto, nunca dos), O
+// (c) el ÚLTIMO grupo (textual) completa normal por sí mismo (cae al fondo sin return/throw/break,
+// incluido un grupo vacío al final). El selector usa "args.length" (no constante) en todos los
+// casos para que el resultado no dependa del valor real del selector, igual que las pruebas ad-hoc.
+describe('verificarAlcanzabilidad — "switch" (JLS 14.22, corrección sub-lote 1-D2a)', () => {
+  it('SIN "default": alcanzable SIEMPRE, aunque TODOS los "case" terminen en "return" (el selector podría no coincidir con ninguno)', () => {
+    const problemas = alcanzabilidadDeCuerpo(
+      'int n = args.length; switch (n) { case 1: return; case 2: return; } System.out.println("despues");',
+    );
+    expect(problemas).toEqual([]);
+  });
+
+  it('CON "default", TODOS los grupos retornan y SIN "break": la sentencia posterior es inalcanzable', () => {
+    const problemas = alcanzabilidadDeCuerpo(
+      'int n = args.length; switch (n) { case 1: return; case 2: return; default: return; } System.out.println("despues");',
+    );
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toMatchObject({ codigo: 'sentencia-inalcanzable' });
+  });
+
+  it('CON "default" pero un "case" con "break" alcanzable: la sentencia posterior SÍ es alcanzable', () => {
+    const problemas = alcanzabilidadDeCuerpo(
+      'int n = args.length; switch (n) { case 1: break; case 2: return; default: return; } System.out.println("despues");',
+    );
+    expect(problemas).toEqual([]);
+  });
+
+  it('caída entre grupos (fallthrough) SIN "break": "case 1" cae a "case 2", que retorna -- CON "default" que también retorna: inalcanzable', () => {
+    const problemas = alcanzabilidadDeCuerpo(
+      'int n = args.length; switch (n) { case 1: case 2: return; default: return; } System.out.println("despues");',
+    );
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toMatchObject({ codigo: 'sentencia-inalcanzable' });
+  });
+
+  it('control negativo del "break": un "break" DENTRO de un "while" ANIDADO no cuenta para el "switch" externo (mismo principio que 1.12 con ciclos)', () => {
+    const problemas = alcanzabilidadDeCuerpo(
+      'int n = args.length; switch (n) { case 1: while (true) { break; } return; default: return; } System.out.println("despues");',
+    );
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toMatchObject({ codigo: 'sentencia-inalcanzable' });
+  });
+
+  it('el ÚLTIMO grupo (textual) NO termina en return/break (cae al fondo del switch): alcanzable, SIN necesitar ningún "break"', () => {
+    const problemas = alcanzabilidadDeCuerpo(
+      'int n = args.length; switch (n) { case 1: System.out.println("uno"); break; default: System.out.println("otro"); } System.out.println("despues");',
+    );
+    expect(problemas).toEqual([]);
+  });
+
+  it('triangulación: la posición de "default" NO importa -- en medio, sin "break" en ningún grupo, sigue inalcanzable', () => {
+    const problemas = alcanzabilidadDeCuerpo(
+      'int n = args.length; switch (n) { case 1: return; default: return; case 2: return; } System.out.println("despues");',
+    );
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toMatchObject({ codigo: 'sentencia-inalcanzable' });
+  });
+});

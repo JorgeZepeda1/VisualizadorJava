@@ -5,6 +5,13 @@
 import { ErrorDeCompilacion } from '../error-de-compilacion.ts';
 import type { Token, TipoToken } from '../lexico/tokens.ts';
 
+// Corrección obligatoria (sub-lote 1-D2a, task_e4ca8312): los ÚNICOS dos textos de `esperarTexto`
+// verificados contra javac 17 real como "anclan al final del token anterior" — ver la nota larga
+// dentro de `esperarTexto` más abajo. Cualquier otro texto (p. ej. "{"/"}", que ya tienen su propio
+// chequeo bespoke con la regla que corresponda en cada punto) sigue con la regla por omisión
+// (ancla en el token inesperado que SÍ encontró).
+const TEXTOS_QUE_ANCLAN_EN_TOKEN_ANTERIOR: ReadonlySet<string> = new Set([';', ')']);
+
 export class CursorDeTokens {
   private posicion = 0;
   private readonly tokens: readonly Token[];
@@ -53,9 +60,20 @@ export class CursorDeTokens {
   esperarTexto(texto: string): Token {
     const token = this.actual();
     if (token.texto !== texto) {
+      // Corrección obligatoria (sub-lote 1-D2a, task_e4ca8312): ";" y ")" anclan en el FIN del
+      // token anterior, NUNCA en el token inesperado que sigue (que puede caer en otra línea) —
+      // verificado contra javac 17 real, multi-línea, en las dos fuentes reales/ad-hoc de
+      // compilador.test.ts (err01_falta_punto_coma.java del catálogo para ";"; una fuente
+      // compilada ad-hoc en una carpeta temporal, ya borrada, para ")"). NO es una regla universal
+      // para CUALQUIER texto esperado — la nota de `finDelTokenAnterior()` de arriba ya documenta
+      // que "}" sobrante (err17) usa la regla contraria (el token inesperado mismo); por eso este
+      // ancla especial se limita a los DOS textos ya verificados, no a todo `esperarTexto`.
+      const rango = TEXTOS_QUE_ANCLAN_EN_TOKEN_ANTERIOR.has(texto)
+        ? { inicio: this.finDelTokenAnterior(), fin: this.finDelTokenAnterior() }
+        : token.rango;
       throw new ErrorDeCompilacion(
         `se esperaba "${texto}" y se encontró "${token.texto || '<fin de archivo>'}"`,
-        token.rango,
+        rango,
         texto, // tarea 1.11: compilador.ts lo usa para elegir un CodigoProblema real
       );
     }

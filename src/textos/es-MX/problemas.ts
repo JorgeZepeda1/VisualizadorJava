@@ -76,6 +76,8 @@ interface DatosPorCodigo {
   'paquete-despues-de-import': DatosVacios;
   'tipo-requiere-import': DatosNombre;
   'sentencia-inalcanzable': DatosVacios;
+  'variable-posiblemente-no-asignada': DatosNombre;
+  'variable-final-reasignada': DatosNombre;
 }
 
 export const textosProblemas: { readonly [K in CodigoProblema]: (datos: DatosPorCodigo[K]) => string } = {
@@ -114,4 +116,7 @@ export const textosProblemas: { readonly [K in CodigoProblema]: (datos: DatosPor
   'paquete-despues-de-import': () => 'La línea "package" debe ir antes que cualquier "import".',
   'tipo-requiere-import': ({ nombre }) => `Falta la línea "import java.util.${nombre};" al principio del archivo.`,
   'sentencia-inalcanzable': () => 'Esta línea nunca se ejecuta.',
+  'variable-posiblemente-no-asignada': ({ nombre }) =>
+    `La variable "${nombre}" podría no tener un valor asignado en este punto. Asegúrate de que SIEMPRE reciba uno antes de usarla.`,
+  'variable-final-reasignada': ({ nombre }) => `"${nombre}" es "final": su valor se fija una sola vez y no se puede cambiar.`,
 };

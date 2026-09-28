@@ -21,10 +21,12 @@ describe('compilar', () => {
     expect(resultado.vista.fuente).toBe(fuente);
   });
 
-  it('devuelve ok:false con un Problema real (categoría y línea del token inesperado) si no compila', () => {
-    // Falta el ";" tras println("x"); el analizador reporta la posición del token inesperado
-    // ("}" en la línea 4) — la calibración exacta de javac ("al final del token anterior",
-    // design.md §2.6) es trabajo de las tareas 1.1-1.6, fuera del alcance de esta rebanada.
+  it('devuelve ok:false con un Problema real (categoría y línea calibrada de javac) si no compila', () => {
+    // Falta el ";" tras println("x"). Actualizado en el sub-lote 1-D2a (task_e4ca8312): la
+    // calibración exacta de javac ("al final del token anterior", design.md §2.6 —
+    // `esperarTexto` ahora la aplica para ";"/")", ver cursor-de-tokens.ts) da la línea 3 (el fin
+    // de "println(\"x\")"), NUNCA la línea 4 de la "}" que sigue — antes de esa corrección, esta
+    // prueba documentaba a propósito el comportamiento SIN calibrar de la rebanada vertical (0.12).
     const fuente = [
       'class C {',
       '  public static void main(String[] a) {',
@@ -36,7 +38,7 @@ describe('compilar', () => {
     expect(resultado.ok).toBe(false);
     if (resultado.ok) throw new Error('se esperaba ok:false');
     expect(resultado.problema.categoria).toBe('error-compilacion');
-    expect(resultado.problema.linea).toBe(4);
+    expect(resultado.problema.linea).toBe(3);
     expect(resultado.adicionales).toBe(0);
   });
 
@@ -296,5 +298,64 @@ describe('compilar — deuda del commit 999a8ca: errores de sintaxis básicos co
     if (resultado.ok) throw new Error('se esperaba ok:false');
     expect(resultado.problema.codigo).toBe('paquete-despues-de-import');
     expect(resultado.problema.linea).toBe(2);
+  });
+});
+
+// Corrección obligatoria (sub-lote 1-D2a, task_e4ca8312, orquestador): "esperarTexto(';')"/
+// "esperarTexto(')')" anclaban SIEMPRE en el token INESPERADO que encontraban, nunca en el FIN del
+// token anterior -- verificado con javac 17 real que esto da la línea EQUIVOCADA para el error MÁS
+// común de un alumno ("falta ;") en código real de varias líneas (el caso normal: las pruebas
+// anteriores solo usaban fuentes de una línea, donde ambas reglas coinciden). Fuente EXACTA de
+// corpus/experimentos/texto/err01_falta_punto_coma.java (oráculo, tarea 0.6); línea verificada
+// contra su .errores real ("3: error: ';' expected"). El caso de ")" se verificó ad-hoc contra
+// javac 17 real en una carpeta temporal (borrada al terminar, CLAUDE.md regla del JDK): no existe
+// un archivo multi-línea de ")" faltante en el catálogo (err23/err32 son de una sola línea).
+describe('compilar — corrección: "falta-punto-y-coma"/"falta-parentesis-cierre" anclan en el FIN del token anterior, no en el token inesperado (multi-línea, task_e4ca8312)', () => {
+  it('";" faltante tras un DECLARADOR multi-línea: línea 3 (fin de "5"), NUNCA la línea 4 donde arranca "System" (corpus real err01)', () => {
+    const fuente = [
+      'public class err01_falta_punto_coma {',
+      '    public static void main(String[] args) {',
+      '        int x = 5',
+      '        System.out.println(x);',
+      '    }',
+      '}',
+    ].join('\n');
+    const resultado = compilar(fuente);
+    expect(resultado.ok).toBe(false);
+    if (resultado.ok) throw new Error('se esperaba ok:false');
+    expect(resultado.problema.codigo).toBe('falta-punto-y-coma');
+    expect(resultado.problema.linea).toBe(3);
+  });
+
+  it('triangulación: ";" faltante tras una SENTENCIA (no una declaración) multi-línea: línea 3 (fin de la llamada), NUNCA la línea 4', () => {
+    const fuente = [
+      'public class Prueba {',
+      '    public static void main(String[] args) {',
+      '        System.out.println("hola")',
+      '        System.out.println("mundo");',
+      '    }',
+      '}',
+    ].join('\n');
+    const resultado = compilar(fuente);
+    expect(resultado.ok).toBe(false);
+    if (resultado.ok) throw new Error('se esperaba ok:false');
+    expect(resultado.problema.codigo).toBe('falta-punto-y-coma');
+    expect(resultado.problema.linea).toBe(3);
+  });
+
+  it('")" faltante multi-línea (llamada a "println"): línea 3 (fin del literal), NUNCA la línea 4 (verificado ad-hoc contra javac 17 real)', () => {
+    const fuente = [
+      'public class Prueba {',
+      '    public static void main(String[] args) {',
+      '        System.out.println("hola"',
+      '        System.out.println("mundo");',
+      '    }',
+      '}',
+    ].join('\n');
+    const resultado = compilar(fuente);
+    expect(resultado.ok).toBe(false);
+    if (resultado.ok) throw new Error('se esperaba ok:false');
+    expect(resultado.problema.codigo).toBe('falta-parentesis-cierre');
+    expect(resultado.problema.linea).toBe(3);
   });
 });

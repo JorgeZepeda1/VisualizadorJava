@@ -27,6 +27,7 @@ import type { ProblemaAtribucion } from './diagnostico.ts';
 import { verificarEtiquetasDeCase, verificarSelectorDeSwitch } from './switch.ts';
 import { NOMBRES_DE_CLASE_RECONOCIDOS, tipoDeExpresion, tipoDeNombreDeTipo, type Tipo } from './tipos.ts';
 import {
+  CLASES_QUE_REQUIEREN_IMPORT,
   codigoDeAsignacionInvalida,
   esAsignable,
   operandosValidosParaAritmetica,
@@ -35,15 +36,14 @@ import {
   tiposComparablesConIgualdad,
 } from './verificaciones-de-tipo.ts';
 
-// Deuda del commit 999a8ca (sub-lote 1-D1, err20 de exploracion/03): "Scanner"/"Random" son las 2
-// ÚNICAS clases de java.util de REQ-SUB-005 -- Java exige importarlas de verdad (a diferencia de
-// "String", java.lang). "exacto" ("import java.util.Scanner;") O comodín ("import java.util.*;")
-// cuentan igual -- verificado contra javac 17 real, ambos compilan idéntico (exploracion/03 §6).
-const CLASES_JAVA_UTIL_QUE_REQUIEREN_IMPORT: readonly string[] = ['Scanner', 'Random'];
-
+// Corrección obligatoria (sub-lote 1-D2a): antes esta lista era una copia local idéntica a la de
+// `verificaciones-de-tipo.ts` (`CLASES_QUE_REQUIEREN_IMPORT`) — una sola fuente ahora (importada),
+// nunca dos listas que podrían divergir. "exacto" ("import java.util.Scanner;") O comodín
+// ("import java.util.*;") cuentan igual -- verificado contra javac 17 real, ambos compilan
+// idéntico (exploracion/03 §6).
 function nombresJavaUtilImportados(importaciones: readonly NodoImportacion[]): ReadonlySet<string> {
   const importadas = new Set<string>();
-  for (const clase of CLASES_JAVA_UTIL_QUE_REQUIEREN_IMPORT) {
+  for (const clase of CLASES_QUE_REQUIEREN_IMPORT) {
     const estaImportada = importaciones.some(
       (importacion) =>
         (!importacion.comodin && importacion.nombre === `java.util.${clase}`) ||

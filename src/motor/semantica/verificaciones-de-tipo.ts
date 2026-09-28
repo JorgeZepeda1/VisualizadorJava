@@ -65,7 +65,14 @@ const PRIMITIVOS_DEL_SUBCONJUNTO: ReadonlySet<string> = new Set(['int', 'long', 
 // (java.lang, SIEMPRE disponible sin import) -- así que son las ÚNICAS que Java exige importar de
 // verdad. Verificado contra javac 17 real: "Scanner sc = new Scanner(System.in);" sin import ->
 // "cannot find symbol: class Scanner" (exploracion/03 §4, fila err20).
-const CLASES_QUE_REQUIEREN_IMPORT: ReadonlySet<string> = new Set(['Scanner', 'Random']);
+//
+// Corrección obligatoria (sub-lote 1-D2a): fuente ÚNICA — antes existía una copia idéntica
+// (`CLASES_JAVA_UTIL_QUE_REQUIEREN_IMPORT`) en `atribucion.ts`, que ahora importa esta constante en
+// vez de mantener su propia lista (riesgo real de que alguna vez divergieran si el subconjunto
+// agrega una tercera clase de java.util). Se exporta como `ReadonlySet` (no un array): además de
+// `.has()` en `resultadoNombreDeTipo`, `atribucion.ts` solo necesita iterarla (`for...of`), que un
+// `Set` ya soporta igual que un array.
+export const CLASES_QUE_REQUIEREN_IMPORT: ReadonlySet<string> = new Set(['Scanner', 'Random']);
 
 export type ResultadoNombreDeTipo = 'valido' | 'requiere-import' | 'no-reconocido';
 

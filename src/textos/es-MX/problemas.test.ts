@@ -36,6 +36,8 @@ const DATOS_DE_EJEMPLO: Record<CodigoProblema, Record<string, unknown>> = {
   'paquete-despues-de-import': {},
   'tipo-requiere-import': { nombre: 'Scanner' },
   'sentencia-inalcanzable': {},
+  'variable-posiblemente-no-asignada': { nombre: 'x' },
+  'variable-final-reasignada': { nombre: 'MAX' },
 };
 
 describe('textosProblemas — catálogo completo (ADR 015): cada código produce una frase real', () => {

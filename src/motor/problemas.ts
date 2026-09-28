@@ -64,7 +64,13 @@ export type CodigoProblema =
   | 'paquete-despues-de-import' // struct07
   | 'tipo-requiere-import' // err20 (atribución, no sintaxis — Scanner/Random sin import)
   // Alcanzabilidad (pasada 3 de ADR 004, tarea 1.12, JLS 14.22, REQ-COMP-010).
-  | 'sentencia-inalcanzable';
+  | 'sentencia-inalcanzable'
+  // Asignación definitiva (pasada 4 de ADR 004, tarea 1.13, JLS 16, REQ-COMP-004). Un solo código
+  // por causa (igual que "sentencia-inalcanzable" unifica 4 causas de JLS 14.22): el mensaje
+  // amable no distingue "nunca se asignó" de "solo en una rama" de "el ciclo podría no correr" —
+  // todas dicen lo mismo con la palabra correcta ("podría no tener un valor").
+  | 'variable-posiblemente-no-asignada' // err05, err06, err09, err10, switch sin "default"
+  | 'variable-final-reasignada'; // err10c (JLS 4.12.4 + 16.1: una "final" solo admite un valor)
 
 export interface Problema {
   readonly categoria: Categoria;
