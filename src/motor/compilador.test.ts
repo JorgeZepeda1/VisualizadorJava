@@ -493,6 +493,18 @@ describe('compilar — arranque (tarea 1.15): "sin main" / "main sin static" com
     if (!resultado.ok) throw new Error('se esperaba ok:true');
     expect(resultado.programa.arranque).toBeNull();
   });
+
+  // Sub-lote 1-D2c (design.md §2.1, task_0b5b6e47): el 3er caso de arranque que design.md siempre
+  // había listado ("sin static, sin main, no public") pero que 1.15 nunca verificó. Verificado
+  // contra el JDK 17 real: "static void main" (SIN "public") da el mensaje EXACTO de "sin-main" —
+  // el lanzador (`Class#getMethod`) solo encuentra métodos PÚBLICOS.
+  it('"main sin public": da ok:true (javac SÍ compila), con programa.arranque = "sin-main" (mismo mensaje que "sin main" real)', () => {
+    const resultado = compilar('public class SoloEstatico { static void main(String[] args) { } }');
+    expect(resultado.ok).toBe(true);
+    if (!resultado.ok) throw new Error('se esperaba ok:true (javac SÍ compila esto)');
+    expect(resultado.programa.arranque?.codigo).toBe('sin-main');
+    expect(resultado.programa.arranque?.nombreClase).toBe('SoloEstatico');
+  });
 });
 
 // REQ-COMP-009: el visualizador no representa archivos -- nunca debe existir un chequeo de "el

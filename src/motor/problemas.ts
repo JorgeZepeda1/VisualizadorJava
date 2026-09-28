@@ -40,6 +40,21 @@ export type CodigoProblema =
   | 'metodo-no-declarado' // err03
   | 'variable-ya-definida' // flow13, flow18, flow19
   | 'tipo-no-reconocido' // err18
+  // Biblioteca — miembro real de una clase reconocida (sub-lote 1-D2c, REQ-SUB-005/007,
+  // task_c0cf2e6c): "campo"/"miembro" distinguen acceso de VALOR ("Math.PIE", sin llamar) de
+  // LLAMADA ("s.lenght()"), igual que "variable-no-declarada"/"metodo-no-declarado" ya distinguen
+  // lo mismo para nombres SUELTOS (sin receptor) — javac resuelve campos y métodos en espacios de
+  // nombres separados (JLS 6.5.6), verificado contra javac 17 real: "cannot find symbol: variable
+  // length" (método usado sin paréntesis) vs "cannot find symbol: method PI()" (campo llamado).
+  | 'campo-no-declarado'
+  | 'miembro-no-declarado'
+  // El miembro SÍ existe y está soportado, pero NINGÚN argumento real encaja en ninguna sobrecarga
+  // real (JLS 15.12.2, las 3 fases de sobrecargas.ts agotadas) — verificado contra javac 17 real:
+  // "no suitable method found for max(String,int)" (Math.max("a",1)), "incompatible types: String
+  // cannot be converted to int" (s.charAt("0")): dos frases distintas de javac para el MISMO
+  // problema (candidato único vs varios) -- este catálogo usa un solo código para ambas, igual que
+  // ya hace con "operandos-invalidos-operador-binario" para varias frases crudas de javac.
+  | 'sin-sobrecarga-aplicable'
   // Tipos (pasada 2, REQ-COMP-001).
   | 'conversion-con-perdida' // err04
   | 'tipos-incompatibles-en-asignacion' // err12

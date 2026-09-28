@@ -21,11 +21,14 @@ import type {
   NodoSentencia,
   NodoSwitch,
 } from '../sintaxis/ast.ts';
+import { CODIGOS_NO_SOPORTADO } from '../sintaxis/no-soportado.ts';
 import { Alcance } from './alcance.ts';
+import { clasificarCampo, clasificarMetodo } from './catalogo-api.ts';
 import { valorConstante } from './constantes.ts';
 import type { ProblemaAtribucion } from './diagnostico.ts';
+import { resolverSobrecarga } from './sobrecargas.ts';
 import { verificarEtiquetasDeCase, verificarSelectorDeSwitch } from './switch.ts';
-import { NOMBRES_DE_CLASE_RECONOCIDOS, tipoDeExpresion, tipoDeNombreDeTipo, type Tipo } from './tipos.ts';
+import { claseDelObjeto, NOMBRES_DE_CLASE_RECONOCIDOS, tipoDeExpresion, tipoDeNombreDeTipo, type Tipo } from './tipos.ts';
 import {
   CLASES_QUE_REQUIEREN_IMPORT,
   codigoDeAsignacionInvalida,
@@ -136,6 +139,17 @@ function visitarDeclaracionLocal(
       datos: { nombre: declaracion.nombreTipo },
     });
   }
+  // Corrección obligatoria (sub-lote 1-D2c): descubierta al conectar la biblioteca real —
+  // `alcance.declarar` guardaba SIEMPRE `declaracion.nombreTipo` tal cual, incluso cuando el tipo
+  // NO se reconoció de verdad ("tipo-no-reconocido"/"tipo-requiere-import" arriba). Antes era
+  // inofensivo (nada más miraba el tipo guardado), pero ahora que `visitarLlamadaDeMiembro`/
+  // `visitarAccesoMiembro` SÍ lo consultan para resolver miembros reales, "Scanner sc = ...;" SIN
+  // import producía un SEGUNDO problema (NO-DISP para "sc.hasNextInt()") además del real
+  // ("tipo-requiere-import") -- verificado contra javac 17 real: con el import faltante, javac
+  // NUNCA llega a resolver el miembro (cascada suprimida en su propio recovery, D2 nunca fue tan
+  // permisivo). "desconocido" (el mismo sumidero de cascada de siempre) hace que cualquier uso
+  // posterior de la variable no dispare ningún problema adicional por esta misma causa.
+  const tipoDelSimbolo = resultadoTipo === 'valido' ? declaracion.nombreTipo : 'desconocido';
   for (const declarador of declaracion.declaradores) {
     // Comparte el plegado (REFACTOR de la tarea 1.10) con la verificación de asignación DE ABAJO
     // Y con el campo "constante" del símbolo (deuda 3 del commit 999a8ca, JLS 4.12.4).
@@ -161,7 +175,7 @@ function visitarDeclaracionLocal(
     const constante = declaracion.esFinal && valorInicializador !== null ? valorInicializador : undefined;
     const resultado = alcance.declarar({
       nombre: declarador.nombre,
-      tipo: declaracion.nombreTipo,
+      tipo: tipoDelSimbolo,
       esFinal: declaracion.esFinal,
       rango: declarador.rango,
       constante,
@@ -417,15 +431,98 @@ function visitarLlamada(nodo: NodoLlamada, alcance: Alcance, problemas: Problema
       rango: nodo.callee.rango,
       datos: { nombre: nodo.callee.nombre },
     });
+  } else if (nodo.callee.tipo === 'acceso-miembro') {
+    // Sub-lote 1-D2c: "objeto.metodo(...)" real -- resuelto contra el catálogo (abajo), en vez de
+    // solo recorrer el receptor como valor genérico (lo que hacía que NINGÚN método de biblioteca
+    // se validara jamás — hueco flageado por 1-D2b, task_c0cf2e6c).
+    visitarLlamadaDeMiembro(nodo, nodo.callee, alcance, problemas);
   } else {
     visitarExpresion(nodo.callee, alcance, problemas);
   }
   for (const argumento of nodo.argumentos) visitarExpresion(argumento, alcance, problemas);
 }
 
-function visitarAccesoMiembro(nodo: NodoAccesoMiembro, alcance: Alcance, problemas: ProblemaAtribucion[]): void {
-  if (nodo.objeto.tipo === 'nombre' && NOMBRES_DE_CLASE_RECONOCIDOS.has(nodo.objeto.nombre)) {
-    return; // Math.foo/String.foo/System.foo…: referencia estática — 1.8 valida el miembro real.
+/**
+ * Sub-lote 1-D2c (REQ-SUB-005/007, task_c0cf2e6c): `objeto.metodo(...)` contra el catálogo real
+ * del JDK (`catalogo-api.ts`/`sobrecargas.ts`, tareas 1.8/1.9) — cada veredicto verificado contra
+ * javac 17 real (carpeta temporal, borrada tras verificar; ver el informe de la sesión):
+ *   - `s.lenght()`/`Math.raiz(4)` (no existe NINGÚN miembro con ese nombre) -> "cannot find
+ *     symbol: method X()" real -> "miembro-no-declarado"
+ *   - `s.split(",")`/`Math.sin(x)`/`sc.hasNextInt()` (existe en el JDK, fuera de REQ-SUB-005) ->
+ *     javac SÍ compila -> aviso NO-DISP (categoria 'no-disponible'), NUNCA un error inventado
+ *   - `Math.max("a",1)`/`s.charAt("0")` (existe y soportado, pero NINGÚN argumento real encaja en
+ *     ninguna sobrecarga real) -> "no suitable method found"/"incompatible types" reales (dos
+ *     frases distintas de javac para el MISMO problema, D2: un solo código nuestro) ->
+ *     "sin-sobrecarga-aplicable"
+ *   - soportado y una sobrecarga real SÍ aplica -> nada que reportar aquí; `tipos.ts` resuelve el
+ *     tipo de retorno real por separado (misma `resolverSobrecarga`, nunca una segunda tabla)
+ * `clase === null` (el receptor ya es inválido, o de un tipo sin miembros en este subconjunto —
+ * p. ej. un primitivo) no reporta NADA aquí: D2, cascada suprimida por quien ya reportó el
+ * problema real del receptor (o por el hueco YA documentado de "primitivo no se puede
+ * dereferenciar", ajeno a esta tarea).
+ */
+function visitarLlamadaDeMiembro(
+  nodo: NodoLlamada,
+  callee: NodoAccesoMiembro,
+  alcance: Alcance,
+  problemas: ProblemaAtribucion[],
+): void {
+  visitarExpresion(callee.objeto, alcance, problemas);
+  const clase = claseDelObjeto(callee.objeto, alcance);
+  if (clase === null) return;
+  const clasificacion = clasificarMetodo(clase, callee.miembro);
+  if (clasificacion === 'no-existe') {
+    problemas.push({ codigo: 'miembro-no-declarado', rango: callee.rango, datos: { clase, nombre: callee.miembro } });
+    return;
   }
+  if (clasificacion === 'existe-no-soportado') {
+    problemas.push({
+      codigo: CODIGOS_NO_SOPORTADO.miembroDeBiblioteca,
+      categoria: 'no-disponible',
+      rango: callee.rango,
+      datos: {},
+    });
+    return;
+  }
+  const tiposDeArgumentos = nodo.argumentos.map((argumento) => tipoDeExpresion(argumento, alcance));
+  // D2 (nunca un resultado inventado): un argumento 'desconocido' (p. ej. "Math.abs(-x)" -- la
+  // promoción numérica de unarios/binarios todavía no la modela `tipoDeExpresion`, ver su propia
+  // cabecera) NO significa "ningún tipo encaja" -- significa "no sabemos todavía". Reportar
+  // "sin-sobrecarga-aplicable" aquí sería inventar un error que javac nunca daría (Math.abs(-3) SÍ
+  // compila) -- mismo sumidero de cascada que ya usa TODO el resto de esta pasada.
+  const hayArgumentoDesconocido = tiposDeArgumentos.includes('desconocido');
+  if (!hayArgumentoDesconocido && resolverSobrecarga(clase, callee.miembro, tiposDeArgumentos) === null) {
+    problemas.push({
+      codigo: 'sin-sobrecarga-aplicable',
+      rango: nodo.rango,
+      datos: { clase, nombre: callee.miembro, argumentos: tiposDeArgumentos },
+    });
+  }
+}
+
+/**
+ * Sub-lote 1-D2c: acceso a miembro usado como VALOR, sin llamar (`Math.PI`, `Integer.MAX_VALUE`)
+ * — espacio de nombres SEPARADO del de métodos (JLS 6.5.6.1 vs 6.5.6.2, `clasificarCampo` filtra
+ * por género): un método real del mismo nombre (`s.length`, sin paréntesis) NUNCA cuenta como
+ * campo — verificado contra javac 17 real: "cannot find symbol: variable length". Mismas 3
+ * categorías que `visitarLlamadaDeMiembro` salvo "sin-sobrecarga-aplicable" (un campo no tiene
+ * sobrecargas que resolver).
+ */
+function visitarAccesoMiembro(nodo: NodoAccesoMiembro, alcance: Alcance, problemas: ProblemaAtribucion[]): void {
   visitarExpresion(nodo.objeto, alcance, problemas);
+  const clase = claseDelObjeto(nodo.objeto, alcance);
+  if (clase === null) return;
+  const clasificacion = clasificarCampo(clase, nodo.miembro);
+  if (clasificacion === 'no-existe') {
+    problemas.push({ codigo: 'campo-no-declarado', rango: nodo.rango, datos: { clase, nombre: nodo.miembro } });
+    return;
+  }
+  if (clasificacion === 'existe-no-soportado') {
+    problemas.push({
+      codigo: CODIGOS_NO_SOPORTADO.miembroDeBiblioteca,
+      categoria: 'no-disponible',
+      rango: nodo.rango,
+      datos: {},
+    });
+  }
 }

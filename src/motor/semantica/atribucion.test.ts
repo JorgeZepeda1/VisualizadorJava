@@ -84,6 +84,125 @@ describe('atribuir — sombreado en bloque anidado (flow18/flow19 de exploracion
   });
 });
 
+// Sub-lote 1-D2c: hueco flageado por 1-D2b (`task_c0cf2e6c`) — `sobrecargas.ts`/`catalogo-api.ts`
+// (tareas 1.7/1.8) estaban completos y probados STANDALONE pero JAMÁS se invocaban desde
+// `visitarLlamada`/`visitarAccesoMiembro`: un método real de Java pero no soportado (`s.split`,
+// `Math.sin`) no producía ningún aviso. Cada caso está verificado contra javac 17 real (carpeta
+// temporal, borrada) — ver el informe de la sesión para la transcripción completa.
+describe('atribuir — biblioteca conectada a la atribución (sub-lote 1-D2c, REQ-SUB-005/007)', () => {
+  it('String.split existe en el JDK pero no está soportado (REQ-SUB-007): aviso NO-DISP, nunca un error de tipos', () => {
+    const problemas = atribuirCuerpo('String s = "a,b"; s.split(",");');
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toMatchObject({
+      categoria: 'no-disponible',
+      codigo: 'miembro-de-biblioteca-no-soportado',
+    });
+  });
+
+  it('triangulación: Math.sin(x) -- otra clase, mismo desenlace NO-DISP (trascendentes, REQ-SUB-007)', () => {
+    const problemas = atribuirCuerpo('double x = 1.0; Math.sin(x);');
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toMatchObject({ categoria: 'no-disponible', codigo: 'miembro-de-biblioteca-no-soportado' });
+  });
+
+  it('triangulación: sc.hasNextInt() -- Scanner real (con import), mismo desenlace NO-DISP (REQ-SUB-007)', () => {
+    const problemas = atribuirPrograma(
+      'import java.util.Scanner; class C { public static void main(String[] a) { Scanner sc = new Scanner(System.in); sc.hasNextInt(); } }',
+    );
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toMatchObject({ categoria: 'no-disponible', codigo: 'miembro-de-biblioteca-no-soportado' });
+  });
+
+  it('s.lenght() (error de dedo real de un alumno) -- NO existe ningún miembro con ese nombre: "miembro-no-declarado" (verificado: javac da "cannot find symbol: method lenght()")', () => {
+    const problemas = atribuirCuerpo('String s = "a"; s.lenght();');
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toMatchObject({ codigo: 'miembro-no-declarado', datos: { clase: 'String', nombre: 'lenght' } });
+  });
+
+  it('triangulación: Math.raiz(4) -- otra clase, mismo desenlace "miembro-no-declarado" (verificado: javac da "cannot find symbol: method raiz(int)")', () => {
+    const problemas = atribuirCuerpo('Math.raiz(4);');
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toMatchObject({ codigo: 'miembro-no-declarado', datos: { clase: 'Math', nombre: 'raiz' } });
+  });
+
+  it('Math.max("a", 1) -- existe y está soportado, pero NINGÚN argumento real encaja: "sin-sobrecarga-aplicable" (verificado: javac da "no suitable method found for max(String,int)")', () => {
+    const problemas = atribuirCuerpo('Math.max("a", 1);');
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toMatchObject({
+      codigo: 'sin-sobrecarga-aplicable',
+      datos: { clase: 'Math', nombre: 'max', argumentos: ['String', 'int'] },
+    });
+  });
+
+  it('triangulación: s.charAt("0") -- mismo desenlace "sin-sobrecarga-aplicable" con una clase distinta (verificado: javac da "incompatible types: String cannot be converted to int")', () => {
+    const problemas = atribuirCuerpo('String s = "hola"; s.charAt("0");');
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toMatchObject({
+      codigo: 'sin-sobrecarga-aplicable',
+      datos: { clase: 'String', nombre: 'charAt', argumentos: ['String'] },
+    });
+  });
+
+  it('control: los usos correctos (soportados, sobrecarga real aplicable) NO producen ningún problema', () => {
+    expect(atribuirCuerpo('String s = "hola"; s.charAt(0); s.length(); Math.max(1, 2);')).toEqual([]);
+  });
+
+  it('control: un argumento "desconocido" (Math.abs(-x), la promoción unaria que tipos.ts todavía no modela) NUNCA inventa "sin-sobrecarga-aplicable" -- D2, cascada suprimida', () => {
+    expect(atribuirCuerpo('int x = 3; Math.abs(-x);')).toEqual([]);
+  });
+
+  it('control: una llamada encadenada (sc.nextLine().length()) resuelve el receptor real de la llamada externa por su tipo de retorno, sin ningún problema', () => {
+    const problemas = atribuirPrograma(
+      'import java.util.Scanner; class C { public static void main(String[] a) { Scanner sc = new Scanner(System.in); sc.nextLine().length(); } }',
+    );
+    expect(problemas).toEqual([]);
+  });
+});
+
+// Sub-lote 1-D2c: acceso a miembro como VALOR (sin llamar) -- "cada acceso a miembro" del
+// orquestador incluye campos (Math.PI, Integer.MAX_VALUE), no solo llamadas. Mismas 3 categorías
+// que arriba, pero genero-restringidas a CAMPOS (`clasificarCampo`, JLS 6.5.6.1) -- un MÉTODO real
+// del mismo nombre (p. ej. "String.length") nunca cuenta como campo, verificado contra javac 17
+// real: "s.length" (sin paréntesis) da "cannot find symbol: variable length".
+describe('atribuir — acceso a miembro como valor (sub-lote 1-D2c, REQ-SUB-005/007)', () => {
+  it('control: Math.PI (campo real y soportado) no produce ningún problema', () => {
+    expect(atribuirCuerpo('double p = Math.PI;')).toEqual([]);
+  });
+
+  it('Math.PIE (error de dedo) -- no existe ningún campo con ese nombre: "campo-no-declarado"', () => {
+    const problemas = atribuirCuerpo('double p = Math.PIE;');
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toMatchObject({ codigo: 'campo-no-declarado', datos: { clase: 'Math', nombre: 'PIE' } });
+  });
+
+  it('Integer.SIZE -- campo real del JDK, fuera de REQ-SUB-005: aviso NO-DISP (verificado: javac compila Integer.SIZE limpio)', () => {
+    const problemas = atribuirCuerpo('int n = Integer.SIZE;');
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toMatchObject({ categoria: 'no-disponible', codigo: 'miembro-de-biblioteca-no-soportado' });
+  });
+
+  it('triangulación: s.length (el MÉTODO String.length usado como si fuera un campo, sin paréntesis) -- "campo-no-declarado" (verificado: javac da "cannot find symbol: variable length")', () => {
+    const problemas = atribuirCuerpo('String s = "hola"; int n = s.length;');
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toMatchObject({ codigo: 'campo-no-declarado', datos: { clase: 'String', nombre: 'length' } });
+  });
+});
+
+// Sub-lote 1-D2c: corrección descubierta al conectar la biblioteca real -- antes de esta
+// corrección, "Scanner sc = ...;" SIN import producía DOS problemas ("tipo-requiere-import" +
+// "miembro-de-biblioteca-no-soportado" de "sc.hasNextInt()"), nunca solo uno -- javac SIEMPRE
+// suprime la cascada cuando el TIPO mismo no se resolvió (D2, nunca más permisivo/estricto que
+// javac). Ver también el describe "err20" más abajo (control con import SÍ presente).
+describe('atribuir — corrección: un tipo sin resolver (sin import) suprime la cascada sobre sus propios usos (sub-lote 1-D2c)', () => {
+  it('"Scanner sc = ...; sc.hasNextInt();" SIN import da SOLO "tipo-requiere-import" -- nunca un segundo problema de "sc"', () => {
+    const problemas = atribuirPrograma(
+      'class C { public static void main(String[] a) { Scanner sc = new Scanner(System.in); sc.hasNextInt(); } }',
+    );
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toMatchObject({ codigo: 'tipo-requiere-import' });
+  });
+});
+
 describe('atribuir — selector de switch inválido, integrado (REQ-COMP-002)', () => {
   it('switch sobre una variable "long" se reporta con el tipo real', () => {
     const problemas = atribuirCuerpo('long n = 5L; switch (n) { default: break; }');

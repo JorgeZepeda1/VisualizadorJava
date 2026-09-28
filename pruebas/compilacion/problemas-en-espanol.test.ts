@@ -51,7 +51,10 @@ describe('problemas en español — cruce motor + catálogo es-MX (casos de atri
     const [problema] = atribuirCuerpo(cuerpo);
     expect(problema).toBeDefined();
     if (problema === undefined) return;
-    const texto = textoDe(problema.codigo, problema.datos);
+    // Sub-lote 1-D2c: `ProblemaAtribucion.codigo` se ensanchó a `CodigoProblema | string` (puede
+    // traer un código NO-DISP abierto) — MISMO cast ya usado abajo para `Problema.codigo`, que
+    // tiene esa forma desde 1.11; ninguno de los 15 casos de esta tabla toca el código NO-DISP.
+    const texto = textoDe(problema.codigo as CodigoProblema, problema.datos);
     expect(typeof texto).toBe('string');
     expect(texto.length).toBeGreaterThan(0);
     expect(texto).not.toMatch(/undefined|\[object Object\]/);
@@ -95,9 +98,27 @@ describe('problemas en español — cruce motor + catálogo es-MX (deuda del com
     const [problema] = atribuir(programa);
     expect(problema).toBeDefined();
     if (problema === undefined) return;
-    const texto = textoDe(problema.codigo, problema.datos);
+    const texto = textoDe(problema.codigo as CodigoProblema, problema.datos);
     expect(texto.length).toBeGreaterThan(0);
     expect(texto).toContain('Scanner');
+  });
+});
+
+// Sub-lote 1-D2c (REQ-SUB-005/007, task_c0cf2e6c): cruce motor + catálogo es-MX de los 3 códigos
+// nuevos de la biblioteca conectada a la atribución.
+describe('problemas en español — cruce motor + catálogo es-MX (sub-lote 1-D2c: biblioteca conectada a la atribución)', () => {
+  it.each([
+    ['miembro-no-declarado', 'String s = "a"; s.lenght();'],
+    ['campo-no-declarado', 'double p = Math.PIE;'],
+    ['sin-sobrecarga-aplicable', 'int r = Math.max("a", 1);'],
+  ] as const)('%s: el primer problema real tiene una frase en español no vacía', (_codigo, cuerpo) => {
+    const [problema] = atribuirCuerpo(cuerpo);
+    expect(problema).toBeDefined();
+    if (problema === undefined) return;
+    const texto = textoDe(problema.codigo as CodigoProblema, problema.datos);
+    expect(typeof texto).toBe('string');
+    expect(texto.length).toBeGreaterThan(0);
+    expect(texto).not.toMatch(/undefined|\[object Object\]/);
   });
 });
 
@@ -109,7 +130,7 @@ describe('problemas en español — cruce motor + catálogo es-MX (tarea 1.12: a
     const [problema] = alcanzabilidadDeCuerpo('System.out.println("a"); return; System.out.println("nunca");');
     expect(problema).toBeDefined();
     if (problema === undefined) return;
-    const texto = textoDe(problema.codigo, problema.datos);
+    const texto = textoDe(problema.codigo as CodigoProblema, problema.datos);
     expect(texto.length).toBeGreaterThan(0);
   });
 });

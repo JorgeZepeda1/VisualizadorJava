@@ -47,6 +47,12 @@ export interface NodoMain {
    * `static`) es un programa BIEN FORMADO para javac -- solo el LANZADOR (`java`, no `javac`) lo
    * rechaza al intentar ejecutarlo (exploracion/03 §4.2). `semantica/arranque.ts` lee este campo. */
   readonly esEstatico: boolean;
+  /** Sub-lote 1-D2c (design.md §2.1, task_0b5b6e47): si el modificador `public` está presente.
+   * `static void main` (sin `public`) TAMBIÉN es un programa BIEN FORMADO para javac -- el
+   * lanzador solo encuentra métodos PÚBLICOS (`Class#getMethod`, que ignora los no públicos),
+   * verificado contra el JDK 17 real: da el MISMO mensaje EXACTO que "sin main" (nunca uno propio
+   * de "no public") -- `semantica/arranque.ts` lo trata como el mismo caso "sin-main". */
+  readonly esPublico: boolean;
   /** `throws Tipo, Tipo…` tras los paréntesis, si el programa lo trae (tarea 1.6, NO-DISP). */
   readonly clausulaThrows: NodoNoSoportado | null;
   readonly cuerpo: NodoBloque;

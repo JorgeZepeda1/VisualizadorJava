@@ -45,6 +45,12 @@ export const CODIGOS_NO_SOPORTADO = {
   importStatic: 'import-static-no-soportado',
   lambda: 'lambda-no-soportada',
   arregloNuevo: 'arreglo-no-soportado',
+  // Sub-lote 1-D2c (design.md §2.6 fila "Atribución": "miembros existentes no soportados de
+  // clases soportadas" — `s.split`, `Math.sin`, `sc.hasNextInt`…). A diferencia de TODO lo demás
+  // en esta tabla, este código NO lo produce un reconocedor de `sintaxis/` (necesita el catálogo
+  // real del JDK para saber que el miembro EXISTE, ADR 010) — lo emite `semantica/atribucion.ts`
+  // directamente, reusando esta MISMA constante para no tener dos fuentes de nombres NO-DISP.
+  miembroDeBiblioteca: 'miembro-de-biblioteca-no-soportado',
 } as const;
 
 /**

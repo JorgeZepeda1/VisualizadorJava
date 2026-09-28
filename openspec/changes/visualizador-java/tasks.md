@@ -235,6 +235,13 @@
 - GREEN: `corpus/compilacion/catalogo/` (37 casos de `03`) + `corpus/compilacion/avisos/` (una muestra por construcción).
 - Verif: `pruebas/compilacion/catalogo`
 
+**1.19 Biblioteca conectada a la atribución y firmas de main** (agregada por el orquestador: huecos que encontró 1-D2b) · depende: 1.8, 1.9, 1.14, 1.15 — ✅ hecha (2026-09-28)
+- Hallazgo: `semantica/sobrecargas.ts`/`catalogo-api.ts` (tareas 1.7/1.8) estaban completos y probados STANDALONE pero JAMÁS se invocaban desde `visitarLlamada`/`visitarAccesoMiembro` de `atribucion.ts` — un método real de Java pero no soportado (`s.split`, `Math.sin`) no producía ningún aviso, y `design.md` §2.1 nunca se había verificado contra el JDK real para el 3er caso de arranque ("main sin `public`").
+- RED (una regla a la vez, evidencia completa con la línea de la falla real en el informe de la sesión): p. ej. `atribucion.test.ts` — `atribuirCuerpo('String s = "a,b"; s.split(",");')` esperaba un aviso NO-DISP y `problemas` era `[]` (`expected [] to have a length of 1`); `analizador-sintactico.test.ts` — `analizar('class C { static void main(String[] a) {} }').clase.main?.esPublico` daba `undefined`; `arranque.test.ts` — `verificarArranque` de un `main` `static` sin `public` daba `null` en vez de `'sin-main'`; `analizar('public class C { public static void main() {} }')` lanzaba `ErrorDeCompilacion` (javac SÍ compila esto).
+- GREEN: `semantica/catalogo-api.ts` (`clasificarMetodo`/`clasificarCampo`, genero-aware sobre `FIRMAS_JDK` — JLS 6.5.6 separa campos y métodos); `semantica/sobrecargas.ts` (`resolverSobrecarga` excluye `genero:'campo'` de sus candidatos — corrige un falso positivo real, `Math.PI()`); `semantica/atribucion.ts` (`visitarLlamadaDeMiembro`/`visitarAccesoMiembro` reescritos: cada llamada/acceso a miembro real se resuelve contra el catálogo — soportado con sobrecarga real, NO-DISP, no existe, o sin sobrecarga aplicable — las 4 verificadas contra javac 17 real); 3 códigos nuevos en `problemas.ts`/`textos/es-MX/problemas.ts` (`campo-no-declarado`, `miembro-no-declarado`, `sin-sobrecarga-aplicable`); `sintaxis/ast.ts`+`analizador-sintactico.ts` (`NodoMain.esPublico`, y `pareceMain` corregido: ya no se compromete con un `main()` sin el parámetro real — antes daba un error de sintaxis falso donde javac compila limpio); `semantica/arranque.ts` ("main sin `public`" reutiliza el mensaje de "sin-main" BYTE A BYTE, verificado contra el JDK real — sin datos nuevos del oráculo, D2, porque el mensaje ya existía idéntico). 2 correcciones descubiertas al conectar la biblioteca real (interacción invisible hasta ahora): `System.in`/`out`/`err` faltaban en `MIEMBROS_SOPORTADOS` (rompía el patrón más básico del currículo, `new Scanner(System.in)`); un tipo sin resolver (`Scanner` sin `import`) debía degradar a `desconocido` para suprimir la cascada (antes producía un SEGUNDO problema donde javac solo da uno).
+- REFACTOR: `tipos.ts` exporta `claseDelObjeto` (antes privada) para que `atribucion.ts` la reuse, nunca una segunda implementación que podría divergir.
+- Verif: `npm test` (815/815), `npm run test:oraculo` (70 + 1 skip), `npm run lint`, `npm run tipos`, `npm run oraculo:verificar` (176 programas, idénticos — no se regeneró ningún dato del oráculo).
+
 **Criterio de salida:** `motor/{lexico,sintaxis,semantica,compilador}` + `pruebas/compilacion/**` verdes; C7 (100% veredicto, ≥95% línea) y C8 (100% muestras) cumplidos.
 **Cierre:** `sdd-verify` del lote 1 → commit con confirmación del PO → actualizar `state.yaml`.
 
@@ -647,9 +654,9 @@
 | REQ-SUB-002 | 1.1, 2.2, 1.4 |
 | REQ-SUB-003 | 1.3 |
 | REQ-SUB-004 | 1.5 |
-| REQ-SUB-005 | 1.8 |
+| REQ-SUB-005 | 1.8, 1.19 |
 | REQ-SUB-006 | 1.1, 1.6 |
-| REQ-SUB-007 | 1.1, 1.3, 1.6, 1.8 |
+| REQ-SUB-007 | 1.1, 1.3, 1.6, 1.8, 1.19 |
 | REQ-SUB-008 | 2.15 |
 
 **`compilacion-en-espanol`** (10/10)
@@ -661,8 +668,8 @@
 | REQ-COMP-004 | 1.13 |
 | REQ-COMP-005 | 1.2, 1.14 |
 | REQ-COMP-006 | 1.14 |
-| REQ-COMP-007 | 1.9, 1.15 |
-| REQ-COMP-008 | 1.9, 1.15 |
+| REQ-COMP-007 | 1.9, 1.15, 1.19 |
+| REQ-COMP-008 | 1.9, 1.15, 1.19 |
 | REQ-COMP-009 | 1.15 |
 | REQ-COMP-010 | 1.12 |
 

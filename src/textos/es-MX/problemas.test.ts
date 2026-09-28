@@ -18,6 +18,9 @@ const DATOS_DE_EJEMPLO: Record<CodigoProblema, Record<string, unknown>> = {
   'metodo-no-declarado': { nombre: 'saludar' },
   'variable-ya-definida': { nombre: 'x' },
   'tipo-no-reconocido': { nombre: 'string' },
+  'campo-no-declarado': { clase: 'Math', nombre: 'PIE' },
+  'miembro-no-declarado': { clase: 'String', nombre: 'lenght' },
+  'sin-sobrecarga-aplicable': { clase: 'Math', nombre: 'max', argumentos: ['String', 'int'] },
   'conversion-con-perdida': { origen: 'double', destino: 'int' },
   'tipos-incompatibles-en-asignacion': { origen: 'String', destino: 'int' },
   'condicion-no-booleana': { tipo: 'int' },
@@ -76,5 +79,34 @@ describe('textosProblemas — mensajes con datos reales quedan legibles (muestra
       derecha: 'int',
     });
     expect(texto).toContain('-');
+  });
+});
+
+// Sub-lote 1-D2c (REQ-SUB-005/007, task_c0cf2e6c): los 3 códigos nuevos de la biblioteca conectada
+// a la atribución — "clase"/"nombre" (y "argumentos") identifican el receptor real, nunca un
+// nombre suelto inventado.
+describe('textosProblemas — biblioteca conectada a la atribución (sub-lote 1-D2c)', () => {
+  it('"campo-no-declarado" menciona la CLASE y el nombre del campo que no existe', () => {
+    const texto = textosProblemas['campo-no-declarado']({ clase: 'Math', nombre: 'PIE' });
+    expect(texto).toContain('Math');
+    expect(texto).toContain('PIE');
+  });
+
+  it('"miembro-no-declarado" menciona la CLASE y el nombre del método que no existe', () => {
+    const texto = textosProblemas['miembro-no-declarado']({ clase: 'String', nombre: 'lenght' });
+    expect(texto).toContain('String');
+    expect(texto).toContain('lenght');
+  });
+
+  it('"sin-sobrecarga-aplicable" menciona clase, método y CADA tipo de argumento real', () => {
+    const texto = textosProblemas['sin-sobrecarga-aplicable']({
+      clase: 'Math',
+      nombre: 'max',
+      argumentos: ['String', 'int'],
+    });
+    expect(texto).toContain('Math');
+    expect(texto).toContain('max');
+    expect(texto).toContain('String');
+    expect(texto).toContain('int');
   });
 });

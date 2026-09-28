@@ -44,6 +44,21 @@ interface DatosMensajeCrudo {
   readonly mensaje: string;
 }
 
+// Sub-lote 1-D2c (REQ-SUB-005/007, task_c0cf2e6c): "clase"/"nombre" identifican el receptor real
+// (el "Math" de "Math.raiz", el "String" de "s.lenght") — nunca solo el nombre suelto, a
+// diferencia de "metodo-no-declarado" (que SÍ es un nombre suelto, sin receptor: REQ-SUB-007 dice
+// "ningún método propio existe en el subconjunto").
+interface DatosMiembro {
+  readonly clase: string;
+  readonly nombre: string;
+}
+
+interface DatosSinSobrecarga {
+  readonly clase: string;
+  readonly nombre: string;
+  readonly argumentos: readonly Tipo[];
+}
+
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type -- vacío a propósito: estos 6 códigos no llevan datos
 interface DatosVacios {}
 
@@ -58,6 +73,9 @@ interface DatosPorCodigo {
   'metodo-no-declarado': DatosNombre;
   'variable-ya-definida': DatosNombre;
   'tipo-no-reconocido': DatosNombre;
+  'campo-no-declarado': DatosMiembro;
+  'miembro-no-declarado': DatosMiembro;
+  'sin-sobrecarga-aplicable': DatosSinSobrecarga;
   'conversion-con-perdida': DatosConversion;
   'tipos-incompatibles-en-asignacion': DatosConversion;
   'condicion-no-booleana': DatosCondicion;
@@ -92,6 +110,12 @@ export const textosProblemas: { readonly [K in CodigoProblema]: (datos: DatosPor
   'variable-ya-definida': ({ nombre }) => `Ya existe una variable llamada "${nombre}" visible en este punto; usa otro nombre.`,
   'tipo-no-reconocido': ({ nombre }) =>
     `No reconozco el tipo "${nombre}". Revisa que esté bien escrito (en Java los tipos casi siempre empiezan con mayúscula, como "String").`,
+  'campo-no-declarado': ({ clase, nombre }) =>
+    `"${clase}" no tiene ningún valor llamado "${nombre}". Revisa que esté bien escrito y que no le falten los paréntesis "()" si en realidad es un método.`,
+  'miembro-no-declarado': ({ clase, nombre }) =>
+    `"${clase}" no tiene ningún método llamado "${nombre}()". Revisa que esté bien escrito.`,
+  'sin-sobrecarga-aplicable': ({ clase, nombre, argumentos }) =>
+    `Ningún "${nombre}(...)" de "${clase}" acepta los argumentos que le diste (${argumentos.join(', ')}). Revisa el tipo de cada uno.`,
   'conversion-con-perdida': ({ origen, destino }) =>
     `Estás guardando un valor de tipo "${origen}" en una variable "${destino}"; puedes perder información. Usa "(${destino})" si es a propósito.`,
   'tipos-incompatibles-en-asignacion': ({ origen, destino }) =>

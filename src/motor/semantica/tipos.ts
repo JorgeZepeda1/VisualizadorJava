@@ -89,8 +89,13 @@ function tipoDeAccesoMiembro(expresion: Extract<NodoExpresion, { tipo: 'acceso-m
  * una referencia ESTÁTICA a un nombre de clase reconocido (cuando NO hay una variable con ese
  * mismo nombre en alcance — una variable real siempre gana), o la clase del `Tipo` de la
  * expresión si es de referencia (`String`/`Scanner`/`Random`, las únicas con miembros de
- * instancia en este subconjunto: los primitivos no tienen métodos en Java). */
-function claseDelObjeto(objeto: NodoExpresion, alcance: Alcance): string | null {
+ * instancia en este subconjunto: los primitivos no tienen métodos en Java).
+ *
+ * Exportada desde el sub-lote 1-D2c: `atribucion.ts` la reusa tal cual para clasificar cada
+ * llamada/acceso a miembro contra el catálogo real (`catalogo-api.ts`) — MISMA función que ya
+ * resolvía el receptor para calcular el TIPO de la expresión (arriba), nunca una segunda
+ * implementación que podría divergir. */
+export function claseDelObjeto(objeto: NodoExpresion, alcance: Alcance): string | null {
   if (objeto.tipo === 'nombre') {
     const variable = alcance.buscar(objeto.nombre);
     if (variable === null && NOMBRES_DE_CLASE_RECONOCIDOS.has(objeto.nombre)) return objeto.nombre;

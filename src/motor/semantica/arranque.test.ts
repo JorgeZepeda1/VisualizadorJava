@@ -63,3 +63,42 @@ describe('verificarArranque', () => {
     expect(resultado?.textoLanzador).not.toContain('MainNoStatic');
   });
 });
+
+// Sub-lote 1-D2c (design.md §2.1: "main sin static, sin main, no public" -- el 3er caso, nunca
+// verificado, task_0b5b6e47). Verificado contra el JDK 17 real (carpeta temporal, borrada; 3
+// corridas repetidas para descartar un arranque en frío del propio JVM/locale de macOS, ver el
+// informe de la sesión): un "main" static pero SIN "public" da el mensaje EXACTO de "sin-main"
+// ("Error: no se ha encontrado el método principal..."), byte a byte -- NUNCA un mensaje propio de
+// "no public". Motivo real: el lanzador busca el método con `Class#getMethod("main", ...)`, que
+// SOLO encuentra métodos PÚBLICOS -- un "main" no público es, para el lanzador, indistinguible de
+// "no existe ningún main". `MARCOS_ARRANQUE.sinMain` (1.9) ya tiene el texto real -- no hace falta
+// regenerar ningún dato nuevo del oráculo, D2: nunca fabricar un mensaje que el JDK real no da.
+describe('verificarArranque — "static void main" SIN "public" (sub-lote 1-D2c, REQ-COMP-007/008)', () => {
+  it('"static void main" (con static, SIN public) da "sin-main" -- el lanzador nunca lo encuentra (no es público)', () => {
+    const clase = claseDe('public class SoloEstatico { static void main(String[] args) { } }');
+    const resultado = verificarArranque(clase);
+    expect(resultado).not.toBeNull();
+    expect(resultado?.codigo).toBe('sin-main');
+    expect(resultado?.nombreClase).toBe('SoloEstatico');
+  });
+
+  it('el texto del lanzador es BYTE A BYTE igual al de "sin ningún main" (verificado contra javac 17 real: mismo mensaje exacto, incluida la rareza del "\\n" literal)', () => {
+    const clase = claseDe('public class SoloEstatico { static void main(String[] args) { } }');
+    const resultado = verificarArranque(clase);
+    expect(resultado?.textoLanzador).toBe(
+      'Error: no se ha encontrado el método principal en la clase SoloEstatico, defina el método principal del siguiente modo:\\n   public static void main(String[] args)\\nde lo contrario, se deberá ampliar una clase de aplicación JavaFX javafx.application.Application\n',
+    );
+  });
+
+  it('triangulación: "void main" (SIN public NI static) también da "sin-main" (ningún modificador -> tampoco es público)', () => {
+    const clase = claseDe('class OtraMas { void main(String[] args) { } }');
+    const resultado = verificarArranque(clase);
+    expect(resultado?.codigo).toBe('sin-main');
+    expect(resultado?.nombreClase).toBe('OtraMas');
+  });
+
+  it('control: "public static void main" (el caso normal, con AMBOS modificadores) sigue dando null', () => {
+    const clase = claseDe('public class MiPrograma { public static void main(String[] args) { } }');
+    expect(verificarArranque(clase)).toBeNull();
+  });
+});

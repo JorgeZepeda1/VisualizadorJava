@@ -106,6 +106,22 @@ describe('resolverSobrecarga — printf/String.format: aridad variable (JLS 15.1
   });
 });
 
+// Sub-lote 1-D2c (hueco flageado por 1-D2b, task_c0cf2e6c): `buscarFirmas` (catalogo-api.ts) es
+// genero-agnóstica a propósito -- devuelve CAMPOS y MÉTODOS mezclados de "Clase.nombre". Sin
+// filtrar, un CAMPO de aridad 0 (como "Math.PI", parametros: []) "calzaría" como candidato
+// aplicable de una llamada de aridad 0 ("Math.PI()") en la fase 1 (ningún parámetro que revisar =
+// siempre aplicable) -- un falso positivo real. Verificado contra javac 17 real (carpeta temporal,
+// borrada): "MetodoComoCampo.java:3: error: cannot find symbol\n symbol: method PI()\n location: class Math".
+describe('resolverSobrecarga — un CAMPO nunca resuelve una llamada (JLS 15.12 solo mira métodos, sub-lote 1-D2c)', () => {
+  it('Math.PI() (el campo PI llamado como si fuera método, aridad 0) da null -- NUNCA "resuelve" al campo', () => {
+    expect(resolverSobrecarga('Math', 'PI', [])).toBeNull();
+  });
+
+  it('triangulación: Integer.MAX_VALUE() (mismo problema con otro campo de aridad 0) también da null', () => {
+    expect(resolverSobrecarga('Integer', 'MAX_VALUE', [])).toBeNull();
+  });
+});
+
 describe('resolverSobrecarga — la fase estricta SIGUE ganando cuando aplica (corrección 1-C2: no romper 1.8)', () => {
   it('Math.round(long) SIGUE resolviendo a round(float) -> int por la fase 1, nunca por boxing/varargs', () => {
     // Math no tiene NINGUNA sobrecarga varargs — si esto alguna vez resolviera distinto, sería

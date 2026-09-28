@@ -152,6 +152,63 @@ describe('analizarPrograma — arranque (tarea 1.15, REQ-COMP-007/008): "main" o
   });
 });
 
+// Sub-lote 1-D2c (design.md §2.1: "main sin static, sin main, no public" -- el 3er caso nunca se
+// había verificado, task_0b5b6e47). `NodoMain` gana `esPublico` con el MISMO mecanismo que ya
+// tiene `esEstatico` (1.15): `consumirModificadores` ya devolvía el conjunto REAL visto.
+describe('analizarPrograma — "esPublico" registrado en NodoMain (sub-lote 1-D2c, main sin public)', () => {
+  it('"static void main" (SIN "public") no lanza; NodoMain.esPublico es false', () => {
+    const programa = analizar('class C { static void main(String[] args) { } }');
+    expect(programa.clase.main).not.toBeNull();
+    expect(programa.clase.main?.esPublico).toBe(false);
+    expect(programa.clase.main?.esEstatico).toBe(true);
+  });
+
+  it('triangulación: "public static void main" (con "public") da esPublico true -- el caso normal sigue intacto', () => {
+    const programa = analizar('public class MiPrograma { public static void main(String[] args) { } }');
+    expect(programa.clase.main?.esPublico).toBe(true);
+  });
+
+  it('triangulación: "void main" (SIN ningún modificador) también da esPublico false', () => {
+    const programa = analizar('class C { void main(String[] args) { } }');
+    expect(programa.clase.main?.esPublico).toBe(false);
+  });
+});
+
+// Sub-lote 1-D2c: hallazgo al verificar las 4 firmas de "main" que pidió el orquestador contra el
+// JDK real -- "public static void main()" (SIN el parámetro String[]) SÍ compila con javac (es
+// solo un método público estático más, ajeno al lanzador: "no suitable method" nunca aplica, el
+// LANZADOR simplemente no lo encuentra como punto de entrada). Antes de esta corrección,
+// `pareceMain` se comprometía a interpretarlo como Main en cuanto veía "void main", y
+// `analizarParamMain` reventaba con un error de sintaxis genérico al no encontrar "String" — un
+// veredicto FALSO (javac compila limpio) que REQ-COMP-006 prohíbe (D2, nunca más estricto que
+// javac). Ahora `pareceMain` exige que lo que sigue a "(" empiece como un ParamMain real
+// ("final"/"String") antes de comprometerse -- si no, cae en el camino de "métodos propios"
+// (REQ-SUB-007), IGUAL que "public static int main(String[] args)" (retorno equivocado) ya caía.
+describe('analizarPrograma — "public static void main()" sin el parámetro String[] (sub-lote 1-D2c, verificado contra javac 17 real)', () => {
+  it('NO lanza ErrorDeCompilacion (antes: fallaba con "se esperaba String") -- javac SÍ compila esto limpio', () => {
+    expect(() => analizar('public class CaseC { public static void main() { } }')).not.toThrow();
+  });
+
+  it('se trata como un método propio NO-DISP (REQ-SUB-007), nunca como Main real -- clase.main sigue null', () => {
+    const programa = analizar('public class CaseC { public static void main() { } }');
+    expect(programa.clase.main).toBeNull();
+    expect(programa.clase.otrosMiembros).toHaveLength(1);
+  });
+
+  it('control: "public static int main(String[] args)" (retorno equivocado) YA caía como método propio antes de esta corrección -- sigue intacto', () => {
+    const programa = analizar('public class CaseB { public static int main(String[] args) { return 0; } }');
+    expect(programa.clase.main).toBeNull();
+    expect(programa.clase.otrosMiembros).toHaveLength(1);
+  });
+
+  it('control: las 3 formas reales de ParamMain siguen reconociéndose como Main de verdad (sin falsos negativos)', () => {
+    expect(analizar('class C { public static void main(String[] args) { } }').clase.main).not.toBeNull();
+    expect(analizar('class C { public static void main(String args[]) { } }').clase.main).not.toBeNull();
+    expect(analizar('class C { public static void main(String... args) { } }').clase.main).not.toBeNull();
+    expect(analizar('class C { public static void main(final String[] args) { } }').clase.main).not.toBeNull();
+  });
+});
+
 describe('analizarPrograma — declaraciones locales (tarea 1.2, DeclLocal)', () => {
   it('acepta una declaración de tipo primitivo con inicializador literal', () => {
     const fuente = 'class C { public static void main(String[] a) { int x = 5; } }';

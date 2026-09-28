@@ -12,6 +12,18 @@ import { FIRMAS_JDK, type FirmaMiembro } from '../biblioteca/datos/firmas-jdk.ge
 // ("Clase.<init>" para constructores). Deliberadamente NO incluye `Long.parseLong` ni
 // `Scanner.nextLong` (REQ-SUB-002 los excluye a propósito) ni ningún trascendente de `Math`.
 export const MIEMBROS_SOPORTADOS: ReadonlySet<string> = new Set([
+  // System.in/System.out/System.err — REQ-SUB-005 exige "un único new Scanner(System.in)"
+  // (System.in, campo real de System, genero:'campo') — sin esta entrada, la conexión de la
+  // biblioteca a la atribución (sub-lote 1-D2c) clasificaba "System.in" como NO-DISP y rompía el
+  // patrón MÁS básico del currículo. "out"/"err" se agregan por la misma razón — son el MISMO tipo
+  // de campo (java.io.PrintStream) y el propio print/println completo ya listado abajo los da por
+  // soportados; "System.out.println(...)" normalmente ni pasa por aquí (gramática dedicada,
+  // analizador-sintactico.ts) pero "System.err.println(...)" SÍ (esInicioDeImpresion solo reconoce
+  // "out", a propósito, pendiente heredado 2 de 1.8) y necesita el mismo campo real para no
+  // rechazar de más el receptor.
+  'System.in',
+  'System.out',
+  'System.err',
   // System.out/System.err (PrintStream) — print/println completos (tarea 1.8, pendiente heredado
   // 2); printf reconocido sintácticamente (semántica de formato: fuera de 1.8, biblioteca-java).
   'PrintStream.print',
@@ -86,9 +98,40 @@ export type ClasificacionMiembro = 'soportado' | 'existe-no-soportado' | 'no-exi
 
 /** Pura: clasifica `Clase.miembro` contra el catálogo real del JDK (1.9) y la superficie
  * soportada (REQ-SUB-005) — nunca sobre lo que "debería" existir, siempre sobre lo que el
- * oráculo observó de verdad. */
+ * oráculo observó de verdad. Genero-AGNÓSTICA a propósito (mezcla campos y métodos del mismo
+ * nombre): correcta para "¿existe ALGO llamado Clase.miembro?", pero quien resuelve una llamada
+ * real o un acceso de valor real necesita `clasificarMetodo`/`clasificarCampo` (abajo, sub-lote
+ * 1-D2c) — javac separa campos y métodos en espacios de nombres distintos (JLS 6.5.6). */
 export function clasificarMiembro(clase: string, nombre: string): ClasificacionMiembro {
   const existe = FIRMAS_JDK.some((f) => f.clase === clase && f.nombre === nombre);
+  if (!existe) return 'no-existe';
+  return MIEMBROS_SOPORTADOS.has(`${clase}.${nombre}`) ? 'soportado' : 'existe-no-soportado';
+}
+
+// Sub-lote 1-D2c: conecta `sobrecargas.ts`/`catalogo-api.ts` a `atribucion.ts` (hueco flageado por
+// 1-D2b, `task_c0cf2e6c`). Cada llamada a método y cada acceso a miembro de una clase de
+// biblioteca debe resolverse contra el catálogo real — pero javac resuelve MÉTODOS (JLS 6.5.6.2,
+// invocación con "(...)") y CAMPOS (JLS 6.5.6.1, valor sin paréntesis) en espacios de nombres
+// SEPARADOS: un campo del nombre correcto NUNCA cuenta como método aplicable, y viceversa.
+// Verificado contra javac 17 real (carpeta temporal, borrada tras verificar):
+//   `Math.PI()` (el CAMPO `Math.PI` llamado como si fuera método) -> "cannot find symbol: method PI()"
+//   `s.length` (el MÉTODO `String.length()` usado sin paréntesis, como si fuera campo) -> "cannot find symbol: variable length"
+// Sin este filtro por `genero`, `clasificarMiembro`/`buscarFirmas` (genero-agnósticos, por diseño
+// de 1.8/1.9) dirían "soportado" en ambos casos — un falso negativo real (D2: nunca sea más
+// permisivo que javac).
+
+/** Como `clasificarMiembro`, pero restringida a MÉTODOS y CONSTRUCTORES (JLS 15.12, invocación):
+ * un campo del mismo nombre nunca resuelve una llamada `objeto.nombre(...)`. */
+export function clasificarMetodo(clase: string, nombre: string): ClasificacionMiembro {
+  const existe = FIRMAS_JDK.some((f) => f.clase === clase && f.nombre === nombre && f.genero !== 'campo');
+  if (!existe) return 'no-existe';
+  return MIEMBROS_SOPORTADOS.has(`${clase}.${nombre}`) ? 'soportado' : 'existe-no-soportado';
+}
+
+/** Como `clasificarMiembro`, pero restringida a CAMPOS (JLS 6.5.6.1, acceso de valor sin
+ * paréntesis): un método del mismo nombre nunca resuelve un acceso `objeto.nombre` (sin llamar). */
+export function clasificarCampo(clase: string, nombre: string): ClasificacionMiembro {
+  const existe = FIRMAS_JDK.some((f) => f.clase === clase && f.nombre === nombre && f.genero === 'campo');
   if (!existe) return 'no-existe';
   return MIEMBROS_SOPORTADOS.has(`${clase}.${nombre}`) ? 'soportado' : 'existe-no-soportado';
 }

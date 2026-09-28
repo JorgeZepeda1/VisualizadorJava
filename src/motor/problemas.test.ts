@@ -17,7 +17,11 @@ import { atribuir } from './semantica/atribucion.ts';
 import { compilar } from './compilador.ts';
 import type { CodigoProblema } from './problemas.ts';
 
-function primerCodigoDeAtribucion(cuerpoDeMain: string): CodigoProblema | undefined {
+// Sub-lote 1-D2c: `ProblemaAtribucion.codigo` se ensanchó a `CodigoProblema | string` (el mismo
+// ensanchamiento que ya tenía `Problema.codigo`) para poder llevar códigos NO-DISP abiertos
+// (biblioteca no soportada, `semantica/atribucion.ts`) -- este índice solo compara contra los
+// `CodigoProblema` cerrados de siempre, así que el ensanchamiento del tipo no cambia su alcance.
+function primerCodigoDeAtribucion(cuerpoDeMain: string): CodigoProblema | string | undefined {
   const programa = analizarPrograma(tokenizar(`class C { public static void main(String[] a) { ${cuerpoDeMain} } }`));
   return atribuir(programa)[0]?.codigo;
 }

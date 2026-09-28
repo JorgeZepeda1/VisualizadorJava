@@ -209,16 +209,33 @@ function analizarClase(cursor: CursorDeTokens): NodoClase {
   return { tipo: 'clase', nombre: nombre.texto, main, otrosMiembros, rango: { inicio, fin: cierre.rango.fin } };
 }
 
+// Corrección obligatoria (sub-lote 1-D2c): verificado contra javac 17 real que
+// "public static void main()" (SIN el parámetro String[]) SÍ compila limpio -- javac lo trata
+// como un método público más, sin relación con el lanzador. Antes, `pareceMain` se comprometía a
+// interpretar CUALQUIER "{modificadores} void main (" como Main, y `analizarParamMain` (que
+// exige "final"/"String" a continuación) reventaba con un error de sintaxis genérico -- un
+// veredicto FALSO (REQ-COMP-006 prohíbe ser más estricto que javac). Ahora exige que lo que sigue
+// a "(" empiece como un ParamMain real antes de comprometerse; si no, `analizarClase` lo trata
+// como un método propio más (REQ-SUB-007, NO-DISP), el mismo camino que ya tomaba
+// "public static int main(String[] args)" (retorno equivocado, "int" en vez de "void").
 function pareceMain(cursor: CursorDeTokens): boolean {
   let i = 0;
   while (MODIFICADORES_MAIN.has(cursor.mirar(i).texto)) i += 1;
-  return cursor.mirar(i).texto === 'void' && cursor.mirar(i + 1).texto === 'main';
+  if (cursor.mirar(i).texto !== 'void' || cursor.mirar(i + 1).texto !== 'main' || cursor.mirar(i + 2).texto !== '(') {
+    return false;
+  }
+  const primerTokenDelParametro = cursor.mirar(i + 3).texto;
+  return primerTokenDelParametro === 'final' || primerTokenDelParametro === 'String';
 }
 
 function analizarMain(cursor: CursorDeTokens): NodoMain {
   const inicio = cursor.actual().rango.inicio;
   const modificadores = consumirModificadores(cursor, MODIFICADORES_MAIN, 'void');
   const esEstatico = modificadores.has('static');
+  // Sub-lote 1-D2c (design.md §2.1, task_0b5b6e47): mismo mecanismo que `esEstatico` de la tarea
+  // 1.15 -- `consumirModificadores` ya devuelve el conjunto REAL visto, nunca hace falta volver a
+  // recorrer los tokens.
+  const esPublico = modificadores.has('public');
   cursor.esperarTexto('void');
   cursor.esperarTexto('main');
   cursor.esperarTexto('(');
@@ -246,6 +263,7 @@ function analizarMain(cursor: CursorDeTokens): NodoMain {
     tipo: 'main',
     parametro,
     esEstatico,
+    esPublico,
     clausulaThrows,
     cuerpo,
     rango: { inicio, fin: cuerpo.rango.fin },

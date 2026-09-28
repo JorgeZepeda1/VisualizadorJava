@@ -4,7 +4,7 @@
 // JDK pero fuera de esta versión) y 'no-existe' (ni siquiera es un miembro real — typo del
 // alumno). Los 3 ejemplos de "existe pero no soportado" son los que da el propio RED de la tarea.
 import { describe, expect, it } from 'vitest';
-import { clasificarMiembro, MIEMBROS_SOPORTADOS } from './catalogo-api.ts';
+import { clasificarCampo, clasificarMetodo, clasificarMiembro, MIEMBROS_SOPORTADOS } from './catalogo-api.ts';
 import { FIRMAS_JDK } from '../biblioteca/datos/firmas-jdk.generado.ts';
 
 describe('clasificarMiembro — "existe pero no soportado" (REQ-SUB-007, los 3 ejemplos del RED de 1.8)', () => {
@@ -45,6 +45,45 @@ describe('clasificarMiembro — "no existe" (ni siquiera es un miembro real del 
 
   it('Long.parseLong existe en el JDK pero NUNCA está soportado aquí (REQ-SUB-002 lo excluye explícitamente)', () => {
     expect(clasificarMiembro('Long', 'parseLong')).toBe('existe-no-soportado');
+  });
+});
+
+// Sub-lote 1-D2c (hueco flageado por 1-D2b: `sobrecargas.ts`/`catalogo-api.ts` nunca se conectaron
+// a `atribucion.ts`). `clasificarMiembro` es genero-AGNÓSTICO (mezcla campos y métodos con el
+// mismo nombre) -- correcto para el uso de 1.8 (probar EXISTENCIA de "Clase.miembro" sin importar
+// cuál), pero INSUFICIENTE para atribución real: javac resuelve campos y métodos en espacios de
+// nombres SEPARADOS (JLS 6.5.6.1 vs 6.5.6.2) -- un método usado SIN paréntesis ("s.length", con
+// "length" solo definido como MÉTODO) da "cannot find symbol: variable length", y un CAMPO llamado
+// como si fuera método ("Math.PI()") da "cannot find symbol: method PI()", AMBOS "no existe" pese
+// a que `clasificarMiembro` (genero-agnóstico) diría "soportado" para los dos. Verificado contra
+// javac 17 real (carpeta temporal, borrada):
+//   javac: "CampoComoValor.java:4: error: cannot find symbol\n symbol: variable length\n location: variable s of type String"
+//   javac: "MetodoComoCampo.java:3: error: cannot find symbol\n symbol: method PI()\n location: class Math"
+describe('clasificarMetodo — genero-aware (JLS 6.5.6.2): un CAMPO no cuenta como método real', () => {
+  it('Math.PI existe como CAMPO pero NUNCA como método -- "no-existe" para una llamada Math.PI() (verificado: cannot find symbol: method PI())', () => {
+    expect(clasificarMetodo('Math', 'PI')).toBe('no-existe');
+  });
+
+  it('control: Math.round SÍ es un método real -- "soportado" sin cambios', () => {
+    expect(clasificarMetodo('Math', 'round')).toBe('soportado');
+  });
+
+  it('triangulación: Math.sin es un método real pero fuera de REQ-SUB-005 -- "existe-no-soportado"', () => {
+    expect(clasificarMetodo('Math', 'sin')).toBe('existe-no-soportado');
+  });
+});
+
+describe('clasificarCampo — genero-aware (JLS 6.5.6.1): un MÉTODO no cuenta como campo real', () => {
+  it('String.length existe como MÉTODO pero NUNCA como campo -- "no-existe" para un acceso s.length sin paréntesis (verificado: cannot find symbol: variable length)', () => {
+    expect(clasificarCampo('String', 'length')).toBe('no-existe');
+  });
+
+  it('control: Math.PI SÍ es un campo real -- "soportado" sin cambios', () => {
+    expect(clasificarCampo('Math', 'PI')).toBe('soportado');
+  });
+
+  it('triangulación: Integer.SIZE es un campo real pero fuera de REQ-SUB-005 -- "existe-no-soportado" (verificado: javac compila Integer.SIZE limpio)', () => {
+    expect(clasificarCampo('Integer', 'SIZE')).toBe('existe-no-soportado');
   });
 });
 

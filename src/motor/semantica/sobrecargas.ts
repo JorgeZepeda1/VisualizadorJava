@@ -110,7 +110,13 @@ export function resolverSobrecarga(
   nombre: string,
   tiposDeArgumentos: readonly Tipo[],
 ): FirmaMiembro | null {
-  const candidatos = buscarFirmas(clase, nombre);
+  // Corrección obligatoria (sub-lote 1-D2c, task_c0cf2e6c): `buscarFirmas` es genero-agnóstica
+  // (campos y métodos mezclados) -- JLS 15.12 (invocación de método) SOLO mira métodos y
+  // constructores, nunca campos. Sin este filtro, un campo de aridad 0 (p. ej. "Math.PI",
+  // parametros: []) "resolvía" una llamada "Math.PI()" en la fase 1 (0 parámetros que revisar =
+  // siempre aplicable) -- verificado contra javac 17 real: "Math.PI()" da "cannot find symbol:
+  // method PI()", nunca usa el campo.
+  const candidatos = buscarFirmas(clase, nombre).filter((firma) => firma.genero !== 'campo');
   return (
     resolverPorAridadFija(candidatos, tiposDeArgumentos, esConvertiblePorEnsanchamiento) ??
     resolverPorAridadFija(candidatos, tiposDeArgumentos, esConvertiblePorInvocacionLaxa) ??
