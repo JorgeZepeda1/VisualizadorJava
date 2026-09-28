@@ -45,7 +45,8 @@ Versión exacta esperada: Temurin `17.0.18+8`. `herramientas/oraculo/jdk.ts` abo
 # desarrollo:          npm run dev
 # build (con cuidado):  npm run build                     (regla 8 — no lo corras "por si acaso")
 # vista previa:        npm run preview
-# pruebas:             npm test                          (Vitest: proyectos motor + interfaz, --reporter=dot)
+# pruebas:             npm test                          (Vitest: proyectos motor + interfaz, --reporter=dot; SIN JDK)
+# pruebas del oráculo: npm run test:oraculo               (Vitest: proyecto oraculo, REQUIERE el JDK 17 real — tarea 0.18)
 # pruebas navegadores: npm run test:navegadores           (Vitest en Chromium/Firefox/WebKit — desde la tarea 2.22)
 # e2e:                 npm run e2e                        (Playwright ×3 motores — desde la tarea 0.15)
 # rendimiento:         npm run rendimiento                (Playwright, umbral holgado — desde el lote 3)

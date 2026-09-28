@@ -19,6 +19,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run --project motor --project interfaz --reporter=dot",
+    "test:oraculo": "vitest run --project oraculo --reporter=dot",
     "test:navegadores": "vitest run --project navegadores --reporter=dot",
     "e2e": "playwright test --reporter=dot",
     "rendimiento": "playwright test -c pruebas/rendimiento --reporter=dot",

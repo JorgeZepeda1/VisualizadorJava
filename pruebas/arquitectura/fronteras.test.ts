@@ -15,7 +15,9 @@ async function lintarComoSiFuera(rutaVirtual: string, codigo: string) {
   return resultado;
 }
 
-describe('guardas de capa (tarea 0.2, ADR 001)', () => {
+// ESLint programático con typescript-eslint tarda varios segundos en frío y bajo carga (CI con 2–4
+// núcleos o muchos workers en paralelo): 30 s evita falsos rojos sin ocultar un cuelgue real.
+describe('guardas de capa (tarea 0.2, ADR 001)', { timeout: 30_000 }, () => {
   it('motor no puede tocar el DOM (global "document" prohibido)', async () => {
     const resultado = await lintarComoSiFuera(
       'src/motor/__fixture__/toca-dom.ts',

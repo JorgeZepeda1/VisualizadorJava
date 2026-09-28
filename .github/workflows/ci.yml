@@ -12,6 +12,10 @@ name: CI
 #   - `test:navegadores` (proyecto Vitest en Chromium/Firefox/WebKit reales) lo crea la tarea 2.22.
 #   - `rendimiento` (Playwright, umbral holgado) lo crea la tarea 3.8.
 #   - `e2e` YA es real desde la tarea 0.15: rebanada vertical `u3-hola-mundo` en los tres motores.
+#   - Tarea 0.18 (tras el primer CI remoto): este job corre SIN JDK (ADR 011 punto 4) — `npm test`
+#     (proyectos Vitest `motor`+`interfaz`) YA NO incluye `herramientas/oraculo/**` (proyecto
+#     `oraculo` aparte, vitest.config.ts); esas pruebas, que SIEMPRE requieren el JDK real, corren
+#     solo en `oraculo.yml` vía `npm run test:oraculo`.
 
 on:
   push:

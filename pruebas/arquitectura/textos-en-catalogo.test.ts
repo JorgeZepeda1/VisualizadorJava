@@ -20,7 +20,9 @@ function violacionesDeTextos(resultado: ESLint.LintResult) {
   return resultado.messages.filter((mensaje) => mensaje.ruleId === 'no-restricted-syntax');
 }
 
-describe('textos fuera del catálogo es-MX (tarea 0.17, ADR 015)', () => {
+// ESLint programático con typescript-eslint tarda varios segundos en frío y bajo carga (CI con 2–4
+// núcleos o muchos workers en paralelo): 30 s evita falsos rojos sin ocultar un cuelgue real.
+describe('textos fuera del catálogo es-MX (tarea 0.17, ADR 015)', { timeout: 30_000 }, () => {
   it('texto visible literal en JSX (con letras) dispara la regla', async () => {
     const resultado = await lintarComoSiFuera(
       'src/interfaz/__fixture__/texto-literal.tsx',

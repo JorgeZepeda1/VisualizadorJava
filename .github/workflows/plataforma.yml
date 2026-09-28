@@ -2,9 +2,16 @@ name: Plataforma
 
 # Medición AUTORITATIVA de Math.pow vs StrictMath.pow en x86_64 real (ADR 009, design.md §8) —
 # HotSpot podría escoger una implementación intrínseca distinta de pow() ahí frente a la máquina
-# de referencia (arm64, donde coinciden 26 336/26 336 pares). NUNCA bloquea nada
-# (`continue-on-error` a nivel de job): la verdad del motor sigue siendo fdlibm (D3) pase lo que
-# pase aquí — esto documenta el riesgo real medido, nunca cambia el intérprete.
+# de referencia (arm64, donde coinciden 26 336/26 336 pares). La verdad del motor sigue siendo
+# fdlibm (D3) pase lo que pase aquí — esto documenta el riesgo real medido, nunca cambia el
+# intérprete. Este flujo no corre en push/PR (solo semanal y manual): no bloquea ningún merge.
+#
+# Tarea 0.18 (tras el primer CI remoto): `continue-on-error` A NIVEL DE JOB ocultó un error real de
+# la herramienta (`jdk.ts` sin soporte de `.exe`, `windows-latest` fallaba en silencio). Se quita
+# aquí — un error de la herramienta (JDK no encontrado, `MedirPow.java` no compila…) SÍ falla el
+# trabajo ahora. Lo que NUNCA falla el trabajo es una diferencia real Math.pow ≠ StrictMath.pow: es
+# un dato esperado de ADR 009, no un bug — `medir-plataforma.ts` la reporta con una anotación
+# `::warning::` y en el resumen del trabajo ($GITHUB_STEP_SUMMARY), nunca con `exitCode != 0`.
 #
 # "CI al día con lo que existe" (orquestador, 2026-09-25 — tasks.md → Convenciones): al cerrar el
 # lote 0 (sub-lote 0-C), `corpus/datos/pow/pares.csv` (el conjunto completo, ≥26 000 pares, ADR 010)
@@ -25,7 +32,6 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
-    continue-on-error: true
     steps:
       - name: Descargar el repositorio
         uses: actions/checkout@v7

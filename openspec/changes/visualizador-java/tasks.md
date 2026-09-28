@@ -115,6 +115,12 @@
 - REFACTOR: ninguno relevante.
 - Verif: `pruebas/arquitectura/textos-en-catalogo` + `npm run lint` · Nota: la tarea 5.11 conserva la auditoría completa de textos; esta solo pone la guarda desde el inicio.
 
+**0.18 CI sin JDK y oráculo portable a Windows** (agregada por el orquestador tras el primer CI remoto) · depende: 0.5, 0.8–0.10 — ✅ hecha (2026-09-25)
+- Hallazgo: en el primer push (`eaf9fa1`), `ci.yml` (Ubuntu) falló porque `npm test` incluye las pruebas de `herramientas/oraculo/**`, que necesitan el JDK, cuando el ADR 011 fija que el CI por commit corre SIN JDK contra los goldens; y `plataforma.yml` falló en `windows-latest` porque `jdk.ts` busca `bin/java` y `bin/javac` sin `.exe`. Esa falla la ocultó `continue-on-error`.
+- RED `herramientas/oraculo/jdk.test.ts`: `localizarJdk` con plataforma `win32` inyectada, sobre un directorio temporal con `bin/java.exe` y `bin/javac.exe`, lo encuentra; hoy falla.
+- GREEN: `jdk.ts` resuelve `java`/`javac` con `.exe` en Windows (plataforma inyectable; por omisión `process.platform`). Proyecto de Vitest `oraculo` aparte: `npm test` corre solo `motor` + `interfaz` (sin JDK) y `npm run test:oraculo` corre las pruebas del oráculo (falla fuerte si falta el JDK). `oraculo.yml` corre `test:oraculo` antes de `oraculo:verificar`. `plataforma.yml` sin `continue-on-error`: un error de la herramienta falla el trabajo, y una diferencia entre `Math.pow` y `StrictMath.pow` se reporta como anotación `::warning::` y en el resumen del trabajo (es un dato para el ADR 009, no un fallo). `CLAUDE.md` documenta los dos comandos.
+- Verif: `npm test`, `npm run test:oraculo`, `npm run lint`, `npm run tipos`; en remoto: CI, Oráculo y Plataforma (Ubuntu y Windows) en verde.
+
 **Criterio de salida:** `npm run ci` verde sobre lo existente; `oraculo.yml`/`plataforma.yml` verdes; `u3-hola-mundo` verde en diferencial + E2E×3 motores; C12 cumplido de forma inicial; `sdd-init` refrescado.
 **Cierre:** `sdd-verify` del lote 0 → commit (`feat(cimientos): ...`) con confirmación del PO → actualizar `state.yaml`.
 
