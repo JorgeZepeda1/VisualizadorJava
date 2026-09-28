@@ -121,6 +121,13 @@
 - GREEN: `jdk.ts` resuelve `java`/`javac` con `.exe` en Windows (plataforma inyectable; por omisión `process.platform`). Proyecto de Vitest `oraculo` aparte: `npm test` corre solo `motor` + `interfaz` (sin JDK) y `npm run test:oraculo` corre las pruebas del oráculo (falla fuerte si falta el JDK). `oraculo.yml` corre `test:oraculo` antes de `oraculo:verificar`. `plataforma.yml` sin `continue-on-error`: un error de la herramienta falla el trabajo, y una diferencia entre `Math.pow` y `StrictMath.pow` se reporta como anotación `::warning::` y en el resumen del trabajo (es un dato para el ADR 009, no un fallo). `CLAUDE.md` documenta los dos comandos.
 - Verif: `npm test`, `npm run test:oraculo`, `npm run lint`, `npm run tipos`; en remoto: CI, Oráculo y Plataforma (Ubuntu y Windows) en verde.
 
+**0.19 El editor no pierde teclas con ecos atrasados de `onCambio`** (agregada por el orquestador: bug de producto que destapó el E2E de Firefox en el CI del PR #1) · depende: 0.14 — ✅ hecha (2026-09-28)
+- Hallazgo: con la CPU saturada, Firefox perdía la última tecla (22 de 30 corridas bajo carga; sin carga, 40/40). El `useEffect([valor])` de `EditorJava` reemplazaba el documento completo y un eco atrasado de `onCambio` pisaba lo que el alumno ya había tecleado.
+- RED `src/interfaz/editor/EditorJava.test.tsx`: "un eco atrasado… no borra lo que se tecleó después" falla con `expected 'abc' to be 'abcd'`.
+- GREEN: cola ordenada de textos emitidos pendientes (`emitidosPendientesRef`): un eco poda la cola sin tocar el documento; un cambio externo vacía la cola y reemplaza el documento (contrato controlado de ADR 013 intacto). 3 casos de triangulación, cada uno mata un mutante.
+- Diagnóstico en CI: `trace: 'retain-on-failure'` y `screenshot: 'only-on-failure'`; `ci.yml` sube `test-results/` y `playwright-report/` con `actions/upload-artifact@v7` cuando falla.
+- Verif: `npm test`, `npm run e2e` (Firefox bajo carga ×30: 60/60) · Seguimiento: sin `worker.onerror` la interfaz quedaría en "compilando" si el trabajador lanza una excepción: lo cubre el perro guardián del lote 3 (ADR 007).
+
 **Criterio de salida:** `npm run ci` verde sobre lo existente; `oraculo.yml`/`plataforma.yml` verdes; `u3-hola-mundo` verde en diferencial + E2E×3 motores; C12 cumplido de forma inicial; `sdd-init` refrescado.
 **Cierre:** `sdd-verify` del lote 0 → commit (`feat(cimientos): ...`) con confirmación del PO → actualizar `state.yaml`.
 

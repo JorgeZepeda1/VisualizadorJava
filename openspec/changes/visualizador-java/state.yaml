@@ -23,7 +23,7 @@ phases:
   design: completed     # design.md + docs/adr/001..016; hallazgos verificados por el orquestador
   conciliacion: completed   # 73 requisitos, 96 escenarios; C4 y C7 reformulados (verificado)
   tasks: completed      # tasks.md: 7 lotes, 101 tareas, 17–24 sesiones; trazabilidad 73/73 y C1–C20 (verificado)
-  apply: in_progress    # LOTE 0 CERRADO (0.1–0.18; sdd-verify PASS WITH WARNINGS + adenda; 0.18 corrigió el primer CI remoto); LOTE 1: 1-A HECHO (1.1–1.4; 199 pruebas + 53 del oráculo); pendientes 1-B (1.5, 1.6, 1.17), 1-C (1.9, 1.7, 1.8, 1.10, 1.11) y 1-D (1.12–1.16)
+  apply: in_progress    # LOTE 0 CERRADO (0.1–0.19; sdd-verify PASS WITH WARNINGS + adenda; 0.18 y 0.19 corrigieron lo que destapó el CI remoto); LOTE 1: 1-A HECHO (1.1–1.4; 199 pruebas + 53 del oráculo); pendientes 1-B (1.5, 1.6, 1.17), 1-C (1.9, 1.7, 1.8, 1.10, 1.11) y 1-D (1.12–1.16)
   verify: pending
   archive: pending
 updated: 2026-09-25
