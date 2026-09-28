@@ -14,7 +14,11 @@ function analizar(fuente: string) {
 // Tarea 1.8: `NodoImpresion.argumento` ahora es `NodoExpresion` general (antes solo
 // `NodoLiteralCadena`, 0.12) — estas pruebas de la rebanada vertical siguen construyendo
 // únicamente literales-cadena, así que basta angostar aquí en vez de repetir el chequeo.
-function valorLiteralCadena(argumento: NodoExpresion): string {
+function valorLiteralCadena(argumento: NodoExpresion | null): string {
+  // Corrección obligatoria (sub-lote 1-C2): `argumento` ahora admite `null` (println() vacío) —
+  // ninguna de las pruebas que usan este helper pasa ese caso, así que null sigue siendo un fallo
+  // real y explícito (D2), nunca un valor inventado.
+  if (argumento === null) throw new Error('se esperaba un literal-cadena, no null (¿"println()" vacío?)');
   if (argumento.tipo !== 'literal-cadena') throw new Error(`se esperaba un literal-cadena, no "${argumento.tipo}"`);
   return argumento.valor;
 }
@@ -217,13 +221,38 @@ describe('analizarImpresion — generalización a print/println con cualquier ex
     const fuente = 'class C { public static void main(String[] a) { int n = 1; System.out.println(n + 1); } }';
     const programa = analizar(fuente);
     const [, sentencia] = programa.clase.main.cuerpo.elementos as [unknown, NodoImpresion];
-    expect(sentencia.argumento.tipo).toBe('binaria');
+    expect(sentencia.argumento).not.toBeNull();
+    expect(sentencia.argumento?.tipo).toBe('binaria');
   });
 
-  it('control: "println()" sin argumentos sigue sin aceptarse igual que antes (println vacío no es 0.12/1.8, queda NO-DISP más adelante si hace falta)', () => {
-    // No se pidió en ningún RED de 1.5/1.6/1.8 — se documenta el comportamiento actual (falla al
-    // parsear como sentencia de impresión) en vez de fingir soporte no verificado (D2).
-    expect(() => analizar('class C { public static void main(String[] a) { System.out.println(); } }')).toThrow(
+  // Corrección obligatoria (sub-lote 1-C2, orquestador): "System.out.println()" SIN argumentos
+  // SÍ es Java real (PrintStream.println() existe, catálogo del oráculo 1.9) y un programa real
+  // del curso lo usa (corpus/curso/u6-ciclos-anidados-tabla.java, verificado que compila contra
+  // javac 17). Reemplaza el control anterior (que afirmaba lo contrario) — approval test que
+  // documentaba el hueco, ahora cerrado.
+  it('"System.out.println()" SIN argumentos ahora SÍ se reconoce: argumento queda en null', () => {
+    const [sentencia] = primeraSentenciaDe('System.out.println();') as [NodoImpresion];
+    expect(sentencia).toMatchObject({ tipo: 'impresion', metodo: 'println', argumento: null });
+  });
+
+  it('triangulación: "println()" vacío dentro del programa real de u6-ciclos-anidados-tabla.java', () => {
+    const fuente = [
+      'public class CiclosAnidadosTabla {',
+      '    public static void main(String[] args) {',
+      '        for (int fila = 1; fila <= 3; fila++) {',
+      '            for (int columna = 1; columna <= 3; columna++) {',
+      '                System.out.print(fila * columna + " ");',
+      '            }',
+      '            System.out.println();',
+      '        }',
+      '    }',
+      '}',
+    ].join('\n');
+    expect(() => analizar(fuente)).not.toThrow();
+  });
+
+  it('control: "System.out.print()" (sin la "l") SIGUE sin aceptar paréntesis vacíos: verificado contra javac 17 real que print() sin argumentos no existe ("no suitable method found for print(no arguments)") — a diferencia de println()', () => {
+    expect(() => analizar('class C { public static void main(String[] a) { System.out.print(); } }')).toThrow(
       ErrorDeCompilacion,
     );
   });

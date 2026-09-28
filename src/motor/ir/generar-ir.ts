@@ -23,8 +23,13 @@ function generarSentenciaIr(elemento: NodoElementoBloque): SentenciaIr {
   // IR real todavía. Generalizar la EJECUCIÓN (resolver la sobrecarga real de `print`, evaluar
   // una expresión general) es del lote 2 (2.16+), igual que el resto de `Sentencia` desde 1.5:
   // el mismo `throw` honesto de siempre, nunca un resultado a medias o silenciosamente incorrecto.
-  if (elemento.tipo === 'impresion' && elemento.metodo === 'println' && elemento.argumento.tipo === 'literal-cadena') {
-    return { tipo: 'impresion', texto: elemento.argumento.valor };
+  if (elemento.tipo === 'impresion' && elemento.metodo === 'println') {
+    // Corrección obligatoria (sub-lote 1-C2): "println()" sin argumentos SÍ tiene IR real — el
+    // PrintStream real solo emite el separador de línea, así que su texto es la cadena vacía
+    // (design.md §4.8: "println agrega \n"; ese \n lo añade la ejecución real, lote 2, igual que
+    // para println("literal") — aquí solo el texto ya resuelto).
+    if (elemento.argumento === null) return { tipo: 'impresion', texto: '' };
+    if (elemento.argumento.tipo === 'literal-cadena') return { tipo: 'impresion', texto: elemento.argumento.valor };
   }
   throw new Error(`la ejecución de "${elemento.tipo}" llega en el lote 2 (tareas 1.5/2.16)`);
 }

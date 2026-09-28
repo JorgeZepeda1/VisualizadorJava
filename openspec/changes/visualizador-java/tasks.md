@@ -190,13 +190,13 @@
 - GREEN: `herramientas/oraculo/generar-datos.ts` + `src/motor/biblioteca/datos/*.generado.ts` (cabecera "no editar").
 - Verif: `herramientas/oraculo/generar-datos`
 
-**1.10 Constantes (JLS 15.29)** — REQ-COMP-001(parcial) · depende: 1.8
+**1.10 Constantes (JLS 15.29)** — REQ-COMP-001(parcial) · depende: 1.8 — ✅ hecha (2026-09-28)
 - RED `constantes.test.ts`: plegado de literales/operadores/casts, `"ho"+"la"=="hola"` → `true` (internado), división entera entre cero NO es constante, `Integer.MAX_VALUE`/`Math.PI`; falla.
 - GREEN: `semantica/constantes.ts` (stub numérico hasta el lote 2; el TODO se retira explícitamente al cerrar 2.4).
 - REFACTOR: comparte el plegado con 1.12/1.13.
 - Verif: `motor/semantica/constantes`
 
-**1.11 Errores de tipo y símbolo en español** — REQ-COMP-001(cierre) · depende: 1.7, 1.10
+**1.11 Errores de tipo y símbolo en español** — REQ-COMP-001(cierre) · depende: 1.7, 1.10 — ✅ hecha (2026-09-28; alcance real documentado en engram — ver reporte de la sesión)
 - RED `problemas.test.ts`: `Math.round(double)` a `int`, condición de `if` no booleana, `String`/numérico incompatibles en `==`, los 37 casos del subconjunto en el catálogo `03`; falla.
 - GREEN: `problemas.ts` (`Problema`, `CodigoProblema`) + `src/textos/es-MX/problemas.ts`.
 - REFACTOR: un `Problema` por `CodigoProblema`, sin strings sueltos.

@@ -56,3 +56,13 @@ describe('generarIr — print/println generalizados (1.8): solo println(literal-
     expect(ir.sentencias).toEqual([{ tipo: 'impresion', texto: 'sigue igual' }]);
   });
 });
+
+// Corrección obligatoria (sub-lote 1-C2): "println()" sin argumentos SÍ tiene IR real desde ahora
+// (a diferencia de print/println con variable, que siguen honestamente sin IR hasta el lote 2) —
+// PrintStream.println() real solo emite el salto de línea, así que su texto es la cadena vacía.
+describe('generarIr — "println()" sin argumentos (corrección obligatoria, sub-lote 1-C2)', () => {
+  it('"System.out.println();" baja a una ImpresionIr con texto vacío', () => {
+    const ir = irDe('class C { public static void main(String[] a) { System.out.println(); } }');
+    expect(ir.sentencias).toEqual([{ tipo: 'impresion', texto: '' }]);
+  });
+});

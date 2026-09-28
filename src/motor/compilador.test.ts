@@ -40,6 +40,23 @@ describe('compilar', () => {
     expect(resultado.adicionales).toBe(0);
   });
 
+  // Tarea 1.11 (cierre de CodigoProblema): el MISMO error de arriba, ahora con su código real —
+  // "falta-punto-y-coma" en vez del genérico "error-no-clasificado" de siempre.
+  it('err01 de exploracion/03: el Problema de arriba trae el código real "falta-punto-y-coma"', () => {
+    const fuente = 'class C { public static void main(String[] a) { int x = 5 } }';
+    const resultado = compilar(fuente);
+    expect(resultado.ok).toBe(false);
+    if (resultado.ok) throw new Error('se esperaba ok:false');
+    expect(resultado.problema.codigo).toBe('falta-punto-y-coma');
+  });
+
+  it('err23/err32 de exploracion/03: paréntesis de cierre faltante trae el código "falta-parentesis-cierre"', () => {
+    const resultado = compilar('class C { public static void main(String[] a) { System.out.println("x"; } }');
+    expect(resultado.ok).toBe(false);
+    if (resultado.ok) throw new Error('se esperaba ok:false');
+    expect(resultado.problema.codigo).toBe('falta-parentesis-cierre');
+  });
+
   it('nunca lanza: hasta un carácter no reconocido se convierte en Problema, nunca en excepción (D2)', () => {
     expect(() => compilar('#$%')).not.toThrow();
     const resultado = compilar('#$%');
@@ -102,5 +119,46 @@ describe('compilar — NO-DISP anidado dentro del argumento de println/print (1.
     expect(resultado.ok).toBe(false);
     if (resultado.ok) throw new Error('se esperaba ok:false');
     expect(resultado.problema.categoria).toBe('no-disponible');
+  });
+});
+
+// Corrección obligatoria (sub-lote 1-C2, orquestador): "System.out.println()" sin argumentos es
+// Java real (PrintStream.println() existe) — antes se rechazaba como error de sintaxis. Verificado
+// contra javac 17 real que compila limpio.
+describe('compilar — "println()" sin argumentos (corrección obligatoria, sub-lote 1-C2)', () => {
+  function programaCon(declaracion: string): string {
+    return `class C { public static void main(String[] a) { ${declaracion} } }`;
+  }
+
+  it('un programa mínimo con "println()" vacío compila y produce la IR real (texto vacío)', () => {
+    const resultado = compilar(programaCon('System.out.println();'));
+    expect(resultado.ok).toBe(true);
+    if (!resultado.ok) throw new Error('se esperaba ok:true');
+    expect(resultado.programa.ir.sentencias).toEqual([{ tipo: 'impresion', texto: '' }]);
+  });
+
+  it('el programa real de corpus/curso/u6-ciclos-anidados-tabla.java: "println()" ya NO se detecta como no-disponible (el único hueco restante es la IR de "for", del lote 2, no println)', () => {
+    const fuente = [
+      'public class CiclosAnidadosTabla {',
+      '    public static void main(String[] args) {',
+      '        for (int fila = 1; fila <= 3; fila++) {',
+      '            for (int columna = 1; columna <= 3; columna++) {',
+      '                System.out.print(fila * columna + " ");',
+      '            }',
+      '            System.out.println();',
+      '        }',
+      '    }',
+      '}',
+    ].join('\n');
+    const resultado = compilar(fuente);
+    // Antes de esta corrección, "println()" producía un error de SINTAXIS (categoría
+    // 'error-compilacion', ni siquiera llegaba a clasificarse). Hoy el análisis léxico+sintáctico+
+    // NO-DISP pasa limpio: lo único que falta es la IR real de "for" (lote 2, tarea 2.16) — un
+    // gap YA documentado y ajeno a esta corrección, nunca 'no-disponible' (println no es NO-DISP).
+    expect(resultado.ok).toBe(false);
+    if (resultado.ok) throw new Error('se esperaba ok:false (falta la IR de "for", lote 2)');
+    // 'error-compilacion' (genérico, IR de "for" no implementada) y NUNCA 'no-disponible' (eso
+    // significaría que println() SIGUE sin reconocerse, que es justo lo que esta corrección arregla).
+    expect(resultado.problema.categoria).toBe('error-compilacion');
   });
 });

@@ -9,7 +9,7 @@ import { analizarPrograma } from './sintaxis/analizador-sintactico.ts';
 import { recolectarNoSoportados, type NoSoportadoColectado } from './sintaxis/no-soportado.ts';
 import { generarIr } from './ir/generar-ir.ts';
 import type { ProgramaCompilado } from './ir/ir.ts';
-import type { Problema } from './problemas.ts';
+import type { CodigoProblema, Problema } from './problemas.ts';
 import { ErrorDeCompilacion } from './error-de-compilacion.ts';
 import { TablaDeLineas } from './fuente/tabla-de-lineas.ts';
 import type { Rango } from './fuente/rango.ts';
@@ -89,9 +89,26 @@ function construirProblema(error: unknown, fuente: string): Problema {
   const mensaje = error instanceof Error ? error.message : String(error);
   return {
     categoria: 'error-compilacion',
-    codigo: 'error-no-clasificado',
+    codigo: codigoDeSintaxis(error),
     rango,
     linea,
     datos: { mensaje },
   };
+}
+
+// Tarea 1.11 (cierre de CodigoProblema): `CursorDeTokens.esperarTexto` ya guarda el texto exacto
+// que esperaba (";", ")"…) en `ErrorDeCompilacion.esperado` — aquí solo se traduce a un código real
+// del catálogo, sin tener que tocar cada punto donde el analizador llama `esperarTexto`. Lo que no
+// mapea a un caso conocido (`esperarTipo`, errores léxicos, EOF inesperado…) sigue con el
+// catch-all honesto de siempre — nunca un código inventado para un caso no verificado (D2).
+const CODIGOS_POR_TEXTO_ESPERADO: Readonly<Record<string, CodigoProblema>> = {
+  ';': 'falta-punto-y-coma',
+  ')': 'falta-parentesis-cierre',
+};
+
+function codigoDeSintaxis(error: unknown): CodigoProblema {
+  if (error instanceof ErrorDeCompilacion && error.esperado !== undefined) {
+    return CODIGOS_POR_TEXTO_ESPERADO[error.esperado] ?? 'error-no-clasificado';
+  }
+  return 'error-no-clasificado';
 }

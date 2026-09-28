@@ -1,9 +1,17 @@
 // Conversiones aplicables en la resolución de sobrecargas (tarea 1.8, JLS 15.12.2.2 "invocación
-// estricta" + JLS 5.1.2 ensanchamiento primitivo/de referencia). Nuestro subconjunto NUNCA
-// produce un valor envuelto (`Integer`/`Double`…: fuera de alcance, REQ-SUB-007) ni pasa por
-// varargs salvo `printf`/`String.format` (fuera de la resolución de 1.8 — biblioteca-java decide
-// su semántica de formato aparte): por eso la fase 1 (identidad + ensanchamiento, SIN boxing) es
-// la ÚNICA fase que este subconjunto necesita — ver engram, "Learned" de esta sesión.
+// estricta" + JLS 5.1.2 ensanchamiento primitivo/de referencia). La fase 1 (identidad +
+// ensanchamiento, SIN boxing) basta para TODO el catálogo REQ-SUB-005 de aridad fija (Math.*,
+// print/println…), que nunca produce un valor envuelto.
+//
+// Corrección obligatoria (sub-lote 1-C2, orquestador): `printf`/`String.format` SÍ son varargs
+// reales (`PrintStream.printf(String, Object...)`, `String.format(String, Object...)`, catálogo
+// real del oráculo 1.9) y 4 programas del corpus los usan con argumentos literales — la fase 1
+// nunca los resuelve (ningún tipo nuestro ensancha a `Object[]` sin boxing). Esta fase 2
+// ("invocación laxa", JLS 15.12.2.3) agrega boxing primitivo — restringido a los 5 envoltorios que
+// este subconjunto puede producir como argumento (`int/double/char/boolean/long`; nunca unboxing,
+// nunca un envoltorio para `String`/`Scanner`/`Random`, que ya son de referencia). `sobrecargas.ts`
+// la usa tanto para la fase 2 de aridad FIJA como, empaquetando cada argumento sobrante, para la
+// fase 3 de aridad VARIABLE (varargs) — ver su cabecera.
 import type { Tipo } from './tipos.ts';
 
 // JLS 5.1.2: pares de ensanchamiento primitivo DIRECTOS relevantes para los tipos alcanzables de
@@ -43,6 +51,32 @@ export function esConvertiblePorEnsanchamiento(origen: Tipo, destinoReflejado: s
   }
   // Único ensanchamiento de referencia real y alcanzable en este subconjunto: String -> Object
   // (JLS 5.1.5, "widening reference conversion"). Nunca boxing (int/char/… -> Object): eso
-  // requeriría la fase 2 (loose invocation), que este subconjunto no necesita — ver cabecera.
+  // requiere la fase 2 (invocación laxa) — ver `esConvertiblePorInvocacionLaxa` abajo.
   return origen === 'String' && destinoReflejado === 'java.lang.Object';
+}
+
+// JLS 5.1.7 "boxing conversion": el envoltorio real de cada primitivo que este subconjunto puede
+// producir como argumento. `String`/`Scanner`/`Random` no aparecen aquí — ya son de referencia
+// (los cubre `esConvertiblePorEnsanchamiento`), y este subconjunto nunca tiene un valor de tipo
+// envuelto que DESEMPAQUETAR (unboxing, la otra mitad de la fase 2 — REQ-SUB-007 lo deja fuera).
+const ENVOLTORIOS: Readonly<Partial<Record<Tipo, string>>> = {
+  int: 'java.lang.Integer',
+  double: 'java.lang.Double',
+  char: 'java.lang.Character',
+  boolean: 'java.lang.Boolean',
+  long: 'java.lang.Long',
+};
+
+/**
+ * ¿Un valor de `origen` es aplicable donde se pide `destinoReflejado` en la fase 2 de JLS
+ * 15.12.2.3 ("invocación laxa")? Incluye TODO lo de la fase estricta (`esConvertiblePorEnsanchamiento`)
+ * más boxing (JLS 5.1.7) opcionalmente seguido de ensanchamiento de referencia (JLS 5.3: p. ej.
+ * `int` -> `Integer` -> `Object`). Nunca unboxing — ver cabecera.
+ */
+export function esConvertiblePorInvocacionLaxa(origen: Tipo, destinoReflejado: string): boolean {
+  if (esConvertiblePorEnsanchamiento(origen, destinoReflejado)) return true;
+  const envoltorio = ENVOLTORIOS[origen];
+  if (envoltorio === undefined) return false;
+  if (envoltorio === destinoReflejado) return true;
+  return destinoReflejado === 'java.lang.Object';
 }

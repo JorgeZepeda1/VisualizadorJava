@@ -42,6 +42,7 @@ export class CursorDeTokens {
       throw new ErrorDeCompilacion(
         `se esperaba "${texto}" y se encontró "${token.texto || '<fin de archivo>'}"`,
         token.rango,
+        texto, // tarea 1.11: compilador.ts lo usa para elegir un CodigoProblema real
       );
     }
     return this.avanzar();

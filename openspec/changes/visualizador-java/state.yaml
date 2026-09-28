@@ -23,7 +23,7 @@ phases:
   design: completed     # design.md + docs/adr/001..016; hallazgos verificados por el orquestador
   conciliacion: completed   # 73 requisitos, 96 escenarios; C4 y C7 reformulados (verificado)
   tasks: completed      # tasks.md: 7 lotes, 101 tareas, 17–24 sesiones; trazabilidad 73/73 y C1–C20 (verificado)
-  apply: in_progress    # LOTE 0 CERRADO (0.1–0.19; sdd-verify PASS WITH WARNINGS + adenda; 0.18 y 0.19 corrigieron lo que destapó el CI remoto); LOTE 1: 1-A HECHO (1.1–1.4; en PR #1); 1-B HECHO (1.5, 1.6, 1.17 + correcciones de 08/09, \u en comentarios y ->; rama local feat/lote-1b-sentencias, fuera del PR); 1-C1 HECHO (1.9, 1.7, 1.8; 452 pruebas + 70 del oráculo); pendientes 1-C2 (1.10, 1.11 + println() vacío y aridad variable de printf) y 1-D (1.12–1.16)
+  apply: in_progress    # LOTE 0 CERRADO (0.1–0.19; sdd-verify PASS WITH WARNINGS + adenda; 0.18 y 0.19 corrigieron lo que destapó el CI remoto); LOTE 1: 1-A HECHO (1.1–1.4; en PR #1); 1-B HECHO (1.5, 1.6, 1.17 + correcciones de 08/09, \u en comentarios y ->; rama local feat/lote-1b-sentencias, fuera del PR); 1-C1 HECHO (1.9, 1.7, 1.8; 452 pruebas + 70 del oráculo); 1-C2 HECHO (1.10, 1.11, println() vacío y aridad variable de printf; 609 pruebas; deuda: stub de double en constantes.ts, 6 errores de sintaxis sin texto y variables final sin plegar → 1-D1); pendientes 1-D1 (deudas + 1.12), 1-D2 (1.13–1.15) y 1-D3 (1.16)
   verify: pending
   archive: pending
 updated: 2026-09-25

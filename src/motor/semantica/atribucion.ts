@@ -21,9 +21,18 @@ import type {
   NodoSwitch,
 } from '../sintaxis/ast.ts';
 import { Alcance } from './alcance.ts';
+import { valorConstante } from './constantes.ts';
 import type { ProblemaAtribucion } from './diagnostico.ts';
-import { verificarSelectorDeSwitch } from './switch.ts';
-import { NOMBRES_DE_CLASE_RECONOCIDOS } from './tipos.ts';
+import { verificarEtiquetasDeCase, verificarSelectorDeSwitch } from './switch.ts';
+import { NOMBRES_DE_CLASE_RECONOCIDOS, tipoDeExpresion, tipoDeNombreDeTipo, type Tipo } from './tipos.ts';
+import {
+  codigoDeAsignacionInvalida,
+  esAsignable,
+  esNombreDeTipoValido,
+  operandosValidosParaAritmetica,
+  sugerenciaDeMayuscula,
+  tiposComparablesConIgualdad,
+} from './verificaciones-de-tipo.ts';
 
 /** `enCiclo`: hay al menos un `while`/`do-while`/`for` envolvente (destino real de `continue`,
  * que ATRAVIESA cualquier `switch` intermedio — verificado contra javac). `enCicloOSwitch`: además
@@ -82,8 +91,30 @@ function visitarDeclaracionLocal(
   alcance: Alcance,
   problemas: ProblemaAtribucion[],
 ): void {
+  // err18 de exploracion/03 ("string nombre" en minúscula): el nombre de tipo se valida UNA vez
+  // por declaración (no por declarador) — javac lo hace en el mismo punto.
+  if (!esNombreDeTipoValido(declaracion.nombreTipo)) {
+    problemas.push({
+      codigo: 'tipo-no-reconocido',
+      rango: declaracion.rango,
+      datos: { nombre: declaracion.nombreTipo },
+    });
+  }
   for (const declarador of declaracion.declaradores) {
-    if (declarador.inicializador !== null) visitarExpresion(declarador.inicializador, alcance, problemas);
+    if (declarador.inicializador !== null) {
+      visitarExpresion(declarador.inicializador, alcance, problemas);
+      // err04/err12 de exploracion/03 (JLS 5.2): solo si el TIPO de destino se reconoce (si no,
+      // ya se reportó "tipo-no-reconocido" arriba — nunca dos problemas por la misma causa).
+      const destino = tipoDeNombreDeTipo(declaracion.nombreTipo);
+      const origen = tipoDeExpresion(declarador.inicializador, alcance);
+      if (destino !== 'desconocido' && !esAsignable(origen, destino, valorConstante(declarador.inicializador, alcance))) {
+        problemas.push({
+          codigo: codigoDeAsignacionInvalida(origen, destino),
+          rango: declarador.inicializador.rango,
+          datos: { origen, destino },
+        });
+      }
+    }
     const resultado = alcance.declarar({
       nombre: declarador.nombre,
       tipo: declaracion.nombreTipo,
@@ -111,7 +142,9 @@ function visitarSentencia(
       visitarBloque(sentencia, alcance, contexto, problemas);
       return;
     case 'impresion':
-      visitarExpresion(sentencia.argumento, alcance, problemas);
+      // Corrección obligatoria (sub-lote 1-C2): "println()" sin argumentos tiene `argumento:null`
+      // (nunca hay símbolos que resolver en ese caso).
+      if (sentencia.argumento !== null) visitarExpresion(sentencia.argumento, alcance, problemas);
       return;
     case 'retorno':
     case 'sentencia-vacia':
@@ -122,16 +155,19 @@ function visitarSentencia(
       return;
     case 'if':
       visitarExpresion(sentencia.condicion, alcance, problemas);
+      verificarCondicionBooleana(sentencia.condicion, alcance, problemas);
       visitarSentencia(sentencia.entonces, alcance, contexto, problemas);
       if (sentencia.sino !== null) visitarSentencia(sentencia.sino, alcance, contexto, problemas);
       return;
     case 'while':
       visitarExpresion(sentencia.condicion, alcance, problemas);
+      verificarCondicionBooleana(sentencia.condicion, alcance, problemas);
       visitarSentencia(sentencia.cuerpo, alcance, CONTEXTO_DENTRO_DE_CICLO, problemas);
       return;
     case 'do-while':
       visitarSentencia(sentencia.cuerpo, alcance, CONTEXTO_DENTRO_DE_CICLO, problemas);
       visitarExpresion(sentencia.condicion, alcance, problemas);
+      verificarCondicionBooleana(sentencia.condicion, alcance, problemas);
       return;
     case 'for':
       visitarFor(sentencia, alcance, problemas);
@@ -152,6 +188,15 @@ function visitarSentencia(
   }
 }
 
+/** err13/err33 de exploracion/03 ("incompatible types: int cannot be converted to boolean"): la
+ * condición de `if`/`while`/`do-while`/`for` debe ser `boolean` — Java NUNCA trata un número como
+ * verdadero/falso (a diferencia de JS/Python). `'desconocido'` no se reporta (D2). */
+function verificarCondicionBooleana(condicion: NodoExpresion, alcance: Alcance, problemas: ProblemaAtribucion[]): void {
+  const tipo = tipoDeExpresion(condicion, alcance);
+  if (tipo === 'desconocido' || tipo === 'boolean') return;
+  problemas.push({ codigo: 'condicion-no-booleana', rango: condicion.rango, datos: { tipo } });
+}
+
 function visitarFor(sentencia: NodoFor, alcance: Alcance, problemas: ProblemaAtribucion[]): void {
   // El propio "for" es un alcance (design.md §2.3): sus variables cubren condición, actualización
   // Y el cuerpo — verificado contra javac que redeclarar el índice DENTRO del cuerpo con llaves
@@ -164,7 +209,10 @@ function visitarFor(sentencia: NodoFor, alcance: Alcance, problemas: ProblemaAtr
   for (const expresionSentencia of sentencia.inicializacionExpresiones) {
     visitarExpresion(expresionSentencia.expresion, alcance, problemas);
   }
-  if (sentencia.condicion !== null) visitarExpresion(sentencia.condicion, alcance, problemas);
+  if (sentencia.condicion !== null) {
+    visitarExpresion(sentencia.condicion, alcance, problemas);
+    verificarCondicionBooleana(sentencia.condicion, alcance, problemas);
+  }
   visitarSentencia(sentencia.cuerpo, alcance, CONTEXTO_DENTRO_DE_CICLO, problemas);
   for (const expresionSentencia of sentencia.actualizacion) {
     visitarExpresion(expresionSentencia.expresion, alcance, problemas);
@@ -181,6 +229,8 @@ function visitarSwitch(
   visitarExpresion(sentencia.selector, alcance, problemas);
   const problemaSelector = verificarSelectorDeSwitch(sentencia, alcance);
   if (problemaSelector !== null) problemas.push(problemaSelector);
+  // err34/flow05 de exploracion/03 (tarea 1.11): etiquetas de "case" no constantes o duplicadas.
+  problemas.push(...verificarEtiquetasDeCase(sentencia, alcance));
 
   // "El bloque de un switch es un solo alcance" (design.md §2.7): un único entrarBloque/
   // salirBloque para TODA la lista plana de etiquetas+elementos (nunca uno por "case").
@@ -223,6 +273,7 @@ function visitarExpresion(expresion: NodoExpresion, alcance: Alcance, problemas:
     case 'binaria':
       visitarExpresion(expresion.izquierda, alcance, problemas);
       visitarExpresion(expresion.derecha, alcance, problemas);
+      verificarOperandosBinaria(expresion, alcance, problemas);
       return;
     case 'unaria':
       visitarExpresion(expresion.operando, alcance, problemas);
@@ -249,10 +300,57 @@ function visitarExpresion(expresion: NodoExpresion, alcance: Alcance, problemas:
   }
 }
 
+/** err28 (`==`/`!=`, "bad operand types") y err35 (aritmética/relacional, "bad operand types for
+ * binary operator") de exploracion/03 — mismo punto, tres reglas distintas según la FAMILIA del
+ * operador (design.md §2.7). Los operadores de bits/`instanceof`/`?:` nunca llegan como
+ * `NodoBinaria` (son NO-DISP desde la sintaxis, 1.3).
+ */
+function verificarOperandosBinaria(
+  expresion: Extract<NodoExpresion, { tipo: 'binaria' }>,
+  alcance: Alcance,
+  problemas: ProblemaAtribucion[],
+): void {
+  const izquierda = tipoDeExpresion(expresion.izquierda, alcance);
+  const derecha = tipoDeExpresion(expresion.derecha, alcance);
+  if (expresion.operador === '==' || expresion.operador === '!=') {
+    if (!tiposComparablesConIgualdad(izquierda, derecha)) {
+      problemas.push({ codigo: 'tipos-incomparables', rango: expresion.rango, datos: { izquierda, derecha } });
+    }
+    return;
+  }
+  if (expresion.operador === '&&' || expresion.operador === '||') {
+    // Java exige "boolean" en AMBOS lados (nunca un número, a diferencia de JS) — mismo criterio
+    // que `verificarCondicionBooleana`, pero aquí ambos operandos, no uno solo.
+    const ambosBooleanos = (t: Tipo) => t === 'boolean' || t === 'desconocido';
+    if (!ambosBooleanos(izquierda) || !ambosBooleanos(derecha)) {
+      problemas.push({
+        codigo: 'operandos-invalidos-operador-binario',
+        rango: expresion.rango,
+        datos: { operador: expresion.operador, izquierda, derecha },
+      });
+    }
+    return;
+  }
+  // Aritmética (+ - * / %) y relacional (< > <= >=): design.md §2.4 nivel 9/11/12 — ambas familias
+  // exigen operandos numéricos (salvo "+" con String, que concatena, nunca un error).
+  if (!operandosValidosParaAritmetica(expresion.operador, izquierda, derecha)) {
+    problemas.push({
+      codigo: 'operandos-invalidos-operador-binario',
+      rango: expresion.rango,
+      datos: { operador: expresion.operador, izquierda, derecha },
+    });
+  }
+}
+
 function visitarNombreComoValor(nodo: NodoNombre, alcance: Alcance, problemas: ProblemaAtribucion[]): void {
   if (NOMBRES_DE_CLASE_RECONOCIDOS.has(nodo.nombre)) return; // referencia estática (Math, String…)
   if (alcance.buscar(nodo.nombre) !== null) return;
-  problemas.push({ codigo: 'variable-no-declarada', rango: nodo.rango, datos: { nombre: nodo.nombre } });
+  const sugerencia = sugerenciaDeMayuscula(nodo.nombre);
+  problemas.push({
+    codigo: 'variable-no-declarada',
+    rango: nodo.rango,
+    datos: sugerencia === undefined ? { nombre: nodo.nombre } : { nombre: nodo.nombre, sugerencia },
+  });
 }
 
 function visitarLlamada(nodo: NodoLlamada, alcance: Alcance, problemas: ProblemaAtribucion[]): void {

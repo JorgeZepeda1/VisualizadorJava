@@ -71,3 +71,49 @@ describe('resolverSobrecarga — sin sobrecarga aplicable da null (nunca inventa
     expect(resolverSobrecarga('Math', 'noExiste', ['int'])).toBeNull();
   });
 });
+
+// Corrección obligatoria (sub-lote 1-C2, orquestador): `printf(String, Object...)` y
+// `String.format(String, Object...)` SÍ están en REQ-SUB-005 (reconocimiento sintáctico) pero
+// hasta ahora `resolverSobrecarga` solo tenía la fase 1 (identidad/ensanchamiento, aridad fija) —
+// nunca resolvía una llamada real (aridad SIEMPRE distinta a 2 salvo por coincidencia, y aun con
+// aridad 2 el segundo parámetro real es `Object[]`, al que ningún tipo nuestro ensancha sin
+// boxing). Verificado contra javac 17 real (esta sesión): los 4 casos de abajo COMPILAN — el
+// error de formato de `printf("%.2f", 3)` es de EJECUCIÓN (Formatter real, lote 2), no de
+// compilación; aquí solo importa que la sobrecarga SE RESUELVA.
+describe('resolverSobrecarga — printf/String.format: aridad variable (JLS 15.12.2 fase 3, corrección 1-C2)', () => {
+  it('printf("hola") — solo el literal de formato, CERO argumentos empacados en el varargs', () => {
+    const firma = resolverSobrecarga('PrintStream', 'printf', ['String']);
+    expect(firma).toMatchObject({ parametros: ['java.lang.String', 'java.lang.Object[]'], esVarargs: true });
+  });
+
+  it('printf("%d%n", 5) — un "int" se empaqueta en el varargs vía boxing (int -> Integer -> Object)', () => {
+    const firma = resolverSobrecarga('PrintStream', 'printf', ['String', 'int']);
+    expect(firma).toMatchObject({ parametros: ['java.lang.String', 'java.lang.Object[]'] });
+  });
+
+  it('printf(".2f de 3 -> %.2f", 3) — mismo caso con un int distinto (triangulación, arg. tal cual la corrección lo pide)', () => {
+    expect(resolverSobrecarga('PrintStream', 'printf', ['String', 'int'])).not.toBeNull();
+  });
+
+  it('triangulación: varios argumentos empacados de tipos MEZCLADOS (String, int, double) — printf real con 3 sustituciones', () => {
+    const firma = resolverSobrecarga('PrintStream', 'printf', ['String', 'String', 'int', 'double']);
+    expect(firma).toMatchObject({ parametros: ['java.lang.String', 'java.lang.Object[]'] });
+  });
+
+  it('String.format("%s y %s", a, b) — misma resolución de aridad variable, ahora en String (no PrintStream)', () => {
+    const firma = resolverSobrecarga('String', 'format', ['String', 'String', 'String']);
+    expect(firma).toMatchObject({ parametros: ['java.lang.String', 'java.lang.Object[]'], esVarargs: true });
+  });
+});
+
+describe('resolverSobrecarga — la fase estricta SIGUE ganando cuando aplica (corrección 1-C2: no romper 1.8)', () => {
+  it('Math.round(long) SIGUE resolviendo a round(float) -> int por la fase 1, nunca por boxing/varargs', () => {
+    // Math no tiene NINGUNA sobrecarga varargs — si esto alguna vez resolviera distinto, sería
+    // señal de que la fase 3 se está probando ANTES que la 1 (orden equivocado de fases).
+    expect(resolverSobrecarga('Math', 'round', ['long'])).toMatchObject({ parametros: ['float'], retorno: 'int' });
+  });
+
+  it('println(int) sigue resolviendo la sobrecarga EXACTA (println no tiene varargs; nunca cae a boxing)', () => {
+    expect(resolverSobrecarga('PrintStream', 'println', ['int'])).toMatchObject({ parametros: ['int'] });
+  });
+});

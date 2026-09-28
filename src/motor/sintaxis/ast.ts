@@ -82,10 +82,15 @@ export type NodoSentencia =
 // argumento que no sea un literal-cadena de `println` sigue pendiente del lote 2 (2.16+), igual
 // que el resto de `Sentencia` desde 1.5 (`ir/generar-ir.ts` lo señala con su mismo `throw`, nunca
 // con un resultado inventado, D2).
+// Corrección obligatoria (sub-lote 1-C2): `argumento` ahora admite `null` — SOLO para
+// `println()` sin paréntesis vacíos de contenido (verificado contra javac 17 real: existe
+// `PrintStream.println()`, catálogo del oráculo 1.9; `print()` sin argumentos NO existe en la API
+// real — "no suitable method found for print(no arguments)" — así que el analizador sintáctico
+// nunca produce `metodo:'print', argumento:null`).
 export interface NodoImpresion {
   readonly tipo: 'impresion';
   readonly metodo: 'print' | 'println';
-  readonly argumento: NodoExpresion;
+  readonly argumento: NodoExpresion | null;
   readonly rango: Rango;
 }
 

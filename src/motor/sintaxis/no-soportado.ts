@@ -299,7 +299,9 @@ function recolectarDeElemento(elemento: NodoElementoBloque, salida: NoSoportadoC
     case 'impresion':
       // Tarea 1.8 (pendiente heredado): el argumento de print/println ya no es solo un
       // literal-cadena (0.12) — puede traer NO-DISP anidado (p. ej. "println(a & b)").
-      recolectarDeExpresion(elemento.argumento, salida);
+      // Corrección obligatoria (sub-lote 1-C2): "println()" sin argumentos tiene `argumento:null`
+      // — nunca hay nada que recolectar en ese caso.
+      if (elemento.argumento !== null) recolectarDeExpresion(elemento.argumento, salida);
       return;
     default:
       // 'retorno', 'break', 'continue', 'sentencia-vacia': sin subexpresiones.

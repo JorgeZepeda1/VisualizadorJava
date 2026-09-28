@@ -629,7 +629,13 @@ function analizarImpresion(cursor: CursorDeTokens): NodoImpresion {
   cursor.esperarTexto('(');
   // Tarea 1.8 (pendiente heredado): cualquier expresión, no solo un literal-cadena (0.12) — la
   // sobrecarga real la resuelve `semantica/sobrecargas.ts` sobre el tipo estático ya parseado.
-  const argumento = analizarExpresion(cursor);
+  // Corrección obligatoria (sub-lote 1-C2): "println()" con paréntesis VACÍOS es Java real
+  // (PrintStream.println() existe, verificado contra javac 17) — solo "println", nunca "print"
+  // (print() sin argumentos NO existe en la API real, verificado contra javac 17: "no suitable
+  // method found for print(no arguments)"), así que "print(" seguido de ")" sigue cayendo en
+  // `analizarExpresion`, que lo rechaza igual que siempre.
+  const argumento =
+    metodo === 'println' && cursor.coincideTexto(')') ? null : analizarExpresion(cursor);
   cursor.esperarTexto(')');
   const fin = cursor.esperarTexto(';');
   return {

@@ -7,6 +7,7 @@
 // real detectado (`datos.tipo`); el texto en español lo arma la tarea 1.11 sobre ese dato.
 import type { NodoSwitch } from '../sintaxis/ast.ts';
 import type { Alcance } from './alcance.ts';
+import { valorConstante, type ValorConstante } from './constantes.ts';
 import type { ProblemaAtribucion } from './diagnostico.ts';
 import { type Tipo, tipoDeExpresion } from './tipos.ts';
 
@@ -19,4 +20,41 @@ export function verificarSelectorDeSwitch(nodo: NodoSwitch, alcance: Alcance): P
   const tipo = tipoDeExpresion(nodo.selector, alcance);
   if (tipo === 'desconocido' || TIPOS_DE_SELECTOR_VALIDOS.has(tipo)) return null;
   return { codigo: 'selector-de-switch-invalido', rango: nodo.rango, datos: { tipo } };
+}
+
+/** `char`/`int` se comparan por su valor NUMÉRICO (design.md §2.7: "duplicados por valor tras
+ * convertir" — `case 97:` y `case 'a':` en un mismo `switch` de `int` SON el mismo caso); `String`
+ * por su contenido. Cualquier otra combinación (tipos distintos no numéricos, p. ej.) nunca es
+ * "el mismo valor" en este subconjunto. */
+function mismoValorDeEtiqueta(a: ValorConstante, b: ValorConstante): boolean {
+  const numeroDe = (v: ValorConstante): number | null => (v.tipo === 'int' || v.tipo === 'char' ? v.valor : null);
+  const na = numeroDe(a);
+  const nb = numeroDe(b);
+  if (na !== null && nb !== null) return na === nb;
+  return a.tipo === 'String' && b.tipo === 'String' && a.valor === b.valor;
+}
+
+/**
+ * err34 de exploracion/03 ("constant expression required": una etiqueta de `case` que NO es una
+ * expresión constante — JLS 15.29, `constantes.ts` de la tarea 1.10) y flow05 ("duplicate case
+ * label": dos etiquetas constantes con el MISMO valor en el mismo `switch`). Devuelve TODOS los
+ * problemas encontrados, en el ORDEN de las etiquetas (mismo patrón que `atribuir`/
+ * `recolectarNoSoportados`) — un duplicado se reporta en su SEGUNDA aparición, igual que javac.
+ */
+export function verificarEtiquetasDeCase(nodo: NodoSwitch, alcance: Alcance): ProblemaAtribucion[] {
+  const problemas: ProblemaAtribucion[] = [];
+  const vistas: ValorConstante[] = [];
+  for (const elemento of nodo.elementos) {
+    if (elemento.tipo !== 'etiqueta-case') continue;
+    const constante = valorConstante(elemento.valor, alcance);
+    if (constante === null) {
+      problemas.push({ codigo: 'etiqueta-de-case-no-constante', rango: elemento.rango, datos: {} });
+      continue;
+    }
+    if (vistas.some((v) => mismoValorDeEtiqueta(v, constante))) {
+      problemas.push({ codigo: 'etiqueta-de-case-duplicada', rango: elemento.rango, datos: {} });
+    }
+    vistas.push(constante);
+  }
+  return problemas;
 }
