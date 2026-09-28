@@ -1,15 +1,21 @@
 // AST del subconjunto (design.md §1.2, §2.3, §2.4). Nace en la rebanada vertical (0.12) con
 // Programa→Clase→Main→Bloque→println(literal); el lote 1 (tareas 1.1-1.4) amplía con
 // importaciones, las 3 formas de `main`, `return;`, declaraciones locales y expresiones completas
-// (Pratt, con NO-DISP para lo que Java acepta y este visualizador todavía no — ADR 003). El resto
-// de Sentencia (if/while/for/switch/ExprSentencia como sentencia/break/continue) llega en la tarea
-// 1.5, que reorganiza `NodoElementoBloque`/`NodoSentencia`.
+// (Pratt, con NO-DISP para lo que Java acepta y este visualizador todavía no — ADR 003). La tarea
+// 1.5 completa `Sentencia` (if/while/do-while/for/switch/break/continue/`;`/bloque anidado/
+// sentencia de expresión) y la 1.6 agrega `NodoNoSoportado` para el resto del catálogo REQ-SUB-007
+// que solo se reconoce en posición sintáctica (segunda clase, miembros de clase, arreglos, var,
+// genéricos, lambdas, try/catch, etiquetas, for mejorado, `switch` con flecha/yield…).
 import type { Rango } from '../fuente/rango.ts';
 
 export interface NodoPrograma {
   readonly tipo: 'programa';
   readonly importaciones: readonly NodoImportacion[];
+  /** "import static ...;" (tarea 1.6, REQ-SUB-007) — nunca se trata como un import normal. */
+  readonly importacionesNoSoportadas: readonly NodoNoSoportado[];
   readonly clase: NodoClase;
+  /** Otra clase/interfaz/enum/record de nivel superior tras la primera (tarea 1.6, REQ-SUB-007). */
+  readonly otrosTiposDeNivelSuperior: readonly NodoNoSoportado[];
   readonly rango: Rango;
 }
 
@@ -25,12 +31,16 @@ export interface NodoClase {
   readonly tipo: 'clase';
   readonly nombre: string;
   readonly main: NodoMain;
+  /** Campos, métodos propios, clases internas, inicializadores, anotaciones (tarea 1.6). */
+  readonly otrosMiembros: readonly NodoNoSoportado[];
   readonly rango: Rango;
 }
 
 export interface NodoMain {
   readonly tipo: 'main';
   readonly parametro: string;
+  /** `throws Tipo, Tipo…` tras los paréntesis, si el programa lo trae (tarea 1.6, NO-DISP). */
+  readonly clausulaThrows: NodoNoSoportado | null;
   readonly cuerpo: NodoBloque;
   readonly rango: Rango;
 }
@@ -42,10 +52,28 @@ export interface NodoBloque {
 }
 
 // design.md §2.3: "Bloque = '{' { DeclLocal ';' | Sentencia } '}'" — DeclLocal es un elemento del
-// bloque, no una Sentencia. Tarea 1.5 amplía `NodoSentencia` con el resto (if/while/for/switch/…).
+// bloque, no una Sentencia. `NodoNoSoportado` también puede aparecer aquí (p. ej. una declaración
+// de tipo `var`/arreglo/genérico: sintácticamente "parece" DeclLocal pero es NO-DISP — tarea 1.6).
 export type NodoElementoBloque = NodoDeclaracionLocal | NodoSentencia;
 
-export type NodoSentencia = NodoImpresion | NodoRetorno;
+// design.md §2.3 "Sentencia" completa (tarea 1.5) + `NodoNoSoportado` para lo que la tarea 1.6
+// reconoce en posición de sentencia (try/catch/throw, etiquetas, for mejorado…) sin abortar el
+// análisis (ADR 003). `NodoBloque` es una alternativa válida de Sentencia (un bloque anidado como
+// cuerpo de if/while/for/do-while), reusando el mismo `analizarBloque` de Main (REFACTOR de 1.5).
+export type NodoSentencia =
+  | NodoImpresion
+  | NodoRetorno
+  | NodoBloque
+  | NodoSentenciaVacia
+  | NodoSentenciaExpresion
+  | NodoIf
+  | NodoWhile
+  | NodoDoWhile
+  | NodoFor
+  | NodoSwitch
+  | NodoBreak
+  | NodoContinue
+  | NodoNoSoportado;
 
 export interface NodoImpresion {
   readonly tipo: 'impresion';
@@ -55,6 +83,107 @@ export interface NodoImpresion {
 
 export interface NodoRetorno {
   readonly tipo: 'retorno';
+  readonly rango: Rango;
+}
+
+/** La sentencia vacía `;` (design.md §2.3) — un no-op real, no un error (REQ-SUB-004). */
+export interface NodoSentenciaVacia {
+  readonly tipo: 'sentencia-vacia';
+  readonly rango: Rango;
+}
+
+// design.md §2.3: "ExprSentencia = Asignacion | IncDec | Llamada | 'new' NombreDeTipo Argumentos".
+// El analizador solo produce este nodo cuando `expresion.tipo` es una de esas 4 formas; cualquier
+// otra expresión en posición de sentencia (p. ej. un literal suelto, `a + b;`) es el error real de
+// javac "not a statement" (verificado contra javac 17).
+export interface NodoSentenciaExpresion {
+  readonly tipo: 'sentencia-expresion';
+  readonly expresion: NodoExpresion;
+  readonly rango: Rango;
+}
+
+export interface NodoIf {
+  readonly tipo: 'if';
+  readonly condicion: NodoExpresion;
+  readonly entonces: NodoSentencia;
+  readonly sino: NodoSentencia | null;
+  readonly rango: Rango;
+}
+
+export interface NodoWhile {
+  readonly tipo: 'while';
+  readonly condicion: NodoExpresion;
+  readonly cuerpo: NodoSentencia;
+  readonly rango: Rango;
+}
+
+export interface NodoDoWhile {
+  readonly tipo: 'do-while';
+  readonly cuerpo: NodoSentencia;
+  readonly condicion: NodoExpresion;
+  readonly rango: Rango;
+}
+
+// design.md §2.3 "For": inicialización es UNA declaración local (con sus propios declaradores,
+// p. ej. "int i=0, j=10") O una lista de ExprSentencia separadas por coma ("i=0, j=10" reusando
+// variables existentes) — nunca ambas. La actualización siempre es una lista de ExprSentencia
+// (posiblemente vacía). Cualquier parte puede faltar ("for (;;)").
+export interface NodoFor {
+  readonly tipo: 'for';
+  readonly inicializacionDeclaracion: NodoDeclaracionLocal | null;
+  readonly inicializacionExpresiones: readonly NodoSentenciaExpresion[];
+  readonly condicion: NodoExpresion | null;
+  readonly actualizacion: readonly NodoSentenciaExpresion[];
+  readonly cuerpo: NodoSentencia;
+  readonly rango: Rango;
+}
+
+// design.md §2.3 "Switch": el cuerpo es una secuencia PLANA de etiquetas (una o más seguidas) y
+// elementos de bloque, igual que `NodoBloque.elementos` — así la caída (fallthrough) real de Java
+// es, sencillamente, "seguir recorriendo la lista" (la ejecución llega en el lote 2).
+export interface NodoSwitch {
+  readonly tipo: 'switch';
+  readonly selector: NodoExpresion;
+  readonly elementos: readonly NodoElementoSwitch[];
+  readonly rango: Rango;
+}
+
+export type NodoElementoSwitch = NodoEtiquetaCase | NodoEtiquetaDefault | NodoElementoBloque;
+
+export interface NodoEtiquetaCase {
+  readonly tipo: 'etiqueta-case';
+  readonly valor: NodoExpresion;
+  readonly rango: Rango;
+}
+
+export interface NodoEtiquetaDefault {
+  readonly tipo: 'etiqueta-default';
+  readonly rango: Rango;
+}
+
+/** `break;` sin etiqueta (REQ-SUB-004). Con etiqueta es NO-DISP — ver `NodoNoSoportado` (tarea 1.6). */
+export interface NodoBreak {
+  readonly tipo: 'break';
+  readonly rango: Rango;
+}
+
+/** `continue;` sin etiqueta (REQ-SUB-004). Con etiqueta es NO-DISP (tarea 1.6). */
+export interface NodoContinue {
+  readonly tipo: 'continue';
+  readonly rango: Rango;
+}
+
+// Tarea 1.6 (ADR 003): una construcción que Java sí acepta, pero que está fuera de REQ-SUB-005 (la
+// superficie soportada) — a diferencia de `NodoExpresionNoSoportada` (dentro de una expresión),
+// este nodo aparece en posición de SENTENCIA, DECLARACIÓN o MIEMBRO DE NIVEL SUPERIOR: clases
+// extra, miembros de clase (campos/métodos/anotaciones/clases internas), arreglos como tipo de una
+// declaración, `var`, genéricos, `for` mejorado, etiquetas, `try/catch/throw`, `switch` con flecha
+// o `yield`, `throws` de `main`, `import static`. Un solo nodo/código cierra cada fila del catálogo
+// REQ-SUB-007 que no cabe dentro de una expresión — delimita la construcción completa y deja
+// seguir el análisis (nunca aborta, nunca un error de sintaxis engañoso — C8).
+export interface NodoNoSoportado {
+  readonly tipo: 'no-soportado';
+  readonly codigo: string;
   readonly rango: Rango;
 }
 

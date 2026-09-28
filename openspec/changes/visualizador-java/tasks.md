@@ -161,13 +161,13 @@
 - REFACTOR: función compartida "abre expresión unaria".
 - Verif: `motor/sintaxis/ambiguedades`
 
-**1.5 Sentencias completas** — REQ-SUB-004 · depende: 1.3
+**1.5 Sentencias completas** — REQ-SUB-004 · depende: 1.3 — ✅ hecha (2026-09-28)
 - RED `sentencias.test.ts`: `if/else/else-if` anidados, `;` vacía, `switch` clásico (caída), `while`, `do-while`, `for` (varias variables, partes vacías), `break`/`continue`; falla.
 - GREEN: resto de `Sentencia` en `analizador-sintactico.ts`.
 - REFACTOR: manejo de `Bloque` unificado entre `if`/ciclos/`switch`.
 - Verif: `motor/sintaxis/sentencias`
 
-**1.6 Reconocimiento NO-DISP sintáctico (resto del catálogo)** — REQ-SUB-006, REQ-SUB-007 · depende: 1.5
+**1.6 Reconocimiento NO-DISP sintáctico (resto del catálogo)** — REQ-SUB-006, REQ-SUB-007 · depende: 1.5 — ✅ hecha (2026-09-28)
 - RED `no-soportado.test.ts`: una muestra por cada fila restante de REQ-SUB-007 (clases/interfaces/enums/records, campos, métodos propios, clases internas, anotaciones, `throws`, arreglos, `for` mejorado, etiquetas, `switch` flecha/`yield`, `try/catch/throw`, `var`, genéricos, lambdas, `::`, `this`/`super`, `null`, `final` sin inicializador, `import static`) produce `NoSoportado` y el análisis sigue; falla.
 - GREEN: `sintaxis/no-soportado.ts` con subgramática permisiva por construcción.
 - REFACTOR: tabla construcción→código de aviso, reusada por 1.17.
@@ -229,7 +229,7 @@
 - GREEN: `herramientas/oraculo/mutantes.ts` (semilla fija) + `herramientas/oraculo/java/CompiladorEnLote.java` (`javax.tools`, una JVM) → `corpus/mutantes/veredictos.jsonl`.
 - Verif: `pruebas/compilacion/mutantes`
 
-**1.17 Muestra de NO-DISP por construcción (C8)** — REQ-DIFF-004(parte C8) · depende: 1.6
+**1.17 Muestra de NO-DISP por construcción (C8)** — REQ-DIFF-004(parte C8) · depende: 1.6 — ✅ hecha (2026-09-28)
 - RED `pruebas/compilacion/catalogo.test.ts`: una muestra por cada fila del catálogo REQ-SUB-007 dispara su aviso antes de ejecutar, cero pasos, cero errores de sintaxis engañosos; falla.
 - GREEN: `corpus/compilacion/catalogo/` (37 casos de `03`) + `corpus/compilacion/avisos/` (una muestra por construcción).
 - Verif: `pruebas/compilacion/catalogo`

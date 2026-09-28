@@ -57,6 +57,35 @@ export const PALABRAS_CLAVE: ReadonlySet<string> = new Set([
   'false',
   'instanceof',
   'new',
+  // Tarea 1.5 (Sentencia completa) — control de flujo. Deben ser 'palabra-clave', no
+  // 'identificador': de lo contrario "break externo" (etiqueta, tarea 1.6) o cualquier
+  // "palabra-reservada identificador" pasaría el chequeo "identificador identificador" de
+  // `pareceDeclaracionLocal` y se malinterpretaría como el inicio de una declaración.
+  'if',
+  'else',
+  'while',
+  'do',
+  'for',
+  'switch',
+  'case',
+  'default',
+  'break',
+  'continue',
+  // Tarea 1.6 (catálogo NO-DISP) — reservadas por la misma razón (no son identificadores válidos
+  // en Java real, aunque este subconjunto no interprete lo que introducen).
+  'try',
+  'catch',
+  'finally',
+  'throw',
+  'throws',
+  'var',
+  'yield',
+  'this',
+  'super',
+  'null',
+  'float',
+  'byte',
+  'short',
 ]);
 
 // Tipos primitivos válidos al inicio de una DeclLocal (design.md §2.3 "Tipo"); `String` no está

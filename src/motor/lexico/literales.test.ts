@@ -214,6 +214,46 @@ describe('leerNumero — no soportado (design.md §2.6, REQ-SUB-007)', () => {
     expect(resultado.longitud).toBe(3);
   });
 
+  // Corrección obligatoria (sub-lote 1-B): "08"/"09" hoy se leían como decimal 8/9 (simplificación
+  // documentada de 1-A). Verificado contra javac 17 real: "int x = 08;" da "';' expected" con el
+  // acento en el "8" — javac NO seguye leyendo "8"/"9" como parte de un literal octal (no son
+  // dígitos octales válidos); el literal termina en el "0" (entero decimal 0, longitud 1) y el
+  // dígito inválido arranca un token NUEVO, lo que después provoca el error de sintaxis real en el
+  // parser (nunca se acepta "08" como si fuera el valor 8).
+  it('"08" NO es octal ni se lee como decimal 8: solo el "0" es el literal, "8" queda para el siguiente token', () => {
+    const resultado = leerNumero('08', 0);
+    expect(resultado.noSoportado).toBeUndefined();
+    expect(resultado.clase).toBe('entero');
+    expect(resultado.magnitud).toBe(0n);
+    expect(resultado.longitud).toBe(1);
+  });
+
+  it('"09" se comporta igual que "08" (triangulación del mismo dígito inválido, 9)', () => {
+    const resultado = leerNumero('09', 0);
+    expect(resultado.noSoportado).toBeUndefined();
+    expect(resultado.magnitud).toBe(0n);
+    expect(resultado.longitud).toBe(1);
+  });
+
+  it('"01278" trunca justo antes del primer dígito inválido (0127 es octal, "8" empieza otro token)', () => {
+    // Verificado contra javac 17: mismo patrón "';' expected" con el acento en el "8" de "01278".
+    const resultado = leerNumero('01278', 0);
+    expect(resultado.noSoportado?.codigo).toBe('literal-octal-no-soportado');
+    expect(resultado.noSoportado?.nota).toBe('Java lo lee como octal: 87'); // 0127 octal = 87 decimal
+    expect(resultado.longitud).toBe(4); // "0127" — el "8" queda fuera, para el siguiente token
+  });
+
+  it('un "0" solo seguido de un dígito inválido re-tokeniza correctamente en el flujo completo (tokenizar)', () => {
+    // No es responsabilidad de leerNumero re-invocarse: lo hace el bucle de tokenizar(). Esta
+    // prueba documenta el contrato que ese bucle explota (longitud corta = re-entra al mismo punto).
+    const primero = leerNumero('08;', 0);
+    expect(primero.longitud).toBe(1);
+    const segundo = leerNumero('08;', primero.longitud);
+    expect(segundo.clase).toBe('entero');
+    expect(segundo.magnitud).toBe(8n);
+    expect(segundo.longitud).toBe(1);
+  });
+
   it('literal hexadecimal (0x1F) es NoSoportado', () => {
     const resultado = leerNumero('0x1F', 0);
     expect(resultado.noSoportado?.codigo).toBe('literal-hexadecimal-no-soportado');

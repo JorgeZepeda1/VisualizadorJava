@@ -270,15 +270,18 @@ export function leerNumero(fuente: string, inicio: number): NumeroLeido {
   }
 
   const parecePuntoDecimal = fuente[cursor] === '.' && DIGITO_DECIMAL.test(fuente[cursor + 1] ?? '');
-  const digitosTrasElCero = fuente.slice(inicio + 1, cursor).replace(/_/g, '');
-  const pareceOctal =
-    !parecePuntoDecimal &&
-    fuente[inicio] === '0' &&
-    digitosTrasElCero.length > 0 &&
-    [...digitosTrasElCero].every((d) => DIGITO_OCTAL.test(d));
 
-  if (pareceOctal) {
-    return leerLiteralOctal(fuente, inicio, cursor);
+  // JLS 3.10.1: "0" seguido de otro dígito decimal (sin punto) es SIEMPRE un intento de literal
+  // OCTAL — nunca decimal — incluso si trae dígitos 8/9 inválidos en base 8. Corrección obligatoria
+  // (sub-lote 1-B): la versión anterior escaneaba TODOS los dígitos decimales primero y solo
+  // rechazaba "pareceOctal" si alguno no era válido, cayendo de vuelta a leer "08"/"09" como
+  // decimal 8/9 — un resultado inventado que javac jamás produce (regla 5 de CLAUDE.md). Verificado
+  // contra javac 17 real: "int x = 08;" y "int y = 09;" dan "';' expected" señalando el dígito
+  // inválido (el literal octal termina en el último dígito 0-7 consecutivo; el dígito 8/9 arranca
+  // un token NUEVO, por eso el mensaje es de sintaxis, no de número mal formado). "010" (octal
+  // válido) y "01278" (se trunca en "0127", el "8" queda para el siguiente token) confirmados igual.
+  if (!parecePuntoDecimal && fuente[inicio] === '0' && DIGITO_DECIMAL.test(fuente[inicio + 1] ?? '')) {
+    return leerOctalOTruncadoEnDigitoInvalido(fuente, inicio);
   }
 
   let esDoble = parecePuntoDecimal;
@@ -344,11 +347,26 @@ function consumirExponente(fuente: string, cursorE: number): number {
   return cursor;
 }
 
-function leerLiteralOctal(fuente: string, inicio: number, finDigitos: number): NumeroLeido {
-  let fin = finDigitos;
+// "0" ya confirmado seguido de un dígito decimal (por el llamador). Consume SOLO los dígitos 0-7
+// consecutivos que siguen — un 8/9 (o cualquier no-dígito) termina el literal ahí mismo, dejando el
+// resto para que `tokenizar()` lo re-lea como un token nuevo (así es como javac reporta "';'
+// expected" en vez de un error de número mal formado: ver la nota de más arriba).
+function leerOctalOTruncadoEnDigitoInvalido(fuente: string, inicio: number): NumeroLeido {
+  let cursor = inicio + 1;
+  while (cursor < fuente.length && (DIGITO_OCTAL.test(fuente[cursor]) || fuente[cursor] === '_')) {
+    cursor += 1;
+  }
+
+  const digitosOctales = fuente.slice(inicio + 1, cursor).replace(/_/g, '');
+  if (digitosOctales.length === 0) {
+    // "0" solo, inmediatamente seguido de un dígito inválido (8/9): el literal es el "0" decimal;
+    // el dígito inválido no es parte de este token (p. ej. "08" ⇒ "0" aquí, "8" en la próxima vuelta).
+    return { clase: 'entero', magnitud: 0n, valorDoble: 0, longitud: 1 };
+  }
+
+  let fin = cursor;
   if (fuente[fin] === 'l' || fuente[fin] === 'L') fin += 1;
-  const textoOctal = fuente.slice(inicio + 1, finDigitos).replace(/_/g, '');
-  const valorDecimal = Number.parseInt(textoOctal, 8);
+  const valorDecimal = Number.parseInt(digitosOctales, 8);
   return {
     clase: 'entero',
     magnitud: 0n,

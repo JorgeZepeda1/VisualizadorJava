@@ -13,6 +13,47 @@ const RESTO_IDENTIFICADOR = /[A-Za-z0-9_$]/;
 const DIGITO_DECIMAL = /[0-9]/;
 const DIGITO_HEX = /[0-9A-Fa-f]/;
 
+interface EscapeUnicodeDetectado {
+  readonly longitud: number;
+  readonly hex: string;
+}
+
+// \uXXXX EN CUALQUIER LUGAR del código fuente, comentarios incluidos (JLS 3.3: Java traduce los
+// escapes Unicode en la fase 1, ANTES del análisis léxico — un "\u000a" dentro de un "//" cierra el
+// comentario ahí mismo porque se vuelve un salto de línea real ANTES de que exista el concepto de
+// "comentario"; verificado ejecutando javac/java 17 reales). Corrección obligatoria (sub-lote 1-B):
+// dentro de comentarios esto se ignoraba en silencio (simplificación documentada de 1-A) — como
+// \uXXXX está fuera del subconjunto (ADR 003), debe producir el aviso "no soportado" SIEMPRE, nunca
+// ignorarse ni reinterpretarse (no se realiza la traducción real: solo se detecta y se avisa).
+// Admite "u" repetida (JLS 3.3: "\uu0041" también es válido). Devuelve `null` si no hay un escape
+// bien formado en esta posición (4 dígitos hexadecimales exactos tras la(s) "u"); el llamador
+// decide qué hacer con un `\u` malformado (código: error real; comentario: se ignora como texto).
+function intentarLeerEscapeUnicode(fuente: string, cursor: number): EscapeUnicodeDetectado | null {
+  if (fuente[cursor] !== '\\' || fuente[cursor + 1] !== 'u') return null;
+  let inicioHex = cursor + 2;
+  while (fuente[inicioHex] === 'u') inicioHex += 1;
+  const hex = fuente.slice(inicioHex, inicioHex + 4);
+  if (hex.length !== 4 || ![...hex].every((c) => DIGITO_HEX.test(c))) return null;
+  return { longitud: inicioHex + 4 - cursor, hex };
+}
+
+function tokenNoSoportadoPorEscapeUnicode(
+  fuente: string,
+  cursor: number,
+  escape: EscapeUnicodeDetectado,
+  dentroDeComentario: boolean,
+): Token {
+  const fin = cursor + escape.longitud;
+  const sufijo = dentroDeComentario ? ', incluso dentro de comentarios,' : '';
+  return {
+    tipo: 'no-soportado',
+    texto: fuente.slice(cursor, fin),
+    rango: { inicio: cursor, fin },
+    codigo: 'escape-unicode-no-soportado',
+    nota: `Java procesa "\\u${escape.hex}" como el carácter Unicode U+${escape.hex.toUpperCase()}${sufijo} antes de leer el resto del programa; este visualizador todavía no lo soporta.`,
+  };
+}
+
 export function tokenizar(fuente: string): Token[] {
   const tokens: Token[] = [];
   let cursor = 0;
@@ -27,7 +68,15 @@ export function tokenizar(fuente: string): Token[] {
 
     if (caracter === '/' && fuente[cursor + 1] === '/') {
       cursor += 2;
-      while (cursor < fuente.length && fuente[cursor] !== '\n') cursor += 1;
+      while (cursor < fuente.length && fuente[cursor] !== '\n') {
+        const escape = intentarLeerEscapeUnicode(fuente, cursor);
+        if (escape) {
+          tokens.push(tokenNoSoportadoPorEscapeUnicode(fuente, cursor, escape, true));
+          cursor += escape.longitud;
+          continue;
+        }
+        cursor += 1;
+      }
       continue;
     }
 
@@ -35,6 +84,12 @@ export function tokenizar(fuente: string): Token[] {
       const inicioComentario = cursor;
       cursor += 2;
       while (cursor < fuente.length && !(fuente[cursor] === '*' && fuente[cursor + 1] === '/')) {
+        const escape = intentarLeerEscapeUnicode(fuente, cursor);
+        if (escape) {
+          tokens.push(tokenNoSoportadoPorEscapeUnicode(fuente, cursor, escape, true));
+          cursor += escape.longitud;
+          continue;
+        }
         cursor += 1;
       }
       if (cursor >= fuente.length) {
@@ -87,30 +142,20 @@ export function tokenizar(fuente: string): Token[] {
       continue;
     }
 
-    // \uXXXX fuera de una cadena/char (design.md §2.6: "en cualquier lugar" del código; esta
-    // implementación lo reconoce en posición de código normal, no dentro de comentarios — ver
-    // discovery de la tarea 1.1: implementar la fidelidad completa de la fase de traducción 1 de
-    // la JLS exigiría reescribir el código fuente ANTES de tokenizar, desproporcionado para este
-    // lote y no exigido por ningún RED de tasks.md).
+    // \uXXXX fuera de una cadena/char, en posición de código normal (design.md §2.6). Dentro de
+    // comentarios lo manejan los dos bloques de arriba (misma detección, código 1.5/1.6).
     if (caracter === '\\' && fuente[cursor + 1] === 'u') {
-      const inicio = cursor;
-      let inicioHex = cursor + 2;
-      while (fuente[inicioHex] === 'u') inicioHex += 1;
-      const hex = fuente.slice(inicioHex, inicioHex + 4);
-      if (hex.length !== 4 || ![...hex].every((c) => DIGITO_HEX.test(c))) {
+      const escape = intentarLeerEscapeUnicode(fuente, cursor);
+      if (!escape) {
+        let inicioHex = cursor + 2;
+        while (fuente[inicioHex] === 'u') inicioHex += 1;
         throw new ErrorDeCompilacion(
           'secuencia unicode incompleta: se esperaban 4 dígitos hexadecimales tras "\\u"',
-          { inicio, fin: inicioHex },
+          { inicio: cursor, fin: inicioHex },
         );
       }
-      cursor = inicioHex + 4;
-      tokens.push({
-        tipo: 'no-soportado',
-        texto: fuente.slice(inicio, cursor),
-        rango: { inicio, fin: cursor },
-        codigo: 'escape-unicode-no-soportado',
-        nota: `Java procesa "\\u${hex}" como el carácter Unicode U+${hex.toUpperCase()} antes de leer el resto del programa; este visualizador todavía no lo soporta.`,
-      });
+      tokens.push(tokenNoSoportadoPorEscapeUnicode(fuente, cursor, escape, false));
+      cursor += escape.longitud;
       continue;
     }
 

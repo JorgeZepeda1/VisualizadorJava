@@ -167,4 +167,37 @@ describe('tokenizar — reconocimiento NO-DISP léxico (tarea 1.1, ADR 003, desi
     expect(tokens[1]).toMatchObject({ tipo: 'no-soportado', codigo: 'escape-unicode-no-soportado' });
     expect(tokens[2]).toMatchObject({ tipo: 'puntuacion', texto: '{' });
   });
+
+  // Corrección obligatoria (sub-lote 1-B): hoy \uXXXX dentro de un comentario se ignoraba en
+  // silencio (simplificación documentada de 1-A). Verificado contra javac 17 real (compilando y
+  // EJECUTANDO un archivo real): Java traduce los escapes Unicode ANTES del análisis léxico (JLS
+  // 3.3), incluso dentro de "//" — "// \u000a int x = 99; System.out.println(x);" compila y corre
+  // como si el \u000a fuera un salto de línea real, así que "int x = 99; ..." deja de ser parte del
+  // comentario y se ejecuta de verdad (imprimió "99"). Como \uXXXX está fuera del subconjunto, esto
+  // NUNCA debe ignorarse en silencio: debe producir el aviso de "no soportado", igual que fuera de
+  // comentarios (nunca se reinterpreta el comentario, ADR 003 "deja seguir").
+  it('un \\uXXXX bien formado dentro de un comentario de línea (//) produce "no-soportado" y sigue', () => {
+    const fuente = ['int x = 1; // \\u0041 nota', 'int y = 2;'].join('\n');
+    const tokens = tokenizar(fuente);
+    const noSoportado = tokens.find((t) => t.codigo === 'escape-unicode-no-soportado');
+    expect(noSoportado).toBeDefined();
+    // El resto del programa se sigue tokenizando después del comentario (dos declaraciones completas).
+    const enteros = tokens.filter((t) => t.tipo === 'entero').map((t) => t.valorEntero);
+    expect(enteros).toEqual([1n, 2n]);
+  });
+
+  it('un \\uXXXX dentro de un comentario de bloque (/* */) también produce "no-soportado" y sigue', () => {
+    const fuente = 'int x = 1; /* antes \\u0041 despues */ int y = 2;';
+    const tokens = tokenizar(fuente);
+    const noSoportado = tokens.find((t) => t.codigo === 'escape-unicode-no-soportado');
+    expect(noSoportado).toBeDefined();
+    const enteros = tokens.filter((t) => t.tipo === 'entero').map((t) => t.valorEntero);
+    expect(enteros).toEqual([1n, 2n]);
+  });
+
+  it('un comentario sin ningún \\uXXXX no produce ningún token "no-soportado" (regresión)', () => {
+    const fuente = '// comentario normal sin nada raro\nint x = 1;';
+    const tokens = tokenizar(fuente);
+    expect(tokens.some((t) => t.tipo === 'no-soportado')).toBe(false);
+  });
 });

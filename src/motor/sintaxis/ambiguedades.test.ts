@@ -70,12 +70,16 @@ describe('ambigüedades — declaración vs. expresión (design.md §2.5.2)', ()
     expect(declaracion.nombreTipo).toBe('string');
   });
 
-  it('una asignación "x = 5;" como sentencia suelta NO se confunde con una declaración', () => {
-    // Todavía no hay soporte para ExprSentencia como sentencia (tarea 1.5): lo importante para
-    // esta ambigüedad es que NO se malinterpreta como DeclLocal (fallaría distinto si lo hiciera:
-    // "x" no es un tipo válido en posición de declarador). Debe fallar en la sentencia, no antes.
+  it('una asignación "x = 5;" como sentencia suelta NO se confunde con una declaración (actualizada en 1.5)', () => {
+    // Actualización de approval test (sub-lote 1-B): la tarea 1.5 agregó soporte real de
+    // ExprSentencia, así que "x = 5;" ahora SÍ compila (ya no lanza) — lo que sigue probando esta
+    // ambigüedad es que "x" (un solo identificador seguido de "=", no de OTRO identificador) nunca
+    // se malinterpreta como intento de DeclLocal: se analiza como una sentencia de asignación.
     const fuente = 'class C { public static void main(String[] a) { x = 5; } }';
-    expect(() => analizar(fuente)).toThrow(ErrorDeCompilacion);
+    const programa = analizar(fuente);
+    const [sentencia] = programa.clase.main.cuerpo.elementos;
+    expect(sentencia.tipo).toBe('sentencia-expresion');
+    expect((sentencia as { expresion: { tipo: string } }).expresion.tipo).toBe('asignacion');
   });
 
   it('una declaración de tipo primitivo sigue funcionando (regresión, sin ambigüedad real)', () => {

@@ -11,7 +11,8 @@
 import { ErrorDeCompilacion } from '../error-de-compilacion.ts';
 import { PALABRAS_CLAVE_TIPO_PRIMITIVO, type Token } from '../lexico/tokens.ts';
 import { CursorDeTokens } from './cursor-de-tokens.ts';
-import type { NodoConversion, NodoExpresion, NodoNuevaInstancia } from './ast.ts';
+import { saltarHastaCerrar } from './no-soportado.ts';
+import type { NodoConversion, NodoExpresion, NodoExpresionNoSoportada, NodoNuevaInstancia } from './ast.ts';
 
 const PRECEDENCIA: Readonly<Record<string, number>> = {
   '||': 3,
@@ -137,8 +138,13 @@ function analizarBinaria(cursor: CursorDeTokens, precedenciaMinima: number): Nod
   return izquierda;
 }
 
-// Nivel 13: prefijos (design.md §2.4, §2.5.1 cast-vs-paréntesis).
+// Nivel 13: prefijos (design.md §2.4, §2.5.1 cast-vs-paréntesis). Corrección obligatoria (sub-lote
+// 1-B, tarea 1.6): "->" (lambdas) no se analizaba en absoluto — hoy produce su aviso NO-DISP en vez
+// de dejar que el resto del análisis se confunda con lo que sigue (C8).
 function analizarUnaria(cursor: CursorDeTokens): NodoExpresion {
+  const lambda = intentarAnalizarLambda(cursor);
+  if (lambda) return lambda;
+
   const token = cursor.actual();
 
   if (token.texto === '~') {
@@ -186,6 +192,59 @@ function analizarUnaria(cursor: CursorDeTokens): NodoExpresion {
 
 function esLiteralEnteroOLargo(token: Token): boolean {
   return token.tipo === 'entero' || token.tipo === 'largo';
+}
+
+// Lambdas (tarea 1.6, REQ-SUB-007, corrección obligatoria del sub-lote 1-B): "identificador ->" (un
+// solo parámetro sin paréntesis) o "(...) ->" (lista de parámetros, posiblemente vacía o con más de
+// uno — el contenido de los paréntesis no se interpreta, solo se delimita). Nunca se confunde con
+// un cast o una agrupación normal porque solo dispara si el "->" aparece de verdad después del
+// paréntesis que cierra.
+function intentarAnalizarLambda(cursor: CursorDeTokens): NodoExpresionNoSoportada | null {
+  const token = cursor.actual();
+
+  if (token.tipo === 'identificador' && cursor.mirar(1).texto === '->') {
+    cursor.avanzar();
+    cursor.avanzar();
+    const fin = consumirCuerpoDeLambda(cursor);
+    return { tipo: 'expresion-no-soportada', codigo: 'lambda', rango: { inicio: token.rango.inicio, fin } };
+  }
+
+  if (token.texto === '(') {
+    const desplazamientoCierre = buscarDesplazamientoDelParentesisQueCierra(cursor);
+    if (desplazamientoCierre !== null && cursor.mirar(desplazamientoCierre + 1).texto === '->') {
+      cursor.avanzar(); // '('
+      saltarHastaCerrar(cursor, '(', ')');
+      cursor.avanzar(); // '->'
+      const fin = consumirCuerpoDeLambda(cursor);
+      return { tipo: 'expresion-no-soportada', codigo: 'lambda', rango: { inicio: token.rango.inicio, fin } };
+    }
+  }
+
+  return null;
+}
+
+// Búsqueda SIN CONSUMIR (solo `mirar`) del desplazamiento del ")" que cierra el "(" en la posición
+// actual (desplazamiento 0). Devuelve `null` si no cierra antes de EOF.
+function buscarDesplazamientoDelParentesisQueCierra(cursor: CursorDeTokens): number | null {
+  let profundidad = 0;
+  for (let i = 0; i < 4096; i += 1) {
+    const token = cursor.mirar(i);
+    if (token.tipo === 'eof') return null;
+    if (token.texto === '(') profundidad += 1;
+    else if (token.texto === ')') {
+      profundidad -= 1;
+      if (profundidad === 0) return i;
+    }
+  }
+  return null;
+}
+
+function consumirCuerpoDeLambda(cursor: CursorDeTokens): number {
+  if (cursor.coincideTexto('{')) {
+    cursor.avanzar();
+    return saltarHastaCerrar(cursor, '{', '}').rango.fin;
+  }
+  return analizarAsignacion(cursor).rango.fin;
 }
 
 // JLS 3.10.1: "-2147483648" y "-9223372036854775808L" solo son literales válidos como operando
@@ -247,7 +306,15 @@ function abreExpresionUnariaSinSigno(token: Token): boolean {
   ) {
     return true;
   }
-  if (token.tipo === 'palabra-clave' && (token.texto === 'true' || token.texto === 'false' || token.texto === 'new')) {
+  if (
+    token.tipo === 'palabra-clave' &&
+    (token.texto === 'true' ||
+      token.texto === 'false' ||
+      token.texto === 'new' ||
+      token.texto === 'this' ||
+      token.texto === 'super' ||
+      token.texto === 'null')
+  ) {
     return true;
   }
   return token.texto === '(' || token.texto === '!' || token.texto === '~';
@@ -368,6 +435,17 @@ function analizarPrimaria(cursor: CursorDeTokens): NodoExpresion {
     cursor.avanzar();
     return { tipo: 'literal-booleano', valor: token.texto === 'true', rango: token.rango };
   }
+  // "this"/"super"/"null" (tarea 1.6, REQ-SUB-007, design.md §2.6): se interceptan por TEXTO antes
+  // de caer en la rama genérica de identificador de abajo, para que nunca se traten como el nombre
+  // de una variable común.
+  if (token.texto === 'this' || token.texto === 'super') {
+    cursor.avanzar();
+    return { tipo: 'expresion-no-soportada', codigo: 'this-super-no-soportado', rango: token.rango };
+  }
+  if (token.texto === 'null') {
+    cursor.avanzar();
+    return { tipo: 'expresion-no-soportada', codigo: 'null-no-soportado', rango: token.rango };
+  }
   if (token.texto === 'new') {
     return analizarNuevaInstancia(cursor);
   }
@@ -388,15 +466,33 @@ function analizarPrimaria(cursor: CursorDeTokens): NodoExpresion {
   );
 }
 
-function analizarNuevaInstancia(cursor: CursorDeTokens): NodoNuevaInstancia {
-  const inicio = cursor.esperarTexto('new').rango.inicio;
-  const tipo = cursor.esperarTipo('identificador');
+// "new Tipo(...)" (soportado, REQ-SUB-005) o "new Tipo[...]" / "new Tipo[]{...}" (arreglo, NO-DISP
+// — tarea 1.6, REQ-SUB-007). El tipo puede ser un identificador (Scanner, Random…) o una palabra
+// clave primitiva (el elemento de un arreglo, p. ej. "new int[5]").
+function analizarNuevaInstancia(cursor: CursorDeTokens): NodoNuevaInstancia | NodoExpresionNoSoportada {
+  const inicioToken = cursor.esperarTexto('new');
+  const tipoToken = cursor.avanzar();
+
+  if (cursor.coincideTexto('[')) {
+    let fin = tipoToken.rango.fin;
+    while (cursor.coincideTexto('[')) {
+      cursor.avanzar();
+      if (!cursor.coincideTexto(']')) analizarExpresion(cursor);
+      fin = cursor.esperarTexto(']').rango.fin;
+    }
+    if (cursor.coincideTexto('{')) {
+      cursor.avanzar();
+      fin = saltarHastaCerrar(cursor, '{', '}').rango.fin;
+    }
+    return { tipo: 'expresion-no-soportada', codigo: 'arreglo-no-soportado', rango: { inicio: inicioToken.rango.inicio, fin } };
+  }
+
   const argumentos = analizarArgumentos(cursor);
   const cierre = cursor.esperarTexto(')');
   return {
     tipo: 'nueva-instancia',
-    nombreTipo: tipo.texto,
+    nombreTipo: tipoToken.texto,
     argumentos,
-    rango: { inicio, fin: cierre.rango.fin },
+    rango: { inicio: inicioToken.rango.inicio, fin: cierre.rango.fin },
   };
 }
