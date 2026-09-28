@@ -53,10 +53,11 @@ testing:
   test_runner:
     command: "npm test"
     framework: "Vitest 5.0.2 (proyectos `motor` en Node y `interfaz` en jsdom, --reporter=dot)"
+    oracle_command: "npm run test:oraculo"  # proyecto Vitest `oraculo`: herramientas/oraculo/** con el JDK 17 real; corre en oraculo.yml (tarea 0.18)
   layers:
     unit:
       available: true
-      tool: "Vitest 5.0.2 — proyecto `motor` (entorno node: src/motor, src/textos, src/presentacion, src/trabajador, herramientas/, pruebas/)"
+      tool: "Vitest 5.0.2 — proyecto `motor` (entorno node: src/motor, src/textos, src/presentacion, src/trabajador, herramientas/ salvo herramientas/oraculo, pruebas/)"
     integration:
       available: true
       tool: "Vitest 5.0.2 — proyecto `interfaz` (entorno jsdom) + @testing-library/react 16.3.3 + @testing-library/user-event 14.6.7"

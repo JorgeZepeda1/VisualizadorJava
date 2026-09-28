@@ -1,10 +1,19 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { localizarJdk } from './jdk.ts';
 import { RAIZ_EXPLORACION } from './migrar-corpus.ts';
-import { dockerDisponible, formatearInformeCsv, medirPowConDocker, medirPowLocal, parsearInformeMedicion } from './medir-plataforma.ts';
+import {
+  dockerDisponible,
+  emitirAdvertenciaGitHubActions,
+  escribirResumenDelTrabajo,
+  formatearInformeCsv,
+  formatearResumenMarkdown,
+  medirPowConDocker,
+  medirPowLocal,
+  parsearInformeMedicion,
+} from './medir-plataforma.ts';
 
 // Tarea 0.10 (ADR 009, design.md §8) — mide si Math.pow difiere de StrictMath.pow en x86_64 real.
 // La verdad del motor SIGUE siendo fdlibm (D3): esto solo mide el riesgo, nunca lo resuelve aquí.
@@ -131,5 +140,85 @@ describe('medirPowConDocker — la medición indicativa local (linux/amd64 vía 
     expect(resultado.disponible).toBe(false);
     expect(resultado.motivo).toBeTruthy();
     expect(resultado.filas).toEqual([]);
+  });
+});
+
+// Tarea 0.18 — `plataforma.yml` deja de tener `continue-on-error` a nivel de job: un error real de
+// la herramienta (JDK no encontrado, etc.) debe fallar el trabajo, pero una diferencia real entre
+// Math.pow y StrictMath.pow NO es un fallo (ADR 009) — se reporta con una anotación `::warning::`
+// y en el resumen del trabajo ($GITHUB_STEP_SUMMARY), nunca con exitCode != 0.
+
+describe('formatearResumenMarkdown (pura) — resumen de $GITHUB_STEP_SUMMARY para este job', () => {
+  it('sin diferencias, dice que todos los pares coinciden (ningún fallo que anotar)', () => {
+    const resumen = formatearResumenMarkdown('linux', 'x64', 5, []);
+    expect(resumen).toContain('5/5 pares coinciden');
+  });
+
+  it('con diferencias, arma una tabla Markdown con base/exponente/mathPow/strictMathPow de cada fila', () => {
+    const distintos = [{ base: 10, exponente: -4, mathPow: 9.999999999999999e-5, strictMathPow: 1e-4, coinciden: false }];
+
+    const resumen = formatearResumenMarkdown('win32', 'x64', 5, distintos);
+
+    expect(resumen).toContain('1/5');
+    expect(resumen).toContain(`| 10 | -4 | ${9.999999999999999e-5} | ${1e-4} |`);
+  });
+
+  it('con más de 20 diferencias, trunca a 20 filas de tabla y lo anota (no infla el resumen)', () => {
+    // mathPow/strictMathPow con desplazamiento grande para que NINGÚN valor de columna choque por
+    // texto con "20" (el número de fila truncada) — la aserción de abajo debe fallar solo por la
+    // fila 21 faltando, nunca por una coincidencia de texto accidental en otra columna.
+    const distintos = Array.from({ length: 25 }, (_, indice) => ({
+      base: indice,
+      exponente: 1,
+      mathPow: 1000 + indice,
+      strictMathPow: 2000 + indice,
+      coinciden: false,
+    }));
+
+    const resumen = formatearResumenMarkdown('linux', 'x64', 30, distintos);
+
+    expect(resumen).toContain('| 19 |'); // fila de índice 19 (la 20.ª) SÍ entra en el truncado a 20
+    expect(resumen).not.toContain('| 20 |'); // fila de índice 20 (la 21.ª) YA NO entra
+    expect(resumen).toContain('mostrando 20 de 25');
+  });
+});
+
+describe('escribirResumenDelTrabajo — agrega texto a $GITHUB_STEP_SUMMARY, nunca lanza', () => {
+  it('si GITHUB_STEP_SUMMARY apunta a un archivo real, le agrega el texto', () => {
+    const raiz = mkdtempSync(join(tmpdir(), 'resumen-trabajo-'));
+    const rutaResumen = resolve(raiz, 'resumen.md');
+    writeFileSync(rutaResumen, '', 'utf-8');
+    const anterior = process.env['GITHUB_STEP_SUMMARY'];
+    process.env['GITHUB_STEP_SUMMARY'] = rutaResumen;
+    try {
+      escribirResumenDelTrabajo('### hola\n');
+      expect(readFileSync(rutaResumen, 'utf-8')).toBe('### hola\n');
+    } finally {
+      rmSync(raiz, { recursive: true, force: true });
+      if (anterior === undefined) delete process.env['GITHUB_STEP_SUMMARY'];
+      else process.env['GITHUB_STEP_SUMMARY'] = anterior;
+    }
+  });
+
+  it('si GITHUB_STEP_SUMMARY no está definida (fuera de un runner de Actions), no lanza y no escribe nada', () => {
+    const anterior = process.env['GITHUB_STEP_SUMMARY'];
+    delete process.env['GITHUB_STEP_SUMMARY'];
+    try {
+      expect(() => escribirResumenDelTrabajo('### hola\n')).not.toThrow();
+    } finally {
+      if (anterior !== undefined) process.env['GITHUB_STEP_SUMMARY'] = anterior;
+    }
+  });
+});
+
+describe('emitirAdvertenciaGitHubActions — anotación ::warning:: reconocida por Actions', () => {
+  it('imprime el mensaje con el prefijo exacto que Actions reconoce como advertencia', () => {
+    const espia = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      emitirAdvertenciaGitHubActions('3/5 pares distintos');
+      expect(espia).toHaveBeenCalledWith('::warning::3/5 pares distintos');
+    } finally {
+      espia.mockRestore();
+    }
   });
 });

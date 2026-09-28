@@ -12,6 +12,12 @@ name: Oráculo
 # `oraculo:mutantes` (veredictos de mutantes, tarea 1.16) TODAVÍA no existen como scripts reales —
 # solo `oraculo:verificar` (tarea 0.6) corre hoy. Los pasos nocturnos se agregan de vuelta cuando
 # esas tareas creen sus scripts.
+#
+# Tarea 0.18 (tras el primer CI remoto): `ci.yml` (ubuntu-latest, SIN JDK) fallaba porque `npm
+# test` corría también las pruebas de `herramientas/oraculo/**`, que SIEMPRE requieren el JDK real
+# (ADR 011 punto 4: "npm test compara sin JDK"). Ahora esas pruebas viven en su propio proyecto de
+# Vitest (`oraculo`, ver vitest.config.ts) y SOLO corren aquí, con el JDK real, vía `test:oraculo`
+# — antes de `oraculo:verificar`, para fallar rápido si algo del arnés mismo está roto.
 
 on:
   push:
@@ -51,6 +57,11 @@ jobs:
 
       - name: Instalar dependencias (reproducible, package-lock.json)
         run: npm ci
+
+      - name: Pruebas del oráculo (Vitest — proyecto oraculo, requiere el JDK real; tarea 0.18)
+        env:
+          JDK17_HOME: ${{ steps.jdk.outputs.path }}
+        run: npm run test:oraculo
 
       - name: Verificar goldens contra una regeneración real (bytes idénticos, ADR 011 punto 4)
         env:

@@ -12,6 +12,10 @@ name: CI
 #   - `test:navegadores` (proyecto Vitest en Chromium/Firefox/WebKit reales) lo crea la tarea 2.22.
 #   - `rendimiento` (Playwright, umbral holgado) lo crea la tarea 3.8.
 #   - `e2e` YA es real desde la tarea 0.15: rebanada vertical `u3-hola-mundo` en los tres motores.
+#   - Tarea 0.18 (tras el primer CI remoto): este job corre SIN JDK (ADR 011 punto 4) — `npm test`
+#     (proyectos Vitest `motor`+`interfaz`) YA NO incluye `herramientas/oraculo/**` (proyecto
+#     `oraculo` aparte, vitest.config.ts); esas pruebas, que SIEMPRE requieren el JDK real, corren
+#     solo en `oraculo.yml` vía `npm run test:oraculo`.
 
 on:
   push:
@@ -53,5 +57,22 @@ jobs:
       - name: Licencias (audita dependencias permisivas)
         run: npm run licencias
 
+      # `--reporter=dot,html`: la terminal sigue con `dot` (CLAUDE.md regla 9) y además queda el
+      # reporte HTML en `playwright-report/` para el artefacto de abajo (con CI=true nunca se abre
+      # ni se queda esperando).
       - name: End-to-end (Playwright ×3 motores — rebanada vertical desde la tarea 0.15)
-        run: npm run e2e
+        run: npm run e2e -- --reporter=dot,html
+
+      # Diagnóstico permanente (corrección del E2E de Firefox en CI, PR #1): el primer fallo remoto
+      # llegó sin traza, captura ni `error-context.md`. Si algo falla, se suben trazas, capturas y
+      # el reporte HTML de Playwright (`playwright.config.ts` → trace/screenshot solo en fallos).
+      - name: Publicar trazas y capturas de Playwright (solo si el job falla)
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-e2e-intento-${{ github.run_attempt }}
+          path: |
+            test-results/
+            playwright-report/
+          if-no-files-found: ignore
+          retention-days: 14

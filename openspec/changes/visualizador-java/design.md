@@ -634,6 +634,7 @@ Las tablas de ejecución derivadas (`src/motor/biblioteca/datos/*.generado.ts`, 
 |---|---|
 | `dev` · `build` · `preview` | `vite` · `vite build` · `vite preview` |
 | `test` | `vitest run --project motor --project interfaz --reporter=dot` |
+| `test:oraculo` | `vitest run --project oraculo --reporter=dot`: pruebas de `herramientas/oraculo/**`, que requieren el JDK 17 real; `test` nunca las incluye (tarea 0.18) |
 | `test:navegadores` | `vitest run --project navegadores --reporter=dot` |
 | `e2e` · `rendimiento` | `playwright test --reporter=dot` · `playwright test -c pruebas/rendimiento --reporter=dot` |
 | `lint` · `tipos` | `eslint . --quiet` · `tsc -p` por cada tsconfig con `noEmit` |
@@ -647,8 +648,8 @@ Node 22.23.1 ejecuta los `.ts` de `herramientas/` directamente (**[verificado en
 | Flujo | Disparador | Qué hace |
 |---|---|---|
 | `ci.yml` | *push*/PR a `main` | `ubuntu-latest`, Node de `.nvmrc`, `npm ci`, navegadores de Playwright, `npm run ci`, `test:navegadores`, `e2e`, `rendimiento` (umbral holgado) |
-| `oraculo.yml` | cambios en `corpus/`, `herramientas/oraculo/`, datos; nocturno; manual | `macos-14` (arm64) + `actions/setup-java@v6` Temurin `17.0.18+8`: `oraculo:verificar`; de noche, `oraculo:generados` y `oraculo:mutantes` |
-| `plataforma.yml` | semanal; manual | matriz `ubuntu-latest`/`windows-latest`: `MedirPow` → informe y resumen; `continue-on-error` |
+| `oraculo.yml` | cambios en `corpus/`, `herramientas/oraculo/`, datos; nocturno; manual | `macos-14` (arm64) + `actions/setup-java@v6` Temurin `17.0.18+8`: `test:oraculo` y `oraculo:verificar`; de noche, `oraculo:generados` y `oraculo:mutantes` |
+| `plataforma.yml` | semanal; manual | matriz `ubuntu-latest`/`windows-latest`: `MedirPow` → informe y resumen; sin `continue-on-error`: un error de la herramienta falla el trabajo y una diferencia `Math.pow` ≠ `StrictMath.pow` sale como `::warning::` (tarea 0.18) |
 | `desplegar.yml` | etiqueta `v*`; manual con `ref` | `BASE_PUBLICA=/<repo>/ vite build` → `actions/upload-pages-artifact` → `actions/deploy-pages`; revertir = correrlo con la etiqueta anterior |
 
 La ruta base se toma de `BASE_PUBLICA` (P1 abierta: el nombre del repositorio la fija). Si el repositorio fuera privado, los minutos de macOS cuestan 10×: el job del oráculo corre solo por cambios y de noche.

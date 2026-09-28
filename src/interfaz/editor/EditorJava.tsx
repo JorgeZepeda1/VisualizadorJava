@@ -21,6 +21,9 @@ export function EditorJava({ valor, soloLectura = false, onCambio }: Propiedades
   const compartimientoSoloLecturaRef = useRef(new Compartment());
   const onCambioRef = useRef(onCambio);
   onCambioRef.current = onCambio;
+  // Textos que este editor emitió por `onCambio` y que React todavía no devuelve como `valor`, en
+  // el orden en que se emitieron (ver el efecto de `valor`, abajo).
+  const emitidosPendientesRef = useRef<string[]>([]);
 
   // Se crea una sola vez: `valor`/`soloLectura` se sincronizan en los efectos de abajo (patrón
   // estándar de CodeMirror 6 dentro de React — el estado real vive en `EditorView`, no en React).
@@ -38,7 +41,9 @@ export function EditorJava({ valor, soloLectura = false, onCambio }: Propiedades
           compartimientoSoloLectura.of(EditorView.editable.of(!soloLectura)),
           EditorView.updateListener.of((actualizacion) => {
             if (actualizacion.docChanged) {
-              onCambioRef.current?.(actualizacion.state.doc.toString());
+              const texto = actualizacion.state.doc.toString();
+              emitidosPendientesRef.current.push(texto);
+              onCambioRef.current?.(texto);
             }
           }),
         ],
@@ -53,11 +58,25 @@ export function EditorJava({ valor, soloLectura = false, onCambio }: Propiedades
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Mantiene el editor controlado: si `valor` cambia por fuera (galería, enlace, reiniciar), lo
-  // refleja sin perder el historial de deshacer si el texto no cambió realmente.
+  // Mantiene el editor controlado SIN pisar lo que el alumno teclea. `valor` llega por dos caminos:
+  //   - el eco de lo que este mismo editor emitió por `onCambio` — React puede entregarlo TARDE, con
+  //     más teclas ya aplicadas en el documento (causa raíz del E2E de Firefox en CI, PR #1:
+  //     comparar ese eco atrasado con el documento vivo y reemplazarlo borraba la última tecla);
+  //   - un cambio externo real (galería, enlace, reiniciar), que sí reemplaza el documento.
+  // Si `valor` es uno de los textos pendientes, es un eco: se descarta junto con lo emitido antes
+  // y el documento no se toca. Se busca el PRIMERO (`indexOf`) a propósito: con textos repetidos
+  // (teclear, borrar, volver a teclear) nunca descarta un eco que todavía puede llegar.
   useEffect(() => {
     const vista = vistaRef.current;
     if (!vista) return;
+    const pendientes = emitidosPendientesRef.current;
+    const indiceDelEco = pendientes.indexOf(valor);
+    if (indiceDelEco >= 0) {
+      pendientes.splice(0, indiceDelEco + 1);
+      return;
+    }
+    // Cambio externo: lo emitido antes queda reemplazado y ya no puede volver como eco.
+    pendientes.length = 0;
     const actual = vista.state.doc.toString();
     if (actual !== valor) {
       vista.dispatch({ changes: { from: 0, to: actual.length, insert: valor } });

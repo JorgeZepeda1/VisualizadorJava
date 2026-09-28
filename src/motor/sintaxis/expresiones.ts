@@ -1,0 +1,402 @@
+// Expresiones por precedencia (Pratt/descenso por precedencia, ADR 003) — design.md §2.4 (14
+// niveles), §2.5 (ambigüedades: cast-vs-paréntesis, literales negativos en el borde). Lo NO-DISP
+// (bits, desplazamientos, ternario, `instanceof`, `~`, acceso a arreglo, referencia a método,
+// asignaciones compuestas de bits) se reconoce con la MISMA precedencia real — nunca se
+// malinterpreta como error de sintaxis (C8) — y produce `NodoExpresionNoSoportada` en vez de
+// abortar (ADR 003: "deja seguir").
+//
+// El léxico NO valida el rango de un literal entero/largo (design.md §2.5.3): aquí sí, porque
+// depende de si el literal viene inmediatamente tras un "-" unario (JLS 3.10.1) — el único caso en
+// que "2147483648"/"9223372036854775808L" son válidos (MIN_VALUE de int/long).
+import { ErrorDeCompilacion } from '../error-de-compilacion.ts';
+import { PALABRAS_CLAVE_TIPO_PRIMITIVO, type Token } from '../lexico/tokens.ts';
+import { CursorDeTokens } from './cursor-de-tokens.ts';
+import type { NodoConversion, NodoExpresion, NodoNuevaInstancia } from './ast.ts';
+
+const PRECEDENCIA: Readonly<Record<string, number>> = {
+  '||': 3,
+  '&&': 4,
+  '|': 5,
+  '^': 6,
+  '&': 7,
+  '==': 8,
+  '!=': 8,
+  '<': 9,
+  '>': 9,
+  '<=': 9,
+  '>=': 9,
+  instanceof: 9,
+  '<<': 10,
+  '>>': 10,
+  '>>>': 10,
+  '+': 11,
+  '-': 11,
+  '*': 12,
+  '/': 12,
+  '%': 12,
+};
+
+const OPERADORES_NO_SOPORTADOS_BINARIOS: ReadonlySet<string> = new Set(['|', '^', '&', '<<', '>>', '>>>']);
+
+const CODIGOS_OPERADOR_NO_SOPORTADO: Readonly<Record<string, string>> = {
+  '|': 'operador-bits-or',
+  '^': 'operador-bits-xor',
+  '&': 'operador-bits-and',
+  '<<': 'operador-desplazamiento',
+  '>>': 'operador-desplazamiento',
+  '>>>': 'operador-desplazamiento',
+};
+
+const OPERADORES_ASIGNACION_SOPORTADOS: ReadonlySet<string> = new Set(['=', '+=', '-=', '*=', '/=', '%=']);
+const OPERADORES_ASIGNACION_NO_SOPORTADOS: ReadonlySet<string> = new Set([
+  '&=', '|=', '^=', '<<=', '>>=', '>>>=',
+]);
+
+const MAGNITUD_MAXIMA_INT_POSITIVO = 2147483647n;
+const MAGNITUD_MAXIMA_INT_UNARIA = 2147483648n; // 2^31: solo válido tras "-" unario (MIN_VALUE)
+const MAGNITUD_MAXIMA_LARGO_POSITIVO = 9223372036854775807n;
+const MAGNITUD_MAXIMA_LARGO_UNARIA = 9223372036854775808n; // 2^63: solo válido tras "-" unario
+
+/** Punto de entrada: una expresión completa (nivel 1, asignación — design.md §2.4). */
+export function analizarExpresion(cursor: CursorDeTokens): NodoExpresion {
+  return analizarAsignacion(cursor);
+}
+
+function analizarAsignacion(cursor: CursorDeTokens): NodoExpresion {
+  const izquierda = analizarTernario(cursor);
+  const token = cursor.actual();
+
+  if (OPERADORES_ASIGNACION_SOPORTADOS.has(token.texto)) {
+    cursor.avanzar();
+    const valor = analizarAsignacion(cursor);
+    return {
+      tipo: 'asignacion',
+      operador: token.texto as '=' | '+=' | '-=' | '*=' | '/=' | '%=',
+      objetivo: izquierda,
+      valor,
+      rango: { inicio: izquierda.rango.inicio, fin: valor.rango.fin },
+    };
+  }
+  if (OPERADORES_ASIGNACION_NO_SOPORTADOS.has(token.texto)) {
+    cursor.avanzar();
+    const valor = analizarAsignacion(cursor);
+    return {
+      tipo: 'expresion-no-soportada',
+      codigo: 'asignacion-de-bits',
+      rango: { inicio: izquierda.rango.inicio, fin: valor.rango.fin },
+    };
+  }
+  return izquierda;
+}
+
+// Nivel 2 (design.md §2.4): "? :" — SIEMPRE NO-DISP en este subconjunto; "->" (lambda) no se
+// intenta parsear en absoluto (requeriría reconocer listas de parámetros, fuera de alcance).
+function analizarTernario(cursor: CursorDeTokens): NodoExpresion {
+  const condicion = analizarBinaria(cursor, 3);
+  if (!cursor.coincideTexto('?')) return condicion;
+
+  cursor.avanzar();
+  analizarAsignacion(cursor); // rama "si verdadero" — se descarta, nunca se va a evaluar (NO-DISP)
+  cursor.esperarTexto(':');
+  const siFalso = analizarTernario(cursor);
+  return {
+    tipo: 'expresion-no-soportada',
+    codigo: 'operador-ternario',
+    rango: { inicio: condicion.rango.inicio, fin: siFalso.rango.fin },
+  };
+}
+
+// Niveles 3-12: climbing por precedencia, izquierda-asociativo (design.md §2.4). `instanceof` se
+// resuelve aparte porque su lado derecho es un TIPO, no una expresión.
+function analizarBinaria(cursor: CursorDeTokens, precedenciaMinima: number): NodoExpresion {
+  let izquierda = analizarUnaria(cursor);
+
+  for (;;) {
+    const operador = cursor.actual().texto;
+    const precedencia = PRECEDENCIA[operador];
+    if (precedencia === undefined || precedencia < precedenciaMinima) break;
+    cursor.avanzar();
+
+    if (operador === 'instanceof') {
+      const tipo = cursor.esperarTipo('identificador');
+      izquierda = {
+        tipo: 'expresion-no-soportada',
+        codigo: 'instanceof',
+        rango: { inicio: izquierda.rango.inicio, fin: tipo.rango.fin },
+      };
+      continue;
+    }
+
+    const derecha = analizarBinaria(cursor, precedencia + 1);
+    const rango = { inicio: izquierda.rango.inicio, fin: derecha.rango.fin };
+    izquierda = OPERADORES_NO_SOPORTADOS_BINARIOS.has(operador)
+      ? { tipo: 'expresion-no-soportada', codigo: CODIGOS_OPERADOR_NO_SOPORTADO[operador], rango }
+      : { tipo: 'binaria', operador, izquierda, derecha, rango };
+  }
+
+  return izquierda;
+}
+
+// Nivel 13: prefijos (design.md §2.4, §2.5.1 cast-vs-paréntesis).
+function analizarUnaria(cursor: CursorDeTokens): NodoExpresion {
+  const token = cursor.actual();
+
+  if (token.texto === '~') {
+    cursor.avanzar();
+    const operando = analizarUnaria(cursor);
+    return {
+      tipo: 'expresion-no-soportada',
+      codigo: 'operador-complemento-bits',
+      rango: { inicio: token.rango.inicio, fin: operando.rango.fin },
+    };
+  }
+
+  if (token.texto === '++' || token.texto === '--') {
+    cursor.avanzar();
+    const operando = analizarUnaria(cursor);
+    return {
+      tipo: 'incremento-decremento',
+      operador: token.texto,
+      posicion: 'prefijo',
+      operando,
+      rango: { inicio: token.rango.inicio, fin: operando.rango.fin },
+    };
+  }
+
+  if (token.texto === '-' && esLiteralEnteroOLargo(cursor.mirar(1))) {
+    return analizarLiteralNegativo(cursor);
+  }
+
+  if (token.texto === '+' || token.texto === '-' || token.texto === '!') {
+    cursor.avanzar();
+    const operando = analizarUnaria(cursor);
+    return {
+      tipo: 'unaria',
+      operador: token.texto,
+      operando,
+      rango: { inicio: token.rango.inicio, fin: operando.rango.fin },
+    };
+  }
+
+  const cast = intentarAnalizarCast(cursor);
+  if (cast) return cast;
+
+  return analizarPostfija(cursor);
+}
+
+function esLiteralEnteroOLargo(token: Token): boolean {
+  return token.tipo === 'entero' || token.tipo === 'largo';
+}
+
+// JLS 3.10.1: "-2147483648" y "-9223372036854775808L" solo son literales válidos como operando
+// DIRECTO de un "-" unario (tarea 1.4). Se pliegan aquí a un literal negativo (nunca a
+// NodoUnaria{'-', literal}) — misma técnica para cualquier magnitud, así el caso límite sale
+// gratis en vez de necesitar una rama aparte.
+function analizarLiteralNegativo(cursor: CursorDeTokens): NodoExpresion {
+  const menos = cursor.avanzar();
+  const literal = cursor.avanzar();
+  const rango = { inicio: menos.rango.inicio, fin: literal.rango.fin };
+  const magnitud = literal.valorEntero ?? 0n;
+
+  if (literal.tipo === 'largo') {
+    if (magnitud > MAGNITUD_MAXIMA_LARGO_UNARIA) throw errorLiteralDemasiadoGrande(rango);
+    return { tipo: 'literal-largo', valor: -magnitud, rango };
+  }
+  if (magnitud > MAGNITUD_MAXIMA_INT_UNARIA) throw errorLiteralDemasiadoGrande(rango);
+  return { tipo: 'literal-entero', valor: -magnitud, rango };
+}
+
+function errorLiteralDemasiadoGrande(rango: { inicio: number; fin: number }): ErrorDeCompilacion {
+  return new ErrorDeCompilacion('el número entero es demasiado grande', rango);
+}
+
+// design.md §2.5.1 (JLS 15.16): "(" tipo primitivo ")" es SIEMPRE cast; "(" Nombre ")" es cast
+// solo si lo que sigue puede abrir una expresión unaria sin "+"/"-" — si no, es un paréntesis
+// normal ("lo demás, expresión", §2.5.2) y se deja que analizarPostfija/analizarPrimaria lo trate.
+function intentarAnalizarCast(cursor: CursorDeTokens): NodoConversion | null {
+  if (cursor.actual().texto !== '(') return null;
+
+  const posibleTipo = cursor.mirar(1);
+  const esPrimitivo =
+    posibleTipo.tipo === 'palabra-clave' && PALABRAS_CLAVE_TIPO_PRIMITIVO.has(posibleTipo.texto);
+  const esIdentificador = posibleTipo.tipo === 'identificador';
+  if (!esPrimitivo && !esIdentificador) return null;
+
+  if (cursor.mirar(2).texto !== ')') return null;
+
+  if (esIdentificador && !abreExpresionUnariaSinSigno(cursor.mirar(3))) {
+    return null;
+  }
+
+  const inicio = cursor.actual().rango.inicio;
+  cursor.avanzar(); // "("
+  const tipo = cursor.avanzar(); // el nombre del tipo
+  cursor.avanzar(); // ")"
+  const operando = analizarUnaria(cursor);
+  return { tipo: 'conversion', nombreTipo: tipo.texto, operando, rango: { inicio, fin: operando.rango.fin } };
+}
+
+function abreExpresionUnariaSinSigno(token: Token): boolean {
+  if (
+    token.tipo === 'identificador' ||
+    token.tipo === 'entero' ||
+    token.tipo === 'largo' ||
+    token.tipo === 'doble' ||
+    token.tipo === 'caracter' ||
+    token.tipo === 'cadena'
+  ) {
+    return true;
+  }
+  if (token.tipo === 'palabra-clave' && (token.texto === 'true' || token.texto === 'false' || token.texto === 'new')) {
+    return true;
+  }
+  return token.texto === '(' || token.texto === '!' || token.texto === '~';
+}
+
+// Nivel 14: posfijos (design.md §2.4) — "." miembro y "(...)" llamada soportados; "[...]" (acceso
+// a arreglo) y "::" (referencia a método) son NO-DISP, pero se consumen enteros para que el
+// análisis siga en la posición correcta después (ADR 003).
+function analizarPostfija(cursor: CursorDeTokens): NodoExpresion {
+  let expresion = analizarPrimaria(cursor);
+
+  for (;;) {
+    const token = cursor.actual();
+
+    if (token.texto === '.') {
+      cursor.avanzar();
+      const miembro = cursor.esperarTipo('identificador');
+      expresion = {
+        tipo: 'acceso-miembro',
+        objeto: expresion,
+        miembro: miembro.texto,
+        rango: { inicio: expresion.rango.inicio, fin: miembro.rango.fin },
+      };
+      continue;
+    }
+
+    if (token.texto === '(') {
+      const argumentos = analizarArgumentos(cursor);
+      const cierre = cursor.esperarTexto(')');
+      expresion = {
+        tipo: 'llamada',
+        callee: expresion,
+        argumentos,
+        rango: { inicio: expresion.rango.inicio, fin: cierre.rango.fin },
+      };
+      continue;
+    }
+
+    if (token.texto === '++' || token.texto === '--') {
+      cursor.avanzar();
+      expresion = {
+        tipo: 'incremento-decremento',
+        operador: token.texto,
+        posicion: 'postfijo',
+        operando: expresion,
+        rango: { inicio: expresion.rango.inicio, fin: token.rango.fin },
+      };
+      continue;
+    }
+
+    if (token.texto === '[') {
+      cursor.avanzar();
+      analizarExpresion(cursor); // el índice — se descarta, nunca se va a evaluar (NO-DISP)
+      const cierre = cursor.esperarTexto(']');
+      expresion = {
+        tipo: 'expresion-no-soportada',
+        codigo: 'acceso-arreglo',
+        rango: { inicio: expresion.rango.inicio, fin: cierre.rango.fin },
+      };
+      continue;
+    }
+
+    if (token.texto === '::') {
+      cursor.avanzar();
+      const miembro = cursor.avanzar(); // nombre de método, o "new"
+      expresion = {
+        tipo: 'expresion-no-soportada',
+        codigo: 'referencia-metodo',
+        rango: { inicio: expresion.rango.inicio, fin: miembro.rango.fin },
+      };
+      continue;
+    }
+
+    break;
+  }
+
+  return expresion;
+}
+
+function analizarArgumentos(cursor: CursorDeTokens): NodoExpresion[] {
+  cursor.esperarTexto('(');
+  const argumentos: NodoExpresion[] = [];
+  if (!cursor.coincideTexto(')')) {
+    argumentos.push(analizarAsignacion(cursor));
+    while (cursor.coincideTexto(',')) {
+      cursor.avanzar();
+      argumentos.push(analizarAsignacion(cursor));
+    }
+  }
+  return argumentos;
+}
+
+function analizarPrimaria(cursor: CursorDeTokens): NodoExpresion {
+  const token = cursor.actual();
+
+  if (token.tipo === 'entero' || token.tipo === 'largo') {
+    cursor.avanzar();
+    const limite = token.tipo === 'largo' ? MAGNITUD_MAXIMA_LARGO_POSITIVO : MAGNITUD_MAXIMA_INT_POSITIVO;
+    const magnitud = token.valorEntero ?? 0n;
+    if (magnitud > limite) throw errorLiteralDemasiadoGrande(token.rango);
+    return token.tipo === 'largo'
+      ? { tipo: 'literal-largo', valor: magnitud, rango: token.rango }
+      : { tipo: 'literal-entero', valor: magnitud, rango: token.rango };
+  }
+  if (token.tipo === 'doble') {
+    cursor.avanzar();
+    return { tipo: 'literal-doble', valor: token.valorDoble ?? 0, rango: token.rango };
+  }
+  if (token.tipo === 'caracter') {
+    cursor.avanzar();
+    return { tipo: 'literal-caracter', valor: token.valorCaracter ?? '', rango: token.rango };
+  }
+  if (token.tipo === 'cadena') {
+    cursor.avanzar();
+    return { tipo: 'literal-cadena', valor: token.valor ?? '', rango: token.rango };
+  }
+  if (token.texto === 'true' || token.texto === 'false') {
+    cursor.avanzar();
+    return { tipo: 'literal-booleano', valor: token.texto === 'true', rango: token.rango };
+  }
+  if (token.texto === 'new') {
+    return analizarNuevaInstancia(cursor);
+  }
+  if (token.texto === '(') {
+    cursor.avanzar();
+    const interior = analizarExpresion(cursor);
+    cursor.esperarTexto(')');
+    return interior;
+  }
+  if (token.tipo === 'identificador') {
+    cursor.avanzar();
+    return { tipo: 'nombre', nombre: token.texto, rango: token.rango };
+  }
+
+  throw new ErrorDeCompilacion(
+    `se esperaba una expresión y se encontró "${token.texto || '<fin de archivo>'}"`,
+    token.rango,
+  );
+}
+
+function analizarNuevaInstancia(cursor: CursorDeTokens): NodoNuevaInstancia {
+  const inicio = cursor.esperarTexto('new').rango.inicio;
+  const tipo = cursor.esperarTipo('identificador');
+  const argumentos = analizarArgumentos(cursor);
+  const cierre = cursor.esperarTexto(')');
+  return {
+    tipo: 'nueva-instancia',
+    nombreTipo: tipo.texto,
+    argumentos,
+    rango: { inicio, fin: cierre.rango.fin },
+  };
+}

@@ -26,16 +26,23 @@ export function esVersionEsperada(salidaVersion: string, versionEsperada: string
   return salidaVersion.includes(`"${versionEsperada}"`);
 }
 
-/** Localiza el JDK 17 real: `JDK17_HOME` si está definida, si no la ruta fija de macOS. */
-export function localizarJdk(): InfoJdk {
+/**
+ * Localiza el JDK 17 real: `JDK17_HOME` si está definida, si no la ruta fija de macOS.
+ * `plataforma` es inyectable (por omisión `process.platform`, tarea 0.18) — en `win32` los
+ * ejecutables llevan `.exe` (`bin/java.exe`/`bin/javac.exe`); en cualquier otra plataforma, sin
+ * extensión. Los separadores de ruta los resuelve `node:path` según el SO real en tiempo de
+ * ejecución; este parámetro solo decide la extensión, nunca los separadores.
+ */
+export function localizarJdk(plataforma: NodeJS.Platform = process.platform): InfoJdk {
   const directorioHome = process.env['JDK17_HOME']?.trim() || RUTA_MACOS_POR_OMISION;
-  const rutaJava = resolve(directorioHome, 'bin', 'java');
-  const rutaJavac = resolve(directorioHome, 'bin', 'javac');
+  const extensionEjecutable = plataforma === 'win32' ? '.exe' : '';
+  const rutaJava = resolve(directorioHome, 'bin', `java${extensionEjecutable}`);
+  const rutaJavac = resolve(directorioHome, 'bin', `javac${extensionEjecutable}`);
   if (!existsSync(rutaJava) || !existsSync(rutaJavac)) {
     throw new ErrorJdk(
-      `No se encontró el JDK 17 real en "${directorioHome}" (faltan bin/java o bin/javac). ` +
-        `Define la variable de entorno JDK17_HOME o instala Temurin ${VERSION_JDK_ESPERADA} en la ruta ` +
-        `por omisión de macOS ("${RUTA_MACOS_POR_OMISION}").`,
+      `No se encontró el JDK 17 real en "${directorioHome}" (faltan bin/java${extensionEjecutable} o ` +
+        `bin/javac${extensionEjecutable}). Define la variable de entorno JDK17_HOME o instala Temurin ` +
+        `${VERSION_JDK_ESPERADA} en la ruta por omisión de macOS ("${RUTA_MACOS_POR_OMISION}").`,
     );
   }
   return { directorioHome, rutaJava, rutaJavac };

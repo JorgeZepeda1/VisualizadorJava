@@ -9,15 +9,20 @@
 //      traducido por Rosetta. Si el demonio no está corriendo, regresa `disponible: false` con un
 //      motivo explícito — NUNCA lanza, NUNCA finge un resultado.
 //   2. Autoritativa: `.github/workflows/plataforma.yml` — matriz ubuntu-latest/windows-latest,
-//      x86_64 reales, Temurin 17.0.18 vía `actions/setup-java`. `continue-on-error`: nunca
-//      bloquea el resto de CI.
+//      x86_64 reales, Temurin 17.0.18 vía `actions/setup-java`. Nunca bloquea nada que dependa de
+//      este flujo (no corre en push/PR) — pero SÍ falla el trabajo (`job`) cuando la herramienta
+//      misma truena (JDK no encontrado, `MedirPow.java` no compila…). Una diferencia real entre
+//      `Math.pow` y `StrictMath.pow` NO es un fallo de la herramienta (ADR 009): se reporta como
+//      anotación `::warning::` y en el resumen del trabajo ($GITHUB_STEP_SUMMARY), nunca con
+//      `exitCode != 0` (tarea 0.18 — antes, `continue-on-error` a nivel de job ocultaba también
+//      los errores reales de la herramienta, como `windows-latest` sin soporte de `.exe`).
 //
 // `medirPowLocal` corre el MISMO `MedirPow.java` con el JDK local de esta máquina (sin Docker) —
 // no mide el riesgo de plataforma (esta máquina no es x86_64), pero sí prueba de verdad que el
 // programa compila y calcula correctamente, con RED/GREEN real sin depender de Docker.
 
 import { spawnSync } from 'node:child_process';
-import { writeFileSync } from 'node:fs';
+import { appendFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { type InfoJdk, localizarJdk, verificarVersionJdk } from './jdk.ts';
@@ -88,6 +93,51 @@ export function medirPowLocal(jdk: InfoJdk, rutaCsvPares: string): FilaMedicionP
   return parsearInformeMedicion(resultado.stdout);
 }
 
+/**
+ * Pura: arma el resumen Markdown de `$GITHUB_STEP_SUMMARY` para este job (design.md §9: "MedirPow
+ * → informe y resumen", tarea 0.18). Separada de `main()` para probarla sin variables de entorno
+ * ni archivos temporales. Trunca la tabla a 20 filas — el mismo tope que ya usaba el resumen por
+ * consola (`main()`), para no inflar el resumen del trabajo con miles de filas.
+ */
+export function formatearResumenMarkdown(
+  plataforma: string,
+  arquitectura: string,
+  totalPares: number,
+  distintos: readonly FilaMedicionPow[],
+): string {
+  const encabezado = `### Medición de \`Math.pow\` vs \`StrictMath.pow\` — ${plataforma}/${arquitectura}\n\n`;
+  if (distintos.length === 0) {
+    return `${encabezado}${totalPares}/${totalPares} pares coinciden. Sin diferencias (ADR 009).\n`;
+  }
+  const TOPE_FILAS = 20;
+  const filas = distintos
+    .slice(0, TOPE_FILAS)
+    .map((fila) => `| ${fila.base} | ${fila.exponente} | ${fila.mathPow} | ${fila.strictMathPow} |`)
+    .join('\n');
+  const nota = distintos.length > TOPE_FILAS ? `\n\n_(mostrando ${TOPE_FILAS} de ${distintos.length})_` : '';
+  return (
+    `${encabezado}**${distintos.length}/${totalPares}** pares con \`Math.pow\` ≠ \`StrictMath.pow\` ` +
+    `(el motor sigue fdlibm, D3 — esto NO es un fallo, solo documenta el riesgo de ADR 009).\n\n` +
+    `| base | exponente | Math.pow | StrictMath.pow |\n|---|---|---|---|\n${filas}${nota}\n`
+  );
+}
+
+/** Agrega `texto` a `$GITHUB_STEP_SUMMARY` si la variable está definida (dentro de un runner de
+ * GitHub Actions); fuera de un runner (ej. local) la variable no existe — no escribe nada, nunca
+ * lanza. */
+export function escribirResumenDelTrabajo(texto: string): void {
+  const rutaResumen = process.env['GITHUB_STEP_SUMMARY'];
+  if (!rutaResumen) return;
+  appendFileSync(rutaResumen, texto, 'utf-8');
+}
+
+/** Imprime `mensaje` con el prefijo `::warning::` — GitHub Actions reconoce esta sintaxis en
+ * stdout como anotación de advertencia sin necesitar la dependencia `@actions/core` (ADR 016:
+ * cero dependencias nuevas). Fuera de un runner de Actions es un log normal, inofensivo. */
+export function emitirAdvertenciaGitHubActions(mensaje: string): void {
+  console.log(`::warning::${mensaje}`);
+}
+
 export interface ResultadoMedicionPlataforma {
   readonly disponible: boolean;
   readonly motivo: string | null;
@@ -149,6 +199,11 @@ export function medirPowConDocker(rutaCsvParesRelativaAlProyecto: string): Resul
  * medición autoritativa de design.md §8; localmente en esta Mac arm64 es solo indicativo). Sin
  * argumento, usa `corpus/datos/pow/pares.csv` (el conjunto completo — llega en la tarea 2.1; con
  * un CSV de humo pasado como argumento sirve para probar el cableado antes de esa tarea).
+ *
+ * Tarea 0.18: una diferencia real Math.pow ≠ StrictMath.pow NUNCA pone `exitCode = 1` (ADR 009 —
+ * es un dato, no un fallo); se anota con `::warning::` y en `$GITHUB_STEP_SUMMARY`. Un error de la
+ * propia herramienta (el `catch` de abajo: JDK no encontrado, `MedirPow.java` no compila…) sí pone
+ * `exitCode = 1` — con `plataforma.yml` sin `continue-on-error`, eso ahora sí falla el trabajo.
  */
 function main(): void {
   const rutaCsv = process.argv[2] ?? resolve(RAIZ_PROYECTO, 'corpus', 'datos', 'pow', 'pares.csv');
@@ -162,7 +217,14 @@ function main(): void {
 
     console.log(`medir:plataforma — ${filas.length} pares medidos, ${distintos.length} con Math.pow ≠ StrictMath.pow.`);
     console.log(`Informe completo: ${rutaInforme}`);
+
+    escribirResumenDelTrabajo(formatearResumenMarkdown(process.platform, process.arch, filas.length, distintos));
+
     if (distintos.length > 0) {
+      emitirAdvertenciaGitHubActions(
+        `${distintos.length}/${filas.length} pares con Math.pow ≠ StrictMath.pow en ${process.platform}/${process.arch} ` +
+          `(ADR 009 / design.md §8 — el motor sigue fdlibm, esto NO es un fallo; ver el resumen del trabajo).`,
+      );
       console.log('Pares donde difieren (ADR 009 / design.md §8 — el motor NO cambia; esto solo documenta el riesgo):');
       for (const fila of distintos.slice(0, 20)) {
         console.log(`  base=${fila.base} exponente=${fila.exponente} Math.pow=${fila.mathPow} StrictMath.pow=${fila.strictMathPow}`);
