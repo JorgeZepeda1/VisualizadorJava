@@ -103,6 +103,22 @@ describe('analizarPrograma — núcleo del programa (tarea 1.2, REQ-SUB-001)', (
     ]);
   });
 
+  // Sub-lote 1-D3 (mutante real contra veredicto de javac, tarea 1.16): JLS 7.3 -- un ";" suelto
+  // es una "declaración vacía" válida en CUALQUIER posición de nivel superior (incluida justo tras
+  // los imports, antes de la clase); ya se toleraba TRAS la clase (`consumirPuntosYComasSueltos`,
+  // línea 76) pero no aquí. Verificado contra javac 17 real (5 mutantes reales de esta sesión,
+  // mutación "duplicar" sobre el ";" de un import): "import java.util.Scanner; ;" compila limpio.
+  it('un ";" suelto justo después de los imports (antes de la clase) no rompe el análisis', () => {
+    const fuente =
+      'import java.util.Scanner; ; class C { public static void main(String[] a) { System.out.println("x"); } }';
+    expect(() => analizar(fuente)).not.toThrow();
+  });
+
+  it('triangulación: varios ";" sueltos seguidos, también antes de la clase', () => {
+    const fuente = 'import java.util.Scanner; ; ; ; class C { public static void main(String[] a) { } }';
+    expect(() => analizar(fuente)).not.toThrow();
+  });
+
   it('acepta las 3 formas de parámetro de main: String[] args', () => {
     const programa = analizar('class C { public static void main(String[] args) { return; } }');
     expect(programa.clase.main!.parametro).toBe('args');
@@ -345,3 +361,39 @@ function primeraSentenciaDe(cuerpoDeMain: string) {
   const programa = analizar(`class C { public static void main(String[] a) { ${cuerpoDeMain} } }`);
   return programa.clase.main!.cuerpo.elementos;
 }
+
+// Sub-lote 1-D3 (tarea 1.16, mutante real contra veredicto de javac): `consumirModificadores`
+// juntaba los modificadores vistos en un `Set` (dedup automático) sin distinguir "un modificador
+// repetido" de "el mismo modificador, una sola vez" -- "public static static void main(...)"
+// (mutación "duplicar" real sobre "static") se aceptaba en silencio. Verificado contra javac 17
+// real (carpeta temporal, borrada): "H.java:2: error: repeated modifier", el `^` apunta al
+// SEGUNDO "static" (el repetido), nunca al primero.
+describe('consumirModificadores — modificador repetido (JLS 8.3/8.4.3, sub-lote 1-D3)', () => {
+  it('"public static static void main(...)" lanza ErrorDeCompilacion con codigo "modificador-repetido"', () => {
+    const fuente = 'public class H { public static static void main(String[] args) { System.out.println(1); } }';
+    expect(() => analizar(fuente)).toThrow(ErrorDeCompilacion);
+    try {
+      analizar(fuente);
+    } catch (error) {
+      expect(error).toBeInstanceOf(ErrorDeCompilacion);
+      expect((error as ErrorDeCompilacion).codigo).toBe('modificador-repetido');
+    }
+  });
+
+  it('triangulación: "public public class H" (repetido en los modificadores de CLASE, no de main) también se rechaza', () => {
+    const fuente = 'public public class H { public static void main(String[] args) { } }';
+    expect(() => analizar(fuente)).toThrow(ErrorDeCompilacion);
+  });
+
+  it('control (regresión): "public static void main(...)" SIN repetir sigue aceptándose limpio', () => {
+    expect(() =>
+      analizar('public class H { public static void main(String[] args) { System.out.println(1); } }'),
+    ).not.toThrow();
+  });
+
+  it('control: el orden real "static public" (sin repetir) también sigue aceptándose limpio', () => {
+    expect(() =>
+      analizar('public class H { static public void main(String[] args) { System.out.println(1); } }'),
+    ).not.toThrow();
+  });
+});

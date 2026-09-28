@@ -45,6 +45,11 @@ export interface OpcionesEjecucion {
   readonly limiteCompilacionMs?: number;
   readonly limiteBytesCaptura?: number;
   readonly regional?: 'es-MX' | 'es-ES';
+  // Sub-lote 1-D3 (Parte A.2, defensa adicional para el gotcha de la JVM en frío, engram): variables
+  // de entorno adicionales para EL PROCESO HIJO (javac/java), fusionadas sobre `process.env` heredado
+  // -- nunca lo reemplazan. Opcional a propósito: por omisión el comportamiento es IDÉNTICO al de
+  // siempre (hereda `process.env` tal cual, como ya hacía `spawn` sin la opción `env`).
+  readonly envAdicional?: Readonly<Record<string, string>>;
 }
 
 export interface ResultadoEjecucion {
@@ -108,9 +113,10 @@ function ejecutarProcesoSeparado(
   entrada: Buffer | undefined,
   limiteMs: number,
   limiteBytesCaptura: number,
+  env: NodeJS.ProcessEnv | undefined,
 ): Promise<ResultadoProceso> {
   return new Promise((resolverPromesa) => {
-    const proceso = spawn(comando, argumentos, { cwd, stdio: ['pipe', 'pipe', 'pipe'] });
+    const proceso = spawn(comando, argumentos, { cwd, stdio: ['pipe', 'pipe', 'pipe'], ...(env ? { env } : {}) });
     const acumuladorStdout = crearAcumuladorAcotado(limiteBytesCaptura);
     const acumuladorStderr = crearAcumuladorAcotado(limiteBytesCaptura);
     let agotoTiempo = false;
@@ -149,6 +155,7 @@ function ejecutarProcesoCombinado(
   limiteMs: number,
   directorioTemporal: string,
   limiteBytesCaptura: number,
+  env: NodeJS.ProcessEnv | undefined,
 ): Promise<{ combinada: Buffer; agotoTiempo: boolean }> {
   return new Promise((resolverPromesa) => {
     const rutaCombinada = join(directorioTemporal, `combinada-${Date.now()}-${Math.random().toString(36).slice(2)}.bin`);
@@ -157,7 +164,11 @@ function ejecutarProcesoCombinado(
     const descriptorStderr = openSync(rutaCombinada, 'a');
     let agotoTiempo = false;
 
-    const proceso = spawn(comando, argumentos, { cwd, stdio: ['pipe', descriptorStdout, descriptorStderr] });
+    const proceso = spawn(comando, argumentos, {
+      cwd,
+      stdio: ['pipe', descriptorStdout, descriptorStderr],
+      ...(env ? { env } : {}),
+    });
 
     const temporizador = setTimeout(() => {
       agotoTiempo = true;
@@ -194,6 +205,9 @@ export async function ejecutarPrograma(jdk: InfoJdk, opciones: OpcionesEjecucion
   const limiteCompilacionMs = opciones.limiteCompilacionMs ?? LIMITE_MS_COMPILACION_POR_OMISION;
   const limiteBytesCaptura = opciones.limiteBytesCaptura ?? LIMITE_BYTES_CAPTURA_POR_OMISION;
   const flagsLocale = FLAGS_LOCALE[opciones.regional ?? 'es-MX'];
+  // Sub-lote 1-D3 (Parte A.2): `undefined` cuando nadie pide `envAdicional` -- `spawn` hereda
+  // `process.env` tal cual, IDÉNTICO al comportamiento de siempre (nunca cambia sin pedirlo).
+  const env = opciones.envAdicional ? { ...process.env, ...opciones.envAdicional } : undefined;
 
   const directorioTemporal = mkdtempSync(join(tmpdir(), 'oraculo-visualizador-java-'));
   try {
@@ -208,6 +222,7 @@ export async function ejecutarPrograma(jdk: InfoJdk, opciones: OpcionesEjecucion
       undefined,
       limiteCompilacionMs,
       limiteBytesCaptura,
+      env,
     );
 
     if (compilacion.codigo !== 0) {
@@ -232,7 +247,15 @@ export async function ejecutarPrograma(jdk: InfoJdk, opciones: OpcionesEjecucion
     // de solo lectura) — en paralelo, un programa que agota tiempo tarda `limiteMs` una sola vez,
     // no el doble (importa para el costo real del job del oráculo, design.md §9).
     const [separada, combinada] = await Promise.all([
-      ejecutarProcesoSeparado(jdk.rutaJava, argumentosEjecucion, directorioTemporal, opciones.entrada, limiteMs, limiteBytesCaptura),
+      ejecutarProcesoSeparado(
+        jdk.rutaJava,
+        argumentosEjecucion,
+        directorioTemporal,
+        opciones.entrada,
+        limiteMs,
+        limiteBytesCaptura,
+        env,
+      ),
       ejecutarProcesoCombinado(
         jdk.rutaJava,
         argumentosEjecucion,
@@ -241,6 +264,7 @@ export async function ejecutarPrograma(jdk: InfoJdk, opciones: OpcionesEjecucion
         limiteMs,
         directorioTemporal,
         limiteBytesCaptura,
+        env,
       ),
     ]);
 

@@ -59,6 +59,13 @@ interface DatosSinSobrecarga {
   readonly argumentos: readonly Tipo[];
 }
 
+// Sub-lote 1-D3 (JLS 15.9): sin "nombre" -- a diferencia de un método, un constructor no tiene un
+// nombre propio distinto de su clase ("new Scanner(...)" nunca es "Scanner.algo(...)").
+interface DatosSinConstructor {
+  readonly clase: string;
+  readonly argumentos: readonly Tipo[];
+}
+
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type -- vacío a propósito: estos 6 códigos no llevan datos
 interface DatosVacios {}
 
@@ -76,6 +83,7 @@ interface DatosPorCodigo {
   'campo-no-declarado': DatosMiembro;
   'miembro-no-declarado': DatosMiembro;
   'sin-sobrecarga-aplicable': DatosSinSobrecarga;
+  'sin-constructor-aplicable': DatosSinConstructor;
   'conversion-con-perdida': DatosConversion;
   'tipos-incompatibles-en-asignacion': DatosConversion;
   'condicion-no-booleana': DatosCondicion;
@@ -93,6 +101,11 @@ interface DatosPorCodigo {
   'llave-de-metodo-faltante': DatosVacios;
   'paquete-despues-de-import': DatosVacios;
   'tipo-requiere-import': DatosNombre;
+  // Lanzado como `ErrorDeCompilacion` (sintaxis) -- `construirProblema` (compilador.ts) SIEMPRE
+  // empaqueta `datos: { mensaje: error.message }` para cualquier código de esta familia (nunca un
+  // "nombre" estructurado aparte, a diferencia de los códigos de ATRIBUCIÓN) -- mismo shape que
+  // "error-no-clasificado".
+  'modificador-repetido': DatosMensajeCrudo;
   'sentencia-inalcanzable': DatosVacios;
   'variable-posiblemente-no-asignada': DatosNombre;
   'variable-final-reasignada': DatosNombre;
@@ -116,6 +129,8 @@ export const textosProblemas: { readonly [K in CodigoProblema]: (datos: DatosPor
     `"${clase}" no tiene ningún método llamado "${nombre}()". Revisa que esté bien escrito.`,
   'sin-sobrecarga-aplicable': ({ clase, nombre, argumentos }) =>
     `Ningún "${nombre}(...)" de "${clase}" acepta los argumentos que le diste (${argumentos.join(', ')}). Revisa el tipo de cada uno.`,
+  'sin-constructor-aplicable': ({ clase, argumentos }) =>
+    `Ningún constructor de "${clase}" acepta los argumentos que le diste (${argumentos.join(', ')}). Revisa el tipo y la cantidad de cada uno.`,
   'conversion-con-perdida': ({ origen, destino }) =>
     `Estás guardando un valor de tipo "${origen}" en una variable "${destino}"; puedes perder información. Usa "(${destino})" si es a propósito.`,
   'tipos-incompatibles-en-asignacion': ({ origen, destino }) =>
@@ -139,6 +154,7 @@ export const textosProblemas: { readonly [K in CodigoProblema]: (datos: DatosPor
   'llave-de-metodo-faltante': () => 'Falta abrir una llave "{" después de esto — probablemente la del método.',
   'paquete-despues-de-import': () => 'La línea "package" debe ir antes que cualquier "import".',
   'tipo-requiere-import': ({ nombre }) => `Falta la línea "import java.util.${nombre};" al principio del archivo.`,
+  'modificador-repetido': () => 'Escribiste el mismo modificador (como "public" o "static") dos veces seguidas; cada uno solo se pone una vez.',
   'sentencia-inalcanzable': () => 'Esta línea nunca se ejecuta.',
   'variable-posiblemente-no-asignada': ({ nombre }) =>
     `La variable "${nombre}" podría no tener un valor asignado en este punto. Asegúrate de que SIEMPRE reciba uno antes de usarla.`,

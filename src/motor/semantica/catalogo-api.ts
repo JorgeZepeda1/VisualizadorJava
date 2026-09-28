@@ -31,8 +31,10 @@ export const MIEMBROS_SOPORTADOS: ReadonlySet<string> = new Set([
   'PrintStream.printf',
   // String.format (biblioteca-java, formato completo fuera de 1.8; aquí solo se reconoce el miembro).
   'String.format',
-  // Scanner — REQ-SUB-005.
-  'Scanner.<init>',
+  // Scanner — REQ-SUB-005. Constructor: ver `CONSTRUCTORES_SOPORTADOS` (abajo), NUNCA aquí —
+  // "Scanner.<init>" en ESTA lista diría "cualquier constructor real de Scanner está soportado",
+  // falso (REQ-SUB-005 exige el ÚNICO "new Scanner(System.in)"; "new Scanner(String)" existe en
+  // el JDK real pero está fuera del subconjunto — sub-lote 1-D3, ver el informe de la sesión).
   'Scanner.nextInt',
   'Scanner.nextDouble',
   'Scanner.nextBoolean',
@@ -68,7 +70,8 @@ export const MIEMBROS_SOPORTADOS: ReadonlySet<string> = new Set([
   'String.endsWith',
   'String.replace',
   'String.valueOf',
-  'String.<init>',
+  // String.<init>: mismo motivo que Scanner arriba — ver `CONSTRUCTORES_SOPORTADOS` ("new
+  // String(texto)" soportado; "new String(char[])"/"new String(byte[])"/etc. NO).
   // Character — REQ-SUB-005.
   'Character.isDigit',
   'Character.isLetter',
@@ -88,10 +91,25 @@ export const MIEMBROS_SOPORTADOS: ReadonlySet<string> = new Set([
   'Long.MAX_VALUE',
   'Long.MIN_VALUE',
   // Random — REQ-SUB-005.
-  'Random.<init>',
   'Random.nextInt',
   'Random.nextDouble',
   'Random.nextBoolean',
+]);
+
+// Sub-lote 1-D3 (JLS 15.9, REQ-SUB-005): la superficie EXACTA de constructores soportados — a
+// diferencia de `MIEMBROS_SOPORTADOS` (granularidad de NOMBRE: cualquier sobrecarga real de un
+// método soportado cuenta como soportada, 1.8/1.19), un constructor se filtra por FIRMA completa
+// (clase + lista de parámetros) porque REQ-SUB-005 es explícito: "un único new
+// Scanner(System.in)", "new String(texto)" — nunca "cualquier constructor de Scanner/String".
+// Clave "Clase(tipo1,tipo2,...)" con los MISMOS nombres reflejados que trae
+// `FirmaMiembro.parametros` (p. ej. "java.io.InputStream") — para casar exacto contra la firma
+// que `resolverSobrecarga` YA resolvió (visitarNuevaInstancia, atribucion.ts), nunca una segunda
+// tabla de tipos que podría divergir.
+export const CONSTRUCTORES_SOPORTADOS: ReadonlySet<string> = new Set([
+  'Scanner(java.io.InputStream)',
+  'Random()',
+  'Random(long)',
+  'String(java.lang.String)',
 ]);
 
 export type ClasificacionMiembro = 'soportado' | 'existe-no-soportado' | 'no-existe';

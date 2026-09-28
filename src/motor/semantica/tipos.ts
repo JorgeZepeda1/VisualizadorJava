@@ -60,13 +60,32 @@ export function tipoDeExpresion(expresion: NodoExpresion, alcance: Alcance): Tip
     // la cascada (D2). Descubierto al conectar atribución de punta a punta contra el catálogo real.
     case 'asignacion':
       return tipoDeExpresion(expresion.objetivo, alcance);
-    // binaria/unaria/incremento-decremento/nueva-instancia/expresion-no-soportada: la promoción
-    // numérica binaria/unaria (JLS 5.6) queda fuera de 1.7/1.8 — aquí, 'desconocido' en vez de
-    // adivinar (D2). Ninguna de las dos tareas la necesita: 1.7 solo tipaba el selector de `switch`
+    // Sub-lote 1-D3 (JLS 15.9, REQ-SUB-005): tipo real de "new Clase(...)" -- el MISMO
+    // `resolverSobrecarga` que ya tipa llamadas (arriba), con nombre='<init>' (design.md §1.9: los
+    // constructores viven en `FIRMAS_JDK` con `genero:'constructor'`, `nombre:'<init>'`). Resuelve
+    // el tipo aunque el constructor esté fuera del subconjunto (p. ej. "new Scanner(\"texto\")")
+    // -- MISMO criterio que `tipoDeLlamada` ya aplica para métodos existentes-no-soportados
+    // (`s.split(...)` sí tipa "String", pese a ser NO-DISP): la superficie SOPORTADA
+    // (`CONSTRUCTORES_SOPORTADOS`/`MIEMBROS_SOPORTADOS`) es asunto de `atribucion.ts` (qué avisar),
+    // nunca de esta función (qué tipo tiene la expresión si Java la aceptara).
+    case 'nueva-instancia':
+      return tipoDeNuevaInstancia(expresion, alcance);
+    // binaria/unaria/incremento-decremento/expresion-no-soportada: la promoción numérica
+    // binaria/unaria (JLS 5.6) queda fuera de 1.7/1.8 — aquí, 'desconocido' en vez de adivinar
+    // (D2). Ninguna de las dos tareas la necesita: 1.7 solo tipaba el selector de `switch`
     // (literal/variable/cast) y 1.8 solo amplía llamadas/campos reales de biblioteca.
     default:
       return 'desconocido';
   }
+}
+
+function tipoDeNuevaInstancia(expresion: Extract<NodoExpresion, { tipo: 'nueva-instancia' }>, alcance: Alcance): Tipo {
+  const tipo = tipoDeNombreDeTipo(expresion.nombreTipo);
+  if (tipo === 'desconocido') return 'desconocido'; // clase no reconocida — atribucion.ts ya lo reporta aparte
+  const tiposDeArgumentos = expresion.argumentos.map((argumento) => tipoDeExpresion(argumento, alcance));
+  if (tiposDeArgumentos.includes('desconocido')) return 'desconocido'; // D2, mismo sumidero de cascada de siempre
+  const firma = resolverSobrecarga(expresion.nombreTipo, '<init>', tiposDeArgumentos);
+  return firma === null ? 'desconocido' : tipo;
 }
 
 function tipoDeLlamada(expresion: Extract<NodoExpresion, { tipo: 'llamada' }>, alcance: Alcance): Tipo {
@@ -99,6 +118,26 @@ export function claseDelObjeto(objeto: NodoExpresion, alcance: Alcance): string 
   if (objeto.tipo === 'nombre') {
     const variable = alcance.buscar(objeto.nombre);
     if (variable === null && NOMBRES_DE_CLASE_RECONOCIDOS.has(objeto.nombre)) return objeto.nombre;
+  }
+  // Sub-lote 1-D3 (mutante real contra veredicto de javac; "pendiente heredado 2" de 1.8, ver la
+  // cabecera de `esInicioDeImpresion`): "System.out"/"System.err" son la ÚNICA clase de biblioteca
+  // de este subconjunto cuyos miembros se navegan DOS veces -- pero solo "System.out.println/
+  // print" pasan por la gramática dedicada; "System.err.println(...)" y cualquier
+  // "System.out.OTRO(...)" (p. ej. un método inventado) caen en el camino GENERAL de expresiones.
+  // Sin este caso, `tipoDeExpresion(System.out)` daba 'desconocido' (PrintStream no es un `Tipo`
+  // declarable de este subconjunto) y la cascada se suprimía SIEMPRE -- verificado contra javac 17
+  // real (mutante real): "System.out.Bienvenida(\"...\")" (método inventado) -> "cannot find
+  // symbol: method Bienvenida(String)", javac lo rechaza; nuestro motor lo aceptaba en silencio.
+  // "System.in" queda FUERA a propósito (no navegable en este subconjunto: se consume directo
+  // como argumento de "new Scanner(...)", nunca "System.in.algo()").
+  if (
+    objeto.tipo === 'acceso-miembro' &&
+    objeto.objeto.tipo === 'nombre' &&
+    objeto.objeto.nombre === 'System' &&
+    alcance.buscar('System') === null &&
+    (objeto.miembro === 'out' || objeto.miembro === 'err')
+  ) {
+    return 'PrintStream';
   }
   const tipo = tipoDeExpresion(objeto, alcance);
   return tipo === 'String' || tipo === 'Scanner' || tipo === 'Random' ? tipo : null;

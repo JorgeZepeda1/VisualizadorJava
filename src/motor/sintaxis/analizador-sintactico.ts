@@ -70,6 +70,11 @@ export function analizarPrograma(tokens: readonly Token[]): NodoPrograma {
   consumirPackageOpcional(cursor);
   const importacionesNoSoportadas: NodoNoSoportado[] = [];
   const importaciones = analizarImportaciones(cursor, importacionesNoSoportadas);
+  // Sub-lote 1-D3 (JLS 7.3, mutante real contra veredicto de javac): un ";" suelto es una
+  // "declaración vacía" válida en CUALQUIER posición de nivel superior -- ya se toleraba TRAS la
+  // clase (abajo) pero no aquí, entre los imports y la clase. Verificado contra javac 17 real
+  // (mutantes reales de esta sesión): "import java.util.Scanner; ;" compila limpio.
+  consumirPuntosYComasSueltos(cursor);
   const clase = analizarClase(cursor);
 
   const otrosTiposDeNivelSuperior: NodoNoSoportado[] = [];
@@ -739,6 +744,11 @@ function envolverComoSentenciaExpresion(expresion: NodoExpresion): NodoSentencia
 // Tarea 1.15 (REQ-COMP-007): devuelve los modificadores REALMENTE vistos (antes, `void` -- el
 // llamador de `analizarClase` no necesita saber cuáles vio, pero `analizarMain` sí necesita saber
 // si "static" estaba presente, para `NodoMain.esEstatico`).
+// Sub-lote 1-D3 (JLS 8.3/8.4.3, mutante real contra veredicto de javac): antes, `vistos` (un
+// `Set`) deduplicaba en silencio -- "public static static void main(...)" quedaba indistinguible
+// de "public static void main(...)". Verificado contra javac 17 real: "repeated modifier",
+// apuntando al SEGUNDO modificador (el repetido), nunca al primero -- por eso se compara ANTES de
+// agregar al set, con el rango del token ACTUAL (el repetido), nunca el del primero.
 function consumirModificadores(
   cursor: CursorDeTokens,
   permitidos: ReadonlySet<string>,
@@ -746,6 +756,15 @@ function consumirModificadores(
 ): ReadonlySet<string> {
   const vistos = new Set<string>();
   while (!cursor.coincideTexto(hasta) && permitidos.has(cursor.actual().texto)) {
+    const token = cursor.actual();
+    if (vistos.has(token.texto)) {
+      throw new ErrorDeCompilacion(
+        `escribiste "${token.texto}" dos veces seguidas`,
+        token.rango,
+        undefined,
+        'modificador-repetido',
+      );
+    }
     vistos.add(cursor.avanzar().texto);
   }
   return vistos;

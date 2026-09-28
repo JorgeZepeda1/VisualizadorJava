@@ -6,6 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import { tokenizar } from '../lexico/analizador-lexico.ts';
 import { analizarPrograma } from './analizador-sintactico.ts';
+import { ErrorDeCompilacion } from '../error-de-compilacion.ts';
 import type { NodoDeclaracionLocal, NodoIf, NodoNoSoportado, NodoSwitch } from './ast.ts';
 
 function analizar(fuente: string) {
@@ -57,6 +58,52 @@ describe('no-soportado — miembros de clase distintos de main (campos, métodos
     );
     expect(programa.clase.otrosMiembros).toHaveLength(2);
     expect(programa.clase.main!.parametro).toBe('a');
+  });
+
+  it('un campo CON inicializador (p. ej. "static int contador = 0;") sigue reconociéndose de punta a punta', () => {
+    const programa = analizar('class C { static int contador = 0; public static void main(String[] a) { } }');
+    expect(programa.clase.otrosMiembros).toHaveLength(1);
+    expect(programa.clase.main).not.toBeNull();
+  });
+});
+
+// Sub-lote 1-D3 (mutante real contra veredicto de javac, tarea 1.16): ANTES, este catch-all
+// devoraba CUALQUIER cosa hasta el siguiente ";"/"{" de nivel superior sin verificar que lo
+// anterior siquiera pareciera el inicio de un miembro real de Java (JLS 8: como mínimo
+// "{modificadores} Tipo Identificador") -- una firma de "main" mal escrita ("public static main
+// void(...)", "public static void main main(...)"…) se aceptaba como "un método propio más" en
+// silencio. Los 4 casos siguientes son mutantes REALES de esta sesión (ver el informe): verificados
+// contra javac 17 real vía `corpus/mutantes/veredictos.jsonl` -- javac los RECHAZA, nuestro motor
+// los aceptaba.
+describe('consumirMiembroDeClase — cabecera inválida se rechaza como error real, nunca un NO-DISP inventado (sub-lote 1-D3)', () => {
+  it('"public static main void(...)" ("void"/"main" intercambiados): el "nombre" no puede ser una palabra reservada', () => {
+    const fuente = 'class C { public static main void(String[] args) { } public static void main(String[] a) { } }';
+    expect(() => analizar(fuente)).toThrow(ErrorDeCompilacion);
+  });
+
+  it('"public static void main main(...)" ("main" duplicado): tras tipo+nombre debe seguir "(", ";", "{" o "="', () => {
+    const fuente = 'class C { public static void main main(String[] args) { } }';
+    expect(() => analizar(fuente)).toThrow(ErrorDeCompilacion);
+  });
+
+  it('"public static void (...)" ("main" borrado): falta el nombre por completo', () => {
+    const fuente = 'class C { public static void (String[] args) { } public static void main(String[] a) { } }';
+    expect(() => analizar(fuente)).toThrow(ErrorDeCompilacion);
+  });
+
+  it('"public static ; void main(...)" (";" de más justo tras los modificadores): falta el tipo por completo', () => {
+    const fuente = 'class C { public static; void main(String[] args) { } }';
+    expect(() => analizar(fuente)).toThrow(ErrorDeCompilacion);
+  });
+
+  it('control (regresión): "static int cuadrado(int n) { return n * n; }" (miembro real válido, REQ-SUB-007) NO se rechaza', () => {
+    expect(() =>
+      analizar('class C { static int cuadrado(int n) { return n * n; } public static void main(String[] a) { } }'),
+    ).not.toThrow();
+  });
+
+  it('control (regresión): "static int contador;" (campo real válido) NO se rechaza', () => {
+    expect(() => analizar('class C { static int contador; public static void main(String[] a) { } }')).not.toThrow();
   });
 });
 

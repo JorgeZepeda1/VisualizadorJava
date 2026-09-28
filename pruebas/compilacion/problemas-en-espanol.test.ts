@@ -122,6 +122,24 @@ describe('problemas en español — cruce motor + catálogo es-MX (sub-lote 1-D2
   });
 });
 
+// Sub-lote 1-D3 (JLS 15.9, REQ-SUB-005): cruce motor + catálogo es-MX del código nuevo de
+// constructores ("new Clase(...)", ver atribucion.test.ts para los 6 casos completos).
+describe('problemas en español — cruce motor + catálogo es-MX (sub-lote 1-D3: constructores, JLS 15.9)', () => {
+  it('sin-constructor-aplicable ("new Scanner()", sin argumentos): frase en español no vacía y menciona la clase real', () => {
+    const programa = analizarPrograma(
+      tokenizar('import java.util.Scanner; class C { public static void main(String[] a) { Scanner sc = new Scanner(); } }'),
+    );
+    const [problema] = atribuir(programa);
+    expect(problema).toBeDefined();
+    if (problema === undefined) return;
+    expect(problema.codigo).toBe('sin-constructor-aplicable');
+    const texto = textoDe(problema.codigo as CodigoProblema, problema.datos);
+    expect(texto.length).toBeGreaterThan(0);
+    expect(texto).toContain('Scanner');
+    expect(texto).not.toMatch(/undefined|\[object Object\]/);
+  });
+});
+
 // Tarea 1.12 (sub-lote 1-D1): alcanzabilidad (JLS 14.22, REQ-COMP-010) — pasada standalone todavía
 // (1.14 la conecta a compilar(), fuera de este sub-lote), así que el cruce corre sobre
 // verificarAlcanzabilidad() directamente, igual que ya hace atribuirCuerpo() para atribuir().

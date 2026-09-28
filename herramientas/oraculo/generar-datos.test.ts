@@ -10,9 +10,11 @@ import {
   analizarLineaFirma,
   analizarSalidaRegional,
   generarDatos,
+  pareceLanzadorEnEspanol,
   renderizarFirmasTs,
   renderizarMarcosTs,
   renderizarRegionalTs,
+  verificarMarcoEnEspanol,
 } from './generar-datos.ts';
 
 describe('analizarLineaFirma (pura) — parsea una línea de GenerarFirmasApi.java', () => {
@@ -138,6 +140,69 @@ describe('renderizarRegionalTs / renderizarMarcosTs (puras)', () => {
     // una fuente con \n LITERAL de dos caracteres se serializa como "\\n" en el archivo .ts).
     expect(texto).toContain(JSON.stringify('primera linea\\nsegunda linea'));
     expect(texto).toContain(JSON.stringify('una sola linea\nreal'));
+  });
+});
+
+// Sub-lote 1-D3 (Parte A.2 del orquestador): gotcha real descubierto la sesión anterior (engram
+// "Gotcha: JVM en frío da el mensaje del lanzador en inglés en esta sandbox") -- las PRIMERAS
+// invocaciones de `java` en una sesión nueva PUEDEN dar el mensaje del lanzador en inglés pese a
+// `-Duser.language=es -Duser.country=MX` (causa exacta no confirmada — ver el informe de esta
+// sesión). `generarDatos` capturaba `sinMain.stderr`/`mainNoStatic.stderr` DIRECTO, sin validar su
+// idioma -- si el runner de CI (SIEMPRE una JVM en frío, un job nuevo por corrida) lo golpea,
+// `marcos-arranque.generado.ts` se regeneraría en INGLÉS en silencio, corrompiendo el dato que
+// `semantica/arranque.ts` (tarea 1.15) muestra al alumno. Ambos mensajes reales comparten la frase
+// "método principal" (ver `marcos-arranque.generado.ts`, ya verificado contra el JDK real) -- un
+// marcador simple y suficiente para detectar el idioma equivocado, sin necesitar reproducir el bug
+// para probarlo (Extract-Before-Mock, mismo patrón que `esVersionEsperada`/`jdk.ts`).
+describe('pareceLanzadorEnEspanol (pura) — detecta un mensaje del lanzador que NO está en español', () => {
+  it('el mensaje REAL de "sin main" (es-MX, con el bug del "\\n" literal) sí parece español', () => {
+    expect(
+      pareceLanzadorEnEspanol(
+        'Error: no se ha encontrado el método principal en la clase SinMain, defina el método principal del siguiente modo:\\n   public static void main(String[] args)\\nde lo contrario, se deberá ampliar una clase de aplicación JavaFX javafx.application.Application\n',
+      ),
+    ).toBe(true);
+  });
+
+  it('triangulación: el mensaje REAL de "main no static" (es-MX) también parece español', () => {
+    expect(
+      pareceLanzadorEnEspanol(
+        'Error: el método principal no es static en la clase MainNoStatic, defina el método principal del siguiente modo:\n   public static void main(String[] args)\n',
+      ),
+    ).toBe(true);
+  });
+
+  it('el mensaje real en INGLÉS (arranque en frío, JVM recién iniciada) NO parece español', () => {
+    expect(
+      pareceLanzadorEnEspanol(
+        'Error: Main method not found in class SinMain, please define the main method as:\n   public static void main(String[] args)\nor a JavaFX application class must extend javafx.application.Application\n',
+      ),
+    ).toBe(false);
+  });
+
+  it('triangulación: "main no static" en INGLÉS tampoco parece español (mensaje distinto, mismo marcador ausente)', () => {
+    expect(
+      pareceLanzadorEnEspanol(
+        'Error: Main method is not static in class MainNoStatic, please define the main method as:\n   public static void main(String[] args)\n',
+      ),
+    ).toBe(false);
+  });
+
+  it('control: una cadena vacía (captura que falló por completo) tampoco parece español', () => {
+    expect(pareceLanzadorEnEspanol('')).toBe(false);
+  });
+});
+
+describe('verificarMarcoEnEspanol (pura) — falla con un error claro en vez de guardar un dato corrupto', () => {
+  it('un mensaje en español no lanza', () => {
+    expect(() =>
+      verificarMarcoEnEspanol('Error: no se ha encontrado el método principal en la clase X', 'sin main'),
+    ).not.toThrow();
+  });
+
+  it('un mensaje en inglés (arranque en frío) LANZA con un error claro que menciona la etiqueta y nunca se guarda', () => {
+    expect(() =>
+      verificarMarcoEnEspanol('Error: Main method not found in class X, please define the main method as:', 'sin main'),
+    ).toThrowError(/sin main/);
   });
 });
 

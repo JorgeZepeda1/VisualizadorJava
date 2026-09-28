@@ -126,6 +126,37 @@ export interface DatosJdk {
   readonly marcos: { readonly sinMain: MensajeArranque; readonly mainNoStatic: MensajeArranque };
 }
 
+// Sub-lote 1-D3 (Parte A.2 del orquestador, engram "Gotcha: JVM en frío da el mensaje del
+// lanzador en inglés en esta sandbox"): las PRIMERAS invocaciones de `java` en una sesión nueva
+// PUEDEN dar el mensaje del lanzador en inglés pese a `-Duser.language=es -Duser.country=MX`
+// (causa exacta no confirmada tras repetir el experimento ≥10 veces esta sesión — ver el informe).
+// Ambos mensajes REALES (`marcos-arranque.generado.ts`, ya verificados contra el JDK) comparten la
+// frase "método principal" — marcador simple y suficiente, sin necesitar reproducir el bug para
+// probarlo (Extract-Before-Mock, mismo patrón que `esVersionEsperada` en `jdk.ts`).
+const MARCADOR_LANZADOR_EN_ESPANOL = 'método principal';
+
+/** Pura: ¿el mensaje capturado del lanzador está REALMENTE en español? */
+export function pareceLanzadorEnEspanol(mensaje: string): boolean {
+  return mensaje.includes(MARCADOR_LANZADOR_EN_ESPANOL);
+}
+
+/**
+ * Lanza un error CLARO (nunca silencioso) si `mensaje` no parece español — el llamador (`generarDatos`)
+ * nunca debe escribir `marcos-arranque.generado.ts` con un dato así (corrompería, en silencio, el
+ * texto que `semantica/arranque.ts` muestra al alumno). `etiqueta` identifica el probe ("sin main"/
+ * "main no static") en el mensaje de error, para que quien lo vea sepa cuál de los dos falló.
+ */
+export function verificarMarcoEnEspanol(mensaje: string, etiqueta: string): void {
+  if (pareceLanzadorEnEspanol(mensaje)) return;
+  throw new Error(
+    `El mensaje del lanzador capturado para "${etiqueta}" NO parece estar en español (falta "${MARCADOR_LANZADOR_EN_ESPANOL}") ` +
+      `-- probable arranque en frío de la JVM (gotcha documentado en engram/ADR 010: las primeras invocaciones de ` +
+      `"java" en una sesión nueva a veces dan el mensaje del lanzador en inglés pese a -Duser.language=es ` +
+      `-Duser.country=MX). Nunca se regenera "marcos-arranque.generado.ts" con este dato -- vuelve a correr ` +
+      `"npm run oraculo:datos". Mensaje capturado:\n${mensaje}`,
+  );
+}
+
 /**
  * Compila y corre los tres probes contra el JDK real (ADR 010/011) y arma el catálogo completo.
  * Nunca lanza por un resultado esperado de los probes (p. ej. que `SinMain` falle al ejecutar es
@@ -144,12 +175,25 @@ export async function generarDatos(jdk: InfoJdk): Promise<DatosJdk> {
   }
   const firmas = analizarFirmasApi(resultadoFirmas.stdout.toString('utf-8'));
 
+  // Parte A.2: defensa adicional (además de -Duser.language/-Duser.country, que YA viaja vía
+  // `regional`) para el gotcha de la JVM en frío -- fija también LANG/LC_ALL del proceso hijo.
+  // El experimento de esta sesión (≥10 repeticiones, ver el informe) NO logró reproducir el bug
+  // ni aislar una causa ligada al entorno en esta máquina, así que esto es "por si acaso" (costo
+  // cero: ningún programa del subconjunto observa variables de entorno, REQ-SUB-005/007) --
+  // `verificarMarcoEnEspanol` de abajo es la defensa real, incondicional.
+  const ENTORNO_LOCALE_ES_MX = { LANG: 'es_MX.UTF-8', LC_ALL: 'es_MX.UTF-8' };
   const [regionalMx, regionalEs, sinMain, mainNoStatic] = await Promise.all([
     ejecutarPrograma(jdk, { fuente: FUENTE_GENERAR_REGIONAL, regional: 'es-MX' }),
     ejecutarPrograma(jdk, { fuente: FUENTE_GENERAR_REGIONAL, regional: 'es-ES' }),
-    ejecutarPrograma(jdk, { fuente: FUENTE_SIN_MAIN, regional: 'es-MX' }),
-    ejecutarPrograma(jdk, { fuente: FUENTE_MAIN_NO_STATIC, regional: 'es-MX' }),
+    ejecutarPrograma(jdk, { fuente: FUENTE_SIN_MAIN, regional: 'es-MX', envAdicional: ENTORNO_LOCALE_ES_MX }),
+    ejecutarPrograma(jdk, { fuente: FUENTE_MAIN_NO_STATIC, regional: 'es-MX', envAdicional: ENTORNO_LOCALE_ES_MX }),
   ]);
+
+  const mensajeSinMain = sinMain.stderr.toString('utf-8');
+  const mensajeMainNoStatic = mainNoStatic.stderr.toString('utf-8');
+  // Parte A.2: nunca se guarda un marco que no parece español -- ver `verificarMarcoEnEspanol`.
+  verificarMarcoEnEspanol(mensajeSinMain, 'sin main');
+  verificarMarcoEnEspanol(mensajeMainNoStatic, 'main no static');
 
   return {
     firmas,
@@ -158,8 +202,8 @@ export async function generarDatos(jdk: InfoJdk): Promise<DatosJdk> {
       'es-ES': analizarSalidaRegional(regionalEs.stdout.toString('utf-8')),
     },
     marcos: {
-      sinMain: { mensaje: sinMain.stderr.toString('utf-8'), codigoSalida: sinMain.codigoSalida ?? -1 },
-      mainNoStatic: { mensaje: mainNoStatic.stderr.toString('utf-8'), codigoSalida: mainNoStatic.codigoSalida ?? -1 },
+      sinMain: { mensaje: mensajeSinMain, codigoSalida: sinMain.codigoSalida ?? -1 },
+      mainNoStatic: { mensaje: mensajeMainNoStatic, codigoSalida: mainNoStatic.codigoSalida ?? -1 },
     },
   };
 }

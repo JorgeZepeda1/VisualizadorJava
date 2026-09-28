@@ -55,6 +55,13 @@ export type CodigoProblema =
   // problema (candidato único vs varios) -- este catálogo usa un solo código para ambas, igual que
   // ya hace con "operandos-invalidos-operador-binario" para varias frases crudas de javac.
   | 'sin-sobrecarga-aplicable'
+  // Sub-lote 1-D3 (JLS 15.9, REQ-SUB-005): como "sin-sobrecarga-aplicable", pero para "new
+  // Clase(...)" -- javac usa una frase DISTINTA para constructores ("no suitable CONSTRUCTOR
+  // found for X(...)", nunca "method"), verificado contra javac 17 real: "no suitable constructor
+  // found for Scanner(no arguments)" (Scanner NO tiene constructor de aridad 0 — sus 16
+  // constructores reales piden Readable/InputStream/File/Path/String/ReadableByteChannel, nunca
+  // nada). Mismo `resolverSobrecarga` (JLS 15.12.2) que ya resuelve métodos, con nombre='<init>'.
+  | 'sin-constructor-aplicable'
   // Tipos (pasada 2, REQ-COMP-001).
   | 'conversion-con-perdida' // err04
   | 'tipos-incompatibles-en-asignacion' // err12
@@ -78,6 +85,10 @@ export type CodigoProblema =
   | 'llave-de-metodo-faltante' // err22
   | 'paquete-despues-de-import' // struct07
   | 'tipo-requiere-import' // err20 (atribución, no sintaxis — Scanner/Random sin import)
+  // Sub-lote 1-D3 (mutante real contra veredicto de javac, JLS 8.3/8.4.3): "public static static
+  // void main" / "public public class" -- verificado contra javac 17 real: "repeated modifier",
+  // apuntando al SEGUNDO modificador repetido (nunca al primero).
+  | 'modificador-repetido'
   // Alcanzabilidad (pasada 3 de ADR 004, tarea 1.12, JLS 14.22, REQ-COMP-010).
   | 'sentencia-inalcanzable'
   // Asignación definitiva (pasada 4 de ADR 004, tarea 1.13, JLS 16, REQ-COMP-004). Un solo código

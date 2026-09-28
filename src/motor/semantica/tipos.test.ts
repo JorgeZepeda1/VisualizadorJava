@@ -5,7 +5,7 @@
 // archivo con conversiones/sobrecargas reales sobre `NodoLlamada`/`NodoAccesoMiembro`.
 import { describe, expect, it } from 'vitest';
 import { Alcance } from './alcance.ts';
-import { NOMBRES_DE_CLASE_RECONOCIDOS, tipoDeExpresion, tipoDeNombreDeTipo } from './tipos.ts';
+import { NOMBRES_DE_CLASE_RECONOCIDOS, claseDelObjeto, tipoDeExpresion, tipoDeNombreDeTipo } from './tipos.ts';
 import type { NodoExpresion } from '../sintaxis/ast.ts';
 
 const R = { inicio: 0, fin: 1 };
@@ -221,6 +221,92 @@ describe('tipoDeExpresion (pura) — 1.8: receptor es una VARIABLE (Scanner/Stri
       rango: R,
     };
     expect(tipoDeExpresion(nodo, new Alcance())).toBe('desconocido');
+  });
+});
+
+// Sub-lote 1-D3 (JLS 15.9, REQ-SUB-005): ANTES de esta tarea, 'nueva-instancia' no tenía case
+// propio en `tipoDeExpresion` (caía en el `default: 'desconocido'`) -- "Scanner sc = new
+// Scanner(System.in);" nunca podía fallar por tipos incompatibles aunque el programa asignara mal,
+// y "new Random().nextInt()" nunca resolvía la clase del receptor encadenado. Verificado contra
+// javac 17 real (carpeta temporal, borrada): `new Scanner()`/`new Random()`/`new Random(42)`/
+// `new String("hola")` -- ver el informe de la sesión para los 6 casos completos.
+describe('tipoDeExpresion (pura) — nueva-instancia (JLS 15.9, sub-lote 1-D3)', () => {
+  it('"new Random()" da "Random" (constructor real de aridad 0, resuelto por resolverSobrecarga)', () => {
+    const nodo: NodoExpresion = { tipo: 'nueva-instancia', nombreTipo: 'Random', argumentos: [], rango: R };
+    expect(tipoDeExpresion(nodo, new Alcance())).toBe('Random');
+  });
+
+  it('triangulación: "new String(\\"hola\\")" da "String" (clase distinta, constructor de aridad 1)', () => {
+    const nodo: NodoExpresion = {
+      tipo: 'nueva-instancia',
+      nombreTipo: 'String',
+      argumentos: [{ tipo: 'literal-cadena', valor: 'hola', rango: R }],
+      rango: R,
+    };
+    expect(tipoDeExpresion(nodo, new Alcance())).toBe('String');
+  });
+
+  it('"new Scanner()" (SIN constructor de aridad 0 real) da "desconocido" — nunca inventa un tipo para un "new" inválido (D2)', () => {
+    const nodo: NodoExpresion = { tipo: 'nueva-instancia', nombreTipo: 'Scanner', argumentos: [], rango: R };
+    expect(tipoDeExpresion(nodo, new Alcance())).toBe('desconocido');
+  });
+
+  it('"new Foo()" (clase no reconocida) da "desconocido"', () => {
+    const nodo: NodoExpresion = { tipo: 'nueva-instancia', nombreTipo: 'Foo', argumentos: [], rango: R };
+    expect(tipoDeExpresion(nodo, new Alcance())).toBe('desconocido');
+  });
+
+  it('encadenado real: "new Random().nextInt()" resuelve "int" -- claseDelObjeto debe reconocer un receptor "nueva-instancia", no solo "nombre"', () => {
+    const nodo: NodoExpresion = {
+      tipo: 'llamada',
+      callee: {
+        tipo: 'acceso-miembro',
+        objeto: { tipo: 'nueva-instancia', nombreTipo: 'Random', argumentos: [], rango: R },
+        miembro: 'nextInt',
+        rango: R,
+      },
+      argumentos: [],
+      rango: R,
+    };
+    expect(tipoDeExpresion(nodo, new Alcance())).toBe('int');
+  });
+});
+
+// Sub-lote 1-D3 (mutante real contra veredicto de javac; deuda "pendiente heredado 2" de la
+// tarea 1.8, documentada desde entonces en la cabecera de `esInicioDeImpresion`): `System.out`/
+// `System.err` son la ÚNICA clase de biblioteca de este subconjunto cuyos miembros se navegan DOS
+// veces ("System.out.println") -- pero SOLO "System.out.println/print" pasan por la gramática
+// dedicada (`analizarImpresion`); "System.err.println(...)" y cualquier "System.out.OTRO(...)"
+// caen en el camino GENERAL de expresiones, donde antes `claseDelObjeto` no sabía que
+// "System.out"/"System.err" son del tipo real `PrintStream` -- resolvía 'desconocido' y la
+// cascada de `visitarLlamadaDeMiembro` se suprimía SIEMPRE (ni un miembro inventado ni uno real
+// se detectaban). Verificado contra javac 17 real (mutante real de esta sesión):
+// "System.out.Bienvenida(\"...\")" (método inventado) -> "cannot find symbol: method
+// Bienvenida(String)", javac lo RECHAZA -- nuestro motor lo aceptaba en silencio.
+describe('claseDelObjeto (pura) — "System.out"/"System.err" resuelven a la clase real "PrintStream" (sub-lote 1-D3)', () => {
+  const R = { inicio: 0, fin: 1 };
+
+  it('"System.out" resuelve a la clase "PrintStream"', () => {
+    const objeto: NodoExpresion = { tipo: 'acceso-miembro', objeto: { tipo: 'nombre', nombre: 'System', rango: R }, miembro: 'out', rango: R };
+    expect(claseDelObjeto(objeto, new Alcance())).toBe('PrintStream');
+  });
+
+  it('triangulación: "System.err" TAMBIÉN resuelve a "PrintStream" (mismo tipo real, campo distinto)', () => {
+    const objeto: NodoExpresion = { tipo: 'acceso-miembro', objeto: { tipo: 'nombre', nombre: 'System', rango: R }, miembro: 'err', rango: R };
+    expect(claseDelObjeto(objeto, new Alcance())).toBe('PrintStream');
+  });
+
+  it('control: "System.in" (no navegable en este subconjunto -- se consume directo como argumento de "new Scanner(...)") NO resuelve a una clase', () => {
+    const objeto: NodoExpresion = { tipo: 'acceso-miembro', objeto: { tipo: 'nombre', nombre: 'System', rango: R }, miembro: 'in', rango: R };
+    expect(claseDelObjeto(objeto, new Alcance())).toBeNull();
+  });
+
+  it('control: una variable REAL llamada "System" (sombreando la clase) nunca se trata como la clase System', () => {
+    const alcance = new Alcance();
+    alcance.entrarBloque();
+    alcance.declarar({ nombre: 'System', tipo: 'Scanner', esFinal: false, rango: R });
+    const objeto: NodoExpresion = { tipo: 'acceso-miembro', objeto: { tipo: 'nombre', nombre: 'System', rango: R }, miembro: 'out', rango: R };
+    expect(claseDelObjeto(objeto, alcance)).toBeNull();
   });
 });
 

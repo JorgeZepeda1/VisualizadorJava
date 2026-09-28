@@ -17,13 +17,14 @@ import type {
   NodoImportacion,
   NodoLlamada,
   NodoNombre,
+  NodoNuevaInstancia,
   NodoPrograma,
   NodoSentencia,
   NodoSwitch,
 } from '../sintaxis/ast.ts';
 import { CODIGOS_NO_SOPORTADO } from '../sintaxis/no-soportado.ts';
 import { Alcance } from './alcance.ts';
-import { clasificarCampo, clasificarMetodo } from './catalogo-api.ts';
+import { CONSTRUCTORES_SOPORTADOS, clasificarCampo, clasificarMetodo } from './catalogo-api.ts';
 import { valorConstante } from './constantes.ts';
 import type { ProblemaAtribucion } from './diagnostico.ts';
 import { resolverSobrecarga } from './sobrecargas.ts';
@@ -155,7 +156,7 @@ function visitarDeclaracionLocal(
     // Y con el campo "constante" del símbolo (deuda 3 del commit 999a8ca, JLS 4.12.4).
     const valorInicializador = declarador.inicializador !== null ? valorConstante(declarador.inicializador, alcance) : null;
     if (declarador.inicializador !== null) {
-      visitarExpresion(declarador.inicializador, alcance, problemas);
+      visitarExpresion(declarador.inicializador, alcance, importadas, problemas);
       // err04/err12 de exploracion/03 (JLS 5.2): solo si el TIPO de destino se reconoce (si no,
       // ya se reportó un problema arriba — nunca dos problemas por la misma causa).
       const destino = tipoDeNombreDeTipo(declaracion.nombreTipo);
@@ -204,29 +205,29 @@ function visitarSentencia(
     case 'impresion':
       // Corrección obligatoria (sub-lote 1-C2): "println()" sin argumentos tiene `argumento:null`
       // (nunca hay símbolos que resolver en ese caso).
-      if (sentencia.argumento !== null) visitarExpresion(sentencia.argumento, alcance, problemas);
+      if (sentencia.argumento !== null) visitarExpresion(sentencia.argumento, alcance, importadas, problemas);
       return;
     case 'retorno':
     case 'sentencia-vacia':
     case 'no-soportado':
       return;
     case 'sentencia-expresion':
-      visitarExpresion(sentencia.expresion, alcance, problemas);
+      visitarExpresion(sentencia.expresion, alcance, importadas, problemas);
       return;
     case 'if':
-      visitarExpresion(sentencia.condicion, alcance, problemas);
+      visitarExpresion(sentencia.condicion, alcance, importadas, problemas);
       verificarCondicionBooleana(sentencia.condicion, alcance, problemas);
       visitarSentencia(sentencia.entonces, alcance, importadas, contexto, problemas);
       if (sentencia.sino !== null) visitarSentencia(sentencia.sino, alcance, importadas, contexto, problemas);
       return;
     case 'while':
-      visitarExpresion(sentencia.condicion, alcance, problemas);
+      visitarExpresion(sentencia.condicion, alcance, importadas, problemas);
       verificarCondicionBooleana(sentencia.condicion, alcance, problemas);
       visitarSentencia(sentencia.cuerpo, alcance, importadas, CONTEXTO_DENTRO_DE_CICLO, problemas);
       return;
     case 'do-while':
       visitarSentencia(sentencia.cuerpo, alcance, importadas, CONTEXTO_DENTRO_DE_CICLO, problemas);
-      visitarExpresion(sentencia.condicion, alcance, problemas);
+      visitarExpresion(sentencia.condicion, alcance, importadas, problemas);
       verificarCondicionBooleana(sentencia.condicion, alcance, problemas);
       return;
     case 'for':
@@ -272,15 +273,15 @@ function visitarFor(
     visitarDeclaracionLocal(sentencia.inicializacionDeclaracion, alcance, importadas, problemas);
   }
   for (const expresionSentencia of sentencia.inicializacionExpresiones) {
-    visitarExpresion(expresionSentencia.expresion, alcance, problemas);
+    visitarExpresion(expresionSentencia.expresion, alcance, importadas, problemas);
   }
   if (sentencia.condicion !== null) {
-    visitarExpresion(sentencia.condicion, alcance, problemas);
+    visitarExpresion(sentencia.condicion, alcance, importadas, problemas);
     verificarCondicionBooleana(sentencia.condicion, alcance, problemas);
   }
   visitarSentencia(sentencia.cuerpo, alcance, importadas, CONTEXTO_DENTRO_DE_CICLO, problemas);
   for (const expresionSentencia of sentencia.actualizacion) {
-    visitarExpresion(expresionSentencia.expresion, alcance, problemas);
+    visitarExpresion(expresionSentencia.expresion, alcance, importadas, problemas);
   }
   alcance.salirBloque();
 }
@@ -292,7 +293,7 @@ function visitarSwitch(
   contexto: ContextoFlujo,
   problemas: ProblemaAtribucion[],
 ): void {
-  visitarExpresion(sentencia.selector, alcance, problemas);
+  visitarExpresion(sentencia.selector, alcance, importadas, problemas);
   const problemaSelector = verificarSelectorDeSwitch(sentencia, alcance);
   if (problemaSelector !== null) problemas.push(problemaSelector);
   // err34/flow05 de exploracion/03 (tarea 1.11): etiquetas de "case" no constantes o duplicadas.
@@ -319,14 +320,19 @@ function visitarElementoSwitch(
   problemas: ProblemaAtribucion[],
 ): void {
   if (elemento.tipo === 'etiqueta-case') {
-    visitarExpresion(elemento.valor, alcance, problemas);
+    visitarExpresion(elemento.valor, alcance, importadas, problemas);
     return;
   }
   if (elemento.tipo === 'etiqueta-default') return;
   visitarElementoBloque(elemento, alcance, importadas, contexto, problemas);
 }
 
-function visitarExpresion(expresion: NodoExpresion, alcance: Alcance, problemas: ProblemaAtribucion[]): void {
+function visitarExpresion(
+  expresion: NodoExpresion,
+  alcance: Alcance,
+  importadas: ReadonlySet<string>,
+  problemas: ProblemaAtribucion[],
+): void {
   switch (expresion.tipo) {
     case 'literal-entero':
     case 'literal-largo':
@@ -340,31 +346,31 @@ function visitarExpresion(expresion: NodoExpresion, alcance: Alcance, problemas:
       visitarNombreComoValor(expresion, alcance, problemas);
       return;
     case 'binaria':
-      visitarExpresion(expresion.izquierda, alcance, problemas);
-      visitarExpresion(expresion.derecha, alcance, problemas);
+      visitarExpresion(expresion.izquierda, alcance, importadas, problemas);
+      visitarExpresion(expresion.derecha, alcance, importadas, problemas);
       verificarOperandosBinaria(expresion, alcance, problemas);
       return;
     case 'unaria':
-      visitarExpresion(expresion.operando, alcance, problemas);
+      visitarExpresion(expresion.operando, alcance, importadas, problemas);
       return;
     case 'asignacion':
-      visitarExpresion(expresion.objetivo, alcance, problemas);
-      visitarExpresion(expresion.valor, alcance, problemas);
+      visitarExpresion(expresion.objetivo, alcance, importadas, problemas);
+      visitarExpresion(expresion.valor, alcance, importadas, problemas);
       return;
     case 'incremento-decremento':
-      visitarExpresion(expresion.operando, alcance, problemas);
+      visitarExpresion(expresion.operando, alcance, importadas, problemas);
       return;
     case 'llamada':
-      visitarLlamada(expresion, alcance, problemas);
+      visitarLlamada(expresion, alcance, importadas, problemas);
       return;
     case 'acceso-miembro':
-      visitarAccesoMiembro(expresion, alcance, problemas);
+      visitarAccesoMiembro(expresion, alcance, importadas, problemas);
       return;
     case 'nueva-instancia':
-      for (const argumento of expresion.argumentos) visitarExpresion(argumento, alcance, problemas);
+      visitarNuevaInstancia(expresion, alcance, importadas, problemas);
       return;
     case 'conversion':
-      visitarExpresion(expresion.operando, alcance, problemas);
+      visitarExpresion(expresion.operando, alcance, importadas, problemas);
       return;
   }
 }
@@ -422,7 +428,12 @@ function visitarNombreComoValor(nodo: NodoNombre, alcance: Alcance, problemas: P
   });
 }
 
-function visitarLlamada(nodo: NodoLlamada, alcance: Alcance, problemas: ProblemaAtribucion[]): void {
+function visitarLlamada(
+  nodo: NodoLlamada,
+  alcance: Alcance,
+  importadas: ReadonlySet<string>,
+  problemas: ProblemaAtribucion[],
+): void {
   if (nodo.callee.tipo === 'nombre') {
     // Ningún método propio existe en el subconjunto (REQ-SUB-007): una llamada de nombre libre
     // (sin "objeto.") SIEMPRE es "método no declarado" (err03 de exploracion/03).
@@ -435,11 +446,11 @@ function visitarLlamada(nodo: NodoLlamada, alcance: Alcance, problemas: Problema
     // Sub-lote 1-D2c: "objeto.metodo(...)" real -- resuelto contra el catálogo (abajo), en vez de
     // solo recorrer el receptor como valor genérico (lo que hacía que NINGÚN método de biblioteca
     // se validara jamás — hueco flageado por 1-D2b, task_c0cf2e6c).
-    visitarLlamadaDeMiembro(nodo, nodo.callee, alcance, problemas);
+    visitarLlamadaDeMiembro(nodo, nodo.callee, alcance, importadas, problemas);
   } else {
-    visitarExpresion(nodo.callee, alcance, problemas);
+    visitarExpresion(nodo.callee, alcance, importadas, problemas);
   }
-  for (const argumento of nodo.argumentos) visitarExpresion(argumento, alcance, problemas);
+  for (const argumento of nodo.argumentos) visitarExpresion(argumento, alcance, importadas, problemas);
 }
 
 /**
@@ -465,9 +476,10 @@ function visitarLlamadaDeMiembro(
   nodo: NodoLlamada,
   callee: NodoAccesoMiembro,
   alcance: Alcance,
+  importadas: ReadonlySet<string>,
   problemas: ProblemaAtribucion[],
 ): void {
-  visitarExpresion(callee.objeto, alcance, problemas);
+  visitarExpresion(callee.objeto, alcance, importadas, problemas);
   const clase = claseDelObjeto(callee.objeto, alcance);
   if (clase === null) return;
   const clasificacion = clasificarMetodo(clase, callee.miembro);
@@ -508,8 +520,13 @@ function visitarLlamadaDeMiembro(
  * categorías que `visitarLlamadaDeMiembro` salvo "sin-sobrecarga-aplicable" (un campo no tiene
  * sobrecargas que resolver).
  */
-function visitarAccesoMiembro(nodo: NodoAccesoMiembro, alcance: Alcance, problemas: ProblemaAtribucion[]): void {
-  visitarExpresion(nodo.objeto, alcance, problemas);
+function visitarAccesoMiembro(
+  nodo: NodoAccesoMiembro,
+  alcance: Alcance,
+  importadas: ReadonlySet<string>,
+  problemas: ProblemaAtribucion[],
+): void {
+  visitarExpresion(nodo.objeto, alcance, importadas, problemas);
   const clase = claseDelObjeto(nodo.objeto, alcance);
   if (clase === null) return;
   const clasificacion = clasificarCampo(clase, nodo.miembro);
@@ -518,6 +535,77 @@ function visitarAccesoMiembro(nodo: NodoAccesoMiembro, alcance: Alcance, problem
     return;
   }
   if (clasificacion === 'existe-no-soportado') {
+    problemas.push({
+      codigo: CODIGOS_NO_SOPORTADO.miembroDeBiblioteca,
+      categoria: 'no-disponible',
+      rango: nodo.rango,
+      datos: {},
+    });
+  }
+}
+
+/**
+ * Sub-lote 1-D3 (JLS 15.9, REQ-SUB-005): "new Clase(...)" contra los constructores REALES de
+ * `FIRMAS_JDK` (`genero:'constructor'`, `nombre:'<init>'`) — ANTES de esta tarea, `nueva-instancia`
+ * solo recorría sus argumentos como valores sueltos (nunca se validaba el propio "new"), así que
+ * "Scanner sc = new Scanner();" (Scanner NO tiene constructor de aridad 0 en el JDK real) se
+ * aceptaba en silencio. Los 4 desenlaces, cada uno verificado contra javac 17 real (carpeta
+ * temporal, borrada tras verificar; ver el informe de la sesión):
+ *   - `nombreTipo` no reconocido ("new Foo()") -> "cannot find symbol: class Foo" -> MISMO código
+ *     que una declaración con un tipo desconocido ("tipo-no-reconocido") -- `resultadoNombreDeTipo`
+ *     reusada tal cual (nunca una segunda implementación que podría divergir); D2 no distingue
+ *     "el nombre aparece en una declaración" de "el nombre aparece tras new": javac tampoco lo hace
+ *     en su intención real (símbolo de clase no resuelto).
+ *   - `nombreTipo` real de java.util SIN su import ("new Scanner(...)" sin "import
+ *     java.util.Scanner;") -> "tipo-requiere-import" (MISMO mecanismo que una declaración).
+ *   - constructor real pero NINGÚN argumento encaja ("new Scanner()", Scanner no tiene aridad 0) ->
+ *     "no suitable constructor found for Scanner(no arguments)" -> "sin-constructor-aplicable" --
+ *     MISMA `resolverSobrecarga` (JLS 15.12.2) que ya resuelve métodos, con nombre='<init>'.
+ *   - constructor real, aplica, pero FUERA de REQ-SUB-005 ("new Scanner(\"texto\")", Scanner SÍ
+ *     tiene Scanner(String) real) -> javac SÍ compila -> aviso NO-DISP (categoria
+ *     'no-disponible'), NUNCA un error inventado (D2) -- `CONSTRUCTORES_SOPORTADOS` filtra por
+ *     FIRMA completa (clase+parámetros), más angosto que `MIEMBROS_SOPORTADOS` (métodos: CUALQUIER
+ *     sobrecarga real de un nombre soportado cuenta como soportada) porque REQ-SUB-005 es
+ *     explícito para constructores: "un único new Scanner(System.in)", "new String(texto)".
+ * `new Random()`/`new Random(42)`/`new String("hola")`/`new Scanner(System.in)` (los 4 casos
+ * EXPLÍCITAMENTE soportados de REQ-SUB-005) verificados limpios contra javac real.
+ *
+ * Fuera de alcance A PROPÓSITO (documentado, no un olvido — ver apply-progress de 1-D2c): un
+ * argumento `'desconocido'` nunca dispara "sin-constructor-aplicable" (mismo sumidero de cascada
+ * D2 que ya usa `visitarLlamadaDeMiembro`).
+ */
+function visitarNuevaInstancia(
+  nodo: NodoNuevaInstancia,
+  alcance: Alcance,
+  importadas: ReadonlySet<string>,
+  problemas: ProblemaAtribucion[],
+): void {
+  for (const argumento of nodo.argumentos) visitarExpresion(argumento, alcance, importadas, problemas);
+
+  const resultadoTipo = resultadoNombreDeTipo(nodo.nombreTipo, importadas);
+  if (resultadoTipo === 'no-reconocido') {
+    problemas.push({ codigo: 'tipo-no-reconocido', rango: nodo.rango, datos: { nombre: nodo.nombreTipo } });
+    return;
+  }
+  if (resultadoTipo === 'requiere-import') {
+    problemas.push({ codigo: 'tipo-requiere-import', rango: nodo.rango, datos: { nombre: nodo.nombreTipo } });
+    return;
+  }
+
+  const tiposDeArgumentos = nodo.argumentos.map((argumento) => tipoDeExpresion(argumento, alcance));
+  if (tiposDeArgumentos.includes('desconocido')) return; // D2, mismo sumidero de cascada de siempre
+
+  const firma = resolverSobrecarga(nodo.nombreTipo, '<init>', tiposDeArgumentos);
+  if (firma === null) {
+    problemas.push({
+      codigo: 'sin-constructor-aplicable',
+      rango: nodo.rango,
+      datos: { clase: nodo.nombreTipo, argumentos: tiposDeArgumentos },
+    });
+    return;
+  }
+  const claveDeFirma = `${nodo.nombreTipo}(${firma.parametros.join(',')})`;
+  if (!CONSTRUCTORES_SOPORTADOS.has(claveDeFirma)) {
     problemas.push({
       codigo: CODIGOS_NO_SOPORTADO.miembroDeBiblioteca,
       categoria: 'no-disponible',

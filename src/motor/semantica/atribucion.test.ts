@@ -194,12 +194,17 @@ describe('atribuir — acceso a miembro como valor (sub-lote 1-D2c, REQ-SUB-005/
 // suprime la cascada cuando el TIPO mismo no se resolvió (D2, nunca más permisivo/estricto que
 // javac). Ver también el describe "err20" más abajo (control con import SÍ presente).
 describe('atribuir — corrección: un tipo sin resolver (sin import) suprime la cascada sobre sus propios usos (sub-lote 1-D2c)', () => {
-  it('"Scanner sc = ...; sc.hasNextInt();" SIN import da SOLO "tipo-requiere-import" -- nunca un segundo problema de "sc"', () => {
+  it('"Scanner sc = ...; sc.hasNextInt();" SIN import da SOLO 2 "tipo-requiere-import" (declaración + "new", sub-lote 1-D3) -- nunca un TERCER problema de "sc.hasNextInt()"', () => {
     const problemas = atribuirPrograma(
       'class C { public static void main(String[] a) { Scanner sc = new Scanner(System.in); sc.hasNextInt(); } }',
     );
-    expect(problemas).toHaveLength(1);
-    expect(problemas[0]).toMatchObject({ codigo: 'tipo-requiere-import' });
+    // Sub-lote 1-D3: "new Scanner(...)" AHORA también se valida (antes de 1.16/1-D3, `nueva-instancia`
+    // no se resolvía y este total era 1) -- verificado contra javac real: "cannot find symbol: class
+    // Scanner" se reporta DOS veces (declaración Y "new"), nunca deduplicado. El invariante real de
+    // esta prueba sigue intacto: "sc.hasNextInt()" (el USO de la variable mal tipada) no agrega un
+    // TERCER problema -- D2, cascada suprimida sobre sus propios usos.
+    expect(problemas).toHaveLength(2);
+    expect(problemas.every((p) => p.codigo === 'tipo-requiere-import')).toBe(true);
   });
 });
 
@@ -450,12 +455,14 @@ describe('atribuir — err19 de exploracion/03: nombre no reconocido con sugeren
 // symbol: class Scanner". El mensaje amable NUNCA debe ser el de "tipo-no-reconocido" (ese es para
 // nombres mal escritos, como "string" — "Scanner" está BIEN escrito, solo falta importarlo).
 describe('atribuir — err20 de exploracion/03: "Scanner"/"Random" sin import java.util (deuda del commit 999a8ca)', () => {
-  it('"Scanner sc = ...;" SIN ningún import se rechaza como "tipo-requiere-import", NUNCA "tipo-no-reconocido"', () => {
+  it('"Scanner sc = ...;" SIN ningún import se rechaza como "tipo-requiere-import" ×2 (declaración + "new", sub-lote 1-D3), NUNCA "tipo-no-reconocido"', () => {
     const problemas = atribuirPrograma(
       'class C { public static void main(String[] a) { Scanner sc = new Scanner(System.in); } }',
     );
-    expect(problemas).toHaveLength(1);
-    expect(problemas[0]).toMatchObject({ codigo: 'tipo-requiere-import', datos: { nombre: 'Scanner' } });
+    // Sub-lote 1-D3: verificado contra javac real -- "cannot find symbol: class Scanner" se
+    // reporta UNA vez por cada aparición del nombre (declaración Y "new"), nunca deduplicado.
+    expect(problemas).toHaveLength(2);
+    expect(problemas.every((p) => p.codigo === 'tipo-requiere-import' && p.datos['nombre'] === 'Scanner')).toBe(true);
   });
 
   it('la línea del problema coincide con la línea 3 real de javac (corpus/experimentos/texto/err20_scanner_sin_import.java)', () => {
@@ -523,5 +530,81 @@ describe('atribuir — deuda 3 del commit 999a8ca (JLS 4.12.4): una variable "fi
       'class C { public static void main(String[] a) { int max = 3; int n = 1; switch (n) { case max: break; } } }',
     );
     expect(problemas.some((p) => p.codigo === 'etiqueta-de-case-no-constante')).toBe(true);
+  });
+});
+
+// Sub-lote 1-D3 (JLS 15.9, REQ-SUB-005): ANTES de esta tarea, "nueva-instancia" solo recorría sus
+// argumentos como valores sueltos -- "Scanner sc = new Scanner();" (Scanner NO tiene constructor
+// de aridad 0) se aceptaba en silencio, javac lo rechaza de verdad. Los 6 casos verificados contra
+// javac 17 real (carpeta temporal, borrada tras verificar; ver el informe de la sesión).
+describe('atribuir — "new Clase(...)" contra los constructores reales de FIRMAS_JDK (JLS 15.9, sub-lote 1-D3)', () => {
+  it('"new Scanner(System.in)" CON import: soportado, sin problemas (verificado: javac compila limpio)', () => {
+    const problemas = atribuirPrograma(
+      'import java.util.Scanner; class C { public static void main(String[] a) { Scanner sc = new Scanner(System.in); } }',
+    );
+    expect(problemas).toEqual([]);
+  });
+
+  it('triangulación: "new Random()" y "new Random(42)" CON import: ambos soportados, sin problemas (verificado: javac compila limpio)', () => {
+    const problemas = atribuirPrograma(
+      'import java.util.Random; class C { public static void main(String[] a) { Random r1 = new Random(); Random r2 = new Random(42); } }',
+    );
+    expect(problemas).toEqual([]);
+  });
+
+  it('triangulación: "new String(\\"hola\\")" (java.lang, sin import): soportado, sin problemas', () => {
+    expect(atribuirCuerpo('String s = new String("hola");')).toEqual([]);
+  });
+
+  it('clase no reconocida ("new Foo()"): "tipo-no-reconocido" (verificado: javac da "cannot find symbol: class Foo")', () => {
+    const problemas = atribuirCuerpo('new Foo();');
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toMatchObject({ codigo: 'tipo-no-reconocido', datos: { nombre: 'Foo' } });
+  });
+
+  it('falta el import ("new Scanner(System.in)" sin "import java.util.Scanner;"): "tipo-requiere-import" -- DOS veces (verificado contra javac real: reporta la declaración Y el "new" por separado, "cannot find symbol: class Scanner" ×2, nunca deduplica)', () => {
+    const problemas = atribuirCuerpo('Scanner sc = new Scanner(System.in);');
+    expect(problemas).toHaveLength(2);
+    expect(problemas.every((p) => p.codigo === 'tipo-requiere-import')).toBe(true);
+    expect(problemas.every((p) => (p.datos as { nombre: string }).nombre === 'Scanner')).toBe(true);
+  });
+
+  it('"new Scanner()" (CON import, SIN argumentos): "sin-constructor-aplicable" (verificado: javac da "no suitable constructor found for Scanner(no arguments)")', () => {
+    const problemas = atribuirPrograma(
+      'import java.util.Scanner; class C { public static void main(String[] a) { Scanner sc = new Scanner(); } }',
+    );
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toMatchObject({ codigo: 'sin-constructor-aplicable', datos: { clase: 'Scanner', argumentos: [] } });
+  });
+
+  it('"new Scanner(\\"texto\\")" (CON import, constructor real pero fuera del subconjunto): aviso NO-DISP, NUNCA un error inventado (D2, verificado: javac compila limpio)', () => {
+    const problemas = atribuirPrograma(
+      'import java.util.Scanner; class C { public static void main(String[] a) { Scanner sc = new Scanner("texto"); } }',
+    );
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]?.categoria).toBe('no-disponible');
+  });
+});
+
+// Sub-lote 1-D3 (mutante real contra veredicto de javac, deuda "pendiente heredado 2" de 1.8):
+// "System.err.println(...)" y "System.out.OTRO-QUE-NO-SEA-println/print(...)" caen en el camino
+// GENERAL de expresiones (esInicioDeImpresion solo reconoce "out"+println/print) -- antes,
+// `claseDelObjeto` no resolvía "System.out"/"System.err" a ninguna clase real, así que NINGÚN
+// miembro (inventado o real) se validaba jamás por este camino.
+describe('atribuir — "System.out"/"System.err" por el camino GENERAL de expresiones (sub-lote 1-D3)', () => {
+  it('"System.out.Bienvenida(...)" (método inventado, mutante real): "miembro-no-declarado" (verificado: javac da "cannot find symbol: method Bienvenida(String)")', () => {
+    const problemas = atribuirCuerpo('System.out.Bienvenida("hola");');
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toMatchObject({ codigo: 'miembro-no-declarado', datos: { clase: 'PrintStream', nombre: 'Bienvenida' } });
+  });
+
+  it('control: "System.err.println(...)" (real, soportado desde 1.19) sigue sin problemas -- la conexión de PrintStream NO rompe el caso válido', () => {
+    expect(atribuirCuerpo('System.err.println("hola");')).toEqual([]);
+  });
+
+  it('triangulación: "System.err.sin(1.0)" (miembro real de Math confundido de clase -- en realidad no existe en PrintStream) también da "miembro-no-declarado"', () => {
+    const problemas = atribuirCuerpo('System.err.sin(1.0);');
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toMatchObject({ codigo: 'miembro-no-declarado', datos: { clase: 'PrintStream', nombre: 'sin' } });
   });
 });

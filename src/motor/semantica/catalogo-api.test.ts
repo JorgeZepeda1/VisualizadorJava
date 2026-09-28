@@ -4,7 +4,7 @@
 // JDK pero fuera de esta versión) y 'no-existe' (ni siquiera es un miembro real — typo del
 // alumno). Los 3 ejemplos de "existe pero no soportado" son los que da el propio RED de la tarea.
 import { describe, expect, it } from 'vitest';
-import { clasificarCampo, clasificarMetodo, clasificarMiembro, MIEMBROS_SOPORTADOS } from './catalogo-api.ts';
+import { CONSTRUCTORES_SOPORTADOS, clasificarCampo, clasificarMetodo, clasificarMiembro, MIEMBROS_SOPORTADOS } from './catalogo-api.ts';
 import { FIRMAS_JDK } from '../biblioteca/datos/firmas-jdk.generado.ts';
 
 describe('clasificarMiembro — "existe pero no soportado" (REQ-SUB-007, los 3 ejemplos del RED de 1.8)', () => {
@@ -84,6 +84,48 @@ describe('clasificarCampo — genero-aware (JLS 6.5.6.1): un MÉTODO no cuenta c
 
   it('triangulación: Integer.SIZE es un campo real pero fuera de REQ-SUB-005 -- "existe-no-soportado" (verificado: javac compila Integer.SIZE limpio)', () => {
     expect(clasificarCampo('Integer', 'SIZE')).toBe('existe-no-soportado');
+  });
+});
+
+// Sub-lote 1-D3 (JLS 15.9, REQ-SUB-005): a diferencia de MIEMBROS_SOPORTADOS (granularidad de
+// NOMBRE), un constructor necesita granularidad de FIRMA -- REQ-SUB-005 es explícito: "un único
+// new Scanner(System.in)", "new String(texto)". Verificado contra javac 17 real: "new
+// Scanner(\"texto\")" SÍ compila (Scanner.Scanner(String) es un constructor real) pero está fuera
+// del subconjunto -- por eso NO puede bastar con "¿Scanner tiene ALGÚN constructor soportado?".
+describe('CONSTRUCTORES_SOPORTADOS (JLS 15.9, sub-lote 1-D3) — granularidad de FIRMA, no de nombre', () => {
+  it('Scanner(InputStream) — la firma real de "new Scanner(System.in)" — está soportada', () => {
+    expect(CONSTRUCTORES_SOPORTADOS.has('Scanner(java.io.InputStream)')).toBe(true);
+  });
+
+  it('triangulación: Scanner(String) — real en el JDK, pero FUERA de REQ-SUB-005 — NO está soportada', () => {
+    expect(CONSTRUCTORES_SOPORTADOS.has('Scanner(java.lang.String)')).toBe(false);
+  });
+
+  it('Random() y Random(long) — las 2 únicas firmas reales de Random — ambas soportadas', () => {
+    expect(CONSTRUCTORES_SOPORTADOS.has('Random()')).toBe(true);
+    expect(CONSTRUCTORES_SOPORTADOS.has('Random(long)')).toBe(true);
+  });
+
+  it('String(String) — "new String(texto)" — soportada; String(char[]) NO (fuera de REQ-SUB-005)', () => {
+    expect(CONSTRUCTORES_SOPORTADOS.has('String(java.lang.String)')).toBe(true);
+    expect(CONSTRUCTORES_SOPORTADOS.has('String(char[])')).toBe(false);
+  });
+
+  it('cada clave corresponde a una firma REAL de FIRMAS_JDK (nunca inventada)', () => {
+    const sinCorrespondencia = [...CONSTRUCTORES_SOPORTADOS].filter((clave) => {
+      const coincidencia = /^(\w+)\((.*)\)$/.exec(clave);
+      if (coincidencia === null) return true;
+      const [, clase, parametrosTexto] = coincidencia as unknown as [string, string, string];
+      const parametros = parametrosTexto === '' ? [] : parametrosTexto.split(',');
+      return !FIRMAS_JDK.some(
+        (f) =>
+          f.clase === clase &&
+          f.nombre === '<init>' &&
+          f.parametros.length === parametros.length &&
+          f.parametros.every((p, i) => p === parametros[i]),
+      );
+    });
+    expect(sinCorrespondencia).toEqual([]);
   });
 });
 

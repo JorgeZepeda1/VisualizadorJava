@@ -173,8 +173,70 @@ export function consumirTipoDeNivelSuperior(cursor: CursorDeTokens): NodoNoSopor
 // inicializadores — design.md §2.3: "Clase = ... '{' { Main | ';' } '}'"; campo/método/clase interna/
 // bloque/anotación → NO-DISP) ----
 
+// Sub-lote 1-D3 (mutante real contra veredicto de javac, tarea 1.16): modificadores reales de
+// miembro de clase (JLS 8.3/8.4.3) -- ninguno se valida más allá de "es uno de estos" (REQ-SUB-007
+// acepta cualquier miembro propio sin verificar su forma exacta), solo sirven para saltarlos antes
+// de buscar el tipo+nombre reales.
+const MODIFICADORES_MIEMBRO: ReadonlySet<string> = new Set([
+  'public', 'private', 'protected', 'static', 'final', 'abstract',
+  'synchronized', 'transient', 'volatile', 'native', 'strictfp',
+]);
+
+function esFinalDeMiembro(token: Token): boolean {
+  return token.tipo === 'eof' || token.texto === ';' || token.texto === '{' || token.texto === '(' || token.texto === '}';
+}
+
+/**
+ * Verifica que lo que sigue a los modificadores tenga al menos la forma MÍNIMA de un miembro real
+ * de Java (JLS 8: "{modificadores} Tipo Identificador" antes de "(", ";", "{" o "=") -- NUNCA
+ * valida el TIPO en sí (REQ-SUB-007 acepta cualquier tipo, inventado o no, como NO-DISP), solo que
+ * haya UNO, que el NOMBRE sea un identificador real (nunca una palabra reservada como "void"), y
+ * que lo que sigue al nombre sea una continuación real. Sin esta verificación, el resto de
+ * `consumirMiembroDeClase` (un escáner ciego hasta el siguiente ";"/"{" de nivel superior) se
+ * comprometía con CUALQUIER texto, incluida una firma de "main" mal escrita que javac rechaza de
+ * verdad -- verificado contra javac 17 real vía mutantes reales de esta sesión (ver el informe):
+ * "public static main void(...)" -> "<identifier> expected"; "public static void main main(...)"
+ * -> "'(' expected"; "public static void (...)" -> "<identifier> expected"; "public static;
+ * void main(...)" -> "illegal start of type". Solo lanza -- nunca devuelve nada, ni avanza el
+ * cursor (D2: el llamador decide qué hacer con el error real; nunca se "corrige" en silencio).
+ */
+function validarCabeceraDeMiembro(cursor: CursorDeTokens): void {
+  let i = 0;
+  while (MODIFICADORES_MIEMBRO.has(cursor.mirar(i).texto)) i += 1;
+
+  // EOF en CUALQUIER posición de la cabecera: nunca es asunto de esta función -- err16
+  // (`fin-de-archivo-inesperado`, con su propio código y posición ancladas en
+  // `cursor.finDelTokenAnterior()`) sigue siendo el ÚNICO responsable; el bucle original de
+  // `consumirMiembroDeClase` (abajo) lo detecta en su primera vuelta tal cual ya hacía.
+  const tipo = cursor.mirar(i);
+  if (tipo.tipo === 'eof') return;
+  // "{" aquí (sin tipo/nombre antes) es un bloque inicializador (JLS 8.6/8.7) -- una forma REAL de
+  // miembro que este subconjunto ya trataba como NO-DISP ("bloque", cabecera del módulo) antes de
+  // esta corrección; nunca se rechaza como "falta el tipo" -- se difiere al bucle original de
+  // `consumirMiembroDeClase`, que YA sabe delimitarlo bien con `saltarHastaCerrar`.
+  if (tipo.texto === '{') return;
+  if (esFinalDeMiembro(tipo)) {
+    throw new ErrorDeCompilacion('se esperaba el tipo de un campo o método aquí', tipo.rango);
+  }
+
+  const nombre = cursor.mirar(i + 1);
+  if (nombre.tipo === 'eof') return;
+  if (nombre.tipo !== 'identificador') {
+    throw new ErrorDeCompilacion(`se esperaba un identificador y se encontró "${nombre.texto}"`, nombre.rango);
+  }
+
+  const siguiente = cursor.mirar(i + 2);
+  if (siguiente.tipo === 'eof') return;
+  const esContinuacionValida =
+    siguiente.texto === '(' || siguiente.texto === ';' || siguiente.texto === '{' || siguiente.texto === '=';
+  if (!esContinuacionValida) {
+    throw new ErrorDeCompilacion(`se esperaba "(", ";" o "=" y se encontró "${siguiente.texto}"`, siguiente.rango);
+  }
+}
+
 export function consumirMiembroDeClase(cursor: CursorDeTokens): NodoNoSoportado {
   const inicio = cursor.actual().rango.inicio;
+  validarCabeceraDeMiembro(cursor);
   let profundidadParen = 0;
   for (;;) {
     const token = cursor.actual();
