@@ -75,3 +75,32 @@ describe('compilar — "08"/"09" nunca se aceptan como decimal (corrección de l
     expect(resultado.problema.categoria).not.toBe('error-compilacion');
   });
 });
+
+// Tarea 1.8 (pendiente heredado del sub-lote 1-B): `println`/`print` ahora aceptan cualquier
+// expresión (antes solo un literal-cadena, 0.12) — el recolector de NO-DISP (1.6/1.17) debía
+// aprender a bajar a ESE argumento nuevo, igual que ya baja a la condición de un "if" o el
+// selector de un "switch".
+describe('compilar — NO-DISP anidado dentro del argumento de println/print (1.8)', () => {
+  function programaCon(declaracion: string): string {
+    return `class C { public static void main(String[] a) { ${declaracion} } }`;
+  }
+
+  it('bug real corregido: "a & b" (bits, NO-DISP) DENTRO de un println caía antes en "error-compilacion" genérico', () => {
+    // Antes de este fix, `recolectarDeElemento` (no-soportado.ts) trataba 'impresion' como una
+    // hoja sin subexpresiones (cierto solo cuando el argumento era SIEMPRE un literal-cadena) —
+    // verificado con esta prueba antes/después: sin el fix, categoria daba 'error-compilacion'
+    // (mal clasificado, D2), no 'no-disponible'.
+    const resultado = compilar(programaCon('int a = 1; int b = 2; System.out.println(a & b);'));
+    expect(resultado.ok).toBe(false);
+    if (resultado.ok) throw new Error('se esperaba ok:false');
+    expect(resultado.problema.categoria).toBe('no-disponible');
+    expect(resultado.problema.codigo).toBe('operador-bits-and');
+  });
+
+  it('triangulación: lo mismo dentro de "print" (no solo "println")', () => {
+    const resultado = compilar(programaCon('int a = 1; int b = 2; System.out.print(a & b);'));
+    expect(resultado.ok).toBe(false);
+    if (resultado.ok) throw new Error('se esperaba ok:false');
+    expect(resultado.problema.categoria).toBe('no-disponible');
+  });
+});

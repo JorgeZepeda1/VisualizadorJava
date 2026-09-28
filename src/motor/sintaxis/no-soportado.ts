@@ -296,9 +296,13 @@ function recolectarDeElemento(elemento: NodoElementoBloque, salida: NoSoportadoC
       recolectarDeExpresion(elemento.selector, salida);
       for (const el of elemento.elementos) recolectarDeElementoSwitch(el, salida);
       return;
+    case 'impresion':
+      // Tarea 1.8 (pendiente heredado): el argumento de print/println ya no es solo un
+      // literal-cadena (0.12) — puede traer NO-DISP anidado (p. ej. "println(a & b)").
+      recolectarDeExpresion(elemento.argumento, salida);
+      return;
     default:
-      // 'impresion' (el argumento hoy solo es un literal-cadena), 'retorno', 'break', 'continue',
-      // 'sentencia-vacia': sin subexpresiones que puedan traer NO-DISP anidado.
+      // 'retorno', 'break', 'continue', 'sentencia-vacia': sin subexpresiones.
       return;
   }
 }

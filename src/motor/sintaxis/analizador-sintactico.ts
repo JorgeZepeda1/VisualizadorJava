@@ -39,7 +39,6 @@ import type {
   NodoIf,
   NodoImportacion,
   NodoImpresion,
-  NodoLiteralCadena,
   NodoMain,
   NodoNoSoportado,
   NodoPrograma,
@@ -605,13 +604,18 @@ function analizarEtiqueta(cursor: CursorDeTokens): NodoNoSoportado {
   return { tipo: 'no-soportado', codigo: CODIGOS_NO_SOPORTADO.etiqueta, rango: { inicio: inicioToken.rango.inicio, fin: interior.rango.fin } };
 }
 
+// Tarea 1.8 (pendiente heredado): "println" O "print" — antes solo "println". `System.err` queda
+// fuera a propósito (ningún RED de 1.5/1.6/1.8 lo pide todavía; sigue cayendo en el camino
+// genérico de `analizarSentenciaExpresion`, que hoy no ejecuta nada — mismo `throw` honesto que
+// cualquier otra sentencia sin IR real, nunca un resultado inventado).
 function esInicioDeImpresion(cursor: CursorDeTokens): boolean {
+  const metodo = cursor.mirar(4).texto;
   return (
     cursor.coincideTexto('System') &&
     cursor.mirar(1).texto === '.' &&
     cursor.mirar(2).texto === 'out' &&
     cursor.mirar(3).texto === '.' &&
-    cursor.mirar(4).texto === 'println'
+    (metodo === 'println' || metodo === 'print')
   );
 }
 
@@ -620,21 +624,20 @@ function analizarImpresion(cursor: CursorDeTokens): NodoImpresion {
   cursor.esperarTexto('.');
   cursor.esperarTexto('out');
   cursor.esperarTexto('.');
-  cursor.esperarTexto('println');
+  const metodo = cursor.coincideTexto('println') ? 'println' : 'print';
+  cursor.esperarTexto(metodo);
   cursor.esperarTexto('(');
-  const argumento = analizarLiteralCadena(cursor);
+  // Tarea 1.8 (pendiente heredado): cualquier expresión, no solo un literal-cadena (0.12) — la
+  // sobrecarga real la resuelve `semantica/sobrecargas.ts` sobre el tipo estático ya parseado.
+  const argumento = analizarExpresion(cursor);
   cursor.esperarTexto(')');
   const fin = cursor.esperarTexto(';');
   return {
     tipo: 'impresion',
+    metodo,
     argumento,
     rango: { inicio: inicioToken.rango.inicio, fin: fin.rango.fin },
   };
-}
-
-function analizarLiteralCadena(cursor: CursorDeTokens): NodoLiteralCadena {
-  const token = cursor.esperarTipo('cadena');
-  return { tipo: 'literal-cadena', valor: token.valor ?? '', rango: token.rango };
 }
 
 // design.md §2.3 "ExprSentencia" (tarea 1.5): cualquier expresión general usada como sentencia

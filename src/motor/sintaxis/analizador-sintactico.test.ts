@@ -5,10 +5,18 @@ import { describe, expect, it } from 'vitest';
 import { tokenizar } from '../lexico/analizador-lexico.ts';
 import { analizarPrograma } from './analizador-sintactico.ts';
 import { ErrorDeCompilacion } from '../error-de-compilacion.ts';
-import type { NodoImpresion } from './ast.ts';
+import type { NodoExpresion, NodoImpresion } from './ast.ts';
 
 function analizar(fuente: string) {
   return analizarPrograma(tokenizar(fuente));
+}
+
+// Tarea 1.8: `NodoImpresion.argumento` ahora es `NodoExpresion` general (antes solo
+// `NodoLiteralCadena`, 0.12) — estas pruebas de la rebanada vertical siguen construyendo
+// únicamente literales-cadena, así que basta angostar aquí en vez de repetir el chequeo.
+function valorLiteralCadena(argumento: NodoExpresion): string {
+  if (argumento.tipo !== 'literal-cadena') throw new Error(`se esperaba un literal-cadena, no "${argumento.tipo}"`);
+  return argumento.valor;
 }
 
 describe('analizarPrograma', () => {
@@ -28,7 +36,7 @@ describe('analizarPrograma', () => {
     expect(programa.clase.main.cuerpo.elementos).toHaveLength(1);
     const [sentencia] = programa.clase.main.cuerpo.elementos as NodoImpresion[];
     expect(sentencia.tipo).toBe('impresion');
-    expect(sentencia.argumento.valor).toBe('Hola, mundo');
+    expect(valorLiteralCadena(sentencia.argumento)).toBe('Hola, mundo');
   });
 
   it('acepta una clase sin "public" y modificadores de main en otro orden (triangulación)', () => {
@@ -38,15 +46,15 @@ describe('analizarPrograma', () => {
     const [sentencia] = programa.clase.main.cuerpo.elementos as NodoImpresion[];
     expect(programa.clase.nombre).toBe('OtraClase');
     expect(programa.clase.main.parametro).toBe('parametros');
-    expect(sentencia.argumento.valor).toBe('otra');
+    expect(valorLiteralCadena(sentencia.argumento)).toBe('otra');
   });
 
   it('acepta varias sentencias println dentro del mismo bloque, en orden', () => {
     const fuente =
       'class C { public static void main(String[] a) { System.out.println("uno"); System.out.println("dos"); } }';
     const programa = analizar(fuente);
-    const valores = (programa.clase.main.cuerpo.elementos as NodoImpresion[]).map(
-      (s) => s.argumento.valor,
+    const valores = (programa.clase.main.cuerpo.elementos as NodoImpresion[]).map((s) =>
+      valorLiteralCadena(s.argumento),
     );
     expect(valores).toEqual(['uno', 'dos']);
   });
@@ -186,3 +194,42 @@ describe('analizarPrograma — declaraciones locales (tarea 1.2, DeclLocal)', ()
     ]);
   });
 });
+
+// Tarea 1.8 (pendiente heredado del sub-lote 1-B): `System.out.println`/`print` solo aceptaban un
+// literal-cadena (0.12). Las sobrecargas reales de `PrintStream` (REQ-BIB-011) se resuelven en
+// `semantica/sobrecargas.ts`; aquí solo se generaliza la SINTAXIS: `print` (no solo `println`) y
+// cualquier expresión como argumento (no solo un literal-cadena).
+describe('analizarImpresion — generalización a print/println con cualquier expresión (pendiente heredado)', () => {
+  it('"System.out.print(...)" (sin la "l" de println) ahora SÍ se reconoce como sentencia de impresión', () => {
+    const [sentencia] = primeraSentenciaDe('System.out.print("sin salto");') as [NodoImpresion];
+    expect(sentencia.tipo).toBe('impresion');
+    expect(sentencia).toMatchObject({ metodo: 'print', argumento: { tipo: 'literal-cadena', valor: 'sin salto' } });
+  });
+
+  it('"System.out.println(x)" con una VARIABLE como argumento (no solo un literal-cadena)', () => {
+    const fuente = 'class C { public static void main(String[] a) { int x = 5; System.out.println(x); } }';
+    const programa = analizar(fuente);
+    const [, sentencia] = programa.clase.main.cuerpo.elementos as [unknown, NodoImpresion];
+    expect(sentencia).toMatchObject({ tipo: 'impresion', metodo: 'println', argumento: { tipo: 'nombre', nombre: 'x' } });
+  });
+
+  it('triangulación: "println" de una expresión aritmética (n + 1)', () => {
+    const fuente = 'class C { public static void main(String[] a) { int n = 1; System.out.println(n + 1); } }';
+    const programa = analizar(fuente);
+    const [, sentencia] = programa.clase.main.cuerpo.elementos as [unknown, NodoImpresion];
+    expect(sentencia.argumento.tipo).toBe('binaria');
+  });
+
+  it('control: "println()" sin argumentos sigue sin aceptarse igual que antes (println vacío no es 0.12/1.8, queda NO-DISP más adelante si hace falta)', () => {
+    // No se pidió en ningún RED de 1.5/1.6/1.8 — se documenta el comportamiento actual (falla al
+    // parsear como sentencia de impresión) en vez de fingir soporte no verificado (D2).
+    expect(() => analizar('class C { public static void main(String[] a) { System.out.println(); } }')).toThrow(
+      ErrorDeCompilacion,
+    );
+  });
+});
+
+function primeraSentenciaDe(cuerpoDeMain: string) {
+  const programa = analizar(`class C { public static void main(String[] a) { ${cuerpoDeMain} } }`);
+  return programa.clase.main.cuerpo.elementos;
+}

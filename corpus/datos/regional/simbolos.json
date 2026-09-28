@@ -1,0 +1,16 @@
+{
+  "es-MX": {
+    "decimal": ".",
+    "miles": ",",
+    "menos": "-",
+    "nan": "NaN",
+    "infinito": "∞"
+  },
+  "es-ES": {
+    "decimal": ",",
+    "miles": ".",
+    "menos": "-",
+    "nan": "NaN",
+    "infinito": "∞"
+  }
+}

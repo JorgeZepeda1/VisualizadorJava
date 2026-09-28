@@ -173,19 +173,19 @@
 - REFACTOR: tabla construcción→código de aviso, reusada por 1.17.
 - Verif: `motor/sintaxis/no-soportado`
 
-**1.7 Atribución — símbolos, alcance, sombreado, `switch`** — REQ-COMP-002, REQ-COMP-003 · depende: 1.6
+**1.7 Atribución — símbolos, alcance, sombreado, `switch`** — REQ-COMP-002, REQ-COMP-003 · depende: 1.6 — ✅ hecha (2026-09-28)
 - RED `atribucion.test.ts`: variable/método no declarado, uso fuera de bloque (incl. variable de `for`), redeclaración en el mismo bloque, sombreado en bloque anidado, selector de `switch` no `int`/`char`/`String`; falla.
 - GREEN: `semantica/{atribucion,alcance,switch}.ts`.
 - REFACTOR: tabla de símbolos compartida con 1.10/1.12/1.13.
 - Verif: `motor/semantica/atribucion`
 
-**1.8 Sobrecargas y catálogo de biblioteca reconocida** — REQ-SUB-005, REQ-SUB-007(atribución) · depende: 1.7, 1.9
+**1.8 Sobrecargas y catálogo de biblioteca reconocida** — REQ-SUB-005, REQ-SUB-007(atribución) · depende: 1.7, 1.9 — ✅ hecha (2026-09-28)
 - RED `sobrecargas.test.ts`: JLS 15.12.2 (estricta/laxa/varargs/más específico); `Math.round(123456789L)` resuelve a `round(float)`; miembros existentes-no-soportados (`s.split`, `Math.sin`, `sc.hasNextInt`) → `NoSoportado`; falla.
 - GREEN: `semantica/{sobrecargas,tipos,conversiones}.ts` sobre un `catalogo-api.ts` stub (real en 2.15).
 - REFACTOR: las 4 fases de resolución como funciones puras.
 - Verif: `motor/semantica/sobrecargas`
 
-**1.9 Catálogo de datos del JDK (oráculo, ADR 010)** · depende: 0.5
+**1.9 Catálogo de datos del JDK (oráculo, ADR 010)** · depende: 0.5 — ✅ hecha (2026-09-28)
 - RED `herramientas/oraculo/generar-datos.test.ts`: genera `corpus/datos/api/` (firmas soportadas/existen-no-soportadas/no-existen), `corpus/datos/regional/` (símbolos `DecimalFormatSymbols`), `corpus/datos/marcos/` (mensajes exactos del lanzador Temurin 17.0.18 es-MX) contra el JDK real; falla sin generador.
 - GREEN: `herramientas/oraculo/generar-datos.ts` + `src/motor/biblioteca/datos/*.generado.ts` (cabecera "no editar").
 - Verif: `herramientas/oraculo/generar-datos`

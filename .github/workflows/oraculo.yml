@@ -68,6 +68,16 @@ jobs:
           JDK17_HOME: ${{ steps.jdk.outputs.path }}
         run: npm run oraculo:verificar
 
+      - name: Catálogo de datos del JDK contra una regeneración real (bytes idénticos, ADR 010 punto 3; tarea 1.9)
+        env:
+          JDK17_HOME: ${{ steps.jdk.outputs.path }}
+        run: |
+          npm run oraculo:datos
+          git diff --exit-code -- corpus/datos src/motor/biblioteca/datos || {
+            echo '::error::corpus/datos/** o src/motor/biblioteca/datos/**.generado.ts no coinciden con una regeneración real contra el JDK (ADR 010). Corre "npm run oraculo:datos" localmente y confirma los cambios.' >&2
+            exit 1
+          }
+
       # Pasos nocturnos pendientes — se agregan cuando sus tareas creen los scripts reales:
       #   - Fuzzing contra el JDK real (C3): npm run oraculo:generados — tarea 2.21.
       #   - Regenerar veredictos de mutantes (C7): npm run oraculo:mutantes — tarea 1.16.

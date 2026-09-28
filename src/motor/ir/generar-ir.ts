@@ -18,7 +18,12 @@ export function generarIr(programa: NodoPrograma): ProgramaIr {
 }
 
 function generarSentenciaIr(elemento: NodoElementoBloque): SentenciaIr {
-  if (elemento.tipo === 'impresion') {
+  // Tarea 1.8 (pendiente heredado): la sintaxis ahora acepta `print` y cualquier expresión como
+  // argumento (no solo `println` de un literal-cadena, 0.12) — pero solo ESE caso concreto tiene
+  // IR real todavía. Generalizar la EJECUCIÓN (resolver la sobrecarga real de `print`, evaluar
+  // una expresión general) es del lote 2 (2.16+), igual que el resto de `Sentencia` desde 1.5:
+  // el mismo `throw` honesto de siempre, nunca un resultado a medias o silenciosamente incorrecto.
+  if (elemento.tipo === 'impresion' && elemento.metodo === 'println' && elemento.argumento.tipo === 'literal-cadena') {
     return { tipo: 'impresion', texto: elemento.argumento.valor };
   }
   throw new Error(`la ejecución de "${elemento.tipo}" llega en el lote 2 (tareas 1.5/2.16)`);

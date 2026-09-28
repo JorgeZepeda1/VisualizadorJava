@@ -75,9 +75,17 @@ export type NodoSentencia =
   | NodoContinue
   | NodoNoSoportado;
 
+// Tarea 1.8 (pendiente heredado del sub-lote 1-B): `argumento` era SOLO `NodoLiteralCadena` (0.12)
+// y únicamente `println` se reconocía. Ahora acepta cualquier expresión y distingue `print` de
+// `println` (`metodo`) — la sobrecarga real (REQ-BIB-011, JLS 15.12) la resuelve
+// `semantica/sobrecargas.ts` sobre el tipo estático de `argumento`; la ejecución real de un
+// argumento que no sea un literal-cadena de `println` sigue pendiente del lote 2 (2.16+), igual
+// que el resto de `Sentencia` desde 1.5 (`ir/generar-ir.ts` lo señala con su mismo `throw`, nunca
+// con un resultado inventado, D2).
 export interface NodoImpresion {
   readonly tipo: 'impresion';
-  readonly argumento: NodoLiteralCadena;
+  readonly metodo: 'print' | 'println';
+  readonly argumento: NodoExpresion;
   readonly rango: Rango;
 }
 
