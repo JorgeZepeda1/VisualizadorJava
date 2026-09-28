@@ -79,7 +79,21 @@ export function analizarPrograma(tokens: readonly Token[]): NodoPrograma {
     consumirPuntosYComasSueltos(cursor);
   }
 
-  const finToken = cursor.esperarTipo('eof');
+  // err17 de exploracion/03: cualquier cosa que sobre aquí (no es otro tipo de nivel superior, no
+  // es fin de archivo) es contenido sobrante tras la clase — típicamente una "}" de más. Verificado
+  // contra javac 17 real (corpus/experimentos/texto/err17_llaves_desbalanceadas.java): "class,
+  // interface, enum, or record expected", apuntando al propio token sobrante (a diferencia de
+  // "fin de archivo inesperado", que ancla al final del token ANTERIOR — aquí SÍ hay un token real
+  // que señalar, ya en la posición correcta sin necesitar `finDelTokenAnterior`).
+  if (cursor.actual().tipo !== 'eof') {
+    throw new ErrorDeCompilacion(
+      'sobra código después de que la clase ya cerró',
+      cursor.actual().rango,
+      undefined,
+      'llave-de-cierre-sobrante',
+    );
+  }
+  const finToken = cursor.avanzar();
   return {
     tipo: 'programa',
     importaciones,
@@ -154,6 +168,21 @@ function analizarNombreCalificado(cursor: CursorDeTokens): string {
 
 function analizarClase(cursor: CursorDeTokens): NodoClase {
   const inicio = cursor.actual().rango.inicio;
+  // struct07 de exploracion/03: "package" solo es válido como la PRIMERÍSIMA sentencia del
+  // programa (consumirPackageOpcional, antes de cualquier import — design.md §2.3). Si llega uno
+  // hasta aquí (donde ya se espera "class"), es SIEMPRE porque el alumno lo puso después de un
+  // import. Verificado contra javac 17 real
+  // (corpus/experimentos/texto/struct07_package_fuera_de_lugar.java): "class, interface, enum, or
+  // record expected" en la línea del propio "package" — mismo mensaje crudo que err17 (llave
+  // sobrante), pero un mensaje amable DISTINTO (el problema es el ORDEN, no una llave de más).
+  if (cursor.coincideTexto('package')) {
+    throw new ErrorDeCompilacion(
+      'la línea "package" debe ir antes que cualquier "import"',
+      cursor.actual().rango,
+      undefined,
+      'paquete-despues-de-import',
+    );
+  }
   consumirModificadores(cursor, MODIFICADORES_CLASE, 'class');
   cursor.esperarTexto('class');
   const nombre = cursor.esperarTipo('identificador');
@@ -202,6 +231,22 @@ function analizarMain(cursor: CursorDeTokens): NodoMain {
   const parametro = analizarParamMain(cursor);
   cursor.esperarTexto(')');
   const clausulaThrows = analizarClausulaThrowsOpcional(cursor);
+  // err22 de exploracion/03: si falta la "{" de apertura del cuerpo, javac reporta "';' expected"
+  // (el mismo "punto de inserción" que un punto y coma: el final del token anterior) y encadena
+  // 3 errores más leyendo el resto como una declaración nueva — el catálogo recomienda mostrar
+  // SOLO el primero (§4.1) y NUNCA con el texto de "falta punto y coma" (insertar ";" aquí no
+  // arregla nada; lo que falta es abrir el cuerpo del método). Ancla verificada contra javac 17
+  // real (corpus/experimentos/texto/err22_falta_llave_metodo.java): la línea de "args)", no la del
+  // siguiente token real (que puede caer en otra línea, igual que err16).
+  if (!cursor.coincideTexto('{')) {
+    const fin = cursor.finDelTokenAnterior();
+    throw new ErrorDeCompilacion(
+      'falta abrir "{" para el cuerpo del método',
+      { inicio: fin, fin },
+      undefined,
+      'llave-de-metodo-faltante',
+    );
+  }
   const cuerpo = analizarBloque(cursor);
   return {
     tipo: 'main',
@@ -348,6 +393,18 @@ function analizarSentencia(cursor: CursorDeTokens): NodoSentencia {
     return { tipo: 'sentencia-vacia', rango: token.rango };
   }
   if (cursor.coincideTexto('if')) return analizarIf(cursor);
+  // err14 de exploracion/03: un "else" que NO sigue inmediatamente al "entonces"/"sino" de un "if"
+  // (analizarIf ya lo consume ahí mismo) solo puede ser un "else" SUELTO. Verificado contra javac
+  // 17 real (corpus/experimentos/texto/err14_else_sin_if.java): "'else' without 'if'", apuntando
+  // al propio "else" — nunca al final del token anterior (a diferencia de "; esperado").
+  if (cursor.coincideTexto('else')) {
+    throw new ErrorDeCompilacion(
+      '"else" no tiene un "if" al que pertenecer',
+      cursor.actual().rango,
+      undefined,
+      'else-sin-if',
+    );
+  }
   if (cursor.coincideTexto('while')) return analizarWhile(cursor);
   if (cursor.coincideTexto('do')) return analizarDoWhile(cursor);
   if (cursor.coincideTexto('for')) return analizarFor(cursor);

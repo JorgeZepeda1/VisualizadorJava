@@ -10,6 +10,7 @@ import { describe, expect, it } from 'vitest';
 import { tokenizar } from '../../src/motor/lexico/analizador-lexico.ts';
 import { analizarPrograma } from '../../src/motor/sintaxis/analizador-sintactico.ts';
 import { atribuir } from '../../src/motor/semantica/atribucion.ts';
+import { verificarAlcanzabilidad } from '../../src/motor/semantica/alcanzabilidad.ts';
 import { compilar } from '../../src/motor/index.ts';
 import type { CodigoProblema } from '../../src/motor/index.ts';
 import { textosProblemas } from '../../src/textos/es-MX/problemas.ts';
@@ -17,6 +18,11 @@ import { textosProblemas } from '../../src/textos/es-MX/problemas.ts';
 function atribuirCuerpo(cuerpoDeMain: string) {
   const programa = analizarPrograma(tokenizar(`class C { public static void main(String[] a) { ${cuerpoDeMain} } }`));
   return atribuir(programa);
+}
+
+function alcanzabilidadDeCuerpo(cuerpoDeMain: string) {
+  const programa = analizarPrograma(tokenizar(`class C { public static void main(String[] a) { ${cuerpoDeMain} } }`));
+  return verificarAlcanzabilidad(programa);
 }
 
 function textoDe(codigo: CodigoProblema, datos: unknown): string {
@@ -61,6 +67,49 @@ describe('problemas en español — cruce motor + catálogo es-MX (casos de sint
     expect(resultado.ok).toBe(false);
     if (resultado.ok) return;
     const texto = textoDe(resultado.problema.codigo as CodigoProblema, resultado.problema.datos);
+    expect(texto.length).toBeGreaterThan(0);
+  });
+});
+
+// Deuda del commit 999a8ca (sub-lote 1-D1): las 5 sintaxis básicas + Scanner sin import de la
+// deuda #2 del orquestador (mismo mecanismo que arriba, casos nuevos).
+describe('problemas en español — cruce motor + catálogo es-MX (deuda del commit 999a8ca: sintaxis básicas + Scanner sin import)', () => {
+  it.each([
+    ['err14 (else sin if)', 'class C { public static void main(String[] a) { if (true) { } else { } else { } } }'],
+    ['err16 (fin de archivo inesperado)', 'class C { public static void main(String[] a) { }'],
+    ['err17 (llave de cierre sobrante)', 'class C { public static void main(String[] a) { } } }'],
+    ['err22 (llave de método faltante)', 'class C { public static void main(String[] a) int x = 5; } }'],
+    ['struct07 (package después de import)', 'import java.util.Scanner; package p; class C { public static void main(String[] a) { } }'],
+  ] as const)('%s: el Problema de compilar() tiene una frase en español no vacía', (_caso, fuente) => {
+    const resultado = compilar(fuente);
+    expect(resultado.ok).toBe(false);
+    if (resultado.ok) return;
+    const texto = textoDe(resultado.problema.codigo as CodigoProblema, resultado.problema.datos);
+    expect(texto.length).toBeGreaterThan(0);
+  });
+
+  it('err20 (Scanner sin import): el Problema de atribuir() tiene una frase en español no vacía y menciona la clase real', () => {
+    const programa = analizarPrograma(
+      tokenizar('class C { public static void main(String[] a) { Scanner sc = new Scanner(System.in); } }'),
+    );
+    const [problema] = atribuir(programa);
+    expect(problema).toBeDefined();
+    if (problema === undefined) return;
+    const texto = textoDe(problema.codigo, problema.datos);
+    expect(texto.length).toBeGreaterThan(0);
+    expect(texto).toContain('Scanner');
+  });
+});
+
+// Tarea 1.12 (sub-lote 1-D1): alcanzabilidad (JLS 14.22, REQ-COMP-010) — pasada standalone todavía
+// (1.14 la conecta a compilar(), fuera de este sub-lote), así que el cruce corre sobre
+// verificarAlcanzabilidad() directamente, igual que ya hace atribuirCuerpo() para atribuir().
+describe('problemas en español — cruce motor + catálogo es-MX (tarea 1.12: alcanzabilidad)', () => {
+  it('sentencia tras un "return" incondicional: el Problema tiene una frase en español no vacía', () => {
+    const [problema] = alcanzabilidadDeCuerpo('System.out.println("a"); return; System.out.println("nunca");');
+    expect(problema).toBeDefined();
+    if (problema === undefined) return;
+    const texto = textoDe(problema.codigo, problema.datos);
     expect(texto.length).toBeGreaterThan(0);
   });
 });

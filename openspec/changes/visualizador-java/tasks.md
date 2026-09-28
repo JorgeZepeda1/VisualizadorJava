@@ -202,7 +202,7 @@
 - REFACTOR: un `Problema` por `CodigoProblema`, sin strings sueltos.
 - Verif: `motor/problemas`
 
-**1.12 Alcanzabilidad (JLS 14.22)** — REQ-COMP-010 · depende: 1.10
+**1.12 Alcanzabilidad (JLS 14.22)** — REQ-COMP-010 · depende: 1.10 — ✅ hecha (2026-09-28)
 - RED `alcanzabilidad.test.ts`: código tras `return`/`break`/`continue` incondicional, cuerpo de `while(false)`, sentencia tras `while(1<2){}` (condición constante cuenta igual que el literal), `if(false)` exento; falla.
 - GREEN: `semantica/alcanzabilidad.ts`.
 - REFACTOR: evaluador de "condición constante" compartido con 1.13.

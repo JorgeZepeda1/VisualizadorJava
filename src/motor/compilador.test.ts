@@ -162,3 +162,139 @@ describe('compilar — "println()" sin argumentos (corrección obligatoria, sub-
     expect(resultado.problema.categoria).toBe('error-compilacion');
   });
 });
+
+// Deuda del commit 999a8ca (sub-lote 1-D1, regla 5 de CLAUDE.md): 5 errores de SINTAXIS que antes
+// caían en el catch-all "error-no-clasificado" (veredicto correcto, línea correcta, pero SIN un
+// código/texto específico) ahora tienen su propio CodigoProblema. Cada fuente es EXACTA a su
+// archivo real de corpus/experimentos/texto/ (oráculo, tarea 0.6) — la línea esperada es la que
+// javac 17 real reportó (ver el .errores correspondiente).
+describe('compilar — deuda del commit 999a8ca: errores de sintaxis básicos con código real (exploracion/03 §4)', () => {
+  it('err14: un "else" sin "if" (segundo else de más) -> "else-sin-if" en la línea real de javac (10)', () => {
+    // corpus/experimentos/texto/err14_else_sin_if.java — javac: "10: error: 'else' without 'if'".
+    const fuente = [
+      'public class err14_else_sin_if {',
+      '    public static void main(String[] args) {',
+      '        int x = 5;',
+      '        if (x > 0) {',
+      '            System.out.println("positivo");',
+      '        }',
+      '        else {',
+      '            System.out.println("no positivo");',
+      '        }',
+      '        else {',
+      '            System.out.println("otro else de mas");',
+      '        }',
+      '    }',
+      '}',
+    ].join('\n');
+    const resultado = compilar(fuente);
+    expect(resultado.ok).toBe(false);
+    if (resultado.ok) throw new Error('se esperaba ok:false');
+    expect(resultado.problema.codigo).toBe('else-sin-if');
+    expect(resultado.problema.linea).toBe(10);
+  });
+
+  it('err15: una cadena sin cerrar -> "cadena-sin-cerrar" en la línea real de javac (3)', () => {
+    // corpus/experimentos/texto/err15_cadena_sin_cerrar.java — javac: "3: error: unclosed string literal".
+    const fuente = [
+      'public class err15_cadena_sin_cerrar {',
+      '    public static void main(String[] args) {',
+      '        String s = "hola mundo;',
+      '        System.out.println(s);',
+      '    }',
+      '}',
+    ].join('\n');
+    const resultado = compilar(fuente);
+    expect(resultado.ok).toBe(false);
+    if (resultado.ok) throw new Error('se esperaba ok:false');
+    expect(resultado.problema.codigo).toBe('cadena-sin-cerrar');
+    expect(resultado.problema.linea).toBe(3);
+  });
+
+  it('triangulación: una cadena sin cerrar que llega hasta el FIN DE ARCHIVO (sin salto de línea) también da "cadena-sin-cerrar"', () => {
+    const fuente = 'class C { public static void main(String[] a) { String s = "sin cerrar';
+    const resultado = compilar(fuente);
+    expect(resultado.ok).toBe(false);
+    if (resultado.ok) throw new Error('se esperaba ok:false');
+    expect(resultado.problema.codigo).toBe('cadena-sin-cerrar');
+  });
+
+  it('err16: falta la "}" de cierre de la clase (fin de archivo inesperado) -> "fin-de-archivo-inesperado" en la línea real de javac (5, NUNCA la línea 6 vacía tras el último salto de línea)', () => {
+    // corpus/experimentos/texto/err16_eof_inesperado.java (termina en "}\n") — javac:
+    // "5: error: reached end of file while parsing", con el caret justo tras la "}" de la línea 5.
+    // Ancla verificada: el FIN del último token real (la "}" de main), NUNCA la posición cruda del
+    // token "eof" (que cae en la línea 6, vacía e inexistente, por el salto de línea final).
+    const fuente = [
+      'public class err16_eof_inesperado {',
+      '    public static void main(String[] args) {',
+      '        int x = 5;',
+      '        System.out.println(x);',
+      '    }',
+      '',
+    ].join('\n');
+    const resultado = compilar(fuente);
+    expect(resultado.ok).toBe(false);
+    if (resultado.ok) throw new Error('se esperaba ok:false');
+    expect(resultado.problema.codigo).toBe('fin-de-archivo-inesperado');
+    expect(resultado.problema.linea).toBe(5);
+  });
+
+  it('err17: sobra una "}" tras cerrar la clase -> "llave-de-cierre-sobrante" en la línea real de javac (7)', () => {
+    // corpus/experimentos/texto/err17_llaves_desbalanceadas.java — javac:
+    // "7: error: class, interface, enum, or record expected", apuntando a la "}" sobrante.
+    const fuente = [
+      'public class err17_llaves_desbalanceadas {',
+      '    public static void main(String[] args) {',
+      '        int x = 5;',
+      '        System.out.println(x);',
+      '    }',
+      '}',
+      '}',
+    ].join('\n');
+    const resultado = compilar(fuente);
+    expect(resultado.ok).toBe(false);
+    if (resultado.ok) throw new Error('se esperaba ok:false');
+    expect(resultado.problema.codigo).toBe('llave-de-cierre-sobrante');
+    expect(resultado.problema.linea).toBe(7);
+  });
+
+  it('err22: falta la "{" de apertura del cuerpo de "main" -> "llave-de-metodo-faltante" en la línea real de javac (2, el final de "args)", NUNCA la línea 3 donde arranca el siguiente token real)', () => {
+    // corpus/experimentos/texto/err22_falta_llave_metodo.java — javac reporta EN CASCADA
+    // ("';' expected" en la línea 2 + 3 errores más, exploracion/03 §4.1), pero el simulador
+    // muestra SOLO el primero (recomendación fuerte del catálogo): la línea 2, ancladA al final de
+    // "args)" — NUNCA la línea 3 (donde arranca "int x = 5;", el siguiente token real).
+    const fuente = [
+      'public class err22_falta_llave_metodo {',
+      '    public static void main(String[] args)',
+      '        int x = 5;',
+      '        System.out.println(x);',
+      '    }',
+      '}',
+    ].join('\n');
+    const resultado = compilar(fuente);
+    expect(resultado.ok).toBe(false);
+    if (resultado.ok) throw new Error('se esperaba ok:false');
+    expect(resultado.problema.codigo).toBe('llave-de-metodo-faltante');
+    expect(resultado.problema.linea).toBe(2);
+  });
+
+  it('struct07: "package" DESPUÉS de un "import" -> "paquete-despues-de-import" en la línea real de javac (2)', () => {
+    // corpus/experimentos/texto/struct07_package_fuera_de_lugar.java — javac:
+    // "2: error: class, interface, enum, or record expected" (MISMO mensaje crudo que err17, pero
+    // un mensaje amable DISTINTO: aquí el problema es el orden, no una llave de más).
+    const fuente = [
+      'import java.util.Scanner;',
+      'package paquetedeprueba;',
+      'public class struct07_package_fuera_de_lugar {',
+      '    public static void main(String[] args) {',
+      '        System.out.println("hola");',
+      '    }',
+      '}',
+    ].join('\n');
+    const resultado = compilar(fuente);
+    expect(resultado.ok).toBe(false);
+    if (resultado.ok) throw new Error('se esperaba ok:false');
+    expect(resultado.problema.codigo).toBe('paquete-despues-de-import');
+    expect(resultado.problema.linea).toBe(2);
+  });
+});

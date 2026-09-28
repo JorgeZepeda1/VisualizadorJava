@@ -173,7 +173,15 @@ export function consumirMiembroDeClase(cursor: CursorDeTokens): NodoNoSoportado 
   for (;;) {
     const token = cursor.actual();
     if (token.tipo === 'eof') {
-      throw new ErrorDeCompilacion('llave sin cerrar en el cuerpo de la clase', token.rango);
+      // err16 de exploracion/03: ancla en el FIN del último token real (nunca en la posición cruda
+      // de "eof" — ver la nota de `finDelTokenAnterior`, verificado con javac 17 real).
+      const fin = cursor.finDelTokenAnterior();
+      throw new ErrorDeCompilacion(
+        'el archivo terminó y todavía falta cerrar una llave "}" en el cuerpo de la clase',
+        { inicio: fin, fin },
+        undefined,
+        'fin-de-archivo-inesperado',
+      );
     }
     if (token.texto === '(') {
       profundidadParen += 1;

@@ -10,15 +10,14 @@
 // SINTAXIS (`NodoExpresionNoSoportada`, 1.3), así que `plegarBinaria`/`plegarUnaria` no necesitan
 // reconocerlos.
 //
+// Deuda 3 saldada (commit 999a8ca, sub-lote 1-D1, JLS 4.12.4): las variables `final` con
+// inicializador constante (design.md §2.7, exploracion/03 §1.1 `str03`) YA participan del plegado
+// — caso 'nombre' de abajo, `valorDeVariableConstante` — porque `atribucion.ts`/`alcanzabilidad.ts`
+// ahora guardan el valor plegado en `SimboloVariable.constante` al declarar un "final". `alcance.ts`
+// sigue con CERO dependencia hacia `constantes.ts` en tiempo de VALOR (solo tipos, `import type`).
+//
 // QUEDA FUERA de esta tarea (D2: mejor null que fingir), para quien retome constantes más
 // adelante:
-//   - **Variables `final` con inicializador constante** (design.md §2.7, exploracion/03 §1.1
-//     `str03`): `valorConstante('nombre', alcance)` siempre da `null` hoy. Requeriría que
-//     `atribucion.ts` calcule y guarde el valor plegado en `SimboloVariable` al declarar un
-//     `final` — cambio real pero acotado (`Alcance`/`atribucion.ts`), no lo pidió ningún RED de
-//     1.10/1.11. `alcance.ts` seguiría con CERO dependencias hacia `constantes.ts` en tiempo de
-//     VALOR (solo tipos, vía `import type`, igual que ya hacen `sobrecargas.ts`/`tipos.ts` entre
-//     sí) si algún día se conecta.
 //   - **Duplicados de `case` por VALOR tras convertir** (design.md §2.7: `case 97:`/`case 'a':` en
 //     un mismo `switch` de `int`) más allá de la comparación textual — 1.11 solo necesita "¿esta
 //     etiqueta de `case` es una expresión constante?" (`valorConstante(...) !== null`), no
@@ -27,10 +26,15 @@
 // El plegado de `double` reusa las MISMAS reglas numéricas de design.md §3.1 (wraparound `int`
 // con `|0`/`Math.imul`, `long` con `BigInt.asIntN(64, ·)`) — la biblioteca REAL de esas reglas
 // llega en la tarea 2.2; aquí se reimplementan mínimamente (mismas fórmulas, documentadas) porque
-// el plegado de constantes NO PUEDE esperar a 2.2 (1.10 depende de 1.8, no de 2.2). La
-// concatenación con un operando `double` usa un STUB NUMÉRICO para `Double.toString` (marcado
-// `TODO(2.4)` en `textoDoubleTemporal`, retirado explícitamente al cerrar la tarea 2.4, igual que
-// el propio stub de constantes que menciona el GREEN de esta tarea).
+// el plegado de constantes NO PUEDE esperar a 2.2 (1.10 depende de 1.8, no de 2.2).
+//
+// Deuda saldada (commit 999a8ca, sub-lote 1-D1, regla 5 de CLAUDE.md): el GREEN original de esta
+// tarea traía un stub `textoDoubleTemporal` que formateaba un `double` con reglas propias (JS
+// `String(valor)` + ".0"), NUNCA con el `Double.toString` real de Java (design.md §4.2) — un
+// resultado inventado. Hasta que la tarea 2.4 traiga `digitosJava`/`Double.toString` real,
+// `plegarBinaria` da `null` para CUALQUIER concatenación con un operando `double` (nunca pliega),
+// y `aTextoJava` ya ni siquiera acepta ese caso en su tipo (`ValorConstanteDeTexto`, exhaustividad
+// de TypeScript) — 2.4 retira ese `if` y ese tipo, no solo un comentario TODO.
 import type { NodoExpresion } from '../sintaxis/ast.ts';
 import type { Alcance } from './alcance.ts';
 
@@ -91,9 +95,10 @@ export function valorConstante(expresion: NodoExpresion, alcance: Alcance): Valo
     }
     case 'acceso-miembro':
       return valorDeCampoConstante(expresion, alcance);
-    // 'nombre' (variable "final" — ver cabecera), 'asignacion', 'incremento-decremento', 'llamada'
-    // (JAMÁS constante, JLS 15.29), 'nueva-instancia', 'expresion-no-soportada': ninguna es una
-    // expresión constante en el alcance de esta tarea.
+    case 'nombre':
+      return valorDeVariableConstante(expresion, alcance);
+    // 'asignacion', 'incremento-decremento', 'llamada' (JAMÁS constante, JLS 15.29),
+    // 'nueva-instancia', 'expresion-no-soportada': ninguna es una expresión constante.
     default:
       return null;
   }
@@ -109,6 +114,17 @@ function valorDeCampoConstante(
   // es, en este programa, el nombre de una variable.
   if (alcance.buscar(nodo.objeto.nombre) !== null) return null;
   return CAMPOS_CONSTANTES[`${nodo.objeto.nombre}.${nodo.miembro}`] ?? null;
+}
+
+/** Deuda 3 del commit 999a8ca (JLS 4.12.4, "variable constante"): una local "final" cuyo
+ * inicializador es una expresión constante ES una expresión constante (participa en etiquetas de
+ * `case`, alcanzabilidad/asignación definitiva y en el internado de `String`, exactamente como un
+ * literal). Quien DECLARA el símbolo (`atribucion.ts`/`alcanzabilidad.ts`) ya guardó ese valor
+ * plegado en `SimboloVariable.constante` — aquí solo se lee de vuelta; `null` si el nombre no
+ * existe, no es "final", o su inicializador nunca se pudo plegar (D2: nunca inventar). */
+function valorDeVariableConstante(nodo: Extract<NodoExpresion, { tipo: 'nombre' }>, alcance: Alcance): ValorConstante | null {
+  const simbolo = alcance.buscar(nodo.nombre);
+  return simbolo !== null && simbolo.esFinal && simbolo.constante !== undefined ? simbolo.constante : null;
 }
 
 // ---- Promoción numérica binaria/unaria (JLS 5.6) ----
@@ -158,6 +174,14 @@ const OPERADORES_COMPARACION: ReadonlySet<string> = new Set(['==', '!=', '<', '>
 
 function plegarBinaria(operador: string, a: ValorConstante, b: ValorConstante): ValorConstante | null {
   if (operador === '+' && (a.tipo === 'String' || b.tipo === 'String')) {
+    // Deuda del commit 999a8ca (sub-lote 1-D1, regla 5 de CLAUDE.md): hasta que la tarea 2.4 traiga
+    // `digitosJava`/`Double.toString` real (design.md §4.2), una concatenación con un operando
+    // `double` NUNCA es una expresión constante para el plegado -- el stub `textoDoubleTemporal`
+    // (retirado) formateaba el `double` con reglas propias (String(valor) de JS + ".0"), un
+    // resultado INVENTADO que nunca se verificó contra javac. `aTextoJava` ya NO acepta `double`
+    // (tipo `ValorConstanteDeTexto`, exhaustividad de TypeScript): este `if` es lo que GARANTIZA en
+    // tiempo de compilación que nunca se le pase uno.
+    if (a.tipo === 'double' || b.tipo === 'double') return null;
     return { tipo: 'String', valor: aTextoJava(a) + aTextoJava(b) };
   }
   if (OPERADORES_ARITMETICOS.has(operador)) {
@@ -315,7 +339,14 @@ function aplicarComparacionLargo(operador: string, x: bigint, y: bigint): boolea
 
 // ---- Concatenación con String (JLS 15.18.1: "+" con un operando String es constante) ----
 
-function aTextoJava(v: ValorConstante): string {
+// Todo `ValorConstante` MENOS `double` (deuda del commit 999a8ca: `plegarBinaria` ya garantiza que
+// NUNCA se llega aquí con uno, ver arriba) — TypeScript exige que `aTextoJava` cubra los 5 casos
+// restantes sin `default`, así que si `ValorConstante` alguna vez gana un tipo nuevo, esto deja de
+// compilar hasta decidir cómo convertirlo a texto (la MISMA garantía de exhaustividad que ya usa
+// ADR 015 punto 1 para el catálogo de textos).
+type ValorConstanteDeTexto = Exclude<ValorConstante, { readonly tipo: 'double' }>;
+
+function aTextoJava(v: ValorConstanteDeTexto): string {
   switch (v.tipo) {
     case 'int':
       return String(v.valor);
@@ -327,23 +358,7 @@ function aTextoJava(v: ValorConstante): string {
       return String.fromCharCode(v.valor);
     case 'String':
       return v.valor;
-    case 'double':
-      return textoDoubleTemporal(v.valor);
   }
-}
-
-/** STUB NUMÉRICO (tarea 1.10 — retirado explícitamente al cerrar la tarea 2.4, que trae
- * `digitosJava`/`Double.toString` reales, design.md §4.2). Corrige el caso MÁS común donde JS y
- * Java difieren (JS omite ".0" en un valor entero exacto: `String(2)` -> "2"; Java SIEMPRE muestra
- * al menos un dígito decimal: "2.0") pero NO reproduce los casos finos de design.md §4.2 (empates
- * en el borde, potencias de dos, subnormales, umbral de notación científica) — ninguna prueba de
- * 1.10/1.11 depende de esos casos; cuando el lote 2 los necesite, esta función desaparece.
- */
-function textoDoubleTemporal(valor: number): string {
-  if (Number.isNaN(valor)) return 'NaN';
-  if (!Number.isFinite(valor)) return valor > 0 ? 'Infinity' : '-Infinity';
-  const texto = String(valor);
-  return /[.e]/.test(texto) ? texto : `${texto}.0`;
 }
 
 // ---- Casts a primitivo (JLS 15.29: "casts a primitivo o String" — solo primitivo por ahora, ver

@@ -36,6 +36,20 @@ export class CursorDeTokens {
     return this.actual().texto === texto;
   }
 
+  /** Fin (offset) del ÚLTIMO token ya consumido antes de la posición actual (0 si el cursor sigue
+   * al principio) — la posición donde `javac` ancla ciertos diagnósticos de recuperación ("reached
+   * end of file while parsing", el "';' expected" que da cuando falta el bloque "{ }" de un
+   * método) en vez de la posición del token inesperado que sigue, que puede caer en otra línea
+   * (verificado con javac 17 real: err16_eof_inesperado.java termina en "}\n" y javac reporta la
+   * línea de esa "}", nunca la línea vacía que seguiría al salto de línea final —
+   * corpus/experimentos/texto/). Úsala SOLO en los puntos donde YA SE SABE, por construcción de la
+   * gramática, que este es el ancla correcta — no es el comportamiento por omisión de
+   * `esperarTexto`/`esperarTipo` (que anclan en el token inesperado que SÍ encontraron). */
+  finDelTokenAnterior(): number {
+    if (this.posicion === 0) return 0;
+    return this.tokens[this.posicion - 1]!.rango.fin;
+  }
+
   esperarTexto(texto: string): Token {
     const token = this.actual();
     if (token.texto !== texto) {

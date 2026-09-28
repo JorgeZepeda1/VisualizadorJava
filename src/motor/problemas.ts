@@ -5,10 +5,17 @@
 // selector de `switch`/`break`/`continue` de la tarea 1.7. Los mensajes en español viven en
 // `src/textos/es-MX/problemas.ts` (ADR 015: el motor nunca arma texto, solo emite código + datos).
 //
+// Alcanzabilidad (REQ-COMP-010, JLS 14.22, pasada 3 de ADR 004) se agregó en la tarea 1.12
+// (sub-lote 1-D1, `semantica/alcanzabilidad.ts`) — un único código, `sentencia-inalcanzable`, sin
+// distinguir la CAUSA (tras "return"/"break"/"continue", cuerpo de ciclo con condición constante
+// `false`, cola de un ciclo con condición constante `true` sin `break`): el mensaje amable
+// ("esta línea nunca se ejecuta") es el mismo en los 4 casos, igual que exige el escenario
+// verificado de REQ-COMP-010.
+//
 // QUEDA FUERA de este cierre, a propósito (ver el reporte de la tarea 1.11 para el detalle
 // completo de motivos por caso):
-//   - Asignación definitiva (REQ-COMP-004, tarea 1.13) y alcanzabilidad (REQ-COMP-010, tarea
-//     1.12): pasadas propias que todavía no existen — sus códigos se agregan cuando se construyan.
+//   - Asignación definitiva (REQ-COMP-004, tarea 1.13): pasada propia que todavía no existe — sus
+//     códigos se agregan cuando se construya.
 //   - Arranque (REQ-COMP-007/008, tarea 1.15): categoría `error-arranque` sin código propio
 //     todavía (se muestra como excepción, design.md §2.2).
 //   - Los códigos de "no disponible" (`sintaxis/no-soportado.ts`, el léxico y
@@ -45,7 +52,19 @@ export type CodigoProblema =
   | 'etiqueta-de-case-duplicada' // flow05
   // Flujo (pendiente heredado 1 del sub-lote 1-B, verificado que vive en esta pasada).
   | 'break-fuera-de-contexto' // err29
-  | 'continue-fuera-de-contexto'; // err30
+  | 'continue-fuera-de-contexto' // err30
+  // Deuda del commit 999a8ca (sub-lote 1-D1): 5 errores de sintaxis básicos + Scanner sin import,
+  // los MÁS frecuentes de un alumno (exploracion/03 §4) — antes caían en el catch-all
+  // "error-no-clasificado" (veredicto y línea correctos, sin texto propio).
+  | 'else-sin-if' // err14
+  | 'cadena-sin-cerrar' // err15
+  | 'fin-de-archivo-inesperado' // err16
+  | 'llave-de-cierre-sobrante' // err17
+  | 'llave-de-metodo-faltante' // err22
+  | 'paquete-despues-de-import' // struct07
+  | 'tipo-requiere-import' // err20 (atribución, no sintaxis — Scanner/Random sin import)
+  // Alcanzabilidad (pasada 3 de ADR 004, tarea 1.12, JLS 14.22, REQ-COMP-010).
+  | 'sentencia-inalcanzable';
 
 export interface Problema {
   readonly categoria: Categoria;

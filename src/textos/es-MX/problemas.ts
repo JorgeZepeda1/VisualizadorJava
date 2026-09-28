@@ -68,6 +68,14 @@ interface DatosPorCodigo {
   'etiqueta-de-case-duplicada': DatosVacios;
   'break-fuera-de-contexto': DatosVacios;
   'continue-fuera-de-contexto': DatosVacios;
+  'else-sin-if': DatosVacios;
+  'cadena-sin-cerrar': DatosVacios;
+  'fin-de-archivo-inesperado': DatosVacios;
+  'llave-de-cierre-sobrante': DatosVacios;
+  'llave-de-metodo-faltante': DatosVacios;
+  'paquete-despues-de-import': DatosVacios;
+  'tipo-requiere-import': DatosNombre;
+  'sentencia-inalcanzable': DatosVacios;
 }
 
 export const textosProblemas: { readonly [K in CodigoProblema]: (datos: DatosPorCodigo[K]) => string } = {
@@ -97,4 +105,13 @@ export const textosProblemas: { readonly [K in CodigoProblema]: (datos: DatosPor
   'etiqueta-de-case-duplicada': () => 'Ya existe un "case" con este mismo valor más arriba; cada valor solo puede aparecer una vez.',
   'break-fuera-de-contexto': () => '"break" solo tiene sentido dentro de un ciclo o un "switch".',
   'continue-fuera-de-contexto': () => '"continue" solo tiene sentido dentro de un ciclo.',
+  'else-sin-if': () => 'Este "else" no tiene un "if" al cual pertenecer; revisa las llaves "{ }".',
+  'cadena-sin-cerrar': () => 'Te faltó cerrar las comillas " de este texto.',
+  'fin-de-archivo-inesperado': () => 'El archivo terminó y todavía falta cerrar una o más llaves "}".',
+  'llave-de-cierre-sobrante': () =>
+    'Sobra una llave de cierre "}": hay una de más después de que la clase ya había cerrado.',
+  'llave-de-metodo-faltante': () => 'Falta abrir una llave "{" después de esto — probablemente la del método.',
+  'paquete-despues-de-import': () => 'La línea "package" debe ir antes que cualquier "import".',
+  'tipo-requiere-import': ({ nombre }) => `Falta la línea "import java.util.${nombre};" al principio del archivo.`,
+  'sentencia-inalcanzable': () => 'Esta línea nunca se ejecuta.',
 };

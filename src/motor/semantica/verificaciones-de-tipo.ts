@@ -60,11 +60,31 @@ export function operandosValidosParaAritmetica(operador: string, a: Tipo, b: Tip
 
 const PRIMITIVOS_DEL_SUBCONJUNTO: ReadonlySet<string> = new Set(['int', 'long', 'double', 'boolean', 'char']);
 
-/** err18 (`string nombre`, "cannot find symbol: class string"): el nombre de tipo de una
- * declaración debe ser un primitivo real o una clase reflejada de verdad (1.9) — nunca una
- * suposición sobre lo que "debería" existir. */
-export function esNombreDeTipoValido(nombreTipo: string): boolean {
-  return PRIMITIVOS_DEL_SUBCONJUNTO.has(nombreTipo) || NOMBRES_DE_CLASE_RECONOCIDOS.has(nombreTipo);
+// Deuda del commit 999a8ca (sub-lote 1-D1, err20 de exploracion/03): "Scanner"/"Random" son las 2
+// ÚNICAS clases de referencia de REQ-SUB-005 que viven en java.util -- a diferencia de "String"
+// (java.lang, SIEMPRE disponible sin import) -- así que son las ÚNICAS que Java exige importar de
+// verdad. Verificado contra javac 17 real: "Scanner sc = new Scanner(System.in);" sin import ->
+// "cannot find symbol: class Scanner" (exploracion/03 §4, fila err20).
+const CLASES_QUE_REQUIEREN_IMPORT: ReadonlySet<string> = new Set(['Scanner', 'Random']);
+
+export type ResultadoNombreDeTipo = 'valido' | 'requiere-import' | 'no-reconocido';
+
+/** err18 (`string nombre`, "cannot find symbol: class string") / err20 (`Scanner` sin import,
+ * "cannot find symbol: class Scanner"): distingue un nombre GENUINAMENTE desconocido (ni
+ * primitivo ni clase reflejada real — nunca una suposición sobre lo que "debería" existir) de uno
+ * real de java.util al que le falta el import — mismo catálogo del oráculo (1.9), sin adivinar
+ * ninguno de los dos casos. `nombresJavaUtilImportados`: qué de {Scanner, Random} el programa
+ * importó de verdad (lo arma `atribucion.ts` con `NodoPrograma.importaciones`). */
+export function resultadoNombreDeTipo(
+  nombreTipo: string,
+  nombresJavaUtilImportados: ReadonlySet<string>,
+): ResultadoNombreDeTipo {
+  if (PRIMITIVOS_DEL_SUBCONJUNTO.has(nombreTipo)) return 'valido';
+  if (!NOMBRES_DE_CLASE_RECONOCIDOS.has(nombreTipo)) return 'no-reconocido';
+  if (CLASES_QUE_REQUIEREN_IMPORT.has(nombreTipo) && !nombresJavaUtilImportados.has(nombreTipo)) {
+    return 'requiere-import';
+  }
+  return 'valido';
 }
 
 /** err19 (`system.out...`, "package system does not exist"): pista de mayúscula cuando un nombre

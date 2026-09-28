@@ -5,10 +5,19 @@
 import { describe, expect, it } from 'vitest';
 import { tokenizar } from '../lexico/analizador-lexico.ts';
 import { analizarPrograma } from '../sintaxis/analizador-sintactico.ts';
+import { TablaDeLineas } from '../fuente/tabla-de-lineas.ts';
 import { atribuir } from './atribucion.ts';
 
 function atribuirCuerpo(cuerpoDeMain: string) {
   const programa = analizarPrograma(tokenizar(`class C { public static void main(String[] a) { ${cuerpoDeMain} } }`));
+  return atribuir(programa);
+}
+
+// Deuda del commit 999a8ca (sub-lote 1-D1, err20 de exploracion/03): a diferencia de
+// `atribuirCuerpo`, este helper SÍ deja controlar los imports del programa completo -- necesario
+// para probar "Scanner sin import java.util.Scanner" de verdad (atribuirCuerpo nunca trae imports).
+function atribuirPrograma(fuenteCompleta: string) {
+  const programa = analizarPrograma(tokenizar(fuenteCompleta));
   return atribuir(programa);
 }
 
@@ -312,5 +321,88 @@ describe('atribuir — err19 de exploracion/03: nombre no reconocido con sugeren
   it('control: un nombre no declarado SIN parecido a ninguna clase real no trae sugerencia', () => {
     const problemas = atribuirCuerpo('int y = edadDeLaPersona + 1;');
     expect(problemas[0]?.datos['sugerencia']).toBeUndefined();
+  });
+});
+
+// Deuda del commit 999a8ca (sub-lote 1-D1): err20 de exploracion/03 — "Scanner"/"Random" son las 2
+// ÚNICAS clases de referencia de REQ-SUB-005 que viven en java.util (a diferencia de "String",
+// java.lang, siempre disponible sin import) — Java exige importarlas de verdad. Verificado contra
+// javac 17 real (corpus/experimentos/texto/err20_scanner_sin_import.java, línea 3): "cannot find
+// symbol: class Scanner". El mensaje amable NUNCA debe ser el de "tipo-no-reconocido" (ese es para
+// nombres mal escritos, como "string" — "Scanner" está BIEN escrito, solo falta importarlo).
+describe('atribuir — err20 de exploracion/03: "Scanner"/"Random" sin import java.util (deuda del commit 999a8ca)', () => {
+  it('"Scanner sc = ...;" SIN ningún import se rechaza como "tipo-requiere-import", NUNCA "tipo-no-reconocido"', () => {
+    const problemas = atribuirPrograma(
+      'class C { public static void main(String[] a) { Scanner sc = new Scanner(System.in); } }',
+    );
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toMatchObject({ codigo: 'tipo-requiere-import', datos: { nombre: 'Scanner' } });
+  });
+
+  it('la línea del problema coincide con la línea 3 real de javac (corpus/experimentos/texto/err20_scanner_sin_import.java)', () => {
+    // Fuente EXACTA del archivo real -- javac 17: "3: error: cannot find symbol / symbol: class
+    // Scanner", apuntando al inicio de "Scanner" en la declaración (primera aparición).
+    const fuente = [
+      'public class err20_scanner_sin_import {',
+      '    public static void main(String[] args) {',
+      '        Scanner sc = new Scanner(System.in);',
+      '        System.out.println(sc.nextInt());',
+      '    }',
+      '}',
+    ].join('\n');
+    const programa = analizarPrograma(tokenizar(fuente));
+    const [problema] = atribuir(programa);
+    expect(problema).toMatchObject({ codigo: 'tipo-requiere-import' });
+    if (problema === undefined) return;
+    const { linea } = new TablaDeLineas(fuente).ubicar(problema.rango.inicio);
+    expect(linea).toBe(3);
+  });
+
+  it('triangulación: "Random" (la otra clase de java.util del subconjunto) sin import también se rechaza', () => {
+    const problemas = atribuirPrograma('class C { public static void main(String[] a) { Random r = new Random(); } }');
+    expect(problemas.some((p) => p.codigo === 'tipo-requiere-import' && p.datos['nombre'] === 'Random')).toBe(true);
+  });
+
+  it('control: "import java.util.Scanner;" exacto SÍ basta -- no se rechaza', () => {
+    const problemas = atribuirPrograma(
+      'import java.util.Scanner; class C { public static void main(String[] a) { Scanner sc = new Scanner(System.in); } }',
+    );
+    expect(problemas).toEqual([]);
+  });
+
+  it('control: "import java.util.*;" (comodín) también basta -- no se rechaza', () => {
+    const problemas = atribuirPrograma(
+      'import java.util.*; class C { public static void main(String[] a) { Scanner sc = new Scanner(System.in); } }',
+    );
+    expect(problemas).toEqual([]);
+  });
+
+  it('control: "String" (java.lang) NUNCA exige import, con o sin imports de java.util en el programa', () => {
+    expect(atribuirPrograma('class C { public static void main(String[] a) { String s = "hola"; } }')).toEqual([]);
+  });
+
+  it('control: un tipo GENUINAMENTE mal escrito ("scanner" minúscula) sigue siendo "tipo-no-reconocido", nunca "tipo-requiere-import"', () => {
+    const problemas = atribuirPrograma('import java.util.Scanner; class C { public static void main(String[] a) { scanner sc; } }');
+    expect(problemas.some((p) => p.codigo === 'tipo-no-reconocido')).toBe(true);
+    expect(problemas.some((p) => p.codigo === 'tipo-requiere-import')).toBe(false);
+  });
+});
+
+// Deuda 3 del commit 999a8ca (JLS 4.12.4, "variable constante"): verificado contra javac 17 real
+// (str03_folding_final_vars.java, corpus/experimentos/texto/) que "final int MAX = 3;" hace de
+// "MAX" una expresión constante real — participa en etiquetas de "case" igual que el literal "3".
+describe('atribuir — deuda 3 del commit 999a8ca (JLS 4.12.4): una variable "final" con inicializador constante participa en etiquetas de "case"', () => {
+  it('"final int MAX = 3; switch (n) { case MAX: break; }" compila limpio (MAX es una etiqueta constante real)', () => {
+    const problemas = atribuirPrograma(
+      'class C { public static void main(String[] a) { final int MAX = 3; int n = 1; switch (n) { case MAX: break; } } }',
+    );
+    expect(problemas).toEqual([]);
+  });
+
+  it('control (regresión): SIN "final", la misma etiqueta sigue siendo "etiqueta-de-case-no-constante" (err34)', () => {
+    const problemas = atribuirPrograma(
+      'class C { public static void main(String[] a) { int max = 3; int n = 1; switch (n) { case max: break; } } }',
+    );
+    expect(problemas.some((p) => p.codigo === 'etiqueta-de-case-no-constante')).toBe(true);
   });
 });

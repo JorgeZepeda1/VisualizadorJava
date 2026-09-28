@@ -150,10 +150,15 @@ export function leerCadena(fuente: string, inicio: number): CadenaLeida {
 
   while (cursor < fuente.length && fuente[cursor] !== '"') {
     if (fuente[cursor] === '\n') {
-      throw new ErrorDeCompilacion('cadena sin cerrar antes del fin de línea', {
-        inicio,
-        fin: cursor,
-      });
+      // err15 de exploracion/03: verificado contra javac 17 real (unclosed string literal) que el
+      // error se ancla en la comilla de APERTURA ("inicio"), no en el fin de línea — el mismo
+      // "rango" que ya se usaba, solo con su código real en vez del catch-all.
+      throw new ErrorDeCompilacion(
+        'cadena sin cerrar antes del fin de línea',
+        { inicio, fin: cursor },
+        undefined,
+        'cadena-sin-cerrar',
+      );
     }
     const unidad = decodificarUnidad(fuente, cursor);
     if (unidad.noSoportado) {
@@ -167,7 +172,7 @@ export function leerCadena(fuente: string, inicio: number): CadenaLeida {
   }
 
   if (fuente[cursor] !== '"') {
-    throw new ErrorDeCompilacion('cadena sin cerrar', { inicio, fin: cursor });
+    throw new ErrorDeCompilacion('cadena sin cerrar', { inicio, fin: cursor }, undefined, 'cadena-sin-cerrar');
   }
 
   return { valor, longitud: cursor + 1 - inicio, noSoportados };

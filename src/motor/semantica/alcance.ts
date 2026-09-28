@@ -7,12 +7,21 @@
 // un solo código: lo que importa es si el nombre YA está visible en algún bloque todavía abierto,
 // no en cuál de los bloques abiertos vive.
 import type { Rango } from '../fuente/rango.ts';
+import type { ValorConstante } from './constantes.ts';
 
 export interface SimboloVariable {
   readonly nombre: string;
   readonly tipo: string;
   readonly esFinal: boolean;
   readonly rango: Rango;
+  /** Deuda 3 del commit 999a8ca (JLS 4.12.4, "variable constante"): el valor plegado
+   * (`constantes.ts`, tarea 1.10) de esta variable si es "final" Y su inicializador es una
+   * expresión constante — `undefined` en cualquier otro caso (no es "final", no tiene
+   * inicializador, o el inicializador no es constante). Lo arma quien declara el símbolo
+   * (`atribucion.ts`/`alcanzabilidad.ts`, cada uno su propio `Alcance`); `constantes.ts` SOLO lo
+   * lee de vuelta (`valorConstante`, caso 'nombre'). `import type` — sin dependencia real en
+   * tiempo de VALOR, misma garantía que ya documentaba este archivo. */
+  readonly constante?: ValorConstante;
 }
 
 export type ResultadoDeclarar =

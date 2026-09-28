@@ -123,13 +123,28 @@ describe('valorConstante — concatenación de String (JLS 15.29: "+" con un ope
   });
 });
 
-describe('valorConstante — "+" con double concatenado a String (stub numérico, TODO explícito hasta 2.4)', () => {
-  it('"x=" + 1.5 concatena correcto: 1.5 no cae en ningún caso especial de design.md §4.2', () => {
-    expect(constante('"x=" + 1.5')).toEqual({ tipo: 'String', valor: 'x=1.5' });
+// Deuda del commit 999a8ca (sub-lote 1-D1): el stub `textoDoubleTemporal` formateaba un `double`
+// con reglas propias, no con el `Double.toString` real de Java (design.md §4.2) -- un resultado
+// INVENTADO (regla 5 de CLAUDE.md). Hasta que la tarea 2.4 traiga `digitosJava`/`Double.toString`
+// real, una concatenación de cadena con CUALQUIER operando `double` (o cualquier conversión de
+// `double` a texto) NO es una expresión constante para el plegado: da `null`, nunca un String
+// inventado. `"x=" + 2.0` ya NO produce `{tipo:'String', valor:'x=2.0'}` (comportamiento del stub,
+// retirado) -- ver `plegarBinaria` en constantes.ts.
+describe('valorConstante — "+" con double concatenado a String: NUNCA constante hasta 2.4 (D2, deuda del commit 999a8ca)', () => {
+  it('"x=" + 1.5 (double a la derecha) da null: ningún Double.toString real todavía', () => {
+    expect(constante('"x=" + 1.5')).toBeNull();
   });
 
-  it('"x=" + 2.0 SIEMPRE lleva ".0" (Java nunca omite el decimal; JS sí, por eso es un stub corregido para el caso común)', () => {
-    expect(constante('"x=" + 2.0')).toEqual({ tipo: 'String', valor: 'x=2.0' });
+  it('triangulación: "1.5" + "x=" (double a la IZQUIERDA) también da null', () => {
+    expect(constante('1.5 + "x="')).toBeNull();
+  });
+
+  it('triangulación: una conversión de double a texto ANIDADA (double + double, sin literal directo) también da null', () => {
+    expect(constante('"x=" + (1.0 + 2.0)')).toBeNull();
+  });
+
+  it('control: concatenar con int/long/char/boolean SIGUE plegando normal (nunca se tocó su camino)', () => {
+    expect(constante('"n=" + 5')).toEqual({ tipo: 'String', valor: 'n=5' });
   });
 });
 
@@ -217,11 +232,78 @@ describe('valorConstante — lo que NO es una expresión constante da null (D2: 
     expect(constante('Math.abs(-5)')).toBeNull();
   });
 
-  it('una variable local (sin soporte de "final" en esta tarea) da null', () => {
+  it('una variable local NO "final" da null (sigue sin ser una expresión constante, JLS 4.12.4)', () => {
     const fuente = 'class C { public static void main(String[] a) { int n = 5; int x = n; } }';
     const programa = analizarPrograma(tokenizar(fuente));
     const decl = programa.clase.main.cuerpo.elementos[1] as NodoDeclaracionLocal;
     const expr = decl.declaradores[0]!.inicializador!;
     expect(valorConstante(expr, new Alcance())).toBeNull();
+  });
+});
+
+// Deuda 3 del commit 999a8ca (JLS 4.12.4, "variable constante"): una local "final" con
+// inicializador constante ES una expresión constante — el mismo `Alcance` que arma `atribucion.ts`
+// (vía `SimboloVariable.constante`), pero aquí se construye A MANO para probar `valorConstante`
+// (`constantes.ts`) de forma aislada, sin pasar por el resto de la pasada de atribución.
+describe('valorConstante — variables "final" CON inicializador constante SÍ participan (deuda 3 del commit 999a8ca, JLS 4.12.4)', () => {
+  it('una variable "final" con el campo `constante` ya resuelto en el Alcance se lee de vuelta tal cual', () => {
+    const alcance = new Alcance();
+    alcance.entrarBloque();
+    alcance.declarar({
+      nombre: 'MAX',
+      tipo: 'int',
+      esFinal: true,
+      rango: { inicio: 0, fin: 0 },
+      constante: { tipo: 'int', valor: 3 },
+    });
+    const nodoNombre: NodoExpresion = { tipo: 'nombre', nombre: 'MAX', rango: { inicio: 0, fin: 0 } };
+    expect(valorConstante(nodoNombre, alcance)).toEqual({ tipo: 'int', valor: 3 });
+  });
+
+  it('una variable "final" SIN `constante` resuelto (inicializador no constante) da null, nunca inventa un valor', () => {
+    const alcance = new Alcance();
+    alcance.entrarBloque();
+    alcance.declarar({ nombre: 'N', tipo: 'int', esFinal: true, rango: { inicio: 0, fin: 0 } });
+    expect(valorConstante({ tipo: 'nombre', nombre: 'N', rango: { inicio: 0, fin: 0 } }, alcance)).toBeNull();
+  });
+
+  it('caso insignia EXACTO verificado contra javac 17 real (corpus/experimentos/texto/str03_folding_final_vars.java): "final String A=\'ho\'; final String B=\'la\'; (A+B)==\'hola\'" -> true (interning real vía variables constantes)', () => {
+    // El programa real de la oracle imprime "true" (str03_folding_final_vars.salida) — aquí se
+    // verifica el HECHO de compilación que lo produce: la concatenación de dos variables "final"
+    // constantes se pliega y se interna EXACTAMENTE igual que la de dos literales (str02).
+    const fuente = [
+      'class C {',
+      '  public static void main(String[] a) {',
+      '    final String x = "ho";',
+      '    final String y = "la";',
+      '    boolean r = (x + y) == "hola";',
+      '  }',
+      '}',
+    ].join('\n');
+    const programa = analizarPrograma(tokenizar(fuente));
+    const cuerpo = programa.clase.main.cuerpo.elementos;
+    const declX = cuerpo[0] as NodoDeclaracionLocal;
+    const declY = cuerpo[1] as NodoDeclaracionLocal;
+    const declR = cuerpo[2] as NodoDeclaracionLocal;
+
+    const alcance = new Alcance();
+    alcance.entrarBloque();
+    alcance.declarar({
+      nombre: 'x',
+      tipo: 'String',
+      esFinal: true,
+      rango: declX.rango,
+      constante: valorConstante(declX.declaradores[0]!.inicializador!, alcance) ?? undefined,
+    });
+    alcance.declarar({
+      nombre: 'y',
+      tipo: 'String',
+      esFinal: true,
+      rango: declY.rango,
+      constante: valorConstante(declY.declaradores[0]!.inicializador!, alcance) ?? undefined,
+    });
+
+    const expresionR = declR.declaradores[0]!.inicializador!;
+    expect(valorConstante(expresionR, alcance)).toEqual({ tipo: 'boolean', valor: true });
   });
 });

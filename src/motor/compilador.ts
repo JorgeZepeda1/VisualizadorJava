@@ -107,8 +107,11 @@ const CODIGOS_POR_TEXTO_ESPERADO: Readonly<Record<string, CodigoProblema>> = {
 };
 
 function codigoDeSintaxis(error: unknown): CodigoProblema {
-  if (error instanceof ErrorDeCompilacion && error.esperado !== undefined) {
-    return CODIGOS_POR_TEXTO_ESPERADO[error.esperado] ?? 'error-no-clasificado';
+  if (error instanceof ErrorDeCompilacion) {
+    // Sub-lote 1-D1: un código DIRECTO (`else-sin-if`, `fin-de-archivo-inesperado`…) gana sobre la
+    // tabla indirecta de `esperado` — ver la nota de `ErrorDeCompilacion.codigo`.
+    if (error.codigo !== undefined) return error.codigo;
+    if (error.esperado !== undefined) return CODIGOS_POR_TEXTO_ESPERADO[error.esperado] ?? 'error-no-clasificado';
   }
   return 'error-no-clasificado';
 }
