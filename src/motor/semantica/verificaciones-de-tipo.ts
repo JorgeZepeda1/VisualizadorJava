@@ -1,6 +1,8 @@
 // Verificaciones de TIPO (tarea 1.11, cierre de REQ-COMP-001, catálogo `03` §4) — funciones puras,
 // separadas de `atribucion.ts` (que solo RECORRE el árbol y decide CUÁNDO llamarlas) para que cada
 // regla se pueda probar y leer por separado, igual que ya hace `switch.ts` con el selector.
+import type { NodoExpresion } from '../sintaxis/ast.ts';
+import type { Alcance } from './alcance.ts';
 import type { ValorConstante } from './constantes.ts';
 import { NOMBRES_DE_CLASE_RECONOCIDOS, type Tipo } from './tipos.ts';
 
@@ -100,4 +102,76 @@ export function resultadoNombreDeTipo(
 export function sugerenciaDeMayuscula(nombre: string): string | undefined {
   const conMayuscula = nombre.charAt(0).toUpperCase() + nombre.slice(1);
   return conMayuscula !== nombre && NOMBRES_DE_CLASE_RECONOCIDOS.has(conMayuscula) ? conMayuscula : undefined;
+}
+
+// Tarea 1.21 (sub-lote 1-D4, REQ-SUB-001): "import java.utilScanner;" (nombre real mal formado,
+// mutante real de la tarea 1.16) -- javac ancla su error en la propia línea del IMPORT, NUNCA en
+// el uso posterior de la variable (a diferencia de "Scanner sin import", `resultadoNombreDeTipo`
+// arriba, que SÍ es sobre el USO). Solo valida imports NO comodín (REQ-SUB-001 solo pide
+// "java.util.*" real, un caso que los mutantes de este corpus nunca corrompen). REQ-SUB-001 mismo
+// enumera el universo EXACTO de imports válidos: "java.util.Scanner", "java.util.Random", o
+// "java.lang.X" de una clase soportada -- nunca basta con mirar solo el ÚLTIMO segmento (corrección
+// real esta sesión: "import java.java.Scanner;", mutante "cambiar-identificador" sobre "util",
+// termina en un nombre de clase REAL pero un PAQUETE que no existe; javac lo rechaza igual,
+// verificado: "cannot find symbol: class Scanner, location: package java.java").
+export function nombreDeClaseImportadaEsValido(nombreCalificado: string): boolean {
+  const ultimoPunto = nombreCalificado.lastIndexOf('.');
+  if (ultimoPunto === -1) return false; // un import siempre es un nombre calificado (JLS 7.5.1)
+  const paquete = nombreCalificado.slice(0, ultimoPunto);
+  const clase = nombreCalificado.slice(ultimoPunto + 1);
+  if (!NOMBRES_DE_CLASE_RECONOCIDOS.has(clase)) return false;
+  if (paquete === 'java.util') return CLASES_QUE_REQUIEREN_IMPORT.has(clase);
+  if (paquete === 'java.lang') return !CLASES_QUE_REQUIEREN_IMPORT.has(clase);
+  return false;
+}
+
+// Tarea 1.21 (JLS 5.6.1, verificado contra javac 17 real: "bad operand type X for unary operator
+// 'Y'"): "!" exige "boolean"; "+"/"-" exigen un tipo NUMÉRICO (int/long/double/char -- char
+// promueve, ver `tipoDeUnaria` en tipos.ts, pero el CHEQUEO de aplicabilidad es sobre el tipo
+// ORIGINAL del operando, antes de promover). 'desconocido' nunca reporta nada (D2).
+export function operandoValidoParaUnario(operador: '+' | '-' | '!', operando: Tipo): boolean {
+  if (operando === 'desconocido') return true;
+  if (operador === '!') return operando === 'boolean';
+  return TIPOS_NUMERICOS.has(operando);
+}
+
+// Tarea 1.21 (JLS 15.14/15.15, verificado contra javac 17 real: "bad operand type X for unary
+// operator '++'/'--'"): mismo criterio "numérico" que "+"/"-" unarios de arriba -- "!" no aplica
+// aquí (Java no tiene "!!"/"!--").
+export function operandoValidoParaIncrementoDecremento(operando: Tipo): boolean {
+  return operando === 'desconocido' || TIPOS_NUMERICOS.has(operando);
+}
+
+// Tarea 1.21 (JLS 15.26.2, verificado contra javac 17 real): una asignación compuesta ("E1 op=
+// E2") SIEMPRE aplica un cast implícito de vuelta al tipo de "E1" ("E1 = (T)(E1 op E2)") -- a
+// diferencia de una asignación simple (`esAsignable`, más arriba, SIN cast implícito), CUALQUIER
+// combinación numérica<->numérica siempre castea de vuelta sin error (verificado: "int x=5; x*=2.5;"
+// compila limpio) -- la ÚNICA forma de que esto falle es que "resultado" (el tipo de "E1 op E2",
+// YA promovido/concatenado -- ver `tipoDeBinaria` en tipos.ts) sea "String" y "objetivo" no lo sea
+// (verificado: "int x=5; x+="a";" da "incompatible types: String cannot be converted to int" --
+// "+" SÍ aplicó, por concatenación, pero el resultado "String" no puede volver a "int"). "boolean"/
+// "Scanner"/"Random" como "objetivo" nunca llegan aquí: `operandosValidosParaAritmetica` ya los
+// rechaza ANTES (el operador base ni siquiera aplica -- ver `verificarAsignacionCompuesta`,
+// atribucion.ts).
+export function esConvertibleImplicitamenteEnAsignacionCompuesta(resultado: Tipo, objetivo: Tipo): boolean {
+  if (resultado === objetivo || resultado === 'desconocido' || objetivo === 'desconocido') return true;
+  return TIPOS_NUMERICOS.has(resultado) && TIPOS_NUMERICOS.has(objetivo);
+}
+
+// Tarea 1.21 (sub-lote 1-D4, cierre de C7, mutantes reales de la tarea 1.16): el objetivo de una
+// asignación (JLS 15.26) y el operando de "++"/"--" (JLS 15.14/15.15) deben ser una VARIABLE real
+// (JLS 4.12.3 "ExpressionName" que resuelve a algo declarado) -- NUNCA el nombre de una CLASE
+// (aunque comparta la forma sintáctica "Id": "Scanner"/"Math" no son variables) ni el VALOR de otra
+// expresión (p. ej. "fila++", el resultado de un incremento, no algo a lo que se pueda volver a
+// incrementar). Verificado contra javac 17 real: "Scanner = new Scanner(System.in);" da "cannot
+// find symbol: variable Scanner" (el mismo nombre existe como CLASE, espacio de símbolos
+// DISTINTO -- JLS 6.5.6); "fila++ ++;" da "unexpected type\n required: variable\n found: value" --
+// dos mensajes de javac DISTINTOS para la MISMA causa real (un catálogo con un solo código, igual
+// que ya hace "sin-sobrecarga-aplicable" para dos frases de javac).
+export function operandoNoEsVariableValida(expresion: NodoExpresion, alcance: Alcance): boolean {
+  if (expresion.tipo !== 'nombre') return true; // cualquier otra forma (X++, Math.PI, una llamada…) nunca es una variable
+  // NI declarada NI clase reconocida ("noExiste = 5"): NO es un problema NUEVO -- `visitarNombreComoValor`
+  // (mismo nodo, visitado antes en `visitarExpresion`) YA reporta "variable-no-declarada" (D2:
+  // nunca un SEGUNDO problema por la MISMA causa real).
+  return alcance.buscar(expresion.nombre) === null && NOMBRES_DE_CLASE_RECONOCIDOS.has(expresion.nombre);
 }

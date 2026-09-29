@@ -19,7 +19,7 @@
 // fases (el "candidato más específico" no depende de CUÁL conversión lo hizo aplicable).
 import { buscarFirmas } from './catalogo-api.ts';
 import { esConvertiblePorEnsanchamiento, esConvertiblePorInvocacionLaxa } from './conversiones.ts';
-import type { Tipo } from './tipos.ts';
+import type { ArgumentoDeSobrecarga } from './tipos.ts';
 import type { FirmaMiembro } from '../biblioteca/datos/firmas-jdk.generado.ts';
 
 /** ¿El candidato `a` es aplicable donde se pide `b` (para decidir "más específico")? Mismo
@@ -58,8 +58,8 @@ function elegirMasEspecifico(aplicables: readonly FirmaMiembro[]): FirmaMiembro 
  * predicado de conversión que reciben (estricta o laxa). */
 function resolverPorAridadFija(
   candidatos: readonly FirmaMiembro[],
-  tiposDeArgumentos: readonly Tipo[],
-  esAplicable: (origen: Tipo, destinoReflejado: string) => boolean,
+  tiposDeArgumentos: readonly ArgumentoDeSobrecarga[],
+  esAplicable: (origen: ArgumentoDeSobrecarga, destinoReflejado: string) => boolean,
 ): FirmaMiembro | null {
   const candidatosPorAridad = candidatos.filter((firma) => firma.parametros.length === tiposDeArgumentos.length);
   const aplicables = candidatosPorAridad.filter((firma) =>
@@ -72,7 +72,7 @@ function resolverPorAridadFija(
  * (`"algo[]"`, p. ej. `"java.lang.Object[]"`) — los parámetros FIJOS anteriores se comprueban
  * igual que en aridad fija, y CADA argumento sobrante se empaqueta contra el tipo COMPONENTE del
  * arreglo (quitando el `"[]"` final), con la MISMA conversión laxa (boxing incluido). */
-function esAplicablePorAridadVariable(firma: FirmaMiembro, tiposDeArgumentos: readonly Tipo[]): boolean {
+function esAplicablePorAridadVariable(firma: FirmaMiembro, tiposDeArgumentos: readonly ArgumentoDeSobrecarga[]): boolean {
   const tipoArreglo = firma.parametros[firma.parametros.length - 1]!;
   if (!tipoArreglo.endsWith('[]')) return false; // varargs siempre reflejado como arreglo (JLS 8.4.1)
   const tipoComponente = tipoArreglo.slice(0, -2);
@@ -88,7 +88,7 @@ function esAplicablePorAridadVariable(firma: FirmaMiembro, tiposDeArgumentos: re
 
 function resolverPorAridadVariable(
   candidatos: readonly FirmaMiembro[],
-  tiposDeArgumentos: readonly Tipo[],
+  tiposDeArgumentos: readonly ArgumentoDeSobrecarga[],
 ): FirmaMiembro | null {
   const candidatosVarargs = candidatos.filter(
     // Al menos tantos argumentos como parámetros FIJOS (el arreglo final puede recibir 0 o más).
@@ -108,7 +108,7 @@ function resolverPorAridadVariable(
 export function resolverSobrecarga(
   clase: string,
   nombre: string,
-  tiposDeArgumentos: readonly Tipo[],
+  tiposDeArgumentos: readonly ArgumentoDeSobrecarga[],
 ): FirmaMiembro | null {
   // Corrección obligatoria (sub-lote 1-D2c, task_c0cf2e6c): `buscarFirmas` es genero-agnóstica
   // (campos y métodos mezclados) -- JLS 15.12 (invocación de método) SOLO mira métodos y

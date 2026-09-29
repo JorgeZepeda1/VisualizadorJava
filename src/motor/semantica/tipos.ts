@@ -1,10 +1,12 @@
-// Tipos mínimos de la pasada de atribución (tarea 1.7, design.md §2.7). Nace angosto a propósito:
-// 1.7 solo necesita resolver el tipo ESTÁTICO de literales, variables (vía `Alcance`) y casts —
-// lo suficiente para el selector de `switch` (REQ-COMP-002) sin fabricar un tipo que no se puede
-// verificar todavía. La tarea 1.8 AMPLÍA `tipoDeExpresion` con conversiones/sobrecargas reales
-// sobre `NodoLlamada`/`NodoAccesoMiembro` (JLS 15.12) — hasta entonces, cualquier expresión que
-// dependa de una llamada, operador binario/unario, asignación, etc. da 'desconocido', que
-// suprime errores en cascada (design.md §2.1: "nunca se informa un error que Java podría no dar").
+// Tipos de la pasada de atribución (tareas 1.7/1.8/1.21, design.md §2.7). Nace angosto a propósito
+// (1.7 solo resolvía literales/variables/casts, lo suficiente para el selector de `switch`); la
+// tarea 1.8 amplió `tipoDeExpresion` con conversiones/sobrecargas reales sobre `NodoLlamada`/
+// `NodoAccesoMiembro` (JLS 15.12); la tarea 1.21 (sub-lote 1-D4) cierra el hueco que quedaba
+// deferido A PROPÓSITO desde entonces: promoción numérica binaria/unaria (JLS 5.6), concatenación
+// (15.18.1) e incremento/decremento (15.14/15.15) — ver `tipoDeBinaria`/`tipoDeUnaria` abajo. Lo
+// que sigue sin resolver (asignaciones a algo NO-DISP, el propio NodoExpresionNoSoportada) da
+// 'desconocido', que suprime errores en cascada (design.md §2.1: "nunca se informa un error que
+// Java podría no dar").
 import type { NodoExpresion } from '../sintaxis/ast.ts';
 import { FIRMAS_JDK } from '../biblioteca/datos/firmas-jdk.generado.ts';
 import type { Alcance } from './alcance.ts';
@@ -70,21 +72,93 @@ export function tipoDeExpresion(expresion: NodoExpresion, alcance: Alcance): Tip
     // nunca de esta función (qué tipo tiene la expresión si Java la aceptara).
     case 'nueva-instancia':
       return tipoDeNuevaInstancia(expresion, alcance);
-    // binaria/unaria/incremento-decremento/expresion-no-soportada: la promoción numérica
-    // binaria/unaria (JLS 5.6) queda fuera de 1.7/1.8 — aquí, 'desconocido' en vez de adivinar
-    // (D2). Ninguna de las dos tareas la necesita: 1.7 solo tipaba el selector de `switch`
-    // (literal/variable/cast) y 1.8 solo amplía llamadas/campos reales de biblioteca.
+    // Tarea 1.21 (sub-lote 1-D4, JLS 5.6.2/15.18.1): promoción numérica binaria + concatenación.
+    case 'binaria':
+      return tipoDeBinaria(expresion, alcance);
+    // Tarea 1.21 (JLS 5.6.1): promoción numérica unaria ("+"/"-"); "!" siempre "boolean".
+    case 'unaria':
+      return tipoDeUnaria(expresion, alcance);
+    // Tarea 1.21 (JLS 15.14/15.15): "x++"/"++x" conservan el tipo de "x" -- SIN promoción (a
+    // diferencia de "-x"/"+x" arriba; exploracion/02 §6: "char c='a'; c++;" sigue siendo "char").
+    case 'incremento-decremento':
+      return tipoDeExpresion(expresion.operando, alcance);
+    // expresion-no-soportada: construcción NO-DISP (bits, ternario, instanceof...) — ninguna
+    // participa en el tipado real de este subconjunto (D2, nunca inventar).
     default:
       return 'desconocido';
   }
 }
 
+const TIPOS_NUMERICOS: ReadonlySet<Tipo> = new Set(['int', 'long', 'double', 'char']);
+
+// JLS 5.6.2 (promoción numérica BINARIA), restringida a los tipos alcanzables de este subconjunto
+// (sin byte/short/float, NO-DISP): si cualquiera de los dos es "double", el resultado es "double";
+// si no, si cualquiera es "long", el resultado es "long"; si no, AMBOS promueven a "int" (incluido
+// "char" + "char", que da "int", NUNCA "char" -- verificado, exploracion/02 §6: "'a'+'b'" es 195).
+// 'desconocido' (o cualquier operando no-numérico, p. ej. "boolean"/"Scanner" en un "*"/"−" que
+// `verificarOperandosBinaria` ya reporta aparte) propaga 'desconocido' -- D2, nunca un tipo
+// aritmético inventado sobre operandos que no lo admiten.
+function tipoDePromocionNumericaBinaria(izquierda: Tipo, derecha: Tipo): Tipo {
+  if (!TIPOS_NUMERICOS.has(izquierda) || !TIPOS_NUMERICOS.has(derecha)) return 'desconocido';
+  if (izquierda === 'double' || derecha === 'double') return 'double';
+  if (izquierda === 'long' || derecha === 'long') return 'long';
+  return 'int';
+}
+
+const OPERADORES_SIEMPRE_BOOLEANO: ReadonlySet<string> = new Set(['==', '!=', '<', '>', '<=', '>=', '&&', '||']);
+
+/**
+ * Tarea 1.21 (JLS 5.6.2/15.18.1, verificado contra javac 17 real esta sesión). Dos familias:
+ *   - Relacionales (`< > <= >=`), igualdad (`== !=`) y lógicos (`&& ||`): el resultado es SIEMPRE
+ *     "boolean", fijo por la gramática de Java -- igual sea o no válida la comparación (esa validez
+ *     la reporta `verificarOperandosBinaria` en `atribucion.ts`, en su propio punto; esta función
+ *     SOLO tipa expresiones, nunca decide si son correctas -- mismo principio que ya documentaba la
+ *     "asignación" de la tarea 1.14 un poco más abajo). Verificado: `(a + b) == true` (con "a"/"b"
+ *     "int") tipa "boolean" en javac REAL aunque la comparación en sí sea inválida (javac la
+ *     rechaza con "incomparable types: int and boolean" -- un problema APARTE, no un tipo distinto).
+ *   - Aritméticos (`+ - * / %`): "+" concatena (da "String") si CUALQUIER lado es "String" (JLS
+ *     15.18.1, el otro lado pasa por `String.valueOf` de su tipo ESTÁTICO -- la ejecución real es
+ *     asunto del lote 2); el resto de "+" y TODO "- * / %" siguen la promoción numérica binaria de
+ *     arriba.
+ */
+function tipoDeBinaria(expresion: Extract<NodoExpresion, { tipo: 'binaria' }>, alcance: Alcance): Tipo {
+  if (OPERADORES_SIEMPRE_BOOLEANO.has(expresion.operador)) return 'boolean';
+  const izquierda = tipoDeExpresion(expresion.izquierda, alcance);
+  const derecha = tipoDeExpresion(expresion.derecha, alcance);
+  return tipoDeOperadorAritmetico(expresion.operador, izquierda, derecha);
+}
+
+/** El núcleo aritmético de `tipoDeBinaria` de arriba (JLS 5.6.2/15.18.1), sobre `Tipo` YA
+ * resueltos en vez de nodos del AST -- reusada tal cual por `verificarAsignacionCompuesta`
+ * (atribucion.ts, tarea 1.21, JLS 15.26.2: "E1 op= E2" promueve/concatena con las MISMAS reglas
+ * que "E1 op E2" suelto antes de castear de vuelta al tipo de "E1"), nunca una segunda tabla de
+ * reglas que podría divergir. Exportada por eso. */
+export function tipoDeOperadorAritmetico(operador: string, izquierda: Tipo, derecha: Tipo): Tipo {
+  if (operador === '+' && (izquierda === 'String' || derecha === 'String')) return 'String';
+  return tipoDePromocionNumericaBinaria(izquierda, derecha);
+}
+
+/**
+ * Tarea 1.21 (JLS 5.6.1, verificado contra javac 17 real esta sesión): "!" siempre da "boolean"
+ * (fijo por gramática, igual que arriba); "+"/"-" unarios promueven "char" a "int" (exploracion/02
+ * §6: "-c" con "c" char da "int", NUNCA "char" -- a diferencia de "c++"/"c--", que si lo conservan,
+ * ver `tipoDeExpresion` arriba) y conservan cualquier otro tipo numérico tal cual. Un operando
+ * 'desconocido' o no-numérico (para "+"/"-") propaga 'desconocido' -- D2, `verificarOperandosUnaria`
+ * (atribucion.ts) reporta el error real si lo hay.
+ */
+function tipoDeUnaria(expresion: Extract<NodoExpresion, { tipo: 'unaria' }>, alcance: Alcance): Tipo {
+  if (expresion.operador === '!') return 'boolean';
+  const operando = tipoDeExpresion(expresion.operando, alcance);
+  if (!TIPOS_NUMERICOS.has(operando)) return 'desconocido';
+  return operando === 'char' ? 'int' : operando;
+}
+
 function tipoDeNuevaInstancia(expresion: Extract<NodoExpresion, { tipo: 'nueva-instancia' }>, alcance: Alcance): Tipo {
   const tipo = tipoDeNombreDeTipo(expresion.nombreTipo);
   if (tipo === 'desconocido') return 'desconocido'; // clase no reconocida — atribucion.ts ya lo reporta aparte
-  const tiposDeArgumentos = expresion.argumentos.map((argumento) => tipoDeExpresion(argumento, alcance));
-  if (tiposDeArgumentos.includes('desconocido')) return 'desconocido'; // D2, mismo sumidero de cascada de siempre
-  const firma = resolverSobrecarga(expresion.nombreTipo, '<init>', tiposDeArgumentos);
+  const argumentos = expresion.argumentos.map((argumento) => argumentoDeSobrecarga(argumento, alcance));
+  if (argumentos.includes('desconocido')) return 'desconocido'; // D2, mismo sumidero de cascada de siempre
+  const firma = resolverSobrecarga(expresion.nombreTipo, '<init>', argumentos);
   return firma === null ? 'desconocido' : tipo;
 }
 
@@ -92,9 +166,73 @@ function tipoDeLlamada(expresion: Extract<NodoExpresion, { tipo: 'llamada' }>, a
   if (expresion.callee.tipo !== 'acceso-miembro') return 'desconocido'; // llamada de nombre libre: 1.7 la marca aparte
   const clase = claseDelObjeto(expresion.callee.objeto, alcance);
   if (clase === null) return 'desconocido';
-  const tiposDeArgumentos = expresion.argumentos.map((argumento) => tipoDeExpresion(argumento, alcance));
-  const firma = resolverSobrecarga(clase, expresion.callee.miembro, tiposDeArgumentos);
+  const argumentos = expresion.argumentos.map((argumento) => argumentoDeSobrecarga(argumento, alcance));
+  const firma = resolverSobrecarga(clase, expresion.callee.miembro, argumentos);
   return firma === null ? 'desconocido' : tipoDeNombreReflejado(firma.retorno);
+}
+
+// Sub-lote 1-D4 (gap documentado en engram "Gap: System.in/System.out/System.err..."): "System.in"
+// (java.io.InputStream) y "System.out"/"System.err" (java.io.PrintStream) como ARGUMENTOS de un
+// constructor/método NUNCA tienen un `Tipo` cerrado (los 8 declarables de design.md §2.7 no
+// incluyen esas clases -- correctamente, un alumno nunca puede escribir "InputStream x = ...;" en
+// este subconjunto) -- pero SÍ tienen un nombre reflejado REAL conocido (el mismo dato del catálogo
+// del oráculo, `FIRMAS_JDK`, campo `System.in`/`System.out`/`System.err`). Sin este canal PARALELO,
+// `new Scanner(System.in)` "funcionaba" SOLO porque un argumento 'desconocido' apagaba
+// `resolverSobrecarga` ANTES de comprobar `CONSTRUCTORES_SOPORTADOS` (D2 mal aplicado: apagaba la
+// resolución del "new" COMPLETO, no solo del argumento) -- "new Scanner(System.out)" (inválido) se
+// aceptaba en silencio por el MISMO mecanismo. `ArgumentoDeSobrecarga` es un `Tipo` normal para
+// CUALQUIER otra expresión (nunca cambia su comportamiento, ver `esConvertiblePorEnsanchamiento`/
+// `esConvertiblePorInvocacionLaxa` en conversiones.ts) y solo el nombre reflejado directo para estos
+// 3 casos. Ambos verificados contra javac 17 real esta sesión: "int sc = new Scanner(System.in);"
+// -> "incompatible types: Scanner cannot be converted to int"; "new Scanner(System.out)" -> "no
+// suitable constructor found for Scanner(PrintStream)".
+export type ArgumentoDeSobrecarga = Tipo | { readonly reflejado: string };
+
+const CAMPOS_DE_SYSTEM_REFLEJADOS: Readonly<Record<string, string>> = {
+  in: 'java.io.InputStream',
+  out: 'java.io.PrintStream',
+  err: 'java.io.PrintStream',
+};
+
+/** `System.in`/`System.out`/`System.err` -- el ÚNICO caso real de este subconjunto donde un campo
+ * de biblioteca conocido tiene un tipo de referencia que el `Tipo` cerrado no puede representar.
+ * `null` para cualquier otra expresión (el llamador cae al `Tipo` normal). Comparte el MISMO patrón
+ * de detección que ya usaba `claseDelObjeto` para "System.out"/"System.err" como RECEPTOR (abajo,
+ * ahora reescrito para reusar esta función, nunca una segunda implementación que podría divergir);
+ * a diferencia de ahí, aquí "in" SÍ importa (es exactamente el caso real, "in" nunca se navega como
+ * receptor pero SÍ se pasa como argumento). */
+function campoReflejadoDeSystem(expresion: NodoExpresion, alcance: Alcance): string | null {
+  if (
+    expresion.tipo === 'acceso-miembro' &&
+    expresion.objeto.tipo === 'nombre' &&
+    expresion.objeto.nombre === 'System' &&
+    alcance.buscar('System') === null
+  ) {
+    return CAMPOS_DE_SYSTEM_REFLEJADOS[expresion.miembro] ?? null;
+  }
+  return null;
+}
+
+/** El "tipo" de un argumento real para resolución de sobrecargas (JLS 15.12.2): normalmente el
+ * `Tipo` cerrado de siempre (`tipoDeExpresion`); para `System.in`/`System.out`/`System.err`, su
+ * nombre reflejado REAL directo (`{reflejado}`) -- nunca 'desconocido' solo porque el subconjunto
+ * no puede DECLARAR ese tipo (D2 bien aplicado: SABEMOS el tipo real, con certeza, del catálogo del
+ * oráculo). Pura, nunca lanza. Exportada: `atribucion.ts` la reusa tal cual para `visitarLlamadaDeMiembro`/
+ * `visitarNuevaInstancia` (nunca una segunda implementación que podría divergir). */
+export function argumentoDeSobrecarga(expresion: NodoExpresion, alcance: Alcance): ArgumentoDeSobrecarga {
+  const campo = campoReflejadoDeSystem(expresion, alcance);
+  return campo === null ? tipoDeExpresion(expresion, alcance) : { reflejado: campo };
+}
+
+/** El nombre tal como lo reporta la reflexión del JDK para un `Tipo` nuestro (`FirmaMiembro` usa
+ * `Class#getTypeName()`: los primitivos se quedan igual, `String`/`Scanner`/`Random` son su nombre
+ * calificado). Exportada (sub-lote 1-D4): antes vivía privada en `conversiones.ts`; ahora vive
+ * junto a `Tipo`, su dueño real, y `conversiones.ts` la importa -- nunca una segunda copia. */
+export function nombreReflejado(tipo: Tipo): string {
+  if (tipo === 'String') return 'java.lang.String';
+  if (tipo === 'Scanner') return 'java.util.Scanner';
+  if (tipo === 'Random') return 'java.util.Random';
+  return tipo;
 }
 
 function tipoDeAccesoMiembro(expresion: Extract<NodoExpresion, { tipo: 'acceso-miembro' }>, alcance: Alcance): Tipo {
@@ -128,17 +266,10 @@ export function claseDelObjeto(objeto: NodoExpresion, alcance: Alcance): string 
   // declarable de este subconjunto) y la cascada se suprimía SIEMPRE -- verificado contra javac 17
   // real (mutante real): "System.out.Bienvenida(\"...\")" (método inventado) -> "cannot find
   // symbol: method Bienvenida(String)", javac lo rechaza; nuestro motor lo aceptaba en silencio.
-  // "System.in" queda FUERA a propósito (no navegable en este subconjunto: se consume directo
-  // como argumento de "new Scanner(...)", nunca "System.in.algo()").
-  if (
-    objeto.tipo === 'acceso-miembro' &&
-    objeto.objeto.tipo === 'nombre' &&
-    objeto.objeto.nombre === 'System' &&
-    alcance.buscar('System') === null &&
-    (objeto.miembro === 'out' || objeto.miembro === 'err')
-  ) {
-    return 'PrintStream';
-  }
+  // "System.in" (reusa `campoReflejadoDeSystem`, sub-lote 1-D4) queda FUERA a propósito -- no
+  // navegable en este subconjunto: se consume directo como argumento de "new Scanner(...)", nunca
+  // "System.in.algo()" (InputStream no tiene miembros de este catálogo).
+  if (campoReflejadoDeSystem(objeto, alcance) === 'java.io.PrintStream') return 'PrintStream';
   const tipo = tipoDeExpresion(objeto, alcance);
   return tipo === 'String' || tipo === 'Scanner' || tipo === 'Random' ? tipo : null;
 }

@@ -12,7 +12,12 @@
 // nunca un envoltorio para `String`/`Scanner`/`Random`, que ya son de referencia). `sobrecargas.ts`
 // la usa tanto para la fase 2 de aridad FIJA como, empaquetando cada argumento sobrante, para la
 // fase 3 de aridad VARIABLE (varargs) — ver su cabecera.
-import type { Tipo } from './tipos.ts';
+//
+// Sub-lote 1-D4: `origen` amplía de `Tipo` a `ArgumentoDeSobrecarga` (`Tipo | {reflejado}`) para
+// que `System.in`/`System.out`/`System.err` (sin un `Tipo` cerrado propio, ver tipos.ts) participen
+// en la resolución con su nombre reflejado REAL — para un `origen` de tipo `Tipo` (el caso de
+// SIEMPRE) el comportamiento es IDÉNTICO al de antes, ni una prueba existente cambia.
+import { nombreReflejado, type ArgumentoDeSobrecarga, type Tipo } from './tipos.ts';
 
 // JLS 5.1.2: pares de ensanchamiento primitivo DIRECTOS relevantes para los tipos alcanzables de
 // este subconjunto (sin byte/short, NO-DISP). Los nombres de destino son los que da la reflexión
@@ -27,26 +32,19 @@ const ENSANCHAMIENTOS_PRIMITIVOS: Readonly<Record<string, readonly string[]>> = 
 
 const TIPOS_PRIMITIVOS: ReadonlySet<Tipo> = new Set(['int', 'long', 'double', 'char', 'boolean']);
 
-/** El nombre tal como lo reporta la reflexión del JDK para un `Tipo` nuestro (`FirmaMiembro`
- * usa `Class#getTypeName()`: los primitivos se quedan igual, `String` es su nombre calificado). */
-function nombreReflejado(tipo: Tipo): string {
-  if (tipo === 'String') return 'java.lang.String';
-  if (tipo === 'Scanner') return 'java.util.Scanner';
-  if (tipo === 'Random') return 'java.util.Random';
-  return tipo;
-}
-
 /**
  * ¿Un valor de `origen` es aplicable donde se pide `destinoReflejado` (el `parametros[i]` real
  * de una `FirmaMiembro`), en la fase estricta de JLS 15.12.2.2 — identidad, ensanchamiento
  * primitivo (5.1.2) o ensanchamiento de referencia (5.1.5, aquí solo `String` -> `Object`,  el
  * único caso real y alcanzable de este subconjunto)? NUNCA boxing/unboxing (fase 2) ni varargs
- * (fase 3) — ver la nota de cabecera.
+ * (fase 3) — ver la nota de cabecera. Sub-lote 1-D4: un `origen` `{reflejado}` (System.in/out/err,
+ * ver tipos.ts) SOLO compara identidad -- ninguno de los tres necesita ensanchamiento propio en
+ * este catálogo (InputStream/PrintStream no son primitivos ni `String`).
  */
-export function esConvertiblePorEnsanchamiento(origen: Tipo, destinoReflejado: string): boolean {
-  const origenReflejado = nombreReflejado(origen);
+export function esConvertiblePorEnsanchamiento(origen: ArgumentoDeSobrecarga, destinoReflejado: string): boolean {
+  const origenReflejado = typeof origen === 'string' ? nombreReflejado(origen) : origen.reflejado;
   if (origenReflejado === destinoReflejado) return true;
-  if (TIPOS_PRIMITIVOS.has(origen)) {
+  if (typeof origen === 'string' && TIPOS_PRIMITIVOS.has(origen)) {
     return (ENSANCHAMIENTOS_PRIMITIVOS[origen] ?? []).includes(destinoReflejado);
   }
   // Único ensanchamiento de referencia real y alcanzable en este subconjunto: String -> Object
@@ -71,10 +69,12 @@ const ENVOLTORIOS: Readonly<Partial<Record<Tipo, string>>> = {
  * ¿Un valor de `origen` es aplicable donde se pide `destinoReflejado` en la fase 2 de JLS
  * 15.12.2.3 ("invocación laxa")? Incluye TODO lo de la fase estricta (`esConvertiblePorEnsanchamiento`)
  * más boxing (JLS 5.1.7) opcionalmente seguido de ensanchamiento de referencia (JLS 5.3: p. ej.
- * `int` -> `Integer` -> `Object`). Nunca unboxing — ver cabecera.
+ * `int` -> `Integer` -> `Object`). Nunca unboxing — ver cabecera. Un `origen` `{reflejado}` nunca
+ * tiene envoltorio (no es un primitivo nuestro) -- se queda con lo que ya resolvió la fase estricta.
  */
-export function esConvertiblePorInvocacionLaxa(origen: Tipo, destinoReflejado: string): boolean {
+export function esConvertiblePorInvocacionLaxa(origen: ArgumentoDeSobrecarga, destinoReflejado: string): boolean {
   if (esConvertiblePorEnsanchamiento(origen, destinoReflejado)) return true;
+  if (typeof origen !== 'string') return false;
   const envoltorio = ENVOLTORIOS[origen];
   if (envoltorio === undefined) return false;
   if (envoltorio === destinoReflejado) return true;

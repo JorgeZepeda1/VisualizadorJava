@@ -9,6 +9,7 @@
 import { ErrorDeCompilacion } from '../error-de-compilacion.ts';
 import type { Rango } from '../fuente/rango.ts';
 import type { Token } from '../lexico/tokens.ts';
+import { PALABRAS_CLAVE_TIPO_PRIMITIVO } from '../lexico/tokens.ts';
 import { CursorDeTokens } from './cursor-de-tokens.ts';
 import type {
   NodoElementoBloque,
@@ -232,6 +233,64 @@ function validarCabeceraDeMiembro(cursor: CursorDeTokens): void {
   if (!esContinuacionValida) {
     throw new ErrorDeCompilacion(`se esperaba "(", ";" o "=" y se encontró "${siguiente.texto}"`, siguiente.rango);
   }
+  // Tarea 1.21 (sub-lote 1-D4, mutante real contra veredicto de javac, la clase de discrepancia
+  // MÁS GRANDE de la tarea 1.16, ~35 mutantes): la cabecera arriba solo comprueba "Tipo
+  // Identificador (" -- nunca lo que sigue DENTRO de esos paréntesis. Sin este chequeo,
+  // "void main([String[] args)" (cabecera perfecta, parámetro roto) se tragaba entero como NO-DISP
+  // por el bucle de `consumirMiembroDeClase` (cuenta "("/")" a ciegas) -- javac lo rechaza de
+  // verdad ("illegal start of type"). Solo aplica cuando la continuación es "(" -- un campo (";"/
+  // "=") o un bloque inicializador ("{") no tienen lista de parámetros que validar.
+  if (siguiente.texto === '(') validarListaDeParametros(cursor, i + 3);
+}
+
+/** ¿"Tipo Identificador" plausible? (JLS 8.4.1, sin validar el TIPO en sí -- REQ-SUB-007 acepta
+ * cualquiera, real o inventado, como NO-DISP): un identificador (incluye nombres calificados,
+ * "java.util.List"), o una palabra de tipo primitivo (soportada o no -- "float"/"byte"/"short"
+ * también abren un tipo real de Java, aunque este subconjunto no los soporte, REQ-SUB-007). */
+function pareceInicioDeTipo(token: Token): boolean {
+  return token.tipo === 'identificador' || PALABRAS_CLAVE_TIPO_PRIMITIVO.has(token.texto) || PALABRAS_TIPO_PRIMITIVO_NO_SOPORTADO.has(token.texto);
+}
+
+/**
+ * Verifica que la lista de parámetros que empieza en `cursor.mirar(indiceInicial)` (el primer
+ * token DESPUÉS del "(" que ya validó `validarCabeceraDeMiembro`) tenga la forma real de JLS
+ * 8.4.1: vacía, o `Parametro (',' Parametro)*` con `Parametro = ['final'] Tipo('.' Identificador)*
+ * ('[' ']')* (Identificador | '...' Identificador) ('[' ']')*` -- suficiente para distinguir
+ * sintaxis REAL (arreglos, varargs, nombres calificados, "final") de basura como "[String[] args"
+ * sin necesitar entender el TIPO en sí (REQ-SUB-007 acepta cualquiera). Devuelve el ÍNDICE del
+ * primer token que rompe la forma (para anclar el error ahí, no siempre al principio -- p. ej.
+ * "foo(int n, [int m)" debe señalar el "[" del SEGUNDO parámetro, no el "int" del primero), o
+ * `null` si la lista completa es válida. Solo mira (`mirar`), nunca avanza el cursor real --
+ * `consumirMiembroDeClase` sigue siendo quien de verdad consume el miembro completo.
+ */
+function indiceDeErrorEnListaDeParametros(cursor: CursorDeTokens, indiceInicial: number): number | null {
+  let i = indiceInicial;
+  if (cursor.mirar(i).texto === ')') return null; // "()", lista vacía
+  for (;;) {
+    if (cursor.mirar(i).texto === 'final') i += 1;
+    if (!pareceInicioDeTipo(cursor.mirar(i))) return i;
+    i += 1;
+    while (cursor.mirar(i).texto === '.' && cursor.mirar(i + 1).tipo === 'identificador') i += 2; // Tipo.Calificado
+    while (cursor.mirar(i).texto === '[' && cursor.mirar(i + 1).texto === ']') i += 2; // Tipo[] (antes del nombre)
+    if (cursor.mirar(i).texto === '.' && cursor.mirar(i + 1).texto === '.' && cursor.mirar(i + 2).texto === '.') {
+      i += 3; // varargs: Tipo... nombre
+    }
+    if (cursor.mirar(i).tipo !== 'identificador') return i; // falta el nombre del parámetro
+    i += 1;
+    while (cursor.mirar(i).texto === '[' && cursor.mirar(i + 1).texto === ']') i += 2; // Tipo nombre[] (tras el nombre)
+    if (cursor.mirar(i).texto === ',') {
+      i += 1;
+      continue;
+    }
+    if (cursor.mirar(i).texto === ')') return null;
+    return i;
+  }
+}
+
+function validarListaDeParametros(cursor: CursorDeTokens, indiceInicial: number): void {
+  const indiceDeError = indiceDeErrorEnListaDeParametros(cursor, indiceInicial);
+  if (indiceDeError === null) return;
+  throw new ErrorDeCompilacion('la lista de parámetros no es válida aquí', cursor.mirar(indiceDeError).rango);
 }
 
 export function consumirMiembroDeClase(cursor: CursorDeTokens): NodoNoSoportado {

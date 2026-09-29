@@ -608,3 +608,217 @@ describe('atribuir — "System.out"/"System.err" por el camino GENERAL de expres
     expect(problemas[0]).toMatchObject({ codigo: 'miembro-no-declarado', datos: { clase: 'PrintStream', nombre: 'sin' } });
   });
 });
+
+// Tarea 1.21 (sub-lote 1-D4, JLS 5.6.1/15.14/15.15): hasta esta tarea, "!"/"+"/"-" unarios y
+// "++"/"--" nunca verificaban su operando (`visitarExpresion` solo recorría el operando, sin
+// llamar a ninguna verificación) -- verificado contra javac 17 real esta sesión (carpetas
+// temporales, borradas): los 4 casos de abajo dan "bad operand type X for unary operator 'Y'".
+describe('atribuir — operando inválido de un operador UNARIO ("!"/"+"/"-", JLS 5.6.1, sub-lote 1-D4)', () => {
+  it('"!x" con "x" int: "operando-invalido-operador-unario" (verificado: javac da "bad operand type int for unary operator \'!\'")', () => {
+    const problemas = atribuirCuerpo('int x = 5; boolean r = !x;');
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toMatchObject({ codigo: 'operando-invalido-operador-unario', datos: { operador: '!', operando: 'int' } });
+  });
+
+  it('triangulación: "!s" con "s" String (operando distinto, mismo operador)', () => {
+    const problemas = atribuirCuerpo('String s = "a"; boolean r = !s;');
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toMatchObject({ codigo: 'operando-invalido-operador-unario', datos: { operador: '!', operando: 'String' } });
+  });
+
+  it('triangulación: "-b" con "b" boolean (operador distinto: "-" en vez de "!")', () => {
+    const problemas = atribuirCuerpo('boolean b = true; int r = -b;');
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toMatchObject({ codigo: 'operando-invalido-operador-unario', datos: { operador: '-', operando: 'boolean' } });
+  });
+
+  it('control: "-c" con "c" char SÍ es válido (JLS 5.6.1: "char" promueve a "int", verificado: javac compila limpio)', () => {
+    expect(atribuirCuerpo('char c = \'a\'; int x = -c;')).toEqual([]);
+  });
+
+  it('control: "!b" con "b" boolean, "+x"/"-x" con "x" int siguen sin problemas', () => {
+    expect(atribuirCuerpo('boolean b = true; boolean r = !b; int x = 5; int y = -x; int z = +x;')).toEqual([]);
+  });
+});
+
+describe('atribuir — operando inválido de "++"/"--" (JLS 15.14/15.15, sub-lote 1-D4)', () => {
+  it('"b++" con "b" boolean: "operando-invalido-operador-unario" (verificado: javac da "bad operand type boolean for unary operator \'++\'")', () => {
+    const problemas = atribuirCuerpo('boolean b = true; b++;');
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toMatchObject({ codigo: 'operando-invalido-operador-unario', datos: { operador: '++', operando: 'boolean' } });
+  });
+
+  it('triangulación: "s++" con "s" String (operando distinto)', () => {
+    const problemas = atribuirCuerpo('String s = "a"; s++;');
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toMatchObject({ codigo: 'operando-invalido-operador-unario', datos: { operador: '++', operando: 'String' } });
+  });
+
+  it('control: "x++"/"c--" con "x" int y "c" char siguen sin problemas', () => {
+    expect(atribuirCuerpo('int x = 5; x++; char c = \'a\'; c--;')).toEqual([]);
+  });
+});
+
+// Tarea 1.21 (JLS 15.26.2, verificado contra javac 17 real esta sesión): la asignación compuesta
+// (`+= -= *= /= %=`) NUNCA se verificaba -- ni que el operador BASE aplicara a los operandos
+// (`bad operand types for binary operator`) ni que el resultado promovido pudiera "castearse de
+// vuelta" al tipo del objetivo (`E1 = (T)(E1 op E2)`, JLS 15.26.2 -- distinto de `verificarOperandosBinaria`
+// porque aquí SIEMPRE hay una conversión implícita: "int cx=5; cx+=1.7;" es válido, REQ-SUB-003).
+describe('atribuir — asignación compuesta (JLS 15.26.2, sub-lote 1-D4)', () => {
+  it('"b += false" con "b" boolean: operador "+" no aplica a boolean (verificado: javac da "bad operand types for binary operator \'+\'")', () => {
+    const problemas = atribuirCuerpo('boolean b = true; b += false;');
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toMatchObject({
+      codigo: 'operandos-invalidos-operador-binario',
+      datos: { operador: '+=', izquierda: 'boolean', derecha: 'boolean' },
+    });
+  });
+
+  it('triangulación: "x *= \\"3\\"" con "x" int: "*" nunca concatena (a diferencia de "+"), verificado: javac da "bad operand types for binary operator \'*\'"', () => {
+    const problemas = atribuirCuerpo('int x = 5; x *= "3";');
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toMatchObject({
+      codigo: 'operandos-invalidos-operador-binario',
+      datos: { operador: '*=', izquierda: 'int', derecha: 'String' },
+    });
+  });
+
+  it('"x += \\"a\\"" con "x" int: el operador "+" SÍ aplica (concatena, da "String"), pero "String" no puede volver a castearse a "int" (verificado: javac da "incompatible types: String cannot be converted to int", NUNCA "bad operand types")', () => {
+    const problemas = atribuirCuerpo('int x = 5; x += "a";');
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toMatchObject({ codigo: 'tipos-incompatibles-en-asignacion', datos: { origen: 'String', destino: 'int' } });
+  });
+
+  it('control: "cx += 1.7" con "cx" int SÍ es válido (REQ-SUB-003, escenario ya verificado: "cx" queda en 6)', () => {
+    expect(atribuirCuerpo('int cx = 5; cx += 1.7;')).toEqual([]);
+  });
+
+  it('control: "x *= 2.5" con "x" int SÍ es válido (numérico<->numérico siempre castea de vuelta, verificado: javac compila limpio)', () => {
+    expect(atribuirCuerpo('int x = 5; x *= 2.5;')).toEqual([]);
+  });
+
+  it('control: "s += 5" con "s" String SÍ es válido (String += cualquier cosa siempre concatena, verificado: javac compila limpio)', () => {
+    expect(atribuirCuerpo('String s = "a"; s += 5;')).toEqual([]);
+  });
+});
+
+// Tarea 1.21 (~15 mutantes de la tarea 1.16, "operator.cant.be.applied"/"prob.found.req" con una
+// sub-expresión ANIDADA como operando): antes de esta tarea, "(a + b) == true" nunca se rechazaba
+// -- "a + b" tipaba 'desconocido' (binaria fuera del alcance de 1.7/1.8) y la cascada de
+// `verificarOperandosBinaria` se suprimía SIEMPRE, aunque "int == boolean" sea un error real.
+describe('atribuir — un operando ANIDADO (él mismo una binaria) SÍ dispara el error real (sub-lote 1-D4)', () => {
+  it('"(a + b) == true" con "a"/"b" int: "tipos-incomparables" (verificado: javac da "incomparable types: int and boolean")', () => {
+    const problemas = atribuirCuerpo('int m = 1, n = 2; boolean r = (m + n) == true;');
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toMatchObject({ codigo: 'tipos-incomparables', datos: { izquierda: 'int', derecha: 'boolean' } });
+  });
+
+  it('control: "a + b + 3" (aritmética anidada válida) sigue sin problemas', () => {
+    expect(atribuirCuerpo('int m = 1, n = 2; int r = m + n + 3;')).toEqual([]);
+  });
+});
+
+// Tarea 1.21 (gap documentado en engram "Gap: System.in/System.out/System.err..."): "System.in"/
+// "System.out"/"System.err" como ARGUMENTOS (no como receptor, eso ya se resolvía desde 1-D3) daban
+// 'desconocido' en `tipoDeExpresion` -- "new Scanner(System.in)" "funcionaba" SOLO porque un
+// argumento 'desconocido' apagaba la resolución de sobrecarga ANTES de comprobar
+// `CONSTRUCTORES_SOPORTADOS` (D2 mal aplicado: la cascada se suprimía sobre el "new" COMPLETO, no
+// solo sobre el argumento). Verificado contra javac 17 real esta sesión.
+describe('atribuir — System.in/System.out/System.err como ARGUMENTOS de un constructor (sub-lote 1-D4)', () => {
+  it('"int sc = new Scanner(System.in)" (tipo mutado): "tipos-incompatibles-en-asignacion" -- antes de esta tarea daba [] en silencio (verificado: javac da "incompatible types: Scanner cannot be converted to int")', () => {
+    const problemas = atribuirPrograma(
+      'import java.util.Scanner; class C { public static void main(String[] a) { int sc = new Scanner(System.in); } }',
+    );
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toMatchObject({ codigo: 'tipos-incompatibles-en-asignacion', datos: { origen: 'Scanner', destino: 'int' } });
+  });
+
+  it('triangulación: "new Scanner(System.out)" (PrintStream, argumento inválido): "sin-constructor-aplicable" -- antes de esta tarea daba [] en silencio (verificado: javac da "no suitable constructor found for Scanner(PrintStream)")', () => {
+    const problemas = atribuirPrograma(
+      'import java.util.Scanner; class C { public static void main(String[] a) { Scanner sc = new Scanner(System.out); } }',
+    );
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toMatchObject({ codigo: 'sin-constructor-aplicable', datos: { clase: 'Scanner' } });
+  });
+
+  it('control: "new Scanner(System.in)" bien tipado SIGUE sin problemas (no se volvió más estricto que javac)', () => {
+    const problemas = atribuirPrograma(
+      'import java.util.Scanner; class C { public static void main(String[] a) { Scanner sc = new Scanner(System.in); } }',
+    );
+    expect(problemas).toEqual([]);
+  });
+});
+
+// Tarea 1.21 (~7 mutantes de la tarea 1.16, p. ej. "import java.utilScanner;"): el nombre importado
+// nunca se validaba contra el catálogo real -- javac ancla su error en la LÍNEA del import, nuestro
+// motor (antes de esta tarea) solo fallaba DESPUÉS, en el USO de la variable (línea distinta,
+// mismo veredicto pero línea equivocada). Verificado contra javac 17 real esta sesión: "cannot find
+// symbol: class utilScanner, location: package java", en la línea 1 (la del import).
+describe('atribuir — import de una clase inexistente (REQ-SUB-001, sub-lote 1-D4)', () => {
+  it('"import java.utilScanner;" (falta el punto, mutante real), SIN usar "Scanner" después: "importacion-no-reconocida" anclado en el propio IMPORT (offset 0, el primer token del archivo) -- aislado del error de USO que ya cubre el describe de abajo', () => {
+    const problemas = atribuirPrograma('import java.utilScanner;\nclass C { public static void main(String[] a) { System.out.println(1); } }');
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toMatchObject({ codigo: 'importacion-no-reconocida', datos: { nombre: 'java.utilScanner' } });
+    expect(problemas[0]?.rango.inicio).toBe(0);
+  });
+
+  it('triangulación: el import roto se reporta PRIMERO por posición aunque el USO posterior de "Scanner" (sin import real) TAMBIÉN produzca sus propios problemas -- `atribuir` nunca se detiene, pero compilador.ts reportaría solo el primero (ADR 004)', () => {
+    const problemas = atribuirPrograma(
+      'import java.utilScanner;\nclass C { public static void main(String[] a) { Scanner sc = new Scanner(System.in); } }',
+    );
+    expect(problemas.length).toBeGreaterThan(1);
+    expect(problemas[0]).toMatchObject({ codigo: 'importacion-no-reconocida', datos: { nombre: 'java.utilScanner' } });
+    expect(problemas[0]?.rango.inicio).toBe(0);
+  });
+
+  it('control: "import java.util.Scanner;" (real) no produce ningún problema de import', () => {
+    const problemas = atribuirPrograma(
+      'import java.util.Scanner;\nclass C { public static void main(String[] a) { Scanner sc = new Scanner(System.in); } }',
+    );
+    expect(problemas).toEqual([]);
+  });
+
+  it('control: "import java.util.*;" (comodín) tampoco se valida -- fuera de alcance de esta tarea (REQ-SUB-001 solo pide "java.util.*" real)', () => {
+    const problemas = atribuirPrograma(
+      'import java.util.*;\nclass C { public static void main(String[] a) { Scanner sc = new Scanner(System.in); } }',
+    );
+    expect(problemas).toEqual([]);
+  });
+
+  it('triangulación: "import java.java.Scanner;" (mutación real "cambiar-identificador", último segmento SÍ es una clase real pero el PAQUETE no) también se rechaza -- no basta con mirar solo el último segmento', () => {
+    const problemas = atribuirPrograma('import java.java.Scanner;\nclass C { public static void main(String[] a) { System.out.println(1); } }');
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toMatchObject({ codigo: 'importacion-no-reconocida', datos: { nombre: 'java.java.Scanner' } });
+  });
+});
+
+// Tarea 1.21 (sub-lote 1-D4, cierre de C7, ~2 de los 4 mutantes de VEREDICTO que quedaban tras
+// cerrar las 3 tareas anteriores + 2 LÍNEA más): el objetivo de una asignación (JLS 15.26) y el
+// operando de "++"/"--" (JLS 15.14/15.15) deben ser una VARIABLE real -- ni el nombre de una CLASE
+// ("Scanner"/"Math" comparten la forma "Id" pero NO son variables) ni el VALOR de otra expresión
+// ("fila++", el resultado de un incremento). Descubierto al volver a correr los mutantes tras las
+// correcciones anteriores de esta sesión (nunca estuvo en el ~15/~35/~7 original).
+describe('atribuir — el objetivo/operando debe ser una VARIABLE real (JLS 4.12.3/15.14/15.26, sub-lote 1-D4)', () => {
+  it('"fila++ ++" (mutante real "duplicar" sobre "++"): "objetivo-no-es-variable" (verificado: javac da "unexpected type, required: variable, found: value")', () => {
+    const problemas = atribuirCuerpo('int fila = 1; fila++ ++;');
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toMatchObject({ codigo: 'objetivo-no-es-variable' });
+  });
+
+  it('triangulación: "Scanner = new Scanner(System.in);" (asignar a un nombre de CLASE): "objetivo-no-es-variable" (verificado: javac da "cannot find symbol: variable Scanner")', () => {
+    const problemas = atribuirPrograma(
+      'import java.util.Scanner; class C { public static void main(String[] a) { Scanner = new Scanner(System.in); } }',
+    );
+    expect(problemas.some((p) => p.codigo === 'objetivo-no-es-variable')).toBe(true);
+  });
+
+  it('control: "x++; x = 2;" (variable declarada de verdad, ambas formas) sigue sin problemas', () => {
+    expect(atribuirCuerpo('int x = 1; x++; x = 2;')).toEqual([]);
+  });
+
+  it('control: "noExiste = 5;" (nombre genuinamente no declarado, NI clase) sigue reportando SOLO "variable-no-declarada" -- nunca un segundo problema por la misma causa', () => {
+    const problemas = atribuirCuerpo('noExiste = 5;');
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toMatchObject({ codigo: 'variable-no-declarada' });
+  });
+});

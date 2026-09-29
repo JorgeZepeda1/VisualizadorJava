@@ -280,6 +280,26 @@ describe('compilar — deuda del commit 999a8ca: errores de sintaxis básicos co
     expect(resultado.problema.linea).toBe(2);
   });
 
+  it('mutante real (sub-lote 1-D4, tarea 1.16): falta la "{" de apertura del CUERPO de la CLASE -> "llave-de-clase-faltante" en la línea real de javac (1, el final del nombre de la clase), NUNCA la línea del siguiente token real', () => {
+    // corpus/mutantes u3-hola-mundo.java#24 (mutación "quitar-puntuacion" sobre la "{" de la
+    // clase) — javac: "'{' expected" en la línea 1 (justo tras el nombre de la clase, MISMO
+    // patrón que err22 arriba para el "{" de "main"); antes de esta corrección, `analizarClase`
+    // usaba `cursor.esperarTexto('{')` genérico (ancla en el token inesperado que SÍ encontró,
+    // "public" de la línea 2) -- nunca el patrón de `finDelTokenAnterior()` que ya usaba `analizarMain`.
+    const fuente = [
+      'public class MiPrograma ',
+      '    public static void main(String[] args) {',
+      '        System.out.println("Hola, mundo");',
+      '    }',
+      '}',
+    ].join('\n');
+    const resultado = compilar(fuente);
+    expect(resultado.ok).toBe(false);
+    if (resultado.ok) throw new Error('se esperaba ok:false');
+    expect(resultado.problema.codigo).toBe('llave-de-clase-faltante');
+    expect(resultado.problema.linea).toBe(1);
+  });
+
   it('struct07: "package" DESPUÉS de un "import" -> "paquete-despues-de-import" en la línea real de javac (2)', () => {
     // corpus/experimentos/texto/struct07_package_fuera_de_lugar.java — javac:
     // "2: error: class, interface, enum, or record expected" (MISMO mensaje crudo que err17, pero

@@ -1,7 +1,7 @@
 // RED de la tarea 1.11 (catálogo es-MX de `Problema`, ADR 015). El motor SOLO emite `codigo` +
 // `datos` (nunca texto armado); este catálogo es el ÚNICO lugar que traduce cada `CodigoProblema`
 // cerrado (`src/motor/problemas.ts`) a una frase en español de México. TypeScript ya exige, al
-// tipar `textosProblemas` como `Record<CodigoProblema, ...>`, que EXISTAN las 25 claves — esta
+// tipar `textosProblemas` como `Record<CodigoProblema, ...>`, que EXISTAN las 29 claves — esta
 // prueba cubre lo que el compilador NO puede verificar: que cada función, ejecutada con datos
 // reales, produce una frase no vacía y SIN restos (`undefined`, `{` sin resolver — ADR 015 punto
 // 4), y la lógica condicional real (p. ej. la sugerencia de mayúscula de err19).
@@ -27,6 +27,10 @@ const DATOS_DE_EJEMPLO: Record<CodigoProblema, Record<string, unknown>> = {
   'condicion-no-booleana': { tipo: 'int' },
   'tipos-incomparables': { izquierda: 'String', derecha: 'int' },
   'operandos-invalidos-operador-binario': { operador: '-', izquierda: 'String', derecha: 'int' },
+  'operando-invalido-operador-unario': { operador: '!', operando: 'int' },
+  'importacion-no-reconocida': { nombre: 'java.utilScanner' },
+  'objetivo-no-es-variable': {},
+  'llave-de-clase-faltante': {},
   'selector-de-switch-invalido': { tipo: 'long' },
   'etiqueta-de-case-no-constante': {},
   'etiqueta-de-case-duplicada': {},

@@ -8,6 +8,7 @@
 // `compilador.ts` (tarea 1.14) decide quedarse solo con el primero, siguiendo ADR 004.
 import type {
   NodoAccesoMiembro,
+  NodoAsignacion,
   NodoBloque,
   NodoDeclaracionLocal,
   NodoElementoBloque,
@@ -15,12 +16,14 @@ import type {
   NodoExpresion,
   NodoFor,
   NodoImportacion,
+  NodoIncrementoDecremento,
   NodoLlamada,
   NodoNombre,
   NodoNuevaInstancia,
   NodoPrograma,
   NodoSentencia,
   NodoSwitch,
+  NodoUnaria,
 } from '../sintaxis/ast.ts';
 import { CODIGOS_NO_SOPORTADO } from '../sintaxis/no-soportado.ts';
 import { Alcance } from './alcance.ts';
@@ -29,12 +32,25 @@ import { valorConstante } from './constantes.ts';
 import type { ProblemaAtribucion } from './diagnostico.ts';
 import { resolverSobrecarga } from './sobrecargas.ts';
 import { verificarEtiquetasDeCase, verificarSelectorDeSwitch } from './switch.ts';
-import { claseDelObjeto, NOMBRES_DE_CLASE_RECONOCIDOS, tipoDeExpresion, tipoDeNombreDeTipo, type Tipo } from './tipos.ts';
+import {
+  argumentoDeSobrecarga,
+  claseDelObjeto,
+  NOMBRES_DE_CLASE_RECONOCIDOS,
+  tipoDeExpresion,
+  tipoDeNombreDeTipo,
+  tipoDeOperadorAritmetico,
+  type Tipo,
+} from './tipos.ts';
 import {
   CLASES_QUE_REQUIEREN_IMPORT,
   codigoDeAsignacionInvalida,
   esAsignable,
+  esConvertibleImplicitamenteEnAsignacionCompuesta,
+  nombreDeClaseImportadaEsValido,
+  operandoNoEsVariableValida,
   operandosValidosParaAritmetica,
+  operandoValidoParaIncrementoDecremento,
+  operandoValidoParaUnario,
   resultadoNombreDeTipo,
   sugerenciaDeMayuscula,
   tiposComparablesConIgualdad,
@@ -70,10 +86,19 @@ const CONTEXTO_INICIAL: ContextoFlujo = { enCiclo: false, enCicloOSwitch: false 
 const CONTEXTO_DENTRO_DE_CICLO: ContextoFlujo = { enCiclo: true, enCicloOSwitch: true };
 
 export function atribuir(programa: NodoPrograma): ProblemaAtribucion[] {
-  // Tarea 1.15 (REQ-COMP-008): sin "main" no hay cuerpo que recorrer -- nada que reportar aquí (el
-  // error real es de ARRANQUE, pasada 5, no de atribución).
-  if (programa.clase.main === null) return [];
   const problemas: ProblemaAtribucion[] = [];
+  // Tarea 1.21 (sub-lote 1-D4, REQ-SUB-001): los imports existen y se validan SIN IMPORTAR si hay
+  // "main" o no (a diferencia del resto de esta pasada, que necesita un cuerpo que recorrer) --
+  // verificado contra javac 17 real: un import roto se rechaza aunque la clase no tenga "main".
+  // ANTES del corte de "sin main" de abajo, nunca después.
+  for (const importacion of programa.importaciones) {
+    if (!importacion.comodin && !nombreDeClaseImportadaEsValido(importacion.nombre)) {
+      problemas.push({ codigo: 'importacion-no-reconocida', rango: importacion.rango, datos: { nombre: importacion.nombre } });
+    }
+  }
+  // Tarea 1.15 (REQ-COMP-008): sin "main" no hay cuerpo que recorrer -- nada MÁS que reportar aquí
+  // (el error real es de ARRANQUE, pasada 5, no de atribución).
+  if (programa.clase.main === null) return problemas.slice().sort((a, b) => a.rango.inicio - b.rango.inicio);
   const alcance = new Alcance();
   const importadas = nombresJavaUtilImportados(programa.importaciones);
   alcance.entrarBloque();
@@ -352,13 +377,17 @@ function visitarExpresion(
       return;
     case 'unaria':
       visitarExpresion(expresion.operando, alcance, importadas, problemas);
+      verificarOperandoUnaria(expresion, alcance, problemas);
       return;
     case 'asignacion':
       visitarExpresion(expresion.objetivo, alcance, importadas, problemas);
       visitarExpresion(expresion.valor, alcance, importadas, problemas);
+      verificarObjetivoDeAsignacion(expresion, alcance, problemas);
+      verificarAsignacionCompuesta(expresion, alcance, problemas);
       return;
     case 'incremento-decremento':
       visitarExpresion(expresion.operando, alcance, importadas, problemas);
+      verificarOperandoIncrementoDecremento(expresion, alcance, problemas);
       return;
     case 'llamada':
       visitarLlamada(expresion, alcance, importadas, problemas);
@@ -413,6 +442,90 @@ function verificarOperandosBinaria(
       codigo: 'operandos-invalidos-operador-binario',
       rango: expresion.rango,
       datos: { operador: expresion.operador, izquierda, derecha },
+    });
+  }
+}
+
+/** Tarea 1.21 (sub-lote 1-D4, JLS 5.6.1): "!x" exige "boolean"; "+x"/"-x" exigen un tipo numérico
+ * (`operandoValidoParaUnario`, verificaciones-de-tipo.ts) — verificado contra javac 17 real: "bad
+ * operand type X for unary operator 'Y'". 'desconocido' nunca reporta nada (D2). */
+function verificarOperandoUnaria(expresion: NodoUnaria, alcance: Alcance, problemas: ProblemaAtribucion[]): void {
+  const operando = tipoDeExpresion(expresion.operando, alcance);
+  if (operandoValidoParaUnario(expresion.operador, operando)) return;
+  problemas.push({
+    codigo: 'operando-invalido-operador-unario',
+    rango: expresion.rango,
+    datos: { operador: expresion.operador, operando },
+  });
+}
+
+/** Tarea 1.21 (sub-lote 1-D4, JLS 15.14/15.15/4.12.3, cierre de C7): (1) el operando debe ser una
+ * VARIABLE real (`operandoNoEsVariableValida` -- verificado: "fila++ ++;" da "unexpected type,
+ * required: variable, found: value", porque el operando del "++" EXTERIOR es "fila++", un VALOR,
+ * no una variable) ANTES de mirar el tipo (una vez que se sabe que es una variable, (2) "x++"/
+ * "--x" exigen que sea numérica -- mismo criterio que "+x"/"-x" arriba, verificado contra javac 17
+ * real: "bad operand type X for unary operator '++'/'--'"). Los dos casos usan códigos DISTINTOS
+ * -- nunca el mismo mensaje para "no es una variable" y "es una variable del tipo equivocado". */
+function verificarOperandoIncrementoDecremento(
+  expresion: NodoIncrementoDecremento,
+  alcance: Alcance,
+  problemas: ProblemaAtribucion[],
+): void {
+  if (operandoNoEsVariableValida(expresion.operando, alcance)) {
+    problemas.push({ codigo: 'objetivo-no-es-variable', rango: expresion.rango, datos: {} });
+    return;
+  }
+  const operando = tipoDeExpresion(expresion.operando, alcance);
+  if (operandoValidoParaIncrementoDecremento(operando)) return;
+  problemas.push({
+    codigo: 'operando-invalido-operador-unario',
+    rango: expresion.rango,
+    datos: { operador: expresion.operador, operando },
+  });
+}
+
+/** Tarea 1.21 (sub-lote 1-D4, JLS 15.26/4.12.3, cierre de C7): el objetivo de CUALQUIER asignación
+ * ("=" incluida, no solo compuesta) debe ser una VARIABLE real -- verificado contra javac 17 real:
+ * "Scanner = new Scanner(System.in);" da "cannot find symbol: variable Scanner" ("Scanner" existe
+ * como CLASE, un espacio de símbolos DISTINTO, JLS 6.5.6 -- `visitarNombreComoValor` lo trata como
+ * referencia estática válida en posición de VALOR, pero nunca es válido en posición de OBJETIVO).
+ * Independiente de `verificarAsignacionCompuesta` (abajo): esa solo mira operadores COMPUESTOS;
+ * esta corre siempre, "=" incluido. */
+function verificarObjetivoDeAsignacion(expresion: NodoAsignacion, alcance: Alcance, problemas: ProblemaAtribucion[]): void {
+  if (!operandoNoEsVariableValida(expresion.objetivo, alcance)) return;
+  problemas.push({ codigo: 'objetivo-no-es-variable', rango: expresion.rango, datos: {} });
+}
+
+/** Tarea 1.21 (JLS 15.26.2, "E1 op= E2" ≡ "E1 = (T)(E1 op E2)"): una asignación SIMPLE ("=") no
+ * verifica nada aquí (`visitarDeclaracionLocal`/una futura reasignación simple son asunto aparte,
+ * fuera de esta tarea — ver el informe de la sesión). Una COMPUESTA revisa DOS cosas, en orden,
+ * igual que javac: (1) el operador BASE ("+ - * / %") debe aplicar entre el tipo del objetivo y el
+ * del valor (`operandosValidosParaAritmetica`, MISMA regla que un "+"/"-" suelto — verificado:
+ * "boolean b; b += false;"/"int x; x *= \"3\";" dan "bad operand types for binary operator"); (2)
+ * si aplica, el resultado (YA promovido/concatenado, `tipoDeOperadorAritmetico`) debe poder
+ * castearse de vuelta al tipo del objetivo (`esConvertibleImplicitamenteEnAsignacionCompuesta` —
+ * verificado: "int x; x += \"a\";" da "incompatible types: String cannot be converted to int", una
+ * frase DISTINTA de "bad operand types" pese a que el operador "+" sí aplicó). */
+function verificarAsignacionCompuesta(expresion: NodoAsignacion, alcance: Alcance, problemas: ProblemaAtribucion[]): void {
+  if (expresion.operador === '=') return;
+  const operadorBase = expresion.operador.slice(0, -1);
+  const objetivo = tipoDeExpresion(expresion.objetivo, alcance);
+  const valor = tipoDeExpresion(expresion.valor, alcance);
+  if (objetivo === 'desconocido' || valor === 'desconocido') return; // D2
+  if (!operandosValidosParaAritmetica(operadorBase, objetivo, valor)) {
+    problemas.push({
+      codigo: 'operandos-invalidos-operador-binario',
+      rango: expresion.rango,
+      datos: { operador: expresion.operador, izquierda: objetivo, derecha: valor },
+    });
+    return;
+  }
+  const resultado = tipoDeOperadorAritmetico(operadorBase, objetivo, valor);
+  if (!esConvertibleImplicitamenteEnAsignacionCompuesta(resultado, objetivo)) {
+    problemas.push({
+      codigo: codigoDeAsignacionInvalida(resultado, objetivo),
+      rango: expresion.rango,
+      datos: { origen: resultado, destino: objetivo },
     });
   }
 }
@@ -497,13 +610,19 @@ function visitarLlamadaDeMiembro(
     return;
   }
   const tiposDeArgumentos = nodo.argumentos.map((argumento) => tipoDeExpresion(argumento, alcance));
-  // D2 (nunca un resultado inventado): un argumento 'desconocido' (p. ej. "Math.abs(-x)" -- la
-  // promoción numérica de unarios/binarios todavía no la modela `tipoDeExpresion`, ver su propia
-  // cabecera) NO significa "ningún tipo encaja" -- significa "no sabemos todavía". Reportar
-  // "sin-sobrecarga-aplicable" aquí sería inventar un error que javac nunca daría (Math.abs(-3) SÍ
-  // compila) -- mismo sumidero de cascada que ya usa TODO el resto de esta pasada.
-  const hayArgumentoDesconocido = tiposDeArgumentos.includes('desconocido');
-  if (!hayArgumentoDesconocido && resolverSobrecarga(clase, callee.miembro, tiposDeArgumentos) === null) {
+  // Tarea 1.21 (sub-lote 1-D4): la RESOLUCIÓN en sí usa `argumentoDeSobrecarga` (nunca solo
+  // `tipoDeExpresion`), para que "System.in"/"System.out"/"System.err" participen con su nombre
+  // reflejado real en vez de apagar la cascada como 'desconocido' -- `tiposDeArgumentos`, arriba,
+  // sigue siendo el que se MUESTRA en el mensaje (ver "sin-sobrecarga-aplicable" en
+  // textos/es-MX/problemas.ts), nunca el que decide la resolución.
+  const argumentos = nodo.argumentos.map((argumento) => argumentoDeSobrecarga(argumento, alcance));
+  // D2 (nunca un resultado inventado): un argumento genuinamente 'desconocido' (p. ej. una llamada
+  // anidada que en sí no resolvió, o un símbolo no declarado) NO significa "ningún tipo encaja" --
+  // significa "no sabemos todavía". Reportar "sin-sobrecarga-aplicable" aquí sería inventar un
+  // error que javac nunca daría -- mismo sumidero de cascada que ya usa TODO el resto de esta
+  // pasada. El chequeo es sobre `argumentos` (NO `tiposDeArgumentos`): un `{reflejado}` (System.x)
+  // SIEMPRE es un tipo conocido, nunca dispara este sumidero.
+  if (!argumentos.includes('desconocido') && resolverSobrecarga(clase, callee.miembro, argumentos) === null) {
     problemas.push({
       codigo: 'sin-sobrecarga-aplicable',
       rango: nodo.rango,
@@ -592,10 +711,16 @@ function visitarNuevaInstancia(
     return;
   }
 
+  // Tarea 1.21 (sub-lote 1-D4, gap "System.in/out/err como argumentos"): `tiposDeArgumentos` (el
+  // `Tipo` cerrado, SOLO para el mensaje) puede decir 'desconocido' para "System.in" (InputStream
+  // no es uno de los 8 `Tipo` declarables) aunque `argumentos` (abajo, lo que de verdad resuelve la
+  // sobrecarga) SÍ conoce su nombre reflejado real -- antes de esta tarea, "new Scanner(System.in)"
+  // se aceptaba en silencio SOLO porque este sumidero se disparaba sobre el "new" COMPLETO.
   const tiposDeArgumentos = nodo.argumentos.map((argumento) => tipoDeExpresion(argumento, alcance));
-  if (tiposDeArgumentos.includes('desconocido')) return; // D2, mismo sumidero de cascada de siempre
+  const argumentos = nodo.argumentos.map((argumento) => argumentoDeSobrecarga(argumento, alcance));
+  if (argumentos.includes('desconocido')) return; // D2, mismo sumidero de cascada de siempre
 
-  const firma = resolverSobrecarga(nodo.nombreTipo, '<init>', tiposDeArgumentos);
+  const firma = resolverSobrecarga(nodo.nombreTipo, '<init>', argumentos);
   if (firma === null) {
     problemas.push({
       codigo: 'sin-constructor-aplicable',

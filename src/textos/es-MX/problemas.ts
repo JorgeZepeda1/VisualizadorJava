@@ -40,6 +40,13 @@ interface DatosOperadorBinario {
   readonly derecha: Tipo;
 }
 
+// Tarea 1.21 (sub-lote 1-D4): un solo operando -- a diferencia de `DatosOperadorBinario`, que
+// siempre trae dos (izquierda/derecha).
+interface DatosOperadorUnario {
+  readonly operador: string;
+  readonly operando: Tipo;
+}
+
 interface DatosMensajeCrudo {
   readonly mensaje: string;
 }
@@ -89,6 +96,9 @@ interface DatosPorCodigo {
   'condicion-no-booleana': DatosCondicion;
   'tipos-incomparables': DatosComparacion;
   'operandos-invalidos-operador-binario': DatosOperadorBinario;
+  'operando-invalido-operador-unario': DatosOperadorUnario;
+  'importacion-no-reconocida': DatosNombre;
+  'objetivo-no-es-variable': DatosVacios;
   'selector-de-switch-invalido': DatosCondicion;
   'etiqueta-de-case-no-constante': DatosVacios;
   'etiqueta-de-case-duplicada': DatosVacios;
@@ -99,6 +109,7 @@ interface DatosPorCodigo {
   'fin-de-archivo-inesperado': DatosVacios;
   'llave-de-cierre-sobrante': DatosVacios;
   'llave-de-metodo-faltante': DatosVacios;
+  'llave-de-clase-faltante': DatosVacios;
   'paquete-despues-de-import': DatosVacios;
   'tipo-requiere-import': DatosNombre;
   // Lanzado como `ErrorDeCompilacion` (sintaxis) -- `construirProblema` (compilador.ts) SIEMPRE
@@ -141,6 +152,12 @@ export const textosProblemas: { readonly [K in CodigoProblema]: (datos: DatosPor
     `No puedes comparar un valor de tipo "${izquierda}" con uno de tipo "${derecha}" usando "=="/"!=".`,
   'operandos-invalidos-operador-binario': ({ operador, izquierda, derecha }) =>
     `El operador "${operador}" no se puede usar entre un valor de tipo "${izquierda}" y uno de tipo "${derecha}".`,
+  'operando-invalido-operador-unario': ({ operador, operando }) =>
+    `El operador "${operador}" no se puede usar con un valor de tipo "${operando}".`,
+  'importacion-no-reconocida': ({ nombre }) =>
+    `No reconozco "${nombre}" como algo que se pueda importar. Revisa que el nombre esté bien escrito, como "java.util.Scanner".`,
+  'objetivo-no-es-variable': () =>
+    'Aquí se necesita el nombre de una variable ya declarada, no una clase ni el resultado de otra operación.',
   'selector-de-switch-invalido': ({ tipo }) => `El valor de un "switch" debe ser "int", "char" o "String", no "${tipo}".`,
   'etiqueta-de-case-no-constante': () => 'Cada "case" necesita un valor fijo (constante), no una variable ni un cálculo.',
   'etiqueta-de-case-duplicada': () => 'Ya existe un "case" con este mismo valor más arriba; cada valor solo puede aparecer una vez.',
@@ -152,6 +169,7 @@ export const textosProblemas: { readonly [K in CodigoProblema]: (datos: DatosPor
   'llave-de-cierre-sobrante': () =>
     'Sobra una llave de cierre "}": hay una de más después de que la clase ya había cerrado.',
   'llave-de-metodo-faltante': () => 'Falta abrir una llave "{" después de esto — probablemente la del método.',
+  'llave-de-clase-faltante': () => 'Falta abrir una llave "{" después de esto — probablemente la del cuerpo de la clase.',
   'paquete-despues-de-import': () => 'La línea "package" debe ir antes que cualquier "import".',
   'tipo-requiere-import': ({ nombre }) => `Falta la línea "import java.util.${nombre};" al principio del archivo.`,
   'modificador-repetido': () => 'Escribiste el mismo modificador (como "public" o "static") dos veces seguidas; cada uno solo se pone una vez.',

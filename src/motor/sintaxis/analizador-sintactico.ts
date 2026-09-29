@@ -191,7 +191,16 @@ function analizarClase(cursor: CursorDeTokens): NodoClase {
   consumirModificadores(cursor, MODIFICADORES_CLASE, 'class');
   cursor.esperarTexto('class');
   const nombre = cursor.esperarTipo('identificador');
-  cursor.esperarTexto('{');
+  // Tarea 1.21 (sub-lote 1-D4, mutante real contra veredicto de javac): a diferencia del resto de
+  // `esperarTexto`, la "{" que abre el CUERPO DE LA CLASE ancla en el FIN del token anterior
+  // (aquí, el propio nombre) cuando falta -- MISMO patrón que ya usa `analizarMain` para su propia
+  // "{" (err22). Verificado contra javac 17 real: "'{' expected" en la línea del NOMBRE de la
+  // clase, nunca en la del siguiente token real (que puede caer varias líneas después).
+  if (!cursor.coincideTexto('{')) {
+    const fin = cursor.finDelTokenAnterior();
+    throw new ErrorDeCompilacion('falta abrir "{" para el cuerpo de la clase', { inicio: fin, fin }, undefined, 'llave-de-clase-faltante');
+  }
+  cursor.avanzar();
 
   let main: NodoMain | null = null;
   const otrosMiembros: NodoNoSoportado[] = [];

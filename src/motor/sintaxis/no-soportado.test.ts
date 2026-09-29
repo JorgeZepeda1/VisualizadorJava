@@ -101,6 +101,44 @@ describe('consumirMiembroDeClase — cabecera inválida se rechaza como error re
       analizar('class C { static int cuadrado(int n) { return n * n; } public static void main(String[] a) { } }'),
     ).not.toThrow();
   });
+});
+
+// Tarea 1.21 (sub-lote 1-D4, ~35 mutantes de la tarea 1.16, la clase de discrepancia MÁS GRANDE):
+// `validarCabeceraDeMiembro` (arriba) valida la CABECERA (tipo+nombre+continuación) pero, hasta
+// esta tarea, NO el CONTENIDO de una lista de parámetros ya comprometida -- "void main([String[]
+// args)" tiene una cabecera PERFECTA ("void main(") pero un parámetro roto DENTRO de los
+// paréntesis; antes se tragaba como NO-DISP (¡pareceMain ya había fallado a reconocerlo como
+// main, precisamente PORQUE el primer token del parámetro es "["!), cuando javac lo rechaza de
+// verdad. Verificado contra javac 17 real esta sesión (carpetas temporales, borradas):
+// "illegal start of type" en el primer token que no puede abrir un tipo.
+describe('consumirMiembroDeClase — lista de parámetros DENTRO de los paréntesis (sub-lote 1-D4)', () => {
+  it('"void main([String[] args)" ("[" insertado antes de "String", mutante real): se rechaza como error real, nunca NO-DISP en silencio', () => {
+    expect(() => analizar('class C { public static void main([String[] args) { } }')).toThrow(ErrorDeCompilacion);
+  });
+
+  it('triangulación: "static int foo([int n) { return n; }" (miembro genérico, NO solo main -- REQ-SUB-007 acepta el miembro, pero sus PARÉNTESIS deben ser sintaxis real)', () => {
+    expect(() =>
+      analizar('class C { static int foo([int n) { return n; } public static void main(String[] a) { } }'),
+    ).toThrow(ErrorDeCompilacion);
+  });
+
+  it('triangulación: "static void foo(int n, )" (coma colgante, ningún parámetro real después) también se rechaza', () => {
+    expect(() =>
+      analizar('class C { static void foo(int n, ) { } public static void main(String[] a) { } }'),
+    ).toThrow(ErrorDeCompilacion);
+  });
+
+  it('control (regresión): parámetros con arreglos, varargs, nombres calificados y "final" -- las formas REALES de Java -- siguen sin rechazarse', () => {
+    expect(() =>
+      analizar(
+        'class C { static void foo(final int x, String[] datos, java.util.List resto, int... otros) { } public static void main(String[] a) { } }',
+      ),
+    ).not.toThrow();
+  });
+
+  it('control (regresión): sin parámetros ("()") sigue sin rechazarse', () => {
+    expect(() => analizar('class C { static void foo() { } public static void main(String[] a) { } }')).not.toThrow();
+  });
 
   it('control (regresión): "static int contador;" (campo real válido) NO se rechaza', () => {
     expect(() => analizar('class C { static int contador; public static void main(String[] a) { } }')).not.toThrow();

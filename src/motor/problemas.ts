@@ -68,6 +68,20 @@ export type CodigoProblema =
   | 'condicion-no-booleana' // err13, err33
   | 'tipos-incomparables' // err28
   | 'operandos-invalidos-operador-binario' // err35
+  // Tarea 1.21 (sub-lote 1-D4, JLS 5.6.1/15.14/15.15): "!x" con "x" no booleano, "-b"/"+b" con "b"
+  // no numérico, "b++"/"s--" con un operando no numérico -- verificado contra javac 17 real: "bad
+  // operand type X for unary operator 'Y'" (código DISTINTO de "operandos-invalidos-operador-
+  // binario", que exige DOS tipos; aquí solo hay un operando).
+  | 'operando-invalido-operador-unario'
+  // Tarea 1.21 (REQ-SUB-001): "import java.utilScanner;" (nombre calificado que no resuelve a
+  // ninguna clase real del catálogo) -- verificado contra javac 17 real: "cannot find symbol: class
+  // X, location: package Y", anclado en la propia línea del import.
+  | 'importacion-no-reconocida'
+  // Tarea 1.21 (cierre de C7, JLS 4.12.3/15.14/15.26): el objetivo de una asignación o el operando
+  // de "++"/"--" no es una variable real (un nombre de CLASE, p. ej. "Scanner = ...", o el VALOR de
+  // otra expresión, p. ej. "fila++ ++") -- verificado contra javac 17 real: "cannot find symbol:
+  // variable X" / "unexpected type, required: variable, found: value" (dos frases, un solo código).
+  | 'objetivo-no-es-variable'
   // `switch` (REQ-COMP-002, design.md §2.7).
   | 'selector-de-switch-invalido'
   | 'etiqueta-de-case-no-constante' // err34
@@ -83,6 +97,11 @@ export type CodigoProblema =
   | 'fin-de-archivo-inesperado' // err16
   | 'llave-de-cierre-sobrante' // err17
   | 'llave-de-metodo-faltante' // err22
+  // Tarea 1.21 (sub-lote 1-D4, cierre de C7, mutante real): falta la "{" que abre el CUERPO DE LA
+  // CLASE -- código DISTINTO de "llave-de-metodo-faltante" (ese es sobre la "{" de "main"; javac
+  // ancla ambos en el mismo patrón -- fin del token anterior -- pero son construcciones distintas,
+  // mensajes amables distintos).
+  | 'llave-de-clase-faltante'
   | 'paquete-despues-de-import' // struct07
   | 'tipo-requiere-import' // err20 (atribución, no sintaxis — Scanner/Random sin import)
   // Sub-lote 1-D3 (mutante real contra veredicto de javac, JLS 8.3/8.4.3): "public static static
