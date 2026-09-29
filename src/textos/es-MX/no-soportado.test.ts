@@ -10,7 +10,7 @@
 //
 // Solo importa tipos de `motor/vista` (matriz de capas, herramientas/eslint/matriz-capas.ts): NUNCA
 // `compilar()` ni nada de `motor/index.ts` — eso vive en `pruebas/compilacion/avisos-textos.test.ts`
-// (capa sin restricción), que sí puede compilar los 44 archivos reales del corpus.
+// (capa sin restricción), que sí puede compilar los archivos reales del corpus.
 import { describe, expect, it } from 'vitest';
 import { textosNoSoportado } from './no-soportado.ts';
 import type { CodigoNoSoportado } from '../../motor/vista.ts';
@@ -25,7 +25,8 @@ const DATOS_DE_EJEMPLO: Record<CodigoNoSoportado, Record<string, unknown>> = {
   'arreglo-no-soportado': { linea: 1, tipoArreglo: 'int[]' },
   'var-no-soportado': { linea: 1 },
   'generico-no-soportado': { linea: 1 },
-  'tipo-primitivo-no-soportado': { linea: 1 },
+  // Tarea 1.30: el aviso nombra el tipo CONCRETO (`float`, `byte` o `short`), no una lista de los tres.
+  'tipo-primitivo-no-soportado': { linea: 1, tipo: 'float' },
   'final-sin-inicializador-no-soportado': { linea: 1 },
   'for-mejorado-no-soportado': { linea: 1 },
   'etiqueta-no-soportada': { linea: 1 },
@@ -101,13 +102,16 @@ describe('textosNoSoportado — catálogo completo (ADR 015, REQ-SUB-006): cada 
 });
 
 describe('textosNoSoportado — REQ-SUB-006 (spec subconjunto-java): formato y escenarios exactos', () => {
-  // Escenario "arreglo fuera de alcance" de spec.md / el ejemplo literal de proposal.md §2.3.
-  it('arreglo fuera de alcance: texto EXACTO del escenario del spec', () => {
+  // Escenario "arreglo fuera de alcance" de spec.md / el ejemplo literal de proposal.md §2.3, con la frase del
+  // marco que el PO aprobó el 2026-09-29 (tarea 1.30): «Es parte de Java… así que no puedo revisar si esa parte
+  // está bien escrita». La frase anterior («Java sí lo acepta») afirmaba que el PROGRAMA era válido, y el aviso no
+  // puede saberlo: no revisa lo que queda dentro de la construcción que no cubre.
+  it('arreglo fuera de alcance: texto EXACTO del escenario (frase del marco aprobada por el PO, tarea 1.30)', () => {
     const texto = textosNoSoportado['arreglo-no-soportado']({ linea: 4, tipoArreglo: 'int[]' });
     expect(texto).toBe(
-      'Tu programa usa un arreglo (`int[]`) en la línea 4. Java sí lo acepta, pero este visualizador ' +
-        'cubre las unidades 3 a 7 y todavía no muestra arreglos. No lo ejecuto para no enseñarte un ' +
-        'resultado que podría no ser el de Java.',
+      'Tu programa usa un arreglo (`int[]`) en la línea 4. Es parte de Java, pero este visualizador ' +
+        'cubre las unidades 3 a 7 y todavía no muestra arreglos, así que no puedo revisar si esa parte ' +
+        'está bien escrita. No lo ejecuto para no enseñarte un resultado que podría no ser el de Java.',
     );
   });
 
@@ -177,12 +181,14 @@ describe('textosNoSoportado — REQ-SUB-006 (spec subconjunto-java): formato y e
     expect(simple).not.toContain('Locale');
   });
 
-  it('clase no soportada: sigue el marco de REQ-SUB-006 (Java sí la acepta, unidades 3 a 7, no la ejecuta) y NO dice "no reconozco" ni "revisa que esté bien escrito"', () => {
+  it('clase no soportada: sigue el marco de REQ-SUB-006 (es parte de Java, unidades 3 a 7, no la ejecuta) y NO dice "no reconozco" ni "revisa que esté bien escrito"', () => {
     const texto = textosNoSoportado['clase-no-soportada']({ linea: 2, nombre: 'javax.swing.JOptionPane' });
-    expect(texto).toMatch(/Java sí/);
+    expect(texto).toMatch(/Es parte de Java/);
     expect(texto).toMatch(/unidades 3 a 7/);
     expect(texto).toMatch(/No lo ejecuto/);
-    expect(texto).not.toMatch(/no reconozco|bien escrito/i);
+    // «bien escrito» solo aparece en la admisión honesta del marco («no puedo revisar si esa parte está bien
+    // escrita»), nunca como la orden «revisa que esté bien escrito» del error falso que la 1.29 quitó.
+    expect(texto).not.toMatch(/no reconozco|revisa que esté bien escrito/i);
   });
 
   // Tarea 1.29: `java.util.Scanner sc = new java.util.Scanner(System.in);` es Java válido (el nombre completo
@@ -237,12 +243,52 @@ describe('textosNoSoportado — REQ-SUB-006 (spec subconjunto-java): formato y e
   });
 
   // REQ-SUB-006: "señalar la línea y la construcción, decir que Java sí la acepta (cuando aplica),
-  // aclarar que el visualizador cubre U3–U7" — formato compartido por el resto del catálogo.
-  it('formato compartido: línea, "Java sí" la acepta, y cobertura U3–U7 explícita', () => {
+  // aclarar que el visualizador cubre U3–U7" — formato compartido por el resto del catálogo. Tarea 1.30 (PO,
+  // 2026-09-29): «decir que Java la acepta» se afirma de la CONSTRUCCIÓN («Es parte de Java»), nunca del
+  // programa, y el aviso admite lo que no revisa.
+  it('formato compartido: línea, "es parte de Java", cobertura U3–U7 explícita y la admisión de que no revisa esa parte', () => {
     const texto = textosNoSoportado['var-no-soportado']({ linea: 7 });
     expect(texto).toContain('línea 7');
-    expect(texto).toMatch(/Java sí/);
+    expect(texto).toMatch(/Es parte de Java/);
     expect(texto).toMatch(/unidades 3 a 7/);
+    expect(texto).toMatch(/así que no puedo revisar si esa parte está bien escrita/);
+  });
+
+  it('el marco antepone la alternativa a "No lo ejecuto", después de la admisión: el orden exacto de las cuatro frases', () => {
+    const texto = textosNoSoportado['for-mejorado-no-soportado']({ linea: 2 });
+    expect(texto).toBe(
+      'Tu programa usa un ciclo `for` mejorado (`for-each`) en la línea 2. Es parte de Java, pero este ' +
+        'visualizador cubre las unidades 3 a 7 y todavía no ejecuta el `for` mejorado, así que no puedo ' +
+        'revisar si esa parte está bien escrita. Usa un `for` clásico con índice para recorrer el arreglo. ' +
+        'No lo ejecuto para no enseñarte un resultado que podría no ser el de Java.',
+    );
+  });
+
+  // Tarea 1.30 (decisión del PO 2026-09-29): el aviso de `float`/`byte`/`short` decía «un tipo primitivo
+  // (`float`, `byte` o `short`) que Java sí tiene, pero que no forma parte de este subconjunto en la línea 3.
+  // Java sí lo acepta…»: repetía «Java sí» y dejaba «en la línea N» a media oración. Ahora nombra el tipo CONCRETO
+  // que escribió el alumno y su alternativa depende de ese tipo.
+  it.each([
+    ['float', 'double'],
+    ['byte', 'int'],
+    ['short', 'int'],
+  ] as const)('tipo primitivo "%s": lo nombra, dice la línea justo después y sugiere `%s` en su lugar', (tipo, alternativa) => {
+    const texto = textosNoSoportado['tipo-primitivo-no-soportado']({ linea: 3, tipo });
+    expect(texto.startsWith(`Tu programa usa el tipo \`${tipo}\` en la línea 3. Es parte de Java, `)).toBe(true);
+    expect(texto).toContain('todavía no simula ese tipo');
+    expect(texto).toContain(`Si tu programa lo permite, usa \`${alternativa}\` en vez de \`${tipo}\`.`);
+  });
+
+  it('tipo primitivo: el texto EXACTO de `byte` (frase aprobada por el PO) y solo nombra el tipo que escribió el alumno', () => {
+    const texto = textosNoSoportado['tipo-primitivo-no-soportado']({ linea: 3, tipo: 'byte' });
+    expect(texto).toBe(
+      'Tu programa usa el tipo `byte` en la línea 3. Es parte de Java, pero este visualizador cubre las ' +
+        'unidades 3 a 7 y todavía no simula ese tipo, así que no puedo revisar si esa parte está bien ' +
+        'escrita. Si tu programa lo permite, usa `int` en vez de `byte`. No lo ejecuto para no enseñarte ' +
+        'un resultado que podría no ser el de Java.',
+    );
+    expect(texto).not.toContain('float');
+    expect(texto).not.toContain('short');
   });
 
   it('las construcciones con alternativa dentro de alcance la ofrecen (proposal.md §2.2, "&"/"|" sugieren "&&"/"||")', () => {
@@ -250,5 +296,49 @@ describe('textosNoSoportado — REQ-SUB-006 (spec subconjunto-java): formato y e
     const textoOr = textosNoSoportado['operador-bits-or']({ linea: 2 });
     expect(textoAnd).toContain('&&');
     expect(textoOr).toContain('||');
+  });
+});
+
+// Tarea 1.30 (decisión explícita del PO, 2026-09-29: «sí, corrige la frase ya»). Un aviso de «No disponible»
+// se emite al RECONOCER una construcción fuera del subconjunto; el reconocimiento no puede revisar la validez
+// de lo que queda dentro de ella, y hay programas que javac rechaza y que llegan aquí (7 en el corpus: un método
+// propio sin `return`, `byte c = a + b;`, un `break` a una etiqueta que no existe…). Decirles «Java sí lo
+// acepta» era FALSO (D2, regla 5 de CLAUDE.md). Un aviso afirma algo de la construcción y admite lo que no
+// revisa. La guarda de punta a punta, con los veredictos reales de javac, es
+// `pruebas/compilacion/programas-invalidos.test.ts`; esta cubre el catálogo COMPLETO, incluidos los códigos que
+// ninguna muestra del corpus alcanza.
+describe('textosNoSoportado — tarea 1.30: un aviso afirma algo de la construcción, nunca que Java acepta el programa', () => {
+  const AFIRMA_QUE_JAVA_LO_ACEPTA = /Java sí (?:l[oa]s? )?(?:acepta|tiene)/;
+  // `ejecucion-no-disponible` es la única excepción: solo se emite DESPUÉS de que TODAS las pasadas de
+  // compilación aceptaron el programa, así que ahí «Java sí acepta tu programa» es cierto. `no-soportado` (el
+  // respaldo defensivo) tampoco usa el marco: no sabe qué construcción es.
+  const codigos = Object.keys(DATOS_DE_EJEMPLO) as CodigoNoSoportado[];
+  const codigosConMarco = codigos.filter((codigo) => codigo !== 'ejecucion-no-disponible' && codigo !== 'no-soportado');
+  const texto = (codigo: CodigoNoSoportado): string =>
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- datos varían por código, ver DATOS_DE_EJEMPLO
+    (textosNoSoportado[codigo] as (d: any) => string)(DATOS_DE_EJEMPLO[codigo]);
+
+  it('el barrido recorre el catálogo entero (guarda contra un filtro que deje la lista vacía)', () => {
+    expect(codigos.length).toBeGreaterThanOrEqual(52);
+    expect(codigosConMarco.length).toBe(codigos.length - 2);
+  });
+
+  it.each(codigos.filter((codigo) => codigo !== 'ejecucion-no-disponible'))(
+    '"%s" no dice que Java acepta el programa ("Java sí lo acepta", "Java sí acepta", "Java sí tiene")',
+    (codigo) => {
+      expect(texto(codigo)).not.toMatch(AFIRMA_QUE_JAVA_LO_ACEPTA);
+    },
+  );
+
+  it.each(codigosConMarco)('"%s" sigue el marco: es parte de Java, cubre U3–U7, admite que no revisa esa parte y no ejecuta', (codigo) => {
+    const frase = texto(codigo);
+    expect(frase).toContain('Es parte de Java, pero este visualizador cubre las unidades 3 a 7 y todavía ');
+    expect(frase).toContain(', así que no puedo revisar si esa parte está bien escrita.');
+    expect(frase.endsWith('No lo ejecuto para no enseñarte un resultado que podría no ser el de Java.')).toBe(true);
+  });
+
+  it('control: el detector SÍ reconoce la frase que `ejecucion-no-disponible` conserva a propósito (no es una expresión que nunca coincide)', () => {
+    expect(texto('ejecucion-no-disponible')).toMatch(AFIRMA_QUE_JAVA_LO_ACEPTA);
+    expect(texto('ejecucion-no-disponible')).toContain('Java sí acepta tu programa');
   });
 });

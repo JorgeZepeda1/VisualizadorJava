@@ -19,6 +19,7 @@ import {
   consumirMiembroDeClase,
   consumirRestoDeSentenciaNoSoportada,
   consumirTipoDeNivelSuperior,
+  esTipoPrimitivoNoSoportado,
   pareceGenericoDesde,
   nombreDelTipoDeNivelSuperior,
   pareceOtroTipoDeNivelSuperior,
@@ -446,8 +447,11 @@ function analizarDeclaracionLocal(cursor: CursorDeTokens): NodoDeclaracionLocal 
 
   const { token: nombreTipoToken, nombre: nombreTipo } = consumirNombreDeTipo(cursor);
 
-  if (PALABRAS_TIPO_PRIMITIVO_NO_SOPORTADO.has(nombreTipo)) {
-    return consumirRestoDeSentenciaNoSoportada(cursor, inicio, CODIGOS_NO_SOPORTADO.tipoPrimitivoNoSoportado, {});
+  // Tarea 1.30: el aviso nombra el tipo CONCRETO que escribió el alumno (`byte`), no una lista de los tres.
+  if (esTipoPrimitivoNoSoportado(nombreTipo)) {
+    return consumirRestoDeSentenciaNoSoportada(cursor, inicio, CODIGOS_NO_SOPORTADO.tipoPrimitivoNoSoportado, {
+      tipo: nombreTipo,
+    });
   }
 
   if (nombreTipoToken.tipo === 'identificador' && cursor.coincideTexto('<') && pareceGenericoDesde(cursor, 0)) {

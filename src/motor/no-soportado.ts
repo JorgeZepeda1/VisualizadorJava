@@ -149,6 +149,16 @@ export const CODIGOS_NO_SOPORTADO = {
 
 export type CodigoNoSoportado = (typeof CODIGOS_NO_SOPORTADO)[keyof typeof CODIGOS_NO_SOPORTADO];
 
+// Tarea 1.30 (decisión del PO 2026-09-29): `float`, `byte` y `short` son tipos primitivos REALES de Java que
+// el subconjunto no simula (REQ-SUB-007: nunca se reinterpretan como `double`/`int`). La lista vive aquí, y no
+// en `sintaxis/`, porque de ella sale el TIPO de los datos del aviso (`DatosPorCodigoNoSoportado`): el
+// reconocedor de `sintaxis/no-soportado.ts` construye su conjunto de palabras a partir de esta misma lista,
+// así que agregar un tipo la extiende en los dos lados y el catálogo de textos (que exige una alternativa por
+// tipo) deja de compilar hasta dársela.
+export const TIPOS_PRIMITIVOS_NO_SOPORTADOS = ['float', 'byte', 'short'] as const;
+
+export type TipoPrimitivoNoSoportado = (typeof TIPOS_PRIMITIVOS_NO_SOPORTADOS)[number];
+
 // Tarea 1.25 (Datos tipados de cada aviso de "no soportado" — agregada por el orquestador):
 // verificación de punta a punta (compilar() real + textosNoSoportado real, nunca datos fabricados)
 // encontró que 5 códigos reales mostraban "undefined" al alumno porque NINGÚN tipo obligaba al
@@ -179,7 +189,9 @@ export interface DatosPorCodigoNoSoportado {
   'arreglo-no-soportado': { readonly tipoArreglo: string };
   'var-no-soportado': Record<never, never>;
   'generico-no-soportado': Record<never, never>;
-  'tipo-primitivo-no-soportado': Record<never, never>;
+  /** Tarea 1.30: el tipo CONCRETO que escribió el alumno (`float`, `byte` o `short`), tanto en una declaración
+   * (`byte b = 5;`) como en un cast (`(byte) x`): el texto lo nombra y sugiere la alternativa de ESE tipo. */
+  'tipo-primitivo-no-soportado': { readonly tipo: TipoPrimitivoNoSoportado };
   'final-sin-inicializador-no-soportado': Record<never, never>;
   'for-mejorado-no-soportado': Record<never, never>;
   'etiqueta-no-soportada': Record<never, never>;

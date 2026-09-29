@@ -254,6 +254,16 @@ describe('expresiones — cast a un tipo primitivo fuera del subconjunto es avis
     expect(expresionDe(`(${tipo}) x`)).toMatchObject({ tipo: 'expresion-no-soportada', codigo: 'tipo-primitivo-no-soportado' });
   });
 
+  // Tarea 1.30 (decisión del PO 2026-09-29): el aviso nombra el tipo CONCRETO del cast (`(byte) x` → «el tipo
+  // `byte`»), igual que en la declaración, así que el nodo lo lleva en sus datos.
+  it.each(['byte', 'short', 'float'])('"(%s) x" manda el tipo del cast en los datos del aviso', (tipo) => {
+    expect(expresionDe(`(${tipo}) x`)).toMatchObject({
+      tipo: 'expresion-no-soportada',
+      codigo: 'tipo-primitivo-no-soportado',
+      datos: { tipo },
+    });
+  });
+
   it('el rango cubre el paréntesis de apertura hasta el final del operando: "(byte) 200" → 0..10', () => {
     expect(expresionDe('(byte) 200').rango).toEqual({ inicio: 0, fin: 10 });
   });

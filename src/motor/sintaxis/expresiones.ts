@@ -15,7 +15,7 @@ import { CursorDeTokens } from './cursor-de-tokens.ts';
 // sus códigos como strings inline, nunca importados de ninguna tabla (engram
 // visualizador-java/patron-codigos-inline-expresiones), lo que dejó pasar una discrepancia real:
 // aquí se emitía 'lambda' mientras la tabla central decía 'lambda-no-soportada'.
-import { CODIGOS_NO_SOPORTADO, PALABRAS_TIPO_PRIMITIVO_NO_SOPORTADO, saltarHastaCerrar } from './no-soportado.ts';
+import { CODIGOS_NO_SOPORTADO, esTipoPrimitivoNoSoportado, saltarHastaCerrar } from './no-soportado.ts';
 import type { NodoConversion, NodoExpresion, NodoExpresionNoSoportada, NodoNuevaInstancia } from './ast.ts';
 
 const PRECEDENCIA: Readonly<Record<string, number>> = {
@@ -313,10 +313,11 @@ function intentarAnalizarCast(cursor: CursorDeTokens): NodoConversion | NodoExpr
   if (cursor.actual().texto !== '(') return null;
 
   const posibleTipo = cursor.mirar(1);
-  const esPrimitivoNoSoportado =
-    posibleTipo.tipo === 'palabra-clave' && PALABRAS_TIPO_PRIMITIVO_NO_SOPORTADO.has(posibleTipo.texto);
+  // Tarea 1.30: el aviso nombra el tipo CONCRETO del cast (`(byte) x` → `byte`), igual que en la declaración.
+  const tipoNoSoportado =
+    posibleTipo.tipo === 'palabra-clave' && esTipoPrimitivoNoSoportado(posibleTipo.texto) ? posibleTipo.texto : null;
   const esPrimitivo =
-    esPrimitivoNoSoportado || (posibleTipo.tipo === 'palabra-clave' && PALABRAS_CLAVE_TIPO_PRIMITIVO.has(posibleTipo.texto));
+    tipoNoSoportado !== null || (posibleTipo.tipo === 'palabra-clave' && PALABRAS_CLAVE_TIPO_PRIMITIVO.has(posibleTipo.texto));
   const esIdentificador = posibleTipo.tipo === 'identificador';
   if (!esPrimitivo && !esIdentificador) return null;
 
@@ -332,8 +333,13 @@ function intentarAnalizarCast(cursor: CursorDeTokens): NodoConversion | NodoExpr
   cursor.avanzar(); // ")"
   const operando = analizarUnaria(cursor);
   const rango = { inicio, fin: operando.rango.fin };
-  if (esPrimitivoNoSoportado) {
-    return { tipo: 'expresion-no-soportada', codigo: CODIGOS_NO_SOPORTADO.tipoPrimitivoNoSoportado, datos: {}, rango };
+  if (tipoNoSoportado !== null) {
+    return {
+      tipo: 'expresion-no-soportada',
+      codigo: CODIGOS_NO_SOPORTADO.tipoPrimitivoNoSoportado,
+      datos: { tipo: tipoNoSoportado },
+      rango,
+    };
   }
   return { tipo: 'conversion', nombreTipo: tipo.texto, operando, rango };
 }

@@ -7,43 +7,16 @@
 // al alumno que su código está mal cuando no lo está (peor que no mostrar nada).
 //
 // No necesita el JDK: el veredicto de javac ya está guardado en cada `.oraculo.json` (dato del
-// oráculo, ADR 010/011), así que corre en `npm test`. Por qué la 1.28 no lo vio: la guarda de
-// textos (`problemas-en-pantalla.test.ts`) solo mira que cada problema SE PUEDA LEER, no que sea
-// cierto; y los mutantes (C7) derivan de `corpus/curso`, cuyos 35 programas no disparaban ninguno
-// de estos falsos rechazos (los 14 primeros vivían en `corpus/experimentos`).
-import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { join, relative, resolve } from 'node:path';
+// oráculo, ADR 010/011; `corpus-con-veredicto.ts`), así que corre en `npm test`. Por qué la 1.28 no lo
+// vio: la guarda de textos (`problemas-en-pantalla.test.ts`) solo mira que cada problema SE PUEDA LEER,
+// no que sea cierto; y los mutantes (C7) derivan de `corpus/curso`, cuyos 35 programas no disparaban
+// ninguno de estos falsos rechazos (los 14 primeros vivían en `corpus/experimentos`). Su contraparte, la
+// de los programas que javac RECHAZA (tarea 1.30), es `programas-invalidos.test.ts`.
 import { describe, expect, it } from 'vitest';
 import { compilar } from '../../src/motor/index.ts';
+import { programasDelCorpusConVeredicto } from './corpus-con-veredicto.ts';
 
-const RAIZ = resolve('.');
-const SUFIJO_ORACULO = '.oraculo.json';
-
-function archivosOraculo(directorio: string): string[] {
-  return readdirSync(directorio)
-    .sort()
-    .flatMap((nombre) => {
-      const ruta = join(directorio, nombre);
-      if (statSync(ruta).isDirectory()) return archivosOraculo(ruta);
-      return nombre.endsWith(SUFIJO_ORACULO) ? [ruta] : [];
-    });
-}
-
-interface ProgramaDelCorpus {
-  readonly id: string;
-  readonly fuente: string;
-  readonly compilo: boolean;
-}
-
-function programasDelCorpus(): ProgramaDelCorpus[] {
-  return archivosOraculo(resolve(RAIZ, 'corpus')).map((rutaOraculo) => {
-    const { compilo } = JSON.parse(readFileSync(rutaOraculo, 'utf-8')) as { compilo: boolean };
-    const rutaFuente = `${rutaOraculo.slice(0, -SUFIJO_ORACULO.length)}.java`;
-    return { id: relative(RAIZ, rutaFuente), fuente: readFileSync(rutaFuente, 'utf-8'), compilo };
-  });
-}
-
-const programas = programasDelCorpus();
+const programas = programasDelCorpusConVeredicto();
 const validos = programas.filter((programa) => programa.compilo);
 
 describe('corpus real → ningún programa que javac 17 compila se presenta como error de compilación', () => {

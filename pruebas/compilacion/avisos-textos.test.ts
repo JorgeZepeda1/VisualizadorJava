@@ -160,3 +160,50 @@ describe('metodo/campo/constructor-de-biblioteca-no-soportado — no cubiertos p
     expect(texto).not.toMatch(/undefined/);
   });
 });
+
+// Tarea 1.30 (decisión del PO 2026-09-29): el aviso de `float`/`byte`/`short` decía «un tipo primitivo (`float`,
+// `byte` o `short`) que Java sí tiene, pero que no forma parte de este subconjunto en la línea 3. Java sí lo
+// acepta…»: repetía «Java sí» y no decía cuál de los tres tipos era. Ahora nombra el tipo CONCRETO que escribió el
+// alumno («el tipo `byte`») y sugiere la alternativa de ESE tipo. Dos sitios de emisión propios, ambos con datos
+// del motor: la declaración (`analizador-sintactico.ts`, muestra `44-tipo-primitivo-no-soportado.java`) y el cast
+// (`expresiones.ts`, muestra `56-cast-a-byte.java`). Los programas de la tabla de abajo los compila javac 17.0.18
+// real (verificado en una carpeta temporal fuera del repo, borrada).
+describe('tipo-primitivo-no-soportado — el texto nombra el tipo REAL que escribió el alumno (tarea 1.30)', () => {
+  function textoDeAviso(fuente: string): string {
+    const resultado = compilar(fuente);
+    expect(resultado.ok).toBe(false);
+    if (resultado.ok) return '';
+    expect(resultado.problema.codigo).toBe('tipo-primitivo-no-soportado');
+    return renderizar('tipo-primitivo-no-soportado', resultado.problema.linea, resultado.problema.datos);
+  }
+
+  it('44-tipo-primitivo-no-soportado.java ("float f = 1;"): dice "el tipo `float`" y sugiere `double`, sin restos', () => {
+    const texto = textoDeAviso(readFileSync(resolve(RUTA_AVISOS, '44-tipo-primitivo-no-soportado.java'), 'utf-8'));
+    expect(texto.startsWith('Tu programa usa el tipo `float` en la línea 3. ')).toBe(true);
+    expect(texto).toContain('Si tu programa lo permite, usa `double` en vez de `float`.');
+    expect(texto).not.toMatch(/undefined/);
+  });
+
+  it('56-cast-a-byte.java ("(byte) 200"): dice "el tipo `byte`" y sugiere `int`, sin restos', () => {
+    const texto = textoDeAviso(readFileSync(resolve(RUTA_AVISOS, '56-cast-a-byte.java'), 'utf-8'));
+    expect(texto.startsWith('Tu programa usa el tipo `byte` en la línea 3. ')).toBe(true);
+    expect(texto).toContain('Si tu programa lo permite, usa `int` en vez de `byte`.');
+    expect(texto).not.toMatch(/undefined/);
+  });
+
+  it.each([
+    ['float', 'double'],
+    ['byte', 'int'],
+    ['short', 'int'],
+  ] as const)('"%s" en una declaración Y en un cast: el texto nombra ESE tipo y sugiere `%s`', (tipo, alternativa) => {
+    const programas = [
+      `public class C {\n  public static void main(String[] a) {\n    ${tipo} x = 1;\n  }\n}\n`,
+      `public class C {\n  public static void main(String[] a) {\n    System.out.println((${tipo}) 1);\n  }\n}\n`,
+    ];
+    for (const fuente of programas) {
+      const texto = textoDeAviso(fuente);
+      expect(texto.startsWith(`Tu programa usa el tipo \`${tipo}\` en la línea 3. `)).toBe(true);
+      expect(texto).toContain(`Si tu programa lo permite, usa \`${alternativa}\` en vez de \`${tipo}\`.`);
+    }
+  });
+});

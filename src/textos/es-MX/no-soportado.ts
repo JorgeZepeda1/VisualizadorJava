@@ -7,10 +7,19 @@
 // de compilar (mismo mecanismo que `textosProblemas` ya usa para `CodigoProblema` desde 1.11).
 //
 // Formato (REQ-SUB-006, proposal.md §2.3): cada mensaje señala la línea y la construcción, dice que
-// Java sí la acepta, aclara que el visualizador cubre las unidades 3 a 7, y ofrece una alternativa
-// dentro de alcance cuando existe una razonable — nunca inventa una si no la hay (D2). Tono
-// (exploracion/01 §7, revisado por el PO): tuteo, amable, preciso, sin infantilizar; nunca deja al
-// alumno sin una pista de qué hacer cuando hay una.
+// la construcción es parte de Java, aclara que el visualizador cubre las unidades 3 a 7 y admite que
+// por eso no puede revisar si esa parte está bien escrita, y ofrece una alternativa dentro de alcance
+// cuando existe una razonable — nunca inventa una si no la hay (D2). Tono (exploracion/01 §7,
+// revisado por el PO): tuteo, amable, preciso, sin infantilizar; nunca deja al alumno sin una pista
+// de qué hacer cuando hay una.
+//
+// Tarea 1.30 (decisión explícita del PO, 2026-09-29): un aviso afirma algo de la CONSTRUCCIÓN («es
+// parte de Java»), NUNCA del PROGRAMA. Reconocer una construcción fuera del subconjunto no permite
+// revisar la validez de lo que queda dentro de ella, y hay programas que javac rechaza y que llegan
+// aquí (un método propio sin `return`, `byte c = a + b;`, un `break` a una etiqueta que no existe…):
+// decirles «Java sí lo acepta» era FALSO (D2). La única excepción es `ejecucion-no-disponible`, que solo
+// se emite DESPUÉS de que todas las pasadas de compilación aceptaron el programa. Lo fijan
+// `pruebas/compilacion/programas-invalidos.test.ts` (corpus real, veredictos de javac) y `no-soportado.test.ts`.
 //
 // Solo puede importar tipos de `motor/vista` (matriz de capas, herramientas/eslint/matriz-capas.ts).
 import type { CodigoNoSoportado, DatosPorCodigoNoSoportado } from '../../motor/vista.ts';
@@ -37,18 +46,29 @@ interface DatosLinea {
 // los datos de los 45 códigos.
 type DatosDe<K extends CodigoNoSoportado> = DatosLinea & DatosPorCodigoNoSoportado[K];
 
-// Marco común a (casi) todos los avisos (REQ-SUB-006): "Tu programa usa QUÉ en la línea N. Java sí
-// lo acepta, pero este visualizador cubre las unidades 3 a 7 y todavía TODAVÍA-QUÉ.
-// [ALTERNATIVA opcional] No lo ejecuto para no enseñarte un resultado que podría no ser el de
-// Java." Reproduce BYTE A BYTE el ejemplo literal de la propuesta para el caso de arreglos (ver
-// no-soportado.test.ts). "lo" es el "lo" neutro del español (retoma la ACCIÓN — "usar QUÉ" —, no el
-// género de QUÉ), así que la misma frase sirve para cualquier construcción sin desacuerdo de género.
+// Tarea 1.30: el tipo del subconjunto que más se parece a cada uno de los tres que Java tiene y el
+// visualizador no simula (`float` → `double`; `byte` y `short` → `int`). Tipado por el MISMO `tipo` que el
+// motor manda en los datos del aviso: agregar un tipo allá deja este mapa sin su entrada y `npm run tipos` falla.
+const TIPO_DEL_SUBCONJUNTO_EN_SU_LUGAR: Record<DatosPorCodigoNoSoportado['tipo-primitivo-no-soportado']['tipo'], 'int' | 'double'> = {
+  float: 'double',
+  byte: 'int',
+  short: 'int',
+};
+
+// Marco común a (casi) todos los avisos (REQ-SUB-006): "Tu programa usa QUÉ en la línea N. Es parte de
+// Java, pero este visualizador cubre las unidades 3 a 7 y todavía TODAVÍA, así que no puedo revisar si
+// esa parte está bien escrita.[ ALTERNATIVA] No lo ejecuto para no enseñarte un resultado que podría no
+// ser el de Java." Tarea 1.30 (frase aprobada por el PO el 2026-09-29): "Es parte de Java" afirma la
+// CONSTRUCCIÓN (sujeto: QUÉ, que la oración anterior acaba de nombrar), nunca el programa entero, y "no
+// puedo revisar si esa parte está bien escrita" admite lo que el reconocimiento de lo no soportado no
+// ve. Antes decía "Java sí lo acepta", que para un programa que javac rechaza era FALSO (D2). El
+// ejemplo literal del escenario de arreglos vive en no-soportado.test.ts.
 function marco(linea: number, que: string, todavia: string, alternativa?: string): string {
   const sufijoAlternativa = alternativa === undefined ? '' : ` ${alternativa}`;
   return (
-    `Tu programa usa ${que} en la línea ${linea}. Java sí lo acepta, pero este visualizador cubre ` +
-    `las unidades 3 a 7 y todavía ${todavia}.${sufijoAlternativa} No lo ejecuto para no enseñarte ` +
-    `un resultado que podría no ser el de Java.`
+    `Tu programa usa ${que} en la línea ${linea}. Es parte de Java, pero este visualizador cubre ` +
+    `las unidades 3 a 7 y todavía ${todavia}, así que no puedo revisar si esa parte está bien ` +
+    `escrita.${sufijoAlternativa} No lo ejecuto para no enseñarte un resultado que podría no ser el de Java.`
   );
 }
 
@@ -74,12 +94,14 @@ export const textosNoSoportado: { readonly [K in CodigoNoSoportado]: (datos: Dat
 
   'generico-no-soportado': ({ linea }) => marco(linea, 'un tipo genérico (como `ArrayList<Integer>`)', 'no muestra colecciones ni tipos genéricos'),
 
-  'tipo-primitivo-no-soportado': ({ linea }) =>
+  // Tarea 1.30 (decisión del PO, 2026-09-29): nombra el tipo CONCRETO que escribió el alumno y sugiere la
+  // alternativa de ESE tipo (antes: una lista de los tres, «Java sí tiene», y «en la línea N» a media oración).
+  'tipo-primitivo-no-soportado': ({ linea, tipo }) =>
     marco(
       linea,
-      'un tipo primitivo (`float`, `byte` o `short`) que Java sí tiene, pero que no forma parte de este subconjunto',
-      'no simula ese tipo (para no arriesgarme a darte un valor que no coincida con el de Java)',
-      'Si tu programa lo permite, usa `double` en vez de `float`, o `int` en vez de `byte`/`short`.',
+      `el tipo \`${tipo}\``,
+      'no simula ese tipo',
+      `Si tu programa lo permite, usa \`${TIPO_DEL_SUBCONJUNTO_EN_SU_LUGAR[tipo]}\` en vez de \`${tipo}\`.`,
     ),
 
   'final-sin-inicializador-no-soportado': ({ linea }) =>
@@ -242,14 +264,20 @@ export const textosNoSoportado: { readonly [K in CodigoNoSoportado]: (datos: Dat
   // aquí) — el hueco es que `generarIr` todavía no sabe EJECUTARLA (lote 2, tareas 1.5/2.16). Texto
   // deliberadamente genérico, sin nombrar el elemento AST interno: "declaracion-local", "lote" y
   // "tarea" son jerga de desarrollo que un alumno nunca debe leer.
+  //
+  // Tarea 1.30: es el ÚNICO texto que afirma «Java sí acepta tu programa», y es cierto porque solo se
+  // emite DESPUÉS de que TODAS las pasadas de compilación (léxico+sintaxis, atribución, alcanzabilidad y
+  // asignación definitiva) aceptaron el programa entero; cualquier otro aviso se emite al RECONOCER una
+  // construcción, sin poder revisar el resto, y por eso ya no lo afirma (ver la cabecera y `marco()`).
   'ejecucion-no-disponible': ({ linea }) =>
     `Java sí acepta tu programa, pero este visualizador todavía no sabe ejecutar lo que escribiste ` +
     `en la línea ${linea}. No lo ejecuto para no enseñarte un resultado que podría no ser el de Java.`,
 
   // Respaldo defensivo (`motor/no-soportado.ts` → `sinClasificar`): en la práctica nunca debería
   // alcanzarse (todo token `no-soportado` fija su código al crearse) — a diferencia del resto del
-  // catálogo, este texto NO afirma "Java sí lo acepta" porque, si de verdad se llega aquí, no hay
-  // certeza de qué construcción es (D2: nunca un resultado inventado, ni siquiera en el mensaje).
+  // catálogo, este texto NO usa el marco («Es parte de Java…») porque, si de verdad se llega aquí, no hay
+  // certeza de qué construcción es, así que ni siquiera afirma que sea parte de Java (D2: nunca un
+  // resultado inventado, ni siquiera en el mensaje).
   'no-soportado': ({ linea }) =>
     `Tu programa usa, en la línea ${linea}, una construcción que este visualizador no alcanza a identificar con precisión. ` +
     `Por seguridad, no la ejecuto: podría no coincidir con lo que Java realmente hace.`,

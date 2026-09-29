@@ -25,15 +25,28 @@ import type {
 // `CODIGOS_NO_SOPORTADO` (`analizador-sintactico.ts`, `semantica/atribucion.ts`) tenga que cambiar.
 // Tarea 1.25: idem `DatosPorCodigoNoSoportado` (tipa el nuevo parámetro `datos` de
 // `consumirRestoDeSentenciaNoSoportada`, ver abajo).
-import { CODIGOS_NO_SOPORTADO, type CodigoNoSoportado, type DatosPorCodigoNoSoportado } from '../no-soportado.ts';
+import {
+  CODIGOS_NO_SOPORTADO,
+  TIPOS_PRIMITIVOS_NO_SOPORTADOS,
+  type CodigoNoSoportado,
+  type DatosPorCodigoNoSoportado,
+  type TipoPrimitivoNoSoportado,
+} from '../no-soportado.ts';
 export { CODIGOS_NO_SOPORTADO, type CodigoNoSoportado };
 
 // Tabla construcción→código de los tipos primitivos NO soportados (design.md §2.6): float/byte/short
 // son tipos primitivos REALES de Java que NUNCA se reinterpretan como double/int (REQ-SUB-007) — se
 // reconocen por texto exacto en posición de tipo de DeclLocal (no viven en
 // `PALABRAS_CLAVE_TIPO_PRIMITIVO` de tokens.ts a propósito: esa tabla sigue representando solo los
-// tipos REALMENTE soportados, que también participan de casts válidos).
-export const PALABRAS_TIPO_PRIMITIVO_NO_SOPORTADO: ReadonlySet<string> = new Set(['float', 'byte', 'short']);
+// tipos REALMENTE soportados, que también participan de casts válidos). Tarea 1.30: la lista sale de
+// `TIPOS_PRIMITIVOS_NO_SOPORTADOS` (motor/no-soportado.ts), la misma de la que sale el tipo de los datos del aviso.
+export const PALABRAS_TIPO_PRIMITIVO_NO_SOPORTADO: ReadonlySet<string> = new Set(TIPOS_PRIMITIVOS_NO_SOPORTADOS);
+
+/** ¿Es esta palabra uno de los tres tipos primitivos fuera del subconjunto? Estrecha el tipo, para que el aviso
+ * lleve el tipo CONCRETO (`DatosPorCodigoNoSoportado['tipo-primitivo-no-soportado']`) sin ningún `as`. */
+export function esTipoPrimitivoNoSoportado(texto: string): texto is TipoPrimitivoNoSoportado {
+  return PALABRAS_TIPO_PRIMITIVO_NO_SOPORTADO.has(texto);
+}
 
 /**
  * Avanza el cursor hasta (e incluyendo) el token `cierre` que cierra el `apertura` que el llamador

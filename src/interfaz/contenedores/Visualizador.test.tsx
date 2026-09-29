@@ -103,6 +103,27 @@ describe('<Visualizador/> — el texto real de cada problema, con su línea', ()
     expect(aviso.textContent).not.toContain('`');
   });
 
+  // Tarea 1.30 (decisión del PO 2026-09-29): un aviso de una construcción afirma que la construcción es parte
+  // de Java y admite que no revisa lo demás; nunca dice que Java acepta el PROGRAMA (podría no aceptarlo).
+  it('un aviso de una construcción dice "Es parte de Java" y que no puede revisar esa parte, nunca que Java acepta el programa', async () => {
+    trabajadorQueResponde((id) => [
+      compiladoConProblema(id, {
+        categoria: 'no-disponible',
+        codigo: 'arreglo-no-soportado',
+        rango: RANGO,
+        linea: 4,
+        datos: { tipoArreglo: 'int[]' },
+      }),
+    ]);
+    render(<Visualizador />);
+    await pulsarVisualizar();
+
+    const texto = (await screen.findByRole('alert')).textContent ?? '';
+    expect(texto).toContain('Es parte de Java, pero este visualizador cubre las unidades 3 a 7');
+    expect(texto).toContain('así que no puedo revisar si esa parte está bien escrita.');
+    expect(texto).not.toContain('Java sí');
+  });
+
   it('triangulación: un método de biblioteca marca DOS tramos de código (el método y la clase)', async () => {
     trabajadorQueResponde((id) => [
       compiladoConProblema(id, {

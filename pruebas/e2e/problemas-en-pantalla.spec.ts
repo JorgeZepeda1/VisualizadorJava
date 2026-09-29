@@ -77,6 +77,11 @@ test.describe('problemas en pantalla: el texto real de cada problema, con su lí
     await expect(aviso).toContainText('Tu programa usa un arreglo (int[]) en la línea 3.');
     await expect(aviso.locator('code')).toHaveText(['int[]']);
     expect(await aviso.textContent()).not.toContain('`');
+    // Tarea 1.30 (decisión del PO 2026-09-29): afirma la construcción («Es parte de Java») y admite lo que no
+    // revisa; nunca dice que Java acepta el programa, que el aviso no puede saber.
+    await expect(aviso).toContainText('Es parte de Java, pero este visualizador cubre las unidades 3 a 7');
+    await expect(aviso).toContainText('así que no puedo revisar si esa parte está bien escrita.');
+    await expect(aviso).not.toContainText('Java sí');
   });
 
   test('un main sin static se explica con el nombre de la clase, y el alumno puede corregir y volver a visualizar', async ({

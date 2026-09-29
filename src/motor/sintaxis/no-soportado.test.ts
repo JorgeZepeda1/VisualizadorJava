@@ -605,6 +605,21 @@ describe('no-soportado — float/byte/short como tipo de declaración (design.md
     expect(elemento.tipo).toBe('no-soportado');
   });
 
+  // Tarea 1.30 (decisión del PO 2026-09-29): el aviso nombra el tipo CONCRETO que escribió el alumno («el tipo
+  // `byte`») y sugiere la alternativa de ESE tipo, así que el nodo lo lleva en sus datos
+  // (`DatosPorCodigoNoSoportado['tipo-primitivo-no-soportado']`), no una lista de los tres.
+  it.each([
+    ['float f = 3.5f;', 'float'],
+    ['byte b1 = 10, b2 = 20;', 'byte'],
+    ['short s;', 'short'],
+    ['final byte MAXIMO = 100;', 'byte'],
+    ['for (short i = 0; i < 3; i++) { }', 'short'],
+  ] as const)('"%s" manda el tipo que escribió el alumno en los datos del aviso ("%s")', (fuente, tipo) => {
+    const elemento = primeraSentencia(fuente);
+    expect(elemento).toMatchObject({ tipo: 'no-soportado', codigo: 'tipo-primitivo-no-soportado' });
+    expect((elemento as NodoNoSoportado).datos).toEqual({ tipo });
+  });
+
   it('"short s;" es NO-DISP', () => {
     const elemento = primeraSentencia('short s;');
     expect(elemento.tipo).toBe('no-soportado');

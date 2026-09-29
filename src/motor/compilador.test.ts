@@ -803,6 +803,24 @@ describe('compilar — un cast a byte/short/float es "no-disponible", nunca "err
     if (resultado.ok) throw new Error('se esperaba ok:false');
     expect(resultado.problema).toMatchObject({ categoria: 'no-disponible', codigo: 'tipo-primitivo-no-soportado', linea: 3 });
   });
+
+  // Tarea 1.30 (decisión del PO 2026-09-29): el aviso nombra el tipo CONCRETO que escribió el alumno, así que el
+  // `Problema` que llega a la interfaz lo lleva en `datos` — en el cast y en la declaración (dos sitios de emisión).
+  it.each(['byte', 'short', 'float'])('"(%s)" en un cast: el problema manda ese tipo en sus datos', (tipo) => {
+    const resultado = compilar(
+      `public class C {\n  public static void main(String[] a) {\n    System.out.println((${tipo}) 200);\n  }\n}\n`,
+    );
+    expect(resultado.ok).toBe(false);
+    if (resultado.ok) throw new Error('se esperaba ok:false');
+    expect(resultado.problema).toMatchObject({ categoria: 'no-disponible', codigo: 'tipo-primitivo-no-soportado', datos: { tipo } });
+  });
+
+  it.each(['byte', 'short', 'float'])('"%s x = 1;" en una declaración: el problema manda ese tipo en sus datos', (tipo) => {
+    const resultado = compilar(`public class C {\n  public static void main(String[] a) {\n    ${tipo} x = 1;\n  }\n}\n`);
+    expect(resultado.ok).toBe(false);
+    if (resultado.ok) throw new Error('se esperaba ok:false');
+    expect(resultado.problema).toMatchObject({ categoria: 'no-disponible', codigo: 'tipo-primitivo-no-soportado', linea: 3, datos: { tipo } });
+  });
 });
 
 // Tarea 1.29 (causa 5): las formas de `case` con varios valores que javac 17 compila — a través de
