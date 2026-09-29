@@ -7,6 +7,12 @@
 // que solo se reconoce en posición sintáctica (segunda clase, miembros de clase, arreglos, var,
 // genéricos, lambdas, try/catch, etiquetas, for mejorado, `switch` con flecha/yield…).
 import type { Rango } from '../fuente/rango.ts';
+// Tarea 1.24: unión CERRADA de códigos "no soportado" (única fuente de verdad, `motor/no-soportado.ts`)
+// — antes `string` abierto en los dos nodos de abajo, lo que permitía que un emisor usara un código
+// que ningún catálogo de texto reconociera (el bug real de "lambda" vs "lambda-no-soportada").
+// Tarea 1.25: `ConDatosPorCodigo` — cada nodo trae, además del código, los datos EXACTOS que su
+// texto necesita (antes ninguno de los dos traía ningún dato — el bug real de "arreglo"/"tipoArreglo").
+import type { ConDatosPorCodigo } from '../no-soportado.ts';
 
 export interface NodoPrograma {
   readonly tipo: 'programa';
@@ -208,11 +214,12 @@ export interface NodoContinue {
 // o `yield`, `throws` de `main`, `import static`. Un solo nodo/código cierra cada fila del catálogo
 // REQ-SUB-007 que no cabe dentro de una expresión — delimita la construcción completa y deja
 // seguir el análisis (nunca aborta, nunca un error de sintaxis engañoso — C8).
-export interface NodoNoSoportado {
-  readonly tipo: 'no-soportado';
-  readonly codigo: string;
-  readonly rango: Rango;
-}
+// Tarea 1.25: discriminado por `codigo` (`ConDatosPorCodigo`, motor/no-soportado.ts) — cada miembro
+// trae EXACTAMENTE los datos que `DatosPorCodigoNoSoportado[codigo]` exige (p. ej. `arreglo-no-
+// soportado` exige `datos.tipoArreglo`), nunca un `Record<string, unknown>` sin verificar. Un sitio
+// de emisión que construye este nodo con un `codigo` LITERAL (la inmensa mayoría) se verifica de
+// forma directa; uno que recibe el `codigo` por parámetro genérico ver `consumirRestoDeSentenciaNoSoportada`.
+export type NodoNoSoportado = ConDatosPorCodigo<{ readonly tipo: 'no-soportado'; readonly rango: Rango }>;
 
 export interface NodoDeclaracionLocal {
   readonly tipo: 'declaracion-local';
@@ -358,8 +365,8 @@ export interface NodoConversion {
  * bits/desplazamientos, ternario, `instanceof`, acceso a arreglo, referencia a método, `~`,
  * asignaciones compuestas de bits. Envuelve el tramo completo, respetando la precedencia real, para
  * que el análisis pueda seguir después sin dar un error de sintaxis engañoso (C8). */
-export interface NodoExpresionNoSoportada {
-  readonly tipo: 'expresion-no-soportada';
-  readonly codigo: string;
-  readonly rango: Rango;
-}
+// Tarea 1.25: mismo mecanismo que `NodoNoSoportado` (arriba) — discriminado por `codigo`, cada
+// miembro trae los datos exactos que su texto necesita (p. ej. `arreglo-no-soportado`, sitio "new
+// Tipo[...]", también exige `datos.tipoArreglo` — MISMO valor de código que la declaración, ver
+// motor/no-soportado.ts).
+export type NodoExpresionNoSoportada = ConDatosPorCodigo<{ readonly tipo: 'expresion-no-soportada'; readonly rango: Rango }>;

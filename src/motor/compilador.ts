@@ -16,6 +16,8 @@ import type { Token } from './lexico/tokens.ts';
 import { analizarPrograma } from './sintaxis/analizador-sintactico.ts';
 import type { NodoPrograma } from './sintaxis/ast.ts';
 import { recolectarNoSoportados, type NoSoportadoColectado } from './sintaxis/no-soportado.ts';
+// Tarea 1.24: única fuente de verdad de códigos "no soportado" (el respaldo defensivo de abajo).
+import { CODIGOS_NO_SOPORTADO } from './no-soportado.ts';
 import { atribuir } from './semantica/atribucion.ts';
 import { verificarAlcanzabilidad } from './semantica/alcanzabilidad.ts';
 import { verificarAsignacionDefinitiva } from './semantica/asignacion-definitiva.ts';
@@ -87,7 +89,7 @@ export function compilar(fuente: string): ResultadoCompilacion {
       : noSoportadosLexicos;
     if (avisosAntesDelError.length > 0) {
       const noSoportados = avisosAntesDelError
-        .map((t) => ({ codigo: t.codigo ?? 'no-soportado', rango: t.rango }))
+        .map((t) => ({ codigo: t.codigo ?? CODIGOS_NO_SOPORTADO.sinClasificar, rango: t.rango, datos: t.datos ?? {} }))
         .sort((a, b) => a.rango.inicio - b.rango.inicio);
       return construirResultadoNoDisponible(noSoportados, fuente);
     }
@@ -129,8 +131,17 @@ function avisoEnmascaraError(aviso: Token, rangoError: Rango): boolean {
 }
 
 // Tarea 1.14: `ProblemaAtribucion` (semantica/diagnostico.ts) es deliberadamente angosto -- ni
-// `categoria` (siempre 'error-compilacion', las pasadas 2-4 nunca producen NO-DISP ni arranque) ni
-// `linea` (se calcula aquí, mismo patrón que ya usa `construirResultadoNoDisponible`).
+// `categoria` (normalmente 'error-compilacion'; ver la corrección de abajo) ni `linea` (se calcula
+// aquí, mismo patrón que ya usa `construirResultadoNoDisponible`).
+//
+// Corrección de la tarea 1.24 (hallazgo real): este `return` IGNORABA `problema.categoria` y
+// SIEMPRE devolvía 'error-compilacion' -- correcto cuando esta función se escribió (tarea 1.14,
+// antes de que la pasada de atribución pudiera producir NO-DISP), pero la tarea 1.19 (sub-lote
+// 1-D2c) conectó la biblioteca real a `atribuir()`, que desde entonces SÍ devuelve
+// `categoria:'no-disponible'` para un miembro real-pero-no-soportado (`s.split`, `Math.sin`...) --
+// sin este fix, `compilar()` completo mostraba esos avisos con el ícono/título de "Error de
+// compilación" en vez de "No disponible en el visualizador" (D2, REQ-SUB-006). `atribuir()` en
+// aislamiento ya lo hacía bien (atribucion.test.ts); solo esta orquestación se había quedado atrás.
 function construirResultadoDeAtribucion(problema: ProblemaAtribucion, fuente: string): ResultadoCompilacion {
   const tabla = new TablaDeLineas(fuente);
   const { linea } = tabla.ubicar(problema.rango.inicio);
@@ -138,7 +149,7 @@ function construirResultadoDeAtribucion(problema: ProblemaAtribucion, fuente: st
     ok: false,
     adicionales: 0,
     problema: {
-      categoria: 'error-compilacion',
+      categoria: problema.categoria ?? 'error-compilacion',
       codigo: problema.codigo,
       rango: problema.rango,
       linea,
@@ -162,7 +173,13 @@ function construirResultadoNoDisponible(
       codigo: primero.codigo,
       rango: primero.rango,
       linea,
-      datos: {},
+      // Tarea 1.25 (EL hallazgo: `datos: {}` fijo aquí, sin importar `primero.codigo`, es la causa
+      // raíz de que 4 textos le mostraran "undefined" al alumno — `literal-octal-no-soportado`
+      // necesitaba `textoOriginal`/`valorDecimal`, `arreglo-no-soportado` necesitaba `tipoArreglo`,
+      // y ESTA función los descartaba siempre). `primero.datos` ya viene correctamente construido
+      // desde el emisor real (léxico o sintaxis, ambos verificados contra `DatosPorCodigoNoSoportado`
+      // en su propio sitio de construcción, ver `motor/no-soportado.ts`).
+      datos: primero.datos,
     },
   };
 }

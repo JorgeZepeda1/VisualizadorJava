@@ -97,6 +97,11 @@ describe('atribuir — biblioteca conectada a la atribución (sub-lote 1-D2c, RE
       categoria: 'no-disponible',
       codigo: 'miembro-de-biblioteca-no-soportado',
     });
+    // Tarea 1.25 (datos tipados): el texto es-MX (`miembro-de-biblioteca-no-soportado`) nombra el
+    // miembro CONCRETO desde la tarea 1.24 (`{ clase, nombre }`), pero este sitio de emisión
+    // (visitarLlamadaDeMiembro) mandaba `datos: {}` — el alumno veía "el miembro `undefined` de
+    // `undefined`" en vez de "split"/"String".
+    expect(problemas[0].datos).toEqual({ clase: 'String', nombre: 'split' });
   });
 
   it('triangulación: Math.sin(x) -- otra clase, mismo desenlace NO-DISP (trascendentes, REQ-SUB-007)', () => {
@@ -179,6 +184,9 @@ describe('atribuir — acceso a miembro como valor (sub-lote 1-D2c, REQ-SUB-005/
     const problemas = atribuirCuerpo('int n = Integer.SIZE;');
     expect(problemas).toHaveLength(1);
     expect(problemas[0]).toMatchObject({ categoria: 'no-disponible', codigo: 'miembro-de-biblioteca-no-soportado' });
+    // Tarea 1.25, triangulación (sitio de emisión DISTINTO — visitarAccesoMiembro, campo, no
+    // llamada — y clase/nombre distintos de "split"/"String" para probar que no están fijos).
+    expect(problemas[0].datos).toEqual({ clase: 'Integer', nombre: 'SIZE' });
   });
 
   it('triangulación: s.length (el MÉTODO String.length usado como si fuera un campo, sin paréntesis) -- "campo-no-declarado" (verificado: javac da "cannot find symbol: variable length")', () => {
@@ -583,6 +591,12 @@ describe('atribuir — "new Clase(...)" contra los constructores reales de FIRMA
     );
     expect(problemas).toHaveLength(1);
     expect(problemas[0]?.categoria).toBe('no-disponible');
+    // Tarea 1.25, triangulación (tercer sitio de emisión — visitarNuevaInstancia, constructor): un
+    // constructor no tiene "nombre" propio en JLS (ver el comentario de "sin-constructor-aplicable"
+    // más arriba), así que `nombre` describe la llamada tal como la escribió el alumno ("new
+    // Scanner") en vez de inventar un identificador que Java no usa.
+    expect(problemas[0]?.codigo).toBe('miembro-de-biblioteca-no-soportado');
+    expect(problemas[0]?.datos).toEqual({ clase: 'Scanner', nombre: 'new Scanner' });
   });
 });
 

@@ -11,7 +11,11 @@
 import { ErrorDeCompilacion } from '../error-de-compilacion.ts';
 import { PALABRAS_CLAVE_TIPO_PRIMITIVO, type Token } from '../lexico/tokens.ts';
 import { CursorDeTokens } from './cursor-de-tokens.ts';
-import { saltarHastaCerrar } from './no-soportado.ts';
+// Tarea 1.24: única fuente de verdad de códigos "no soportado" — antes este archivo emitía TODOS
+// sus códigos como strings inline, nunca importados de ninguna tabla (engram
+// visualizador-java/patron-codigos-inline-expresiones), lo que dejó pasar una discrepancia real:
+// aquí se emitía 'lambda' mientras la tabla central decía 'lambda-no-soportada'.
+import { CODIGOS_NO_SOPORTADO, saltarHastaCerrar } from './no-soportado.ts';
 import type { NodoConversion, NodoExpresion, NodoExpresionNoSoportada, NodoNuevaInstancia } from './ast.ts';
 
 const PRECEDENCIA: Readonly<Record<string, number>> = {
@@ -39,13 +43,25 @@ const PRECEDENCIA: Readonly<Record<string, number>> = {
 
 const OPERADORES_NO_SOPORTADOS_BINARIOS: ReadonlySet<string> = new Set(['|', '^', '&', '<<', '>>', '>>>']);
 
-const CODIGOS_OPERADOR_NO_SOPORTADO: Readonly<Record<string, string>> = {
-  '|': 'operador-bits-or',
-  '^': 'operador-bits-xor',
-  '&': 'operador-bits-and',
-  '<<': 'operador-desplazamiento',
-  '>>': 'operador-desplazamiento',
-  '>>>': 'operador-desplazamiento',
+// Tarea 1.25: tipo ESTRECHO (los 4 códigos reales, no `CodigoNoSoportado` completo) — los 4 solo
+// necesitan `datos: {}` (ninguno nombra el operador en su texto, `textos/es-MX/no-soportado.ts`),
+// así que el sitio de construcción de abajo (`CODIGOS_OPERADOR_NO_SOPORTADO[operador]`) puede
+// verificar `datos: {}` de verdad: con el tipo ANCHO anterior, TypeScript no podía distinguir este
+// código de, por ejemplo, `arreglo-no-soportado` (que SÍ exige más datos) y el `{}` de abajo no
+// habría compilado.
+type CodigoOperadorNoSoportado =
+  | 'operador-bits-or'
+  | 'operador-bits-xor'
+  | 'operador-bits-and'
+  | 'operador-desplazamiento';
+
+const CODIGOS_OPERADOR_NO_SOPORTADO: Readonly<Record<string, CodigoOperadorNoSoportado>> = {
+  '|': CODIGOS_NO_SOPORTADO.operadorBitsOr,
+  '^': CODIGOS_NO_SOPORTADO.operadorBitsXor,
+  '&': CODIGOS_NO_SOPORTADO.operadorBitsAnd,
+  '<<': CODIGOS_NO_SOPORTADO.operadorDesplazamiento,
+  '>>': CODIGOS_NO_SOPORTADO.operadorDesplazamiento,
+  '>>>': CODIGOS_NO_SOPORTADO.operadorDesplazamiento,
 };
 
 const OPERADORES_ASIGNACION_SOPORTADOS: ReadonlySet<string> = new Set(['=', '+=', '-=', '*=', '/=', '%=']);
@@ -83,7 +99,8 @@ function analizarAsignacion(cursor: CursorDeTokens): NodoExpresion {
     const valor = analizarAsignacion(cursor);
     return {
       tipo: 'expresion-no-soportada',
-      codigo: 'asignacion-de-bits',
+      codigo: CODIGOS_NO_SOPORTADO.asignacionDeBits,
+      datos: {},
       rango: { inicio: izquierda.rango.inicio, fin: valor.rango.fin },
     };
   }
@@ -102,7 +119,8 @@ function analizarTernario(cursor: CursorDeTokens): NodoExpresion {
   const siFalso = analizarTernario(cursor);
   return {
     tipo: 'expresion-no-soportada',
-    codigo: 'operador-ternario',
+    codigo: CODIGOS_NO_SOPORTADO.operadorTernario,
+    datos: {},
     rango: { inicio: condicion.rango.inicio, fin: siFalso.rango.fin },
   };
 }
@@ -122,7 +140,8 @@ function analizarBinaria(cursor: CursorDeTokens, precedenciaMinima: number): Nod
       const tipo = cursor.esperarTipo('identificador');
       izquierda = {
         tipo: 'expresion-no-soportada',
-        codigo: 'instanceof',
+        codigo: CODIGOS_NO_SOPORTADO.instanceofNoSoportado,
+        datos: {},
         rango: { inicio: izquierda.rango.inicio, fin: tipo.rango.fin },
       };
       continue;
@@ -131,7 +150,7 @@ function analizarBinaria(cursor: CursorDeTokens, precedenciaMinima: number): Nod
     const derecha = analizarBinaria(cursor, precedencia + 1);
     const rango = { inicio: izquierda.rango.inicio, fin: derecha.rango.fin };
     izquierda = OPERADORES_NO_SOPORTADOS_BINARIOS.has(operador)
-      ? { tipo: 'expresion-no-soportada', codigo: CODIGOS_OPERADOR_NO_SOPORTADO[operador], rango }
+      ? { tipo: 'expresion-no-soportada', codigo: CODIGOS_OPERADOR_NO_SOPORTADO[operador], datos: {}, rango }
       : { tipo: 'binaria', operador, izquierda, derecha, rango };
   }
 
@@ -152,7 +171,8 @@ function analizarUnaria(cursor: CursorDeTokens): NodoExpresion {
     const operando = analizarUnaria(cursor);
     return {
       tipo: 'expresion-no-soportada',
-      codigo: 'operador-complemento-bits',
+      codigo: CODIGOS_NO_SOPORTADO.operadorComplementoBits,
+      datos: {},
       rango: { inicio: token.rango.inicio, fin: operando.rango.fin },
     };
   }
@@ -206,7 +226,12 @@ function intentarAnalizarLambda(cursor: CursorDeTokens): NodoExpresionNoSoportad
     cursor.avanzar();
     cursor.avanzar();
     const fin = consumirCuerpoDeLambda(cursor);
-    return { tipo: 'expresion-no-soportada', codigo: 'lambda', rango: { inicio: token.rango.inicio, fin } };
+    return {
+      tipo: 'expresion-no-soportada',
+      codigo: CODIGOS_NO_SOPORTADO.lambda,
+      datos: {},
+      rango: { inicio: token.rango.inicio, fin },
+    };
   }
 
   if (token.texto === '(') {
@@ -216,7 +241,12 @@ function intentarAnalizarLambda(cursor: CursorDeTokens): NodoExpresionNoSoportad
       saltarHastaCerrar(cursor, '(', ')');
       cursor.avanzar(); // '->'
       const fin = consumirCuerpoDeLambda(cursor);
-      return { tipo: 'expresion-no-soportada', codigo: 'lambda', rango: { inicio: token.rango.inicio, fin } };
+      return {
+        tipo: 'expresion-no-soportada',
+        codigo: CODIGOS_NO_SOPORTADO.lambda,
+        datos: {},
+        rango: { inicio: token.rango.inicio, fin },
+      };
     }
   }
 
@@ -381,7 +411,8 @@ function analizarPostfija(cursor: CursorDeTokens): NodoExpresion {
       const cierre = cursor.esperarTexto(']');
       expresion = {
         tipo: 'expresion-no-soportada',
-        codigo: 'acceso-arreglo',
+        codigo: CODIGOS_NO_SOPORTADO.accesoArreglo,
+        datos: {},
         rango: { inicio: expresion.rango.inicio, fin: cierre.rango.fin },
       };
       continue;
@@ -392,7 +423,8 @@ function analizarPostfija(cursor: CursorDeTokens): NodoExpresion {
       const miembro = cursor.avanzar(); // nombre de método, o "new"
       expresion = {
         tipo: 'expresion-no-soportada',
-        codigo: 'referencia-metodo',
+        codigo: CODIGOS_NO_SOPORTADO.referenciaMetodo,
+        datos: {},
         rango: { inicio: expresion.rango.inicio, fin: miembro.rango.fin },
       };
       continue;
@@ -433,7 +465,16 @@ function analizarPrimaria(cursor: CursorDeTokens): NodoExpresion {
   // (nunca un valor inventado aquí).
   if (token.tipo === 'no-soportado') {
     cursor.avanzar();
-    return { tipo: 'expresion-no-soportada', codigo: token.codigo ?? 'no-soportado', rango: token.rango };
+    // Tarea 1.25: `token.codigo`/`token.datos` YA se construyeron juntos y verificados contra
+    // `DatosPorCodigoNoSoportado` en el léxico (`lexico/literales.ts`/`analizador-lexico.ts`, el
+    // ÚNICO lugar donde un `Token` no-soportado se crea) — aquí solo se re-envuelve ese mismo par en
+    // la forma de `NodoExpresionNoSoportada`. TypeScript no puede probar que la pareja sobrevive el
+    // re-envoltorio porque `token.codigo`/`token.datos` llegan anchos (`CodigoNoSoportado`/
+    // `Record<string, unknown>`, no el miembro específico que de verdad tienen en tiempo de
+    // ejecución) — el `as` es seguro por construcción, no un escape general de tipos.
+    const codigo = token.codigo ?? CODIGOS_NO_SOPORTADO.sinClasificar;
+    const datos = token.datos ?? {};
+    return { tipo: 'expresion-no-soportada', codigo, datos, rango: token.rango } as NodoExpresionNoSoportada;
   }
 
   if (token.tipo === 'entero' || token.tipo === 'largo') {
@@ -466,11 +507,11 @@ function analizarPrimaria(cursor: CursorDeTokens): NodoExpresion {
   // de una variable común.
   if (token.texto === 'this' || token.texto === 'super') {
     cursor.avanzar();
-    return { tipo: 'expresion-no-soportada', codigo: 'this-super-no-soportado', rango: token.rango };
+    return { tipo: 'expresion-no-soportada', codigo: CODIGOS_NO_SOPORTADO.thisSuper, datos: {}, rango: token.rango };
   }
   if (token.texto === 'null') {
     cursor.avanzar();
-    return { tipo: 'expresion-no-soportada', codigo: 'null-no-soportado', rango: token.rango };
+    return { tipo: 'expresion-no-soportada', codigo: CODIGOS_NO_SOPORTADO.nullNoSoportado, datos: {}, rango: token.rango };
   }
   // Tarea 1.23 (agregada por el orquestador: hallazgo de la guarda de avisos, sub-lote 1-D6, JLS
   // 15.28, Java 14+): "switch" en posición de EXPRESIÓN (inicializador, argumento, operando
@@ -513,8 +554,15 @@ function analizarNuevaInstancia(cursor: CursorDeTokens): NodoNuevaInstancia | No
 
   if (cursor.coincideTexto('[')) {
     let fin = tipoToken.rango.fin;
+    // Tarea 1.25 (mismo hallazgo que la forma de declaración "Tipo[] x;", analizador-sintactico.ts
+    // — este sitio, "new Tipo[...]" en posición de EXPRESIÓN, es el ÚNICO que ninguna muestra de
+    // `corpus/compilacion/avisos/` ejercita, ver expresiones.test.ts): cuenta las dimensiones reales
+    // ("[5]", "[][]"…) para que `tipoArreglo` sea el tipo EXACTO que escribió el alumno, con tantos
+    // "[]" como pares haya, nunca "int[]" fijo.
+    let dimensiones = 0;
     while (cursor.coincideTexto('[')) {
       cursor.avanzar();
+      dimensiones += 1;
       if (!cursor.coincideTexto(']')) analizarExpresion(cursor);
       fin = cursor.esperarTexto(']').rango.fin;
     }
@@ -522,7 +570,12 @@ function analizarNuevaInstancia(cursor: CursorDeTokens): NodoNuevaInstancia | No
       cursor.avanzar();
       fin = saltarHastaCerrar(cursor, '{', '}').rango.fin;
     }
-    return { tipo: 'expresion-no-soportada', codigo: 'arreglo-no-soportado', rango: { inicio: inicioToken.rango.inicio, fin } };
+    return {
+      tipo: 'expresion-no-soportada',
+      codigo: CODIGOS_NO_SOPORTADO.arregloNuevo,
+      datos: { tipoArreglo: `${tipoToken.texto}${'[]'.repeat(dimensiones)}` },
+      rango: { inicio: inicioToken.rango.inicio, fin },
+    };
   }
 
   const argumentos = analizarArgumentos(cursor);
@@ -550,7 +603,8 @@ function analizarSwitchExpresionNoSoportado(cursor: CursorDeTokens): NodoExpresi
   const cierre = saltarHastaCerrar(cursor, '{', '}');
   return {
     tipo: 'expresion-no-soportada',
-    codigo: 'switch-expresion-no-soportado',
+    codigo: CODIGOS_NO_SOPORTADO.switchExpresion,
+    datos: {},
     rango: { inicio: inicioToken.rango.inicio, fin: cierre.rango.fin },
   };
 }

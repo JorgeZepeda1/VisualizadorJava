@@ -629,11 +629,16 @@ function visitarLlamadaDeMiembro(
     return;
   }
   if (clasificacion === 'existe-no-soportado') {
+    // Tarea 1.25 (hallazgo real, encontrado por esta MISMA tarea, no reportado por el orquestador:
+    // ninguna muestra de `corpus/compilacion/avisos/` ejercita este código — solo la atribución lo
+    // produce): el texto es-MX (`miembro-de-biblioteca-no-soportado`) nombra el miembro CONCRETO
+    // desde la tarea 1.24 (`{ clase, nombre }`), pero este sitio mandaba `datos: {}` — el alumno
+    // veía "el miembro `undefined` de `undefined`" en vez de, p. ej., "split" de "String".
     problemas.push({
       codigo: CODIGOS_NO_SOPORTADO.miembroDeBiblioteca,
       categoria: 'no-disponible',
       rango: callee.rango,
-      datos: {},
+      datos: { clase, nombre: callee.miembro },
     });
     return;
   }
@@ -686,11 +691,13 @@ function visitarAccesoMiembro(
     return;
   }
   if (clasificacion === 'existe-no-soportado') {
+    // Tarea 1.25 (mismo hallazgo que `visitarLlamadaDeMiembro` arriba, sitio de emisión DISTINTO —
+    // acceso de CAMPO, no llamada): "Integer.SIZE" mostraba "el miembro `undefined` de `undefined`".
     problemas.push({
       codigo: CODIGOS_NO_SOPORTADO.miembroDeBiblioteca,
       categoria: 'no-disponible',
       rango: nodo.rango,
-      datos: {},
+      datos: { clase, nombre: nodo.miembro },
     });
   }
 }
@@ -765,11 +772,15 @@ function visitarNuevaInstancia(
   }
   const claveDeFirma = `${nodo.nombreTipo}(${firma.parametros.join(',')})`;
   if (!CONSTRUCTORES_SOPORTADOS.has(claveDeFirma)) {
+    // Tarea 1.25 (mismo hallazgo, tercer sitio de emisión — CONSTRUCTOR): un constructor no tiene
+    // "nombre" propio en JLS (ver el comentario de "sin-constructor-aplicable" más abajo en este
+    // mismo archivo) — `nombre` describe la llamada tal como la escribió el alumno ("new Scanner")
+    // en vez de inventar un identificador que Java no usa (D2).
     problemas.push({
       codigo: CODIGOS_NO_SOPORTADO.miembroDeBiblioteca,
       categoria: 'no-disponible',
       rango: nodo.rango,
-      datos: {},
+      datos: { clase: nodo.nombreTipo, nombre: `new ${nodo.nombreTipo}` },
     });
   }
 }

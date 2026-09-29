@@ -297,6 +297,29 @@ describe('expresiones — NO-DISP con precedencia real (design.md §2.6, ADR 003
     // El operando derecho real fue "b * c" completo (mayor precedencia que "&"), no solo "b".
     expect(expr.rango).toEqual({ inicio: 0, fin: 9 });
   });
+
+  // Tarea 1.25 (datos tipados): "new Tipo[...]" en posición de EXPRESIÓN (analizarNuevaInstancia,
+  // código `arregloNuevo` — MISMO valor de texto que la declaración "Tipo[] x;", REQ-SUB-007 fila
+  // "Arreglos") es el ÚNICO sitio de emisión de `arreglo-no-soportado` que NINGUNA muestra de
+  // `corpus/compilacion/avisos/` ejercita (las 3 muestras de arreglo reales — 25/26/27 — declaran
+  // el tipo primero, "Tipo[] nombre = ...", así que SIEMPRE se detectan como declaración antes de
+  // llegar a interpretar el inicializador "new ..." como expresión). Sin esta prueba, el sitio de
+  // `analizarNuevaInstancia` quedaría sin ninguna verificación real de que manda `tipoArreglo`.
+  it('"new Tipo[...]" (arreglo, en posición de EXPRESIÓN) es NoSoportado con el tipo real en datos.tipoArreglo', () => {
+    expect(expresionDe('new int[5]')).toMatchObject({
+      tipo: 'expresion-no-soportada',
+      codigo: 'arreglo-no-soportado',
+      datos: { tipoArreglo: 'int[]' },
+    });
+  });
+
+  it('triangulación: otro tipo y dos dimensiones ("new String[3][]") — nunca "int[]" fijo', () => {
+    expect(expresionDe('new String[3][]')).toMatchObject({
+      tipo: 'expresion-no-soportada',
+      codigo: 'arreglo-no-soportado',
+      datos: { tipoArreglo: 'String[][]' },
+    });
+  });
 });
 
 // Tarea 1.23 (agregada por el orquestador: hallazgo de la guarda de avisos, sub-lote 1-D6):

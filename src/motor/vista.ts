@@ -12,3 +12,9 @@ export type { Categoria, CodigoProblema, Problema } from './problemas.ts';
 // Tarea 1.15: idem para el catálogo de arranque (`src/textos/es-MX/arranque.ts`, ADR 015).
 export type { CodigoArranque, ProblemaArranque } from './problemas.ts';
 export type { Tipo } from './semantica/tipos.ts';
+// Tarea 1.24: idem para el catálogo de avisos "no soportado" (`src/textos/es-MX/no-soportado.ts`,
+// ADR 015) — la unión CERRADA de `motor/no-soportado.ts`, única fuente de verdad de estos códigos.
+// Tarea 1.25: también `DatosPorCodigoNoSoportado` — la forma EXACTA de datos que cada código exige,
+// para que el catálogo de textos tipe su argumento con el MISMO contrato que ya exige a los
+// emisores del motor (una sola fuente de verdad de la forma, nunca dos listas que puedan divergir).
+export type { CodigoNoSoportado, DatosPorCodigoNoSoportado } from './no-soportado.ts';

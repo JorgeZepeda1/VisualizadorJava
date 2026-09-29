@@ -212,6 +212,11 @@ describe('leerNumero — no soportado (design.md §2.6, REQ-SUB-007)', () => {
     expect(resultado.noSoportado?.codigo).toBe('literal-octal-no-soportado');
     expect(resultado.noSoportado?.nota).toBe('Java lo lee como octal: 8');
     expect(resultado.longitud).toBe(3);
+    // Tarea 1.25 (datos tipados): el texto es-MX (`literal-octal-no-soportado`) necesita el literal
+    // EXACTO que escribió el alumno y su valor decimal real — antes de esta tarea, `noSoportado` no
+    // tenía ningún campo `datos` (solo `nota`, ya formateada para OTRO propósito) y el motor mandaba
+    // `datos: {}`, así que el alumno veía "el número `undefined`" en vez de "010".
+    expect(resultado.noSoportado?.datos).toEqual({ textoOriginal: '010', valorDecimal: 8 });
   });
 
   // Corrección obligatoria (sub-lote 1-B): "08"/"09" hoy se leían como decimal 8/9 (simplificación
@@ -241,6 +246,9 @@ describe('leerNumero — no soportado (design.md §2.6, REQ-SUB-007)', () => {
     expect(resultado.noSoportado?.codigo).toBe('literal-octal-no-soportado');
     expect(resultado.noSoportado?.nota).toBe('Java lo lee como octal: 87'); // 0127 octal = 87 decimal
     expect(resultado.longitud).toBe(4); // "0127" — el "8" queda fuera, para el siguiente token
+    // Tarea 1.25, triangulación (otro literal, otro valor — nunca "010"/8 fijos): confirma que
+    // `datos.textoOriginal` es el tramo REAL consumido ("0127", sin el "8" descartado).
+    expect(resultado.noSoportado?.datos).toEqual({ textoOriginal: '0127', valorDecimal: 87 });
   });
 
   it('un "0" solo seguido de un dígito inválido re-tokeniza correctamente en el flujo completo (tokenizar)', () => {

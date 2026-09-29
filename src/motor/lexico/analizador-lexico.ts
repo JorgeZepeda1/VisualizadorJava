@@ -7,6 +7,8 @@ import type { Rango } from '../fuente/rango.ts';
 import { ErrorDeCompilacion } from '../error-de-compilacion.ts';
 import { leerCadena, leerCaracter, leerNumero } from './literales.ts';
 import { OPERADORES_MULTICARACTER, PALABRAS_CLAVE, PUNTUACION, type Token } from './tokens.ts';
+// Tarea 1.24: única fuente de verdad de códigos "no soportado" (antes string inline suelto aquí).
+import { CODIGOS_NO_SOPORTADO } from '../no-soportado.ts';
 
 const INICIO_IDENTIFICADOR = /[A-Za-z_$]/;
 const RESTO_IDENTIFICADOR = /[A-Za-z0-9_$]/;
@@ -49,8 +51,9 @@ function tokenNoSoportadoPorEscapeUnicode(
     tipo: 'no-soportado',
     texto: fuente.slice(cursor, fin),
     rango: { inicio: cursor, fin },
-    codigo: 'escape-unicode-no-soportado',
+    codigo: CODIGOS_NO_SOPORTADO.escapeUnicodeNoSoportado,
     nota: `Java procesa "\\u${escape.hex}" como el carácter Unicode U+${escape.hex.toUpperCase()}${sufijo} antes de leer el resto del programa; este visualizador todavía no lo soporta.`,
+    datos: {},
   };
 }
 
@@ -115,6 +118,7 @@ export function tokenizar(fuente: string): Token[] {
           rango,
           codigo: noSoportados[0].codigo,
           nota: noSoportados[0].nota,
+          datos: noSoportados[0].datos,
         });
       } else {
         tokens.push({ tipo: 'cadena', texto, valor, rango });
@@ -135,6 +139,7 @@ export function tokenizar(fuente: string): Token[] {
           rango,
           codigo: noSoportados[0].codigo,
           nota: noSoportados[0].nota,
+          datos: noSoportados[0].datos,
         });
       } else {
         tokens.push({ tipo: 'caracter', texto, valorCaracter: valor, rango });
@@ -166,7 +171,14 @@ export function tokenizar(fuente: string): Token[] {
       const rango: Rango = { inicio, fin: cursor };
       const texto = fuente.slice(inicio, cursor);
       if (numero.noSoportado) {
-        tokens.push({ tipo: 'no-soportado', texto, rango, codigo: numero.noSoportado.codigo, nota: numero.noSoportado.nota });
+        tokens.push({
+          tipo: 'no-soportado',
+          texto,
+          rango,
+          codigo: numero.noSoportado.codigo,
+          nota: numero.noSoportado.nota,
+          datos: numero.noSoportado.datos,
+        });
       } else if (numero.clase === 'doble') {
         tokens.push({ tipo: 'doble', texto, rango, valorDoble: numero.valorDoble });
       } else if (numero.clase === 'largo') {

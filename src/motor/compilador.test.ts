@@ -637,3 +637,43 @@ describe('compilar — mutante real u6-ciclos-anidados-tabla.java#52 (propagaci�
     expect(resultado.problema.linea).toBe(3);
   });
 });
+
+// Tarea 1.24 (hallazgo real durante el catálogo es-MX de avisos "no disponible", orquestador):
+// `construirResultadoDeAtribucion` (arriba) ignoraba `problema.categoria` y SIEMPRE devolvía
+// 'error-compilacion' -- el comentario de la tarea 1.14 ("las pasadas 2-4 nunca producen NO-DISP")
+// quedó DESACTUALIZADO desde la tarea 1.19 (biblioteca conectada a la atribución, sub-lote 1-D2c),
+// que SÍ hace que `atribuir()` devuelva `categoria:'no-disponible'` para un miembro real-pero-no-
+// soportado (`s.split`, `Math.sin`...) -- verificado con `atribuir()` en aislamiento
+// (atribucion.test.ts líneas 93-106), pero NUNCA a través de `compilar()` completo, que es lo que
+// de verdad ve un alumno. RED real (ejecutado antes de este fix, script de verificación aparte):
+// `compilar('class C { public static void main(String[] a) { String s = "a,b"; s.split(","); } }')`
+// daba `{ categoria: 'error-compilacion', codigo: 'miembro-de-biblioteca-no-soportado' }` -- D2: mal
+// clasificado, REQ-SUB-006 exige el ícono/título de "No disponible", NUNCA el de "Error de
+// compilación", para una construcción que Java SÍ acepta.
+describe('compilar — un miembro de biblioteca real-pero-no-soportado es "no-disponible", nunca "error-compilacion" (hallazgo de la tarea 1.24)', () => {
+  it('"s.split(\',\')" (String.split, REQ-SUB-005/007) llega a categoria:"no-disponible" a través de compilar() completo', () => {
+    const fuente = 'class C { public static void main(String[] a) { String s = "a,b"; s.split(","); } }';
+    const resultado = compilar(fuente);
+    expect(resultado.ok).toBe(false);
+    if (resultado.ok) throw new Error('se esperaba ok:false');
+    expect(resultado.problema.categoria).toBe('no-disponible');
+    expect(resultado.problema.codigo).toBe('miembro-de-biblioteca-no-soportado');
+  });
+
+  it('triangulación: "Math.sin(x)" (otro miembro real-pero-no-soportado, otra clase) también llega como "no-disponible"', () => {
+    const fuente = 'class C { public static void main(String[] a) { double x = 1.0; Math.sin(x); } }';
+    const resultado = compilar(fuente);
+    expect(resultado.ok).toBe(false);
+    if (resultado.ok) throw new Error('se esperaba ok:false');
+    expect(resultado.problema.categoria).toBe('no-disponible');
+    expect(resultado.problema.codigo).toBe('miembro-de-biblioteca-no-soportado');
+  });
+
+  it('regresión: un error de atribución REAL (variable no declarada) sigue siendo "error-compilacion"', () => {
+    const resultado = compilar('class C { public static void main(String[] a) { int x = y; } }');
+    expect(resultado.ok).toBe(false);
+    if (resultado.ok) throw new Error('se esperaba ok:false');
+    expect(resultado.problema.categoria).toBe('error-compilacion');
+    expect(resultado.problema.codigo).toBe('variable-no-declarada');
+  });
+});

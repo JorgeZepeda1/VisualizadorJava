@@ -139,7 +139,7 @@ function analizarImportaciones(cursor: CursorDeTokens, noSoportadas: NodoNoSopor
 function analizarImportacionEstatica(cursor: CursorDeTokens): NodoNoSoportado {
   const inicioToken = cursor.esperarTexto('import');
   cursor.esperarTexto('static');
-  return consumirRestoDeSentenciaNoSoportada(cursor, inicioToken.rango.inicio, CODIGOS_NO_SOPORTADO.importStatic);
+  return consumirRestoDeSentenciaNoSoportada(cursor, inicioToken.rango.inicio, CODIGOS_NO_SOPORTADO.importStatic, {});
 }
 
 function analizarImportacion(cursor: CursorDeTokens): NodoImportacion {
@@ -365,21 +365,26 @@ function analizarDeclaracionLocal(cursor: CursorDeTokens): NodoDeclaracionLocal 
   }
 
   if (cursor.coincideTexto('var')) {
-    return consumirRestoDeSentenciaNoSoportada(cursor, inicio, CODIGOS_NO_SOPORTADO.var);
+    return consumirRestoDeSentenciaNoSoportada(cursor, inicio, CODIGOS_NO_SOPORTADO.var, {});
   }
 
   const nombreTipoToken = cursor.avanzar();
   const nombreTipo = nombreTipoToken.texto;
 
   if (PALABRAS_TIPO_PRIMITIVO_NO_SOPORTADO.has(nombreTipo)) {
-    return consumirRestoDeSentenciaNoSoportada(cursor, inicio, CODIGOS_NO_SOPORTADO.tipoPrimitivoNoSoportado);
+    return consumirRestoDeSentenciaNoSoportada(cursor, inicio, CODIGOS_NO_SOPORTADO.tipoPrimitivoNoSoportado, {});
   }
 
   if (nombreTipoToken.tipo === 'identificador' && cursor.coincideTexto('<') && pareceGenericoDesde(cursor, 0)) {
-    return consumirRestoDeSentenciaNoSoportada(cursor, inicio, CODIGOS_NO_SOPORTADO.generico);
+    return consumirRestoDeSentenciaNoSoportada(cursor, inicio, CODIGOS_NO_SOPORTADO.generico, {});
   }
   if (cursor.coincideTexto('[') && cursor.mirar(1).texto === ']') {
-    return consumirRestoDeSentenciaNoSoportada(cursor, inicio, CODIGOS_NO_SOPORTADO.arreglo);
+    // Tarea 1.25 (hallazgo real del orquestador: el alumno veía "un arreglo (`undefined`)" en vez
+    // de "un arreglo (`int[]`)"): "Tipo[] nombre" es SIEMPRE una sola dimensión en este sitio (el
+    // chequeo de `pareceDeclaracionLocal` que nos trajo aquí solo mira UN "[" seguido de UN "]").
+    return consumirRestoDeSentenciaNoSoportada(cursor, inicio, CODIGOS_NO_SOPORTADO.arreglo, {
+      tipoArreglo: `${nombreTipo}[]`,
+    });
   }
 
   const declaradores = [analizarDeclarador(cursor)];
@@ -391,7 +396,7 @@ function analizarDeclaracionLocal(cursor: CursorDeTokens): NodoDeclaracionLocal 
 
   // REQ-SUB-007: "final sin inicializador" es NO-DISP (nunca se ejecuta con un valor a medias).
   if (esFinal && declaradores.some((d) => d.inicializador === null)) {
-    return { tipo: 'no-soportado', codigo: CODIGOS_NO_SOPORTADO.finalSinInicializador, rango: { inicio, fin } };
+    return { tipo: 'no-soportado', codigo: CODIGOS_NO_SOPORTADO.finalSinInicializador, datos: {}, rango: { inicio, fin } };
   }
 
   return { tipo: 'declaracion-local', esFinal, nombreTipo, declaradores, rango: { inicio, fin } };
@@ -496,6 +501,7 @@ function analizarFor(cursor: CursorDeTokens): NodoFor | NodoNoSoportado {
     return {
       tipo: 'no-soportado',
       codigo: CODIGOS_NO_SOPORTADO.forMejorado,
+      datos: {},
       rango: { inicio: inicioToken.rango.inicio, fin: cuerpo.rango.fin },
     };
   }
@@ -509,11 +515,13 @@ function analizarFor(cursor: CursorDeTokens): NodoFor | NodoNoSoportado {
     if (decl.tipo === 'no-soportado') {
       saltarHastaCerrar(cursor, '(', ')');
       const cuerpo = analizarSentencia(cursor);
-      return {
-        tipo: 'no-soportado',
-        codigo: decl.codigo,
-        rango: { inicio: inicioToken.rango.inicio, fin: cuerpo.rango.fin },
-      };
+      // Tarea 1.25: `...decl` (nunca reconstruir `codigo`/`datos` campo por campo) preserva la
+      // pareja código+datos exacta que `decl` YA trae bien formada (p. ej. un "for (int[] x = ...;
+      // ...)" reporta el arreglo con su `tipoArreglo` real, no un `for` genérico sin datos) — es
+      // también la única forma de que esto compile: `decl.codigo` es `CodigoNoSoportado` (ancho, no
+      // un literal) en este punto, así que reconstruir el objeto campo por campo perdería la
+      // relación entre `codigo` y `datos` que el spread sí conserva.
+      return { ...decl, rango: { inicio: inicioToken.rango.inicio, fin: cuerpo.rango.fin } };
     }
     inicializacionDeclaracion = decl;
   } else {
@@ -577,7 +585,7 @@ function analizarSwitch(cursor: CursorDeTokens): NodoSwitch {
     }
     if (cursor.coincideTexto('yield')) {
       const inicio = cursor.actual().rango.inicio;
-      elementos.push(consumirRestoDeSentenciaNoSoportada(cursor, inicio, CODIGOS_NO_SOPORTADO.yield));
+      elementos.push(consumirRestoDeSentenciaNoSoportada(cursor, inicio, CODIGOS_NO_SOPORTADO.yield, {}));
       continue;
     }
     elementos.push(analizarElementoDeBloque(cursor));
@@ -594,7 +602,12 @@ function analizarEtiquetaCase(cursor: CursorDeTokens): NodoEtiquetaCase | NodoNo
   if (cursor.coincideTexto('->')) {
     cursor.avanzar();
     const fin = consumirCuerpoDeFlecha(cursor);
-    return { tipo: 'no-soportado', codigo: CODIGOS_NO_SOPORTADO.switchFlecha, rango: { inicio: inicioToken.rango.inicio, fin } };
+    return {
+      tipo: 'no-soportado',
+      codigo: CODIGOS_NO_SOPORTADO.switchFlecha,
+      datos: {},
+      rango: { inicio: inicioToken.rango.inicio, fin },
+    };
   }
   const fin = cursor.esperarTexto(':').rango.fin;
   return { tipo: 'etiqueta-case', valor, rango: { inicio: inicioToken.rango.inicio, fin } };
@@ -605,7 +618,12 @@ function analizarEtiquetaDefault(cursor: CursorDeTokens): NodoEtiquetaDefault | 
   if (cursor.coincideTexto('->')) {
     cursor.avanzar();
     const fin = consumirCuerpoDeFlecha(cursor);
-    return { tipo: 'no-soportado', codigo: CODIGOS_NO_SOPORTADO.switchFlecha, rango: { inicio: inicioToken.rango.inicio, fin } };
+    return {
+      tipo: 'no-soportado',
+      codigo: CODIGOS_NO_SOPORTADO.switchFlecha,
+      datos: {},
+      rango: { inicio: inicioToken.rango.inicio, fin },
+    };
   }
   const fin = cursor.esperarTexto(':').rango.fin;
   return { tipo: 'etiqueta-default', rango: { inicio: inicioToken.rango.inicio, fin } };
@@ -618,7 +636,8 @@ function consumirCuerpoDeFlecha(cursor: CursorDeTokens): number {
     cursor.avanzar();
     return saltarHastaCerrar(cursor, '{', '}').rango.fin;
   }
-  return consumirRestoDeSentenciaNoSoportada(cursor, cursor.actual().rango.inicio, CODIGOS_NO_SOPORTADO.switchFlecha).rango.fin;
+  return consumirRestoDeSentenciaNoSoportada(cursor, cursor.actual().rango.inicio, CODIGOS_NO_SOPORTADO.switchFlecha, {})
+    .rango.fin;
 }
 
 function analizarBreak(cursor: CursorDeTokens): NodoBreak | NodoNoSoportado {
@@ -626,7 +645,12 @@ function analizarBreak(cursor: CursorDeTokens): NodoBreak | NodoNoSoportado {
   if (cursor.actual().tipo === 'identificador') {
     cursor.avanzar();
     const fin = cursor.esperarTexto(';').rango.fin;
-    return { tipo: 'no-soportado', codigo: CODIGOS_NO_SOPORTADO.breakConEtiqueta, rango: { inicio: inicioToken.rango.inicio, fin } };
+    return {
+      tipo: 'no-soportado',
+      codigo: CODIGOS_NO_SOPORTADO.breakConEtiqueta,
+      datos: {},
+      rango: { inicio: inicioToken.rango.inicio, fin },
+    };
   }
   const fin = cursor.esperarTexto(';').rango.fin;
   return { tipo: 'break', rango: { inicio: inicioToken.rango.inicio, fin } };
@@ -637,7 +661,12 @@ function analizarContinue(cursor: CursorDeTokens): NodoContinue | NodoNoSoportad
   if (cursor.actual().tipo === 'identificador') {
     cursor.avanzar();
     const fin = cursor.esperarTexto(';').rango.fin;
-    return { tipo: 'no-soportado', codigo: CODIGOS_NO_SOPORTADO.continueConEtiqueta, rango: { inicio: inicioToken.rango.inicio, fin } };
+    return {
+      tipo: 'no-soportado',
+      codigo: CODIGOS_NO_SOPORTADO.continueConEtiqueta,
+      datos: {},
+      rango: { inicio: inicioToken.rango.inicio, fin },
+    };
   }
   const fin = cursor.esperarTexto(';').rango.fin;
   return { tipo: 'continue', rango: { inicio: inicioToken.rango.inicio, fin } };
@@ -671,12 +700,17 @@ function analizarTry(cursor: CursorDeTokens): NodoNoSoportado {
     cursor.esperarTexto('{');
     cierre = saltarHastaCerrar(cursor, '{', '}');
   }
-  return { tipo: 'no-soportado', codigo: CODIGOS_NO_SOPORTADO.tryCatch, rango: { inicio: inicioToken.rango.inicio, fin: cierre.rango.fin } };
+  return {
+    tipo: 'no-soportado',
+    codigo: CODIGOS_NO_SOPORTADO.tryCatch,
+    datos: {},
+    rango: { inicio: inicioToken.rango.inicio, fin: cierre.rango.fin },
+  };
 }
 
 function analizarThrow(cursor: CursorDeTokens): NodoNoSoportado {
   const inicioToken = cursor.esperarTexto('throw');
-  return consumirRestoDeSentenciaNoSoportada(cursor, inicioToken.rango.inicio, CODIGOS_NO_SOPORTADO.throwSentencia);
+  return consumirRestoDeSentenciaNoSoportada(cursor, inicioToken.rango.inicio, CODIGOS_NO_SOPORTADO.throwSentencia, {});
 }
 
 // "Id ':' Sentencia" (tarea 1.6, REQ-SUB-007): la etiqueta en sí es NO-DISP, pero delimita su
@@ -685,7 +719,12 @@ function analizarEtiqueta(cursor: CursorDeTokens): NodoNoSoportado {
   const inicioToken = cursor.avanzar(); // identificador (la etiqueta)
   cursor.esperarTexto(':');
   const interior = analizarSentencia(cursor);
-  return { tipo: 'no-soportado', codigo: CODIGOS_NO_SOPORTADO.etiqueta, rango: { inicio: inicioToken.rango.inicio, fin: interior.rango.fin } };
+  return {
+    tipo: 'no-soportado',
+    codigo: CODIGOS_NO_SOPORTADO.etiqueta,
+    datos: {},
+    rango: { inicio: inicioToken.rango.inicio, fin: interior.rango.fin },
+  };
 }
 
 // Tarea 1.8 (pendiente heredado): "println" O "print" — antes solo "println". `System.err` queda

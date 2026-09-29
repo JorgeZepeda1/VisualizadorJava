@@ -18,41 +18,22 @@ import type {
   NodoNoSoportado,
   NodoPrograma,
 } from './ast.ts';
+// Tarea 1.24: la tabla YA NO se define aquí — vive en `motor/no-soportado.ts` (única fuente de
+// verdad, importada tanto por `lexico/` como por `sintaxis/` sin dependencia hacia atrás). Se
+// importa normalmente (para que este mismo módulo pueda seguir usándola, ver el recolector más
+// abajo) y se RE-EXPORTA con el mismo nombre para que ningún import existente de
+// `CODIGOS_NO_SOPORTADO` (`analizador-sintactico.ts`, `semantica/atribucion.ts`) tenga que cambiar.
+// Tarea 1.25: idem `DatosPorCodigoNoSoportado` (tipa el nuevo parámetro `datos` de
+// `consumirRestoDeSentenciaNoSoportada`, ver abajo).
+import { CODIGOS_NO_SOPORTADO, type CodigoNoSoportado, type DatosPorCodigoNoSoportado } from '../no-soportado.ts';
+export { CODIGOS_NO_SOPORTADO, type CodigoNoSoportado };
 
-// Tabla construcción→código (REFACTOR pedido por 1.6, reusada por el recolector de 1.17).
-// float/byte/short (design.md §2.6): tipos primitivos reales de Java que NUNCA se reinterpretan
-// como double/int (REQ-SUB-007) — se reconocen por texto exacto en posición de tipo de DeclLocal
-// (no viven en `PALABRAS_CLAVE_TIPO_PRIMITIVO` de tokens.ts a propósito: esa tabla sigue
-// representando solo los tipos REALMENTE soportados, que también participan de casts válidos).
+// Tabla construcción→código de los tipos primitivos NO soportados (design.md §2.6): float/byte/short
+// son tipos primitivos REALES de Java que NUNCA se reinterpretan como double/int (REQ-SUB-007) — se
+// reconocen por texto exacto en posición de tipo de DeclLocal (no viven en
+// `PALABRAS_CLAVE_TIPO_PRIMITIVO` de tokens.ts a propósito: esa tabla sigue representando solo los
+// tipos REALMENTE soportados, que también participan de casts válidos).
 export const PALABRAS_TIPO_PRIMITIVO_NO_SOPORTADO: ReadonlySet<string> = new Set(['float', 'byte', 'short']);
-
-export const CODIGOS_NO_SOPORTADO = {
-  otroTipoDeNivelSuperior: 'otro-tipo-de-nivel-superior-no-soportado',
-  miembroDeClase: 'miembro-de-clase-no-soportado',
-  throwsClausula: 'throws-no-soportado',
-  arreglo: 'arreglo-no-soportado',
-  var: 'var-no-soportado',
-  generico: 'generico-no-soportado',
-  tipoPrimitivoNoSoportado: 'tipo-primitivo-no-soportado',
-  finalSinInicializador: 'final-sin-inicializador-no-soportado',
-  forMejorado: 'for-mejorado-no-soportado',
-  etiqueta: 'etiqueta-no-soportada',
-  breakConEtiqueta: 'break-con-etiqueta-no-soportado',
-  continueConEtiqueta: 'continue-con-etiqueta-no-soportado',
-  tryCatch: 'try-catch-no-soportado',
-  throwSentencia: 'throw-no-soportado',
-  switchFlecha: 'switch-flecha-no-soportado',
-  yield: 'yield-no-soportado',
-  importStatic: 'import-static-no-soportado',
-  lambda: 'lambda-no-soportada',
-  arregloNuevo: 'arreglo-no-soportado',
-  // Sub-lote 1-D2c (design.md §2.6 fila "Atribución": "miembros existentes no soportados de
-  // clases soportadas" — `s.split`, `Math.sin`, `sc.hasNextInt`…). A diferencia de TODO lo demás
-  // en esta tabla, este código NO lo produce un reconocedor de `sintaxis/` (necesita el catálogo
-  // real del JDK para saber que el miembro EXISTE, ADR 010) — lo emite `semantica/atribucion.ts`
-  // directamente, reusando esta MISMA constante para no tener dos fuentes de nombres NO-DISP.
-  miembroDeBiblioteca: 'miembro-de-biblioteca-no-soportado',
-} as const;
 
 /**
  * Avanza el cursor hasta (e incluyendo) el token `cierre` que cierra el `apertura` que el llamador
@@ -79,10 +60,18 @@ export function saltarHastaCerrar(cursor: CursorDeTokens, apertura: string, cier
  * construcciones que terminan en ";" y cuyo interior no hace falta interpretar (var, arreglos,
  * genéricos, throw, import static…).
  */
-export function consumirRestoDeSentenciaNoSoportada(
+// Tarea 1.25: genérica sobre `C` (en vez de recibir `codigo: CodigoNoSoportado` a secas) para que el
+// LLAMADOR quede obligado a pasar los datos exactos que ese código necesita — un llamador que use
+// `CODIGOS_NO_SOPORTADO.arreglo` sin también pasar `{ tipoArreglo }` deja de compilar. El `as
+// NodoNoSoportado` del `return` es la única forma de construir el valor: TypeScript no distribuye un
+// tipo discriminado sobre un parámetro de tipo genérico (`C` sigue siendo "cualquier miembro de la
+// unión" dentro del cuerpo de la función) — la seguridad real vive en la FIRMA (`datos:
+// DatosPorCodigoNoSoportado[C]`), que sí liga cada `codigo` concreto a su `datos` en cada llamada.
+export function consumirRestoDeSentenciaNoSoportada<C extends CodigoNoSoportado>(
   cursor: CursorDeTokens,
   inicio: number,
-  codigo: string,
+  codigo: C,
+  datos: DatosPorCodigoNoSoportado[C],
 ): NodoNoSoportado {
   let profundidad = 0;
   for (;;) {
@@ -102,7 +91,7 @@ export function consumirRestoDeSentenciaNoSoportada(
     }
     if (profundidad === 0 && token.texto === ';') {
       const fin = cursor.avanzar().rango.fin;
-      return { tipo: 'no-soportado', codigo, rango: { inicio, fin } };
+      return { tipo: 'no-soportado', codigo, datos, rango: { inicio, fin } } as NodoNoSoportado;
     }
     cursor.avanzar();
   }
@@ -167,7 +156,12 @@ export function consumirTipoDeNivelSuperior(cursor: CursorDeTokens): NodoNoSopor
   }
   cursor.avanzar();
   const cierre = saltarHastaCerrar(cursor, '{', '}');
-  return { tipo: 'no-soportado', codigo: CODIGOS_NO_SOPORTADO.otroTipoDeNivelSuperior, rango: { inicio, fin: cierre.rango.fin } };
+  return {
+    tipo: 'no-soportado',
+    codigo: CODIGOS_NO_SOPORTADO.otroTipoDeNivelSuperior,
+    datos: {},
+    rango: { inicio, fin: cierre.rango.fin },
+  };
 }
 
 // ---- Miembros de clase que no son `main` (campos, métodos propios, clases internas, anotaciones,
@@ -322,12 +316,17 @@ export function consumirMiembroDeClase(cursor: CursorDeTokens): NodoNoSoportado 
     }
     if (profundidadParen === 0 && token.texto === ';') {
       const fin = cursor.avanzar().rango.fin;
-      return { tipo: 'no-soportado', codigo: CODIGOS_NO_SOPORTADO.miembroDeClase, rango: { inicio, fin } };
+      return { tipo: 'no-soportado', codigo: CODIGOS_NO_SOPORTADO.miembroDeClase, datos: {}, rango: { inicio, fin } };
     }
     if (profundidadParen === 0 && token.texto === '{') {
       cursor.avanzar();
       const cierre = saltarHastaCerrar(cursor, '{', '}');
-      return { tipo: 'no-soportado', codigo: CODIGOS_NO_SOPORTADO.miembroDeClase, rango: { inicio, fin: cierre.rango.fin } };
+      return {
+        tipo: 'no-soportado',
+        codigo: CODIGOS_NO_SOPORTADO.miembroDeClase,
+        datos: {},
+        rango: { inicio, fin: cierre.rango.fin },
+      };
     }
     cursor.avanzar();
   }
@@ -355,6 +354,7 @@ export function analizarClausulaThrowsOpcional(cursor: CursorDeTokens): NodoNoSo
   return {
     tipo: 'no-soportado',
     codigo: CODIGOS_NO_SOPORTADO.throwsClausula,
+    datos: {},
     rango: { inicio: inicioToken.rango.inicio, fin: ultimo.rango.fin },
   };
 }
@@ -366,9 +366,17 @@ export function analizarClausulaThrowsOpcional(cursor: CursorDeTokens): NodoNoSo
 // texto (design.md §2.1: "el primero en el texto"). `compilador.ts` reporta el primero y cuenta el
 // resto como "adicionales" (REQ-SUB-006: "y N más").
 
+// Tarea 1.25: `datos` es una COPIA (nunca una construcción nueva) de un valor que YA se verificó
+// contra `DatosPorCodigoNoSoportado` en su sitio de origen (un `Token` léxico, ya tipado por
+// `ConDatosPorCodigo` en `literales.ts`/`analizador-lexico.ts`, o un `NodoNoSoportado`/
+// `NodoExpresionNoSoportada` sintáctico, ídem en `ast.ts`) — por eso, a diferencia de esos tres
+// sitios, esta interfaz sigue con `Record<string, unknown>` sin re-verificar: no hay nada nuevo que
+// construir aquí, solo reunir en una sola lista lo que cada emisor ya construyó bien (mismo patrón
+// que `ProblemaAtribucion.datos`/`Problema.datos` desde la tarea 1.11).
 export interface NoSoportadoColectado {
-  readonly codigo: string;
+  readonly codigo: CodigoNoSoportado;
   readonly rango: Rango;
+  readonly datos: Readonly<Record<string, unknown>>;
 }
 
 export function recolectarNoSoportados(
@@ -376,8 +384,9 @@ export function recolectarNoSoportados(
   tokensNoSoportados: readonly Token[],
 ): NoSoportadoColectado[] {
   const salida: NoSoportadoColectado[] = tokensNoSoportados.map((t) => ({
-    codigo: t.codigo ?? 'no-soportado',
+    codigo: t.codigo ?? CODIGOS_NO_SOPORTADO.sinClasificar,
     rango: t.rango,
+    datos: t.datos ?? {},
   }));
 
   for (const otro of programa.importacionesNoSoportadas) salida.push(otro);

@@ -4,6 +4,8 @@
 // acepta pero este visualizador todavía no (ADR 003) — el analizador sintáctico decide con ellos
 // (lote 1.6+) sin que el lexer aborte el análisis.
 import type { Rango } from '../fuente/rango.ts';
+// Tarea 1.24: unión CERRADA de códigos "no soportado" (única fuente de verdad, `motor/no-soportado.ts`).
+import type { CodigoNoSoportado } from '../no-soportado.ts';
 
 export type TipoToken =
   | 'identificador'
@@ -29,8 +31,15 @@ export interface Token {
   /** Solo para `tipo: 'caracter'`: el único carácter ya decodificado. */
   readonly valorCaracter?: string;
   /** Solo para `tipo: 'no-soportado'`: qué construcción es y la nota explicativa (ADR 003). */
-  readonly codigo?: string;
+  readonly codigo?: CodigoNoSoportado;
   readonly nota?: string;
+  /** Tarea 1.25: solo para `tipo: 'no-soportado'` — los datos EXTRA que el texto es-MX de `codigo`
+   * necesita (p. ej. el literal real de un octal). Se copia TAL CUAL de `NoSoportadoLexico.datos`
+   * (`literales.ts`), ya verificado ahí contra `DatosPorCodigoNoSoportado` — por eso, a diferencia
+   * de `NoSoportadoLexico`, este campo sigue siendo `Record<string, unknown>` sin re-verificar:
+   * copiar un valor ya construido no necesita repetir la verificación (mismo patrón que
+   * `NoSoportadoColectado.datos`, sintaxis/no-soportado.ts). */
+  readonly datos?: Readonly<Record<string, unknown>>;
   readonly rango: Rango;
 }
 

@@ -324,12 +324,16 @@ describe('no-soportado — lambdas (REQ-SUB-007, corrección obligatoria del sub
     // lambda que Runnable recibiría.
     const elemento = primeraSentencia('Runnable r = () -> System.out.println("hola");') as NodoDeclaracionLocal;
     expect(elemento.tipo).toBe('declaracion-local');
-    expect(elemento.declaradores[0].inicializador).toMatchObject({ tipo: 'expresion-no-soportada', codigo: 'lambda' });
+    // Tarea 1.24 (corrección de la discrepancia real): la tabla central SIEMPRE dijo
+    // 'lambda-no-soportada' (desde la tarea 1.6) — el código emitido aquí decía 'lambda' a secas
+    // porque `expresiones.ts` nunca pasaba por la tabla (engram
+    // visualizador-java/patron-codigos-inline-expresiones). Ahora ambos coinciden.
+    expect(elemento.declaradores[0].inicializador).toMatchObject({ tipo: 'expresion-no-soportada', codigo: 'lambda-no-soportada' });
   });
 
   it('"x -> x * 2" (un parámetro sin paréntesis) es NO-DISP', () => {
     const elemento = primeraSentencia('Convertidor c = x -> x * 2;') as NodoDeclaracionLocal;
-    expect(elemento.declaradores[0].inicializador).toMatchObject({ tipo: 'expresion-no-soportada', codigo: 'lambda' });
+    expect(elemento.declaradores[0].inicializador).toMatchObject({ tipo: 'expresion-no-soportada', codigo: 'lambda-no-soportada' });
   });
 
   it('una lambda con cuerpo en bloque "{ }" se delimita bien y el análisis sigue', () => {

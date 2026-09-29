@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 import { Alcance } from './alcance.ts';
 import { NOMBRES_DE_CLASE_RECONOCIDOS, claseDelObjeto, tipoDeExpresion, tipoDeNombreDeTipo } from './tipos.ts';
 import type { NodoExpresion } from '../sintaxis/ast.ts';
+import { CODIGOS_NO_SOPORTADO } from '../sintaxis/no-soportado.ts';
 
 const R = { inicio: 0, fin: 1 };
 
@@ -73,7 +74,15 @@ describe('tipoDeExpresion (pura) — conversión (cast) toma el tipo destino dir
 
 describe('tipoDeExpresion (pura) — lo que sigue fuera del alcance da "desconocido" (D2, nunca fabrica un tipo)', () => {
   it('una construcción NO-DISP (p. ej. bits/ternario, ya delimitada como NodoExpresionNoSoportada) da "desconocido"', () => {
-    const nodo: NodoExpresion = { tipo: 'expresion-no-soportada', codigo: 'bits-no-soportado', rango: R };
+    // Cualquier código real de CodigoNoSoportado sirve aquí: la prueba es sobre el `tipo` del nodo
+    // ('expresion-no-soportada'), no sobre CUÁL construcción específica -- se usa uno real (bits
+    // "&") en vez de un placeholder inventado ahora que el código es una unión cerrada (tarea 1.24).
+    const nodo: NodoExpresion = {
+      tipo: 'expresion-no-soportada',
+      codigo: CODIGOS_NO_SOPORTADO.operadorBitsAnd,
+      datos: {},
+      rango: R,
+    };
     expect(tipoDeExpresion(nodo, new Alcance())).toBe('desconocido');
   });
 });
