@@ -472,6 +472,18 @@ function analizarPrimaria(cursor: CursorDeTokens): NodoExpresion {
     cursor.avanzar();
     return { tipo: 'expresion-no-soportada', codigo: 'null-no-soportado', rango: token.rango };
   }
+  // Tarea 1.23 (agregada por el orquestador: hallazgo de la guarda de avisos, sub-lote 1-D6, JLS
+  // 15.28, Java 14+): "switch" en posición de EXPRESIÓN (inicializador, argumento, operando
+  // anidado...) es Java válido real (REQ-SUB-007, fila "switch flecha/expresión, yield") que este
+  // analizador no reconocía -- `analizarSwitch` (analizador-sintactico.ts) solo lo espera como
+  // inicio de SENTENCIA, así que antes de esta rama un "switch" aquí siempre caía en el `throw`
+  // genérico de abajo (error de sintaxis engañoso para algo que javac sí compila, C8/regla 5 de
+  // CLAUDE.md). Se delimita balanceado hasta su "}" que cierra, sin interpretar NADA de su interior
+  // (selector, etiquetas "case"/"default"/flecha, "yield") -- igual patrón que ya usa este mismo
+  // archivo para "new Tipo[]{...}" (arreglo-no-soportado) y "->" (lambda).
+  if (token.texto === 'switch') {
+    return analizarSwitchExpresionNoSoportado(cursor);
+  }
   if (token.texto === 'new') {
     return analizarNuevaInstancia(cursor);
   }
@@ -519,6 +531,26 @@ function analizarNuevaInstancia(cursor: CursorDeTokens): NodoNuevaInstancia | No
     tipo: 'nueva-instancia',
     nombreTipo: tipoToken.texto,
     argumentos,
+    rango: { inicio: inicioToken.rango.inicio, fin: cierre.rango.fin },
+  };
+}
+
+// "switch (Selector) { ... }" en posición de expresión (tarea 1.23, JLS 15.28). El selector se
+// delimita balanceando SOLO "("/")" (nunca se interpreta como expresión real) para que un "{" que
+// pudiera aparecer DENTRO de él (p. ej. un inicializador de arreglo anónimo en el selector, rarísimo
+// pero sintácticamente legal) nunca se confunda con la apertura del cuerpo del switch. El cuerpo
+// completo -- etiquetas "case"/"default" (clásicas o con flecha) y cualquier "yield", en bloque o
+// no -- se delimita balanceando "{"/"}" sin interpretarlo (ADR 003 "deja seguir"): un "{" anidado de
+// una rama "case X -> { ... }" incrementa la misma profundidad y no rompe el balanceo.
+function analizarSwitchExpresionNoSoportado(cursor: CursorDeTokens): NodoExpresionNoSoportada {
+  const inicioToken = cursor.esperarTexto('switch');
+  cursor.esperarTexto('(');
+  saltarHastaCerrar(cursor, '(', ')');
+  cursor.esperarTexto('{');
+  const cierre = saltarHastaCerrar(cursor, '{', '}');
+  return {
+    tipo: 'expresion-no-soportada',
+    codigo: 'switch-expresion-no-soportado',
     rango: { inicio: inicioToken.rango.inicio, fin: cierre.rango.fin },
   };
 }

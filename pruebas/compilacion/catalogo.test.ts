@@ -31,9 +31,12 @@ describe('pruebas/compilacion/catalogo — avisos NO-DISP (uno por construcción
     expect(archivos.length).toBeGreaterThanOrEqual(37);
   });
 
-  // "37-yield.java" se excluye de este bucle genérico a propósito — ver el `it` dedicado justo
-  // abajo para la razón exacta (gap real del analizador, documentado, no un descuido).
-  it.each(archivos.filter((nombre) => nombre !== '37-yield.java'))(
+  // Tarea 1.23 (agregada por el orquestador: hallazgo de la guarda de avisos, sub-lote 1-D6):
+  // "37-yield.java" volvió a este bucle genérico — `sintaxis/expresiones.ts` (`analizarPrimaria`)
+  // ahora reconoce "switch" en posición de EXPRESIÓN (JLS 15.28), así que ya no hace falta la
+  // excepción documentada que antes vivía aquí (el analizador daba "error-compilacion" genuino
+  // para ese único archivo; el resto de este catálogo siempre dio "no-disponible").
+  it.each(archivos)(
     '%s: dispara "no disponible" antes de ejecutar, nunca un error de sintaxis genérico',
     (nombre) => {
       const fuente = readFileSync(resolve(RUTA_AVISOS, nombre), 'utf-8');
@@ -49,30 +52,6 @@ describe('pruebas/compilacion/catalogo — avisos NO-DISP (uno por construcción
       expect(resultado.adicionales).toBeGreaterThanOrEqual(0);
     },
   );
-
-  // Excepción DOCUMENTADA (hallazgo de esta sesión, guarda permanente de
-  // herramientas/oraculo/corpus-avisos.test.ts, REQ-SUB-006/007): javac real solo acepta "yield"
-  // dentro de un switch usado como EXPRESIÓN (JLS 14.21) — jamás dentro de un switch usado como
-  // sentencia (verificado con javac 17 real: "yield outside of switch expression"). Pero
-  // `sintaxis/analizador-sintactico.ts` SOLO reconoce "switch" como inicio de una sentencia
-  // (línea ~438, `analizarSwitch`) y `sintaxis/expresiones.ts` (`analizarPrimaria`) no tiene
-  // NINGUNA rama para "switch" como expresión — un switch en posición de expresión (p. ej. como
-  // inicializador de una declaración) es hoy un error de sintaxis genuino para este analizador, NO
-  // un "no disponible". Por eso NO EXISTE una fuente que sea a la vez (a) Java válido con "yield"
-  // real y (b) reconocida hoy como "no disponible": ambas exigencias son incompatibles mientras el
-  // analizador no reconozca switch-como-expresión (tarea futura, toca la capa motor, ADR 001 —
-  // fuera de alcance de esta sesión). Se prioriza (a): la guarda permanente del oráculo exige Java
-  // válido para TODA muestra de avisos sin excepción, así que "37-yield.java" ahora compila limpio
-  // contra javac real; aquí se documenta el resultado ACTUAL y real de este analizador para ese
-  // archivo en vez de fingir "no-disponible" con una muestra inválida.
-  it('37-yield.java: caso conocido — Java válido real, pero el analizador aún no reconoce switch como expresión (gap documentado, seguimiento pendiente)', () => {
-    const fuente = readFileSync(resolve(RUTA_AVISOS, '37-yield.java'), 'utf-8');
-    const resultado = compilar(fuente);
-
-    expect(resultado.ok).toBe(false);
-    if (resultado.ok) return;
-    expect(resultado.problema.categoria).toBe('error-compilacion');
-  });
 });
 
 describe('pruebas/compilacion/catalogo — errores de sintaxis reales (subconjunto acotado, corpus/compilacion/catalogo)', () => {

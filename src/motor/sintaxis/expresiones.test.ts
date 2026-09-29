@@ -299,6 +299,53 @@ describe('expresiones — NO-DISP con precedencia real (design.md §2.6, ADR 003
   });
 });
 
+// Tarea 1.23 (agregada por el orquestador: hallazgo de la guarda de avisos, sub-lote 1-D6):
+// "switch" en posición de EXPRESIÓN (JLS 15.28, Java 14+) — `analizarSwitch`
+// (analizador-sintactico.ts) solo reconocía "switch" como inicio de SENTENCIA; un switch usado
+// como inicializador/argumento/operando (Java válido real, verificado contra javac 17 real en
+// esta sesión) caía en el `throw` genérico de abajo, un error de sintaxis engañoso para algo que
+// javac sí acepta (C8, regla 5 de CLAUDE.md). Todas las formas verificadas contra javac 17 real
+// (carpetas temporales, borradas) antes de escribir estos casos.
+describe('expresiones — switch como expresión (JLS 15.28, REQ-SUB-007, tarea 1.23)', () => {
+  it('con flechas ("case X -> valor") es NoSoportado, no un error de sintaxis', () => {
+    const expr = expresionDe('switch (dia) { case 1 -> 10; default -> 0; }');
+    expect(expr).toMatchObject({ tipo: 'expresion-no-soportada', codigo: 'switch-expresion-no-soportado' });
+  });
+
+  it('forma clásica con ":" y "yield" (igual que corpus/compilacion/avisos/37-yield.java) también es NoSoportado', () => {
+    const expr = expresionDe('switch (dia) { case 1: yield 1; default: yield 0; }');
+    expect(expr).toMatchObject({ tipo: 'expresion-no-soportada', codigo: 'switch-expresion-no-soportado' });
+  });
+
+  it('"yield" dentro de un bloque ("case X -> { yield valor; }") no rompe el balanceo de "{"/"}"', () => {
+    const expr = expresionDe('switch (dia) { case 1 -> { yield 10; } default -> { yield 0; } }');
+    expect(expr).toMatchObject({ tipo: 'expresion-no-soportada', codigo: 'switch-expresion-no-soportado' });
+  });
+
+  it('el rango va desde "switch" hasta el "}" que cierra, incluso con un bloque "yield" anidado', () => {
+    const texto = 'switch (dia) { case 1 -> { yield 10; } default -> { yield 0; } }';
+    expect(expresionDe(texto).rango).toEqual({ inicio: 0, fin: texto.length });
+  });
+
+  it('anidado como operando de otra expresión, el análisis sigue después (ADR 003)', () => {
+    const expr = expresionDe('1 + switch (n) { case 1 -> 10; default -> 0; }');
+    expect(expr).toMatchObject({
+      tipo: 'binaria',
+      operador: '+',
+      izquierda: { valor: 1n },
+      derecha: { tipo: 'expresion-no-soportada', codigo: 'switch-expresion-no-soportado' },
+    });
+  });
+
+  it('como argumento de una llamada (p. ej. System.out.println), el análisis sigue después del cierre', () => {
+    const expr = expresionDe('System.out.println(switch (n) { case 1 -> "uno"; default -> "otro"; })');
+    expect(expr).toMatchObject({
+      tipo: 'llamada',
+      argumentos: [{ tipo: 'expresion-no-soportada', codigo: 'switch-expresion-no-soportado' }],
+    });
+  });
+});
+
 describe('expresiones — error real cuando no hay ninguna expresión válida que analizar', () => {
   it('lanza ErrorDeCompilacion si el token no puede iniciar una expresión', () => {
     expect(() => expresionDe(';')).toThrow(ErrorDeCompilacion);
