@@ -34,13 +34,24 @@ function desescaparUnaLinea(texto: string): string {
   return texto.replace(/\\n/g, '\n').replace(/\\t/g, '\t').replace(/\\r/g, '\r').replace(/\\\\/g, '\\');
 }
 
+/** Opciones de `compilarEnLote`. */
+export interface OpcionesDeCompilacionEnLote {
+  /** Solo el análisis sintáctico de javac (`--solo-sintaxis`, tarea 1.31): un error de tipos no cuenta. */
+  readonly soloSintaxis?: boolean;
+}
+
 /** Ejecuta `CompiladorEnLote.java` UNA sola vez (una JVM) contra TODAS las `fuentes`, vía el
  * protocolo de texto de la cabecera del archivo Java (stdin: "id\tbase64(fuente)" por línea;
  * stdout: "id\tcompila\tlinea\tcodigoJavac\tmensaje" por línea). */
-export function compilarEnLote(jdk: InfoJdk, fuentes: readonly FuenteParaCompilar[]): Promise<Map<string, RespuestaJava>> {
+export function compilarEnLote(
+  jdk: InfoJdk,
+  fuentes: readonly FuenteParaCompilar[],
+  opciones: OpcionesDeCompilacionEnLote = {},
+): Promise<Map<string, RespuestaJava>> {
   return new Promise((resolverPromesa, rechazarPromesa) => {
     const rutaJava = resolve(AQUI, 'java', 'CompiladorEnLote.java');
-    const proceso = spawn(jdk.rutaJava, [rutaJava], { stdio: ['pipe', 'pipe', 'pipe'] });
+    const argumentos = opciones.soloSintaxis === true ? [rutaJava, '--solo-sintaxis'] : [rutaJava];
+    const proceso = spawn(jdk.rutaJava, argumentos, { stdio: ['pipe', 'pipe', 'pipe'] });
 
     let salidaAcumulada = '';
     let errorAcumulado = '';

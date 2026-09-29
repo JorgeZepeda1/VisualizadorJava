@@ -1,3 +1,4 @@
+import com.sun.source.util.JavacTask;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -6,6 +7,7 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.Comparator;
 import java.util.List;
@@ -54,10 +56,16 @@ import javax.tools.ToolProvider;
  * diagnósticos — en un único directorio temporal reusado para TODAS las compilaciones y borrado al
  * final (o si el proceso se interrumpe, vía shutdown hook).
  *
- * <p>Uso: {@code java CompiladorEnLote.java < manifiesto.tsv > veredictos.tsv}
+ * <p>Con {@code --solo-sintaxis} (tarea 1.31, generador diferencial) el veredicto es solo el del ANÁLISIS
+ * SINTÁCTICO: se usa {@link JavacTask#parse()} y no se llega a la atribución, así que un programa con
+ * un error de tipos «compila». Mismo protocolo de entrada y de salida. Sirve para medir con javac mismo
+ * qué programas generados son sintácticamente Java.
+ *
+ * <p>Uso: {@code java CompiladorEnLote.java [--solo-sintaxis] < manifiesto.tsv > veredictos.tsv}
  */
 public class CompiladorEnLote {
   public static void main(String[] args) throws IOException {
+    boolean soloSintaxis = Arrays.asList(args).contains("--solo-sintaxis");
     JavaCompiler compilador = ToolProvider.getSystemJavaCompiler();
     if (compilador == null) {
       System.err.println("No hay un javax.tools.JavaCompiler disponible en este runtime -- ¿es un JRE, no un JDK?");
@@ -82,7 +90,7 @@ public class CompiladorEnLote {
         String id = linea.substring(0, separador);
         String fuente = new String(Base64.getDecoder().decode(linea.substring(separador + 1)), StandardCharsets.UTF_8);
 
-        Veredicto veredicto = compilarUno(compilador, fileManagerBase, id, fuente);
+        Veredicto veredicto = compilarUno(compilador, fileManagerBase, id, fuente, soloSintaxis);
         salida.println(
             veredicto.id
                 + "\t"
@@ -125,7 +133,11 @@ public class CompiladorEnLote {
   }
 
   private static Veredicto compilarUno(
-      JavaCompiler compilador, StandardJavaFileManager fileManagerBase, String id, String fuente) {
+      JavaCompiler compilador,
+      StandardJavaFileManager fileManagerBase,
+      String id,
+      String fuente,
+      boolean soloSintaxis) {
     String nombreClase = extraerNombreClase(fuente);
     JavaFileObject fuenteEnMemoria = new FuenteEnMemoria(nombreClase, fuente);
     DiagnosticCollector<JavaFileObject> diagnosticos = new DiagnosticCollector<>();
@@ -141,8 +153,14 @@ public class CompiladorEnLote {
 
     Boolean exito;
     try {
-      exito = tarea.call();
-    } catch (RuntimeException excepcionDelCompilador) {
+      if (soloSintaxis) {
+        // Solo el análisis sintáctico: `parse()` reporta sus errores al colector y no atribuye nada.
+        ((JavacTask) tarea).parse();
+        exito = Boolean.TRUE;
+      } else {
+        exito = tarea.call();
+      }
+    } catch (IOException | RuntimeException excepcionDelCompilador) {
       // Un mutante puede dejar una fuente tan rota que el propio compilador LANCE en vez de
       // reportar un Diagnostic normal (p. ej. un token roto en un punto que confunde al parser
       // interno de javac) -- D2: sigue siendo "no compila", nunca se descarta el mutante ni se
