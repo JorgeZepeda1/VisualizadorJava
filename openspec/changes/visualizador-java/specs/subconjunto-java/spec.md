@@ -52,12 +52,12 @@ El sistema MUST reconocer sintácticamente (semántica exacta en `biblioteca-jav
 - THEN el sistema la reconoce como llamada válida y continúa el análisis; el resultado exacto de evaluarla se rige por `biblioteca-java`
 
 ### Requirement: [REQ-SUB-006] Momento y formato del aviso de fuera de alcance
-Cuando un programa usa una construcción fuera de los requisitos anteriores, el sistema MUST detectarlo en el análisis previo a la ejecución (cero pasos ejecutados, cero salida) y MUST mostrar un mensaje de tipo **"No disponible en el visualizador"**, visualmente distinguible por ícono y título de los otros tres tipos de mensaje (error de compilación, excepción, límite de pasos). El mensaje MUST señalar la línea y la construcción, decir que Java sí la acepta (cuando aplica), aclarar que el visualizador cubre U3–U7, y ofrecer una alternativa dentro de alcance si existe. Si hay más de un problema, MUST mostrar solo el primero según su orden en el texto, seguido de "y N más".
+Cuando un programa usa una construcción fuera de los requisitos anteriores, el sistema MUST detectarlo en el análisis previo a la ejecución (cero pasos ejecutados, cero salida) y MUST mostrar un mensaje de tipo **"No disponible en el visualizador"**, visualmente distinguible por ícono y título de los otros tres tipos de mensaje (error de compilación, excepción, límite de pasos). El mensaje MUST señalar la línea y la construcción, decir que la construcción es parte de Java (cuando aplica) sin afirmar que el programa compila, admitir que por eso esa parte no se revisa, aclarar que el visualizador cubre U3–U7, y ofrecer una alternativa dentro de alcance si existe. Si hay más de un problema, MUST mostrar solo el primero según su orden en el texto, seguido de "y N más".
 
 #### Scenario: arreglo fuera de alcance
 - GIVEN `int[] datos = {1, 2, 3};` en la línea 4 de un programa por lo demás válido
 - WHEN se analiza
-- THEN no se ejecuta ningún paso y se muestra: «Tu programa usa un arreglo (`int[]`) en la línea 4. Java sí lo acepta, pero este visualizador cubre las unidades 3 a 7 y todavía no muestra arreglos. No lo ejecuto para no enseñarte un resultado que podría no ser el de Java.»
+- THEN no se ejecuta ningún paso y se muestra: «Tu programa usa un arreglo (`int[]`) en la línea 4. Es parte de Java, pero este visualizador cubre las unidades 3 a 7 y todavía no muestra arreglos, así que no puedo revisar si esa parte está bien escrita. No lo ejecuto para no enseñarte un resultado que podría no ser el de Java.»
 
 #### Scenario: literal octal se explica, no se malinterpreta
 - GIVEN `int n = 010;`
@@ -72,7 +72,7 @@ El sistema MUST tratar cada fila de la siguiente tabla con el aviso de REQ-SUB-0
 | `nextLong`, `Long.parseLong` | `sc.nextLong()` | `long` sí soportado; estos miembros no |
 | `float`, `byte`, `short` | `float f = 3.5f;` | nunca se reinterpretan como `double`/`int` |
 | `switch` flecha/expresión, `yield` | `case 1 -> ...` | 0 usos en el currículo |
-| Métodos propios, recursión, clases/campos/objetos propios | `static int cuadrado(int n)` | "Java sí lo acepta…" |
+| Métodos propios, recursión, clases/campos/objetos propios | `static int cuadrado(int n)` | "Es parte de Java…" |
 | Arreglos (salvo `String[] args`), `for` mejorado | `int[] a; for (int x : a)` | — |
 | `try/catch/throw/throws`, `System.exit`, `null` | `catch (Exception e)` | sin `null` no hay NPE fuera del currículo |
 | `?:`, bits/desplazamientos, `&`/`\|` lógicos, `instanceof` | `a & b`, `x << 2` | para `&`/`\|` sugiere `&&`/`\|\|` |

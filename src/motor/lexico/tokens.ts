@@ -4,6 +4,8 @@
 // acepta pero este visualizador todavía no (ADR 003) — el analizador sintáctico decide con ellos
 // (lote 1.6+) sin que el lexer aborte el análisis.
 import type { Rango } from '../fuente/rango.ts';
+// Tarea 1.24: unión CERRADA de códigos "no soportado" (única fuente de verdad, `motor/no-soportado.ts`).
+import type { CodigoNoSoportado } from '../no-soportado.ts';
 
 export type TipoToken =
   | 'identificador'
@@ -29,8 +31,15 @@ export interface Token {
   /** Solo para `tipo: 'caracter'`: el único carácter ya decodificado. */
   readonly valorCaracter?: string;
   /** Solo para `tipo: 'no-soportado'`: qué construcción es y la nota explicativa (ADR 003). */
-  readonly codigo?: string;
+  readonly codigo?: CodigoNoSoportado;
   readonly nota?: string;
+  /** Tarea 1.25: solo para `tipo: 'no-soportado'` — los datos EXTRA que el texto es-MX de `codigo`
+   * necesita (p. ej. el literal real de un octal). Se copia TAL CUAL de `NoSoportadoLexico.datos`
+   * (`literales.ts`), ya verificado ahí contra `DatosPorCodigoNoSoportado` — por eso, a diferencia
+   * de `NoSoportadoLexico`, este campo sigue siendo `Record<string, unknown>` sin re-verificar:
+   * copiar un valor ya construido no necesita repetir la verificación (mismo patrón que
+   * `NoSoportadoColectado.datos`, sintaxis/no-soportado.ts). */
+  readonly datos?: Readonly<Record<string, unknown>>;
   readonly rango: Rango;
 }
 
@@ -57,6 +66,37 @@ export const PALABRAS_CLAVE: ReadonlySet<string> = new Set([
   'false',
   'instanceof',
   'new',
+  // Tarea 1.5 (Sentencia completa) — control de flujo. Deben ser 'palabra-clave', no
+  // 'identificador': de lo contrario "break externo" (etiqueta, tarea 1.6) o cualquier
+  // "palabra-reservada identificador" pasaría el chequeo "identificador identificador" de
+  // `pareceDeclaracionLocal` y se malinterpretaría como el inicio de una declaración.
+  'if',
+  'else',
+  'while',
+  'do',
+  'for',
+  'switch',
+  'case',
+  'default',
+  'break',
+  'continue',
+  // Tarea 1.6 (catálogo NO-DISP) — reservadas por la misma razón (no son identificadores válidos
+  // en Java real, aunque este subconjunto no interprete lo que introducen).
+  'try',
+  'catch',
+  'finally',
+  'throw',
+  'throws',
+  'var',
+  'yield',
+  'this',
+  'super',
+  'null',
+  'float',
+  'byte',
+  'short',
+  // Tarea 1.29: `assert` es palabra reservada desde Java 1.4 (`assert x > 0;` es una sentencia, nunca «identificador identificador»).
+  'assert',
 ]);
 
 // Tipos primitivos válidos al inicio de una DeclLocal (design.md §2.3 "Tipo"); `String` no está
@@ -72,6 +112,9 @@ export const PALABRAS_CLAVE_TIPO_PRIMITIVO: ReadonlySet<string> = new Set([
 export const PUNTUACION: ReadonlySet<string> = new Set([
   '{', '}', '(', ')', '[', ']', ';', '.', ',',
   '+', '-', '*', '/', '%', '=', '<', '>', '!', '&', '|', '^', '~', '?', ':',
+  // Tarea 1.29: la arroba de las anotaciones (`@Override`, `@SuppressWarnings("resource")`); qué anotación es
+  // lo decide `sintaxis/no-soportado.ts` (`consumirAnotaciones`).
+  '@',
 ]);
 
 // Operadores de más de un carácter (design.md §2.4), del MÁS largo al más corto para que el lexer

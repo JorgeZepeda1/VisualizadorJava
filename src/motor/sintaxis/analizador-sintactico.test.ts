@@ -5,10 +5,22 @@ import { describe, expect, it } from 'vitest';
 import { tokenizar } from '../lexico/analizador-lexico.ts';
 import { analizarPrograma } from './analizador-sintactico.ts';
 import { ErrorDeCompilacion } from '../error-de-compilacion.ts';
-import type { NodoImpresion } from './ast.ts';
+import type { NodoExpresion, NodoImpresion } from './ast.ts';
 
 function analizar(fuente: string) {
   return analizarPrograma(tokenizar(fuente));
+}
+
+// Tarea 1.8: `NodoImpresion.argumento` ahora es `NodoExpresion` general (antes solo
+// `NodoLiteralCadena`, 0.12) — estas pruebas de la rebanada vertical siguen construyendo
+// únicamente literales-cadena, así que basta angostar aquí en vez de repetir el chequeo.
+function valorLiteralCadena(argumento: NodoExpresion | null): string {
+  // Corrección obligatoria (sub-lote 1-C2): `argumento` ahora admite `null` (println() vacío) —
+  // ninguna de las pruebas que usan este helper pasa ese caso, así que null sigue siendo un fallo
+  // real y explícito (D2), nunca un valor inventado.
+  if (argumento === null) throw new Error('se esperaba un literal-cadena, no null (¿"println()" vacío?)');
+  if (argumento.tipo !== 'literal-cadena') throw new Error(`se esperaba un literal-cadena, no "${argumento.tipo}"`);
+  return argumento.valor;
 }
 
 describe('analizarPrograma', () => {
@@ -24,29 +36,29 @@ describe('analizarPrograma', () => {
     const programa = analizar(fuente);
 
     expect(programa.clase.nombre).toBe('MiPrograma');
-    expect(programa.clase.main.parametro).toBe('args');
-    expect(programa.clase.main.cuerpo.elementos).toHaveLength(1);
-    const [sentencia] = programa.clase.main.cuerpo.elementos as NodoImpresion[];
+    expect(programa.clase.main!.parametro).toBe('args');
+    expect(programa.clase.main!.cuerpo.elementos).toHaveLength(1);
+    const [sentencia] = programa.clase.main!.cuerpo.elementos as NodoImpresion[];
     expect(sentencia.tipo).toBe('impresion');
-    expect(sentencia.argumento.valor).toBe('Hola, mundo');
+    expect(valorLiteralCadena(sentencia.argumento)).toBe('Hola, mundo');
   });
 
   it('acepta una clase sin "public" y modificadores de main en otro orden (triangulación)', () => {
     const fuente =
       'class OtraClase { static public void main(String[] parametros) { System.out.println("otra"); } }';
     const programa = analizar(fuente);
-    const [sentencia] = programa.clase.main.cuerpo.elementos as NodoImpresion[];
+    const [sentencia] = programa.clase.main!.cuerpo.elementos as NodoImpresion[];
     expect(programa.clase.nombre).toBe('OtraClase');
-    expect(programa.clase.main.parametro).toBe('parametros');
-    expect(sentencia.argumento.valor).toBe('otra');
+    expect(programa.clase.main!.parametro).toBe('parametros');
+    expect(valorLiteralCadena(sentencia.argumento)).toBe('otra');
   });
 
   it('acepta varias sentencias println dentro del mismo bloque, en orden', () => {
     const fuente =
       'class C { public static void main(String[] a) { System.out.println("uno"); System.out.println("dos"); } }';
     const programa = analizar(fuente);
-    const valores = (programa.clase.main.cuerpo.elementos as NodoImpresion[]).map(
-      (s) => s.argumento.valor,
+    const valores = (programa.clase.main!.cuerpo.elementos as NodoImpresion[]).map((s) =>
+      valorLiteralCadena(s.argumento),
     );
     expect(valores).toEqual(['uno', 'dos']);
   });
@@ -91,26 +103,125 @@ describe('analizarPrograma — núcleo del programa (tarea 1.2, REQ-SUB-001)', (
     ]);
   });
 
+  // Sub-lote 1-D3 (mutante real contra veredicto de javac, tarea 1.16): JLS 7.3 -- un ";" suelto
+  // es una "declaración vacía" válida en CUALQUIER posición de nivel superior (incluida justo tras
+  // los imports, antes de la clase); ya se toleraba TRAS la clase (`consumirPuntosYComasSueltos`,
+  // línea 76) pero no aquí. Verificado contra javac 17 real (5 mutantes reales de esta sesión,
+  // mutación "duplicar" sobre el ";" de un import): "import java.util.Scanner; ;" compila limpio.
+  it('un ";" suelto justo después de los imports (antes de la clase) no rompe el análisis', () => {
+    const fuente =
+      'import java.util.Scanner; ; class C { public static void main(String[] a) { System.out.println("x"); } }';
+    expect(() => analizar(fuente)).not.toThrow();
+  });
+
+  it('triangulación: varios ";" sueltos seguidos, también antes de la clase', () => {
+    const fuente = 'import java.util.Scanner; ; ; ; class C { public static void main(String[] a) { } }';
+    expect(() => analizar(fuente)).not.toThrow();
+  });
+
   it('acepta las 3 formas de parámetro de main: String[] args', () => {
     const programa = analizar('class C { public static void main(String[] args) { return; } }');
-    expect(programa.clase.main.parametro).toBe('args');
+    expect(programa.clase.main!.parametro).toBe('args');
   });
 
   it('acepta las 3 formas de parámetro de main: String args[]', () => {
     const programa = analizar('class C { public static void main(String args[]) { return; } }');
-    expect(programa.clase.main.parametro).toBe('args');
+    expect(programa.clase.main!.parametro).toBe('args');
   });
 
   it('acepta las 3 formas de parámetro de main: String... args (varargs)', () => {
     const programa = analizar('class C { public static void main(String... args) { return; } }');
-    expect(programa.clase.main.parametro).toBe('args');
+    expect(programa.clase.main!.parametro).toBe('args');
   });
 
   it('acepta "return;" como sentencia dentro de main', () => {
     const fuente =
       'class C { public static void main(String[] a) { System.out.println("x"); return; } }';
     const programa = analizar(fuente);
-    expect(programa.clase.main.cuerpo.elementos.map((e) => e.tipo)).toEqual(['impresion', 'retorno']);
+    expect(programa.clase.main!.cuerpo.elementos.map((e) => e.tipo)).toEqual(['impresion', 'retorno']);
+  });
+});
+
+// Tarea 1.15 (REQ-COMP-007/008, ADR 004 pasada 5 "arranque"): javac SÍ compila un programa sin
+// "static" en "main", o incluso sin ningún "main" -- el lanzador (java, no javac) es quien lo
+// rechaza, al EJECUTAR (exploracion/03 §4.2, verificado contra el JDK real). Antes de esta tarea,
+// `analizarClase` trataba "sin main" como un error de SINTAXIS genérico (ver el comentario que
+// dejó la tarea 1.5 en `analizador-sintactico.ts`, "REQ-COMP-008... llega con la tarea 1.15") --
+// eso violaba REQ-COMP-006 (javac SÍ acepta ese programa) y hacía el error indistinguible de un
+// "class, interface, enum, or record expected" real.
+describe('analizarPrograma — arranque (tarea 1.15, REQ-COMP-007/008): "main" opcional, "static" registrado', () => {
+  it('una clase sin ningún "main" NO lanza -- el AST la marca con clase.main === null (antes: ErrorDeCompilacion genérico)', () => {
+    const programa = analizar('public class SinMain { }');
+    expect(programa.clase.nombre).toBe('SinMain');
+    expect(programa.clase.main).toBeNull();
+  });
+
+  it('"public void main" (sin "static") no lanza; NodoMain.esEstatico es false', () => {
+    const programa = analizar('public class Demo { public void main(String[] args) { } }');
+    expect(programa.clase.main).not.toBeNull();
+    expect(programa.clase.main?.esEstatico).toBe(false);
+  });
+
+  it('triangulación: "public static void main" (con "static") da esEstatico true -- el caso normal sigue intacto', () => {
+    const programa = analizar('public class MiPrograma { public static void main(String[] args) { } }');
+    expect(programa.clase.main?.esEstatico).toBe(true);
+  });
+});
+
+// Sub-lote 1-D2c (design.md §2.1: "main sin static, sin main, no public" -- el 3er caso nunca se
+// había verificado, task_0b5b6e47). `NodoMain` gana `esPublico` con el MISMO mecanismo que ya
+// tiene `esEstatico` (1.15): `consumirModificadores` ya devolvía el conjunto REAL visto.
+describe('analizarPrograma — "esPublico" registrado en NodoMain (sub-lote 1-D2c, main sin public)', () => {
+  it('"static void main" (SIN "public") no lanza; NodoMain.esPublico es false', () => {
+    const programa = analizar('class C { static void main(String[] args) { } }');
+    expect(programa.clase.main).not.toBeNull();
+    expect(programa.clase.main?.esPublico).toBe(false);
+    expect(programa.clase.main?.esEstatico).toBe(true);
+  });
+
+  it('triangulación: "public static void main" (con "public") da esPublico true -- el caso normal sigue intacto', () => {
+    const programa = analizar('public class MiPrograma { public static void main(String[] args) { } }');
+    expect(programa.clase.main?.esPublico).toBe(true);
+  });
+
+  it('triangulación: "void main" (SIN ningún modificador) también da esPublico false', () => {
+    const programa = analizar('class C { void main(String[] args) { } }');
+    expect(programa.clase.main?.esPublico).toBe(false);
+  });
+});
+
+// Sub-lote 1-D2c: hallazgo al verificar las 4 firmas de "main" que pidió el orquestador contra el
+// JDK real -- "public static void main()" (SIN el parámetro String[]) SÍ compila con javac (es
+// solo un método público estático más, ajeno al lanzador: "no suitable method" nunca aplica, el
+// LANZADOR simplemente no lo encuentra como punto de entrada). Antes de esta corrección,
+// `pareceMain` se comprometía a interpretarlo como Main en cuanto veía "void main", y
+// `analizarParamMain` reventaba con un error de sintaxis genérico al no encontrar "String" — un
+// veredicto FALSO (javac compila limpio) que REQ-COMP-006 prohíbe (D2, nunca más estricto que
+// javac). Ahora `pareceMain` exige que lo que sigue a "(" empiece como un ParamMain real
+// ("final"/"String") antes de comprometerse -- si no, cae en el camino de "métodos propios"
+// (REQ-SUB-007), IGUAL que "public static int main(String[] args)" (retorno equivocado) ya caía.
+describe('analizarPrograma — "public static void main()" sin el parámetro String[] (sub-lote 1-D2c, verificado contra javac 17 real)', () => {
+  it('NO lanza ErrorDeCompilacion (antes: fallaba con "se esperaba String") -- javac SÍ compila esto limpio', () => {
+    expect(() => analizar('public class CaseC { public static void main() { } }')).not.toThrow();
+  });
+
+  it('se trata como un método propio NO-DISP (REQ-SUB-007), nunca como Main real -- clase.main sigue null', () => {
+    const programa = analizar('public class CaseC { public static void main() { } }');
+    expect(programa.clase.main).toBeNull();
+    expect(programa.clase.otrosMiembros).toHaveLength(1);
+  });
+
+  it('control: "public static int main(String[] args)" (retorno equivocado) YA caía como método propio antes de esta corrección -- sigue intacto', () => {
+    const programa = analizar('public class CaseB { public static int main(String[] args) { return 0; } }');
+    expect(programa.clase.main).toBeNull();
+    expect(programa.clase.otrosMiembros).toHaveLength(1);
+  });
+
+  it('control: las 3 formas reales de ParamMain siguen reconociéndose como Main de verdad (sin falsos negativos)', () => {
+    expect(analizar('class C { public static void main(String[] args) { } }').clase.main).not.toBeNull();
+    expect(analizar('class C { public static void main(String args[]) { } }').clase.main).not.toBeNull();
+    expect(analizar('class C { public static void main(String... args) { } }').clase.main).not.toBeNull();
+    expect(analizar('class C { public static void main(final String[] args) { } }').clase.main).not.toBeNull();
   });
 });
 
@@ -118,7 +229,7 @@ describe('analizarPrograma — declaraciones locales (tarea 1.2, DeclLocal)', ()
   it('acepta una declaración de tipo primitivo con inicializador literal', () => {
     const fuente = 'class C { public static void main(String[] a) { int x = 5; } }';
     const programa = analizar(fuente);
-    const [declaracion] = programa.clase.main.cuerpo.elementos;
+    const [declaracion] = programa.clase.main!.cuerpo.elementos;
     expect(declaracion).toMatchObject({
       tipo: 'declaracion-local',
       esFinal: false,
@@ -130,7 +241,7 @@ describe('analizarPrograma — declaraciones locales (tarea 1.2, DeclLocal)', ()
   it('acepta "final" y varios declaradores separados por coma', () => {
     const fuente = 'class C { public static void main(String[] a) { final double x = 1.5, y = 2.5; } }';
     const programa = analizar(fuente);
-    const [declaracion] = programa.clase.main.cuerpo.elementos as [
+    const [declaracion] = programa.clase.main!.cuerpo.elementos as [
       import('./ast.ts').NodoDeclaracionLocal,
     ];
     expect(declaracion.esFinal).toBe(true);
@@ -140,7 +251,7 @@ describe('analizarPrograma — declaraciones locales (tarea 1.2, DeclLocal)', ()
   it('acepta un declarador sin inicializador', () => {
     const fuente = 'class C { public static void main(String[] a) { boolean listo; } }';
     const programa = analizar(fuente);
-    const [declaracion] = programa.clase.main.cuerpo.elementos as [
+    const [declaracion] = programa.clase.main!.cuerpo.elementos as [
       import('./ast.ts').NodoDeclaracionLocal,
     ];
     expect(declaracion.declaradores[0].inicializador).toBeNull();
@@ -149,7 +260,7 @@ describe('analizarPrograma — declaraciones locales (tarea 1.2, DeclLocal)', ()
   it('acepta una declaración con tipo por referencia (String) — triangulación de "Nombre Id"', () => {
     const fuente = 'class C { public static void main(String[] a) { String s = "hola"; } }';
     const programa = analizar(fuente);
-    const [declaracion] = programa.clase.main.cuerpo.elementos as [
+    const [declaracion] = programa.clase.main!.cuerpo.elementos as [
       import('./ast.ts').NodoDeclaracionLocal,
     ];
     expect(declaracion.nombreTipo).toBe('String');
@@ -160,7 +271,7 @@ describe('analizarPrograma — declaraciones locales (tarea 1.2, DeclLocal)', ()
     const fuente =
       'class C { public static void main(String[] a) { Scanner sc = new Scanner(System.in); } }';
     const programa = analizar(fuente);
-    const [declaracion] = programa.clase.main.cuerpo.elementos as [
+    const [declaracion] = programa.clase.main!.cuerpo.elementos as [
       import('./ast.ts').NodoDeclaracionLocal,
     ];
     expect(declaracion.nombreTipo).toBe('Scanner');
@@ -179,10 +290,181 @@ describe('analizarPrograma — declaraciones locales (tarea 1.2, DeclLocal)', ()
       '} }',
     ].join('\n');
     const programa = analizar(fuente);
-    expect(programa.clase.main.cuerpo.elementos.map((e) => e.tipo)).toEqual([
+    expect(programa.clase.main!.cuerpo.elementos.map((e) => e.tipo)).toEqual([
       'declaracion-local',
       'impresion',
       'declaracion-local',
     ]);
+  });
+});
+
+// Tarea 1.8 (pendiente heredado del sub-lote 1-B): `System.out.println`/`print` solo aceptaban un
+// literal-cadena (0.12). Las sobrecargas reales de `PrintStream` (REQ-BIB-011) se resuelven en
+// `semantica/sobrecargas.ts`; aquí solo se generaliza la SINTAXIS: `print` (no solo `println`) y
+// cualquier expresión como argumento (no solo un literal-cadena).
+describe('analizarImpresion — generalización a print/println con cualquier expresión (pendiente heredado)', () => {
+  it('"System.out.print(...)" (sin la "l" de println) ahora SÍ se reconoce como sentencia de impresión', () => {
+    const [sentencia] = primeraSentenciaDe('System.out.print("sin salto");') as [NodoImpresion];
+    expect(sentencia.tipo).toBe('impresion');
+    expect(sentencia).toMatchObject({ metodo: 'print', argumento: { tipo: 'literal-cadena', valor: 'sin salto' } });
+  });
+
+  it('"System.out.println(x)" con una VARIABLE como argumento (no solo un literal-cadena)', () => {
+    const fuente = 'class C { public static void main(String[] a) { int x = 5; System.out.println(x); } }';
+    const programa = analizar(fuente);
+    const [, sentencia] = programa.clase.main!.cuerpo.elementos as [unknown, NodoImpresion];
+    expect(sentencia).toMatchObject({ tipo: 'impresion', metodo: 'println', argumento: { tipo: 'nombre', nombre: 'x' } });
+  });
+
+  it('triangulación: "println" de una expresión aritmética (n + 1)', () => {
+    const fuente = 'class C { public static void main(String[] a) { int n = 1; System.out.println(n + 1); } }';
+    const programa = analizar(fuente);
+    const [, sentencia] = programa.clase.main!.cuerpo.elementos as [unknown, NodoImpresion];
+    expect(sentencia.argumento).not.toBeNull();
+    expect(sentencia.argumento?.tipo).toBe('binaria');
+  });
+
+  // Corrección obligatoria (sub-lote 1-C2, orquestador): "System.out.println()" SIN argumentos
+  // SÍ es Java real (PrintStream.println() existe, catálogo del oráculo 1.9) y un programa real
+  // del curso lo usa (corpus/curso/u6-ciclos-anidados-tabla.java, verificado que compila contra
+  // javac 17). Reemplaza el control anterior (que afirmaba lo contrario) — approval test que
+  // documentaba el hueco, ahora cerrado.
+  it('"System.out.println()" SIN argumentos ahora SÍ se reconoce: argumento queda en null', () => {
+    const [sentencia] = primeraSentenciaDe('System.out.println();') as [NodoImpresion];
+    expect(sentencia).toMatchObject({ tipo: 'impresion', metodo: 'println', argumento: null });
+  });
+
+  it('triangulación: "println()" vacío dentro del programa real de u6-ciclos-anidados-tabla.java', () => {
+    const fuente = [
+      'public class CiclosAnidadosTabla {',
+      '    public static void main(String[] args) {',
+      '        for (int fila = 1; fila <= 3; fila++) {',
+      '            for (int columna = 1; columna <= 3; columna++) {',
+      '                System.out.print(fila * columna + " ");',
+      '            }',
+      '            System.out.println();',
+      '        }',
+      '    }',
+      '}',
+    ].join('\n');
+    expect(() => analizar(fuente)).not.toThrow();
+  });
+
+  it('control: "System.out.print()" (sin la "l") SIGUE sin aceptar paréntesis vacíos: verificado contra javac 17 real que print() sin argumentos no existe ("no suitable method found for print(no arguments)") — a diferencia de println()', () => {
+    expect(() => analizar('class C { public static void main(String[] a) { System.out.print(); } }')).toThrow(
+      ErrorDeCompilacion,
+    );
+  });
+});
+
+function primeraSentenciaDe(cuerpoDeMain: string) {
+  const programa = analizar(`class C { public static void main(String[] a) { ${cuerpoDeMain} } }`);
+  return programa.clase.main!.cuerpo.elementos;
+}
+
+// Sub-lote 1-D3 (tarea 1.16, mutante real contra veredicto de javac): `consumirModificadores`
+// juntaba los modificadores vistos en un `Set` (dedup automático) sin distinguir "un modificador
+// repetido" de "el mismo modificador, una sola vez" -- "public static static void main(...)"
+// (mutación "duplicar" real sobre "static") se aceptaba en silencio. Verificado contra javac 17
+// real (carpeta temporal, borrada): "H.java:2: error: repeated modifier", el `^` apunta al
+// SEGUNDO "static" (el repetido), nunca al primero.
+describe('consumirModificadores — modificador repetido (JLS 8.3/8.4.3, sub-lote 1-D3)', () => {
+  it('"public static static void main(...)" lanza ErrorDeCompilacion con codigo "modificador-repetido"', () => {
+    const fuente = 'public class H { public static static void main(String[] args) { System.out.println(1); } }';
+    expect(() => analizar(fuente)).toThrow(ErrorDeCompilacion);
+    try {
+      analizar(fuente);
+    } catch (error) {
+      expect(error).toBeInstanceOf(ErrorDeCompilacion);
+      expect((error as ErrorDeCompilacion).codigo).toBe('modificador-repetido');
+    }
+  });
+
+  it('triangulación: "public public class H" (repetido en los modificadores de CLASE, no de main) también se rechaza', () => {
+    const fuente = 'public public class H { public static void main(String[] args) { } }';
+    expect(() => analizar(fuente)).toThrow(ErrorDeCompilacion);
+  });
+
+  it('control (regresión): "public static void main(...)" SIN repetir sigue aceptándose limpio', () => {
+    expect(() =>
+      analizar('public class H { public static void main(String[] args) { System.out.println(1); } }'),
+    ).not.toThrow();
+  });
+
+  it('control: el orden real "static public" (sin repetir) también sigue aceptándose limpio', () => {
+    expect(() =>
+      analizar('public class H { static public void main(String[] args) { System.out.println(1); } }'),
+    ).not.toThrow();
+  });
+});
+
+// Tarea 1.29 (causa 11, hallada al comparar programas típicos con javac 17; design.md §2.3: «Tipo = … |
+// NombreDeTipo (* String, Scanner, Random, calificados o no *)»): `java.util.Scanner sc = new
+// java.util.Scanner(System.in);` es Java válido —el nombre completo, sin `import`— y el analizador solo
+// reconocía el nombre de UN token: la declaración no se detectaba («esta expresión no es una sentencia
+// válida») y `new java.util.Scanner` esperaba «(» tras «java». El tipo se guarda tal como se escribió
+// (`java.util.Scanner`); qué es lo decide la atribución.
+describe('analizarPrograma — nombres de tipo calificados con su paquete (tarea 1.29)', () => {
+  const cuerpo = (sentencias: string) => analizar(`class C { public static void main(String[] a) { ${sentencias} } }`).clase.main!.cuerpo.elementos;
+
+  it('"java.util.Scanner sc = new java.util.Scanner(System.in);" es una declaración cuyo tipo (y el del new) es el nombre completo', () => {
+    const [declaracion] = cuerpo('java.util.Scanner sc = new java.util.Scanner(System.in);');
+    expect(declaracion).toMatchObject({
+      tipo: 'declaracion-local',
+      nombreTipo: 'java.util.Scanner',
+      declaradores: [{ nombre: 'sc', inicializador: { tipo: 'nueva-instancia', nombreTipo: 'java.util.Scanner' } }],
+    });
+  });
+
+  it('un tipo calificado también abre una declaración con "final" y con varios declaradores', () => {
+    expect(cuerpo('final java.lang.String s = "a", t = "b";')[0]).toMatchObject({
+      tipo: 'declaracion-local',
+      esFinal: true,
+      nombreTipo: 'java.lang.String',
+    });
+  });
+
+  it('con corchetes o genéricos sigue siendo el aviso que corresponde ("java.util.Scanner[] xs;" arreglo, "java.util.List<String> l;" genérico)', () => {
+    expect(cuerpo('java.util.Scanner[] xs;')[0]).toMatchObject({
+      tipo: 'no-soportado',
+      codigo: 'arreglo-no-soportado',
+      datos: { tipoArreglo: 'java.util.Scanner[]' },
+    });
+    expect(cuerpo('java.util.List<String> l;')[0]).toMatchObject({ tipo: 'no-soportado', codigo: 'generico-no-soportado' });
+  });
+
+  it('una llamada con el nombre completo NO es una declaración: "java.util.Arrays.sort(a);" es una sentencia de expresión', () => {
+    expect(cuerpo('java.util.Arrays.sort(a);')[0]).toMatchObject({ tipo: 'sentencia-expresion', expresion: { tipo: 'llamada' } });
+  });
+
+  it('triangulación: una asignación a un campo ("a.b = 5;") ni un acceso suelto se confunden con un tipo calificado', () => {
+    expect(cuerpo('a.b = 5;')[0]).toMatchObject({ tipo: 'sentencia-expresion', expresion: { tipo: 'asignacion' } });
+  });
+
+  it('el punto sin identificador detrás sigue siendo un error de sintaxis real: "java.util. sc;"', () => {
+    expect(() => cuerpo('java.util. sc;')).toThrow(ErrorDeCompilacion);
+  });
+});
+
+// Tarea 1.29 (causa 12): el diseño (§2.3) escribe `Clase = { "public" | "final" } "class"` y el código solo
+// aceptaba «public» — `public final class Main { … }` daba «se esperaba "class" y se encontró "final"».
+// `abstract` también es válido en una clase con `main` estático (verificado con javac 17): no cambia nada de
+// lo que se ejecuta. `final` y `abstract` juntos sí es un error de javac («illegal combination of modifiers»).
+describe('analizarPrograma — modificadores de la clase (tarea 1.29)', () => {
+  const clase = (cabecera: string) => analizar(`${cabecera} class C { public static void main(String[] a) { } }`).clase;
+
+  it.each(['final', 'public final', 'final public', 'abstract', 'public abstract', 'public strictfp', 'public final strictfp'])(
+    '"%s class" se acepta y main se sigue reconociendo',
+    (modificadores) => {
+      expect(clase(modificadores).main).not.toBeNull();
+    },
+  );
+
+  it('"final abstract class" es un error real de javac (combinación ilegal), no se acepta en silencio', () => {
+    expect(() => clase('final abstract')).toThrow(ErrorDeCompilacion);
+  });
+
+  it('un modificador repetido sigue siendo el error de siempre ("public public class")', () => {
+    expect(() => clase('public public')).toThrow(/dos veces/);
   });
 });

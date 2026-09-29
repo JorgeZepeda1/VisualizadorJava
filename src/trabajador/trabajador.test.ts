@@ -68,6 +68,77 @@ describe('manejarMensaje', () => {
     expect(emitidos[0]).toMatchObject({ tipo: 'compilado', ok: false });
   });
 
+  // Tarea 1.28 (agregada por el orquestador — hallazgo verificado de punta a punta): `compilar()`
+  // ya NO disfraza un fallo del propio motor de error de sintaxis (solo `ErrorDeCompilacion`, el
+  // error del alumno, se vuelve `Problema`); la excepción sale de `compilar()` y aquí, en el borde
+  // del trabajador, se convierte en el mensaje de protocolo `error-interno` (design.md §5) que la
+  // interfaz ya sabe mostrar («Algo falló dentro del visualizador.»). Antes el trabajador NUNCA lo
+  // emitía. Entrada que fuerza el fallo sin simular nada: paréntesis anidados más allá de la pila
+  // del analizador (mismo caso que `compilador.test.ts`; javac 17.0.18 real la rechaza con su propio
+  // `StackOverflowError` -- entrada patológica, no un programa de alumno). Las excepciones DURANTE
+  // la ejecución (`crearEjecucion`/`avanzarYEmitir`) quedan fuera: son del perro guardián (lote 3).
+  describe('un fallo interno de compilar() (tarea 1.28)', () => {
+    const NIVELES_QUE_AGOTAN_LA_PILA = 100_000;
+    const anidada = `${'('.repeat(NIVELES_QUE_AGOTAN_LA_PILA)}1${')'.repeat(NIVELES_QUE_AGOTAN_LA_PILA)}`;
+    const fuenteQueAgotaLaPila = `class C { public static void main(String[] a) { int x = ${anidada}; } }`;
+
+    it('emite UN solo mensaje error-interno con el id de la ejecución, sin compilado, pasos ni fin', () => {
+      const emitidos: MensajeTrabajadorAUi[] = [];
+      manejarMensaje({ tipo: 'ejecutar', id: 7, fuente: fuenteQueAgotaLaPila, config: configPorOmision() }, (m) =>
+        emitidos.push(m),
+      );
+      expect(emitidos).toHaveLength(1);
+      expect(emitidos[0]).toMatchObject({ tipo: 'error-interno', id: 7 });
+    });
+
+    it('el mensaje de protocolo lleva el detalle del fallo como texto no vacío (para quien depure, nunca para el alumno)', () => {
+      const emitidos: MensajeTrabajadorAUi[] = [];
+      manejarMensaje({ tipo: 'ejecutar', id: 8, fuente: fuenteQueAgotaLaPila, config: configPorOmision() }, (m) =>
+        emitidos.push(m),
+      );
+      const [interno] = emitidos;
+      if (interno?.tipo !== 'error-interno') throw new Error('se esperaba error-interno');
+      expect(interno.mensaje).toMatch(/\S/);
+    });
+
+    it('el trabajador sigue sirviendo: la siguiente ejecución con un programa normal emite compilado→pasos→fin', () => {
+      const emitidos: MensajeTrabajadorAUi[] = [];
+      manejarMensaje({ tipo: 'ejecutar', id: 1, fuente: fuenteQueAgotaLaPila, config: configPorOmision() }, (m) =>
+        emitidos.push(m),
+      );
+      manejarMensaje(
+        {
+          tipo: 'ejecutar',
+          id: 2,
+          fuente: 'class C { public static void main(String[] a) { System.out.println("sigue vivo"); } }',
+          config: configPorOmision(),
+        },
+        (m) => emitidos.push(m),
+      );
+      expect(emitidos.map((m) => `${m.tipo}#${m.id}`)).toEqual([
+        'error-interno#1',
+        'compilado#2',
+        'pasos#2',
+        'fin#2',
+      ]);
+    });
+
+    it('contraste: un error del ALUMNO (falta el ";") sigue siendo compilado ok:false, nunca error-interno', () => {
+      const emitidos: MensajeTrabajadorAUi[] = [];
+      manejarMensaje(
+        {
+          tipo: 'ejecutar',
+          id: 3,
+          fuente: 'class C { public static void main(String[] a) { int x = 5 } }',
+          config: configPorOmision(),
+        },
+        (m) => emitidos.push(m),
+      );
+      expect(emitidos).toHaveLength(1);
+      expect(emitidos[0]).toMatchObject({ tipo: 'compilado', ok: false, problema: { codigo: 'falta-punto-y-coma' } });
+    });
+  });
+
   it('"detener" no emite ningún mensaje (silencioso, ADR 007)', () => {
     const emitidos: MensajeTrabajadorAUi[] = [];
     manejarMensaje({ tipo: 'detener', id: 1 }, (m) => emitidos.push(m));

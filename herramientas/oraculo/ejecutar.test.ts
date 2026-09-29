@@ -2,6 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { localizarJdk } from './jdk.ts';
 import { LIMITE_BYTES_CAPTURA_POR_OMISION, derivarNombreDeArchivo, ejecutarPrograma } from './ejecutar.ts';
 
+// Sub-lote 1-D3 (Parte A.2): defensa adicional para el gotcha de la JVM en frío (engram) — permite
+// forzar variables de entorno del proceso HIJO (p. ej. LANG/LC_ALL) para los dos probes de
+// "marcos del lanzador" en `generar-datos.ts`. Opcional (nunca cambia el comportamiento de un
+// llamador que no lo pide) — probado aquí con una lectura REAL de `System.getenv` (cero mocks,
+// mismo criterio que el resto de este archivo).
+
 // Tarea 0.5 (ADR 011) — arnés diferencial: compila y ejecuta contra el JDK 17 REAL de esta
 // máquina (no hay simulación posible del propio oráculo). Cero mocks: todas las aserciones caen
 // sobre bytes producidos de verdad por `javac`/`java`.
@@ -127,4 +133,19 @@ describe('ejecutar.ts — compila y ejecuta contra el JDK real (ADR 011, tarea 0
     // Pero sí capturó ALGO real, no lo vació por completo — sigue siendo información útil.
     expect(resultado.stdout.length).toBeGreaterThan(0);
   }, 10_000);
+
+  it('"envAdicional" fija variables de entorno REALES del proceso hijo (LANG), sin perder el resto del entorno heredado', async () => {
+    const fuente = [
+      'public class EnvAdicionalOraculo {',
+      '    public static void main(String[] args) {',
+      '        System.out.println("LANG=" + System.getenv("LANG"));',
+      '        System.out.println("PATH-vacio=" + (System.getenv("PATH") == null));',
+      '    }',
+      '}',
+    ].join('\n');
+
+    const resultado = await ejecutarPrograma(jdk, { fuente, envAdicional: { LANG: 'es_MX.UTF-8' } });
+
+    expect(resultado.stdout.toString('utf-8')).toBe('LANG=es_MX.UTF-8\nPATH-vacio=false\n');
+  });
 });

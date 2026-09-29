@@ -59,7 +59,7 @@
 | Entero > `int` sin `L` | Error de compilación, como javac. | Fidelidad. |
 | `float`, `byte`, `short` | Aviso. **Nunca** se reinterpretan como `double`/`int`. | Fuera del currículo; reinterpretar = resultado inventado. |
 | `switch` con flecha, `switch` como expresión, `yield` | Aviso. | 0 usos en el currículo (04); candidato v1.x. |
-| Métodos propios, recursión, varias clases, campos, objetos propios | Aviso ("Java sí lo acepta…"). | 0 usos (04). |
+| Métodos propios, recursión, varias clases, campos, objetos propios | Aviso ("Es parte de Java…"). | 0 usos (04). |
 | Arreglos (salvo `String[] args`), `for` mejorado | Aviso. | 0 usos. |
 | `try/catch/throw/throws`, `System.exit`, `null` | Aviso. | 0 usos; sin `null` no hay NPE fuera del currículo. |
 | `?:`, bits y desplazamientos, `&`/`\|` lógicos, `instanceof` | Aviso (para `&`/`\|` sugiere `&&`/`\|\|`). | 0 usos. |
@@ -74,7 +74,7 @@
 ### 2.3 Cómo se comporta el aviso
 
 1. Se detecta **antes de ejecutar**: no corre ningún paso ni aparece salida.
-2. Marca la línea y la construcción; dice qué es, que Java sí la acepta (cuando aplica), que el visualizador cubre U3–U7 y, si existe, una alternativa dentro del alcance. Ej.: «Tu programa usa un arreglo (`int[]`) en la línea 4. Java sí lo acepta, pero este visualizador cubre las unidades 3 a 7 y todavía no muestra arreglos. No lo ejecuto para no enseñarte un resultado que podría no ser el de Java.»
+2. Marca la línea y la construcción; dice qué es, que es parte de Java (cuando aplica) sin afirmar que el programa compila, que por eso esa parte no se revisa, que el visualizador cubre U3–U7 y, si existe, una alternativa dentro del alcance. Ej.: «Tu programa usa un arreglo (`int[]`) en la línea 4. Es parte de Java, pero este visualizador cubre las unidades 3 a 7 y todavía no muestra arreglos, así que no puedo revisar si esa parte está bien escrita. No lo ejecuto para no enseñarte un resultado que podría no ser el de Java.»
 3. Cuatro mensajes distinguibles por icono y título, no solo por color: *Error de compilación* (Java tampoco lo acepta), *No disponible en el visualizador* (Java sí), *El programa se detuvo por un error* (excepción), *Se detuvo por seguridad* (límite de pasos).
 4. Varios problemas → el primero en el orden del texto, más "y N más".
 5. Lo que solo se sabe al ejecutar (formato de `printf` no literal) detiene la ejecución en ese paso con el mismo aviso; la traza previa sigue navegable; no se imprime nada inventado.

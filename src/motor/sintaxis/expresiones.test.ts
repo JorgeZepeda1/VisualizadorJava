@@ -182,6 +182,34 @@ describe('expresiones — miembro, llamada y "new" (nivel 14, REQ-SUB-005)', () 
     });
   });
 
+  // Tarea NUEVA (sub-lote 1-D5, JLS 15.12, cierre de C7 -- mutante real u5-switch-menu-calculadora
+  // .java#49): "MethodInvocation" SIEMPRE exige un Identifier justo antes de "("
+  // (`MethodName(...)`/`Primary.Identifier(...)`) -- un Primary arbitrario (un literal de cadena,
+  // el resultado de "(a - b)"...) NUNCA puede ser el "callee" de una llamada real. El "(" que sigue
+  // a un Primary que no es 'nombre' ni 'acceso-miembro' NUNCA se consume como el inicio de una
+  // llamada -- se deja intacto para que el contexto que sigue lo rechace con su propio error real
+  // (ver compilador.test.ts para el caso completo dentro de println, con línea calibrada).
+  it('un literal de cadena seguido de "(" NUNCA forma una llamada (JLS 15.12): el "(" queda SIN consumir', () => {
+    expect(expresionDe('"texto"(1)')).toMatchObject({ tipo: 'literal-cadena', valor: 'texto' });
+  });
+
+  it('triangulación: "(a - b)" (una binaria, tras colapsar los paréntesis) seguida de "(" tampoco forma una llamada', () => {
+    expect(expresionDe('(a - b)(1)')).toMatchObject({
+      tipo: 'binaria',
+      operador: '-',
+      izquierda: { nombre: 'a' },
+      derecha: { nombre: 'b' },
+    });
+  });
+
+  it('control: una llamada encadenada SÍ sigue funcionando cuando el callee real es un acceso a miembro ("Primary.Identifier(...)", JLS 15.12)', () => {
+    const expr = expresionDe('new Scanner(System.in).nextInt()');
+    expect(expr).toMatchObject({
+      tipo: 'llamada',
+      callee: { tipo: 'acceso-miembro', objeto: { tipo: 'nueva-instancia', nombreTipo: 'Scanner' }, miembro: 'nextInt' },
+    });
+  });
+
   it('cadena de acceso a miembro de más de un nivel (Math.PI-like)', () => {
     const expr = expresionDe('a.b.c');
     expect(expr).toMatchObject({
@@ -212,6 +240,57 @@ describe('expresiones — cast (design.md §2.4 nivel 13, sí soportado)', () =>
 
   it('cast a double (triangulación de tipo primitivo distinto)', () => {
     expect(expresionDe('(double) 3')).toMatchObject({ tipo: 'conversion', nombreTipo: 'double' });
+  });
+});
+
+// Tarea 1.29 (causa 3, agregada por el orquestador): «(» tipo primitivo «)» es SIEMPRE un cast
+// (design.md §2.5.1, JLS 15.16) — también con `byte`, `short` y `float`, que son tipos primitivos
+// REALES de Java fuera del subconjunto (REQ-SUB-007: nunca se reinterpretan como `int`/`double`).
+// Antes solo `int/long/double/boolean/char` abrían un cast, así que `(byte) x` daba «se esperaba una
+// expresión y se encontró "byte"» para dos programas de `corpus/experimentos` que javac compila. Es la
+// MISMA construcción que la declaración `byte b = 5;` (`tipo-primitivo-no-soportado`): un aviso.
+describe('expresiones — cast a un tipo primitivo fuera del subconjunto es aviso, no error (tarea 1.29)', () => {
+  it.each(['byte', 'short', 'float'])('"(%s) x" es NoSoportado con el mismo código que la declaración de ese tipo', (tipo) => {
+    expect(expresionDe(`(${tipo}) x`)).toMatchObject({ tipo: 'expresion-no-soportada', codigo: 'tipo-primitivo-no-soportado' });
+  });
+
+  // Tarea 1.30 (decisión del PO 2026-09-29): el aviso nombra el tipo CONCRETO del cast (`(byte) x` → «el tipo
+  // `byte`»), igual que en la declaración, así que el nodo lo lleva en sus datos.
+  it.each(['byte', 'short', 'float'])('"(%s) x" manda el tipo del cast en los datos del aviso', (tipo) => {
+    expect(expresionDe(`(${tipo}) x`)).toMatchObject({
+      tipo: 'expresion-no-soportada',
+      codigo: 'tipo-primitivo-no-soportado',
+      datos: { tipo },
+    });
+  });
+
+  it('el rango cubre el paréntesis de apertura hasta el final del operando: "(byte) 200" → 0..10', () => {
+    expect(expresionDe('(byte) 200').rango).toEqual({ inicio: 0, fin: 10 });
+  });
+
+  it('el análisis sigue después (ADR 003): "(byte) x + 1" es una suma cuyo primer operando es NoSoportado', () => {
+    expect(expresionDe('(byte) x + 1')).toMatchObject({
+      tipo: 'binaria',
+      operador: '+',
+      izquierda: { tipo: 'expresion-no-soportada', codigo: 'tipo-primitivo-no-soportado' },
+      derecha: { tipo: 'literal-entero', valor: 1n },
+    });
+  });
+
+  it('un cast soportado con un operando NoSoportado: "(int) (short) x" conserva el cast exterior', () => {
+    expect(expresionDe('(int) (short) x')).toMatchObject({
+      tipo: 'conversion',
+      nombreTipo: 'int',
+      operando: { tipo: 'expresion-no-soportada', codigo: 'tipo-primitivo-no-soportado' },
+    });
+  });
+
+  it('un cast sin operando sigue siendo un error de sintaxis real (javac: illegal start of expression): "(byte)" solo', () => {
+    expect(() => expresionDe('(byte)')).toThrow(ErrorDeCompilacion);
+  });
+
+  it('control: "byte" fuera de un cast no se confunde con uno: "(x) + 1" sigue siendo una agrupación', () => {
+    expect(expresionDe('(x) + 1')).toMatchObject({ tipo: 'binaria', operador: '+', izquierda: { tipo: 'nombre', nombre: 'x' } });
   });
 });
 
@@ -268,6 +347,76 @@ describe('expresiones — NO-DISP con precedencia real (design.md §2.6, ADR 003
     expect(expr).toMatchObject({ tipo: 'expresion-no-soportada', codigo: 'operador-bits-and' });
     // El operando derecho real fue "b * c" completo (mayor precedencia que "&"), no solo "b".
     expect(expr.rango).toEqual({ inicio: 0, fin: 9 });
+  });
+
+  // Tarea 1.25 (datos tipados): "new Tipo[...]" en posición de EXPRESIÓN (analizarNuevaInstancia,
+  // código `arregloNuevo` — MISMO valor de texto que la declaración "Tipo[] x;", REQ-SUB-007 fila
+  // "Arreglos") es el ÚNICO sitio de emisión de `arreglo-no-soportado` que NINGUNA muestra de
+  // `corpus/compilacion/avisos/` ejercita (las 3 muestras de arreglo reales — 25/26/27 — declaran
+  // el tipo primero, "Tipo[] nombre = ...", así que SIEMPRE se detectan como declaración antes de
+  // llegar a interpretar el inicializador "new ..." como expresión). Sin esta prueba, el sitio de
+  // `analizarNuevaInstancia` quedaría sin ninguna verificación real de que manda `tipoArreglo`.
+  it('"new Tipo[...]" (arreglo, en posición de EXPRESIÓN) es NoSoportado con el tipo real en datos.tipoArreglo', () => {
+    expect(expresionDe('new int[5]')).toMatchObject({
+      tipo: 'expresion-no-soportada',
+      codigo: 'arreglo-no-soportado',
+      datos: { tipoArreglo: 'int[]' },
+    });
+  });
+
+  it('triangulación: otro tipo y dos dimensiones ("new String[3][]") — nunca "int[]" fijo', () => {
+    expect(expresionDe('new String[3][]')).toMatchObject({
+      tipo: 'expresion-no-soportada',
+      codigo: 'arreglo-no-soportado',
+      datos: { tipoArreglo: 'String[][]' },
+    });
+  });
+});
+
+// Tarea 1.23 (agregada por el orquestador: hallazgo de la guarda de avisos, sub-lote 1-D6):
+// "switch" en posición de EXPRESIÓN (JLS 15.28, Java 14+) — `analizarSwitch`
+// (analizador-sintactico.ts) solo reconocía "switch" como inicio de SENTENCIA; un switch usado
+// como inicializador/argumento/operando (Java válido real, verificado contra javac 17 real en
+// esta sesión) caía en el `throw` genérico de abajo, un error de sintaxis engañoso para algo que
+// javac sí acepta (C8, regla 5 de CLAUDE.md). Todas las formas verificadas contra javac 17 real
+// (carpetas temporales, borradas) antes de escribir estos casos.
+describe('expresiones — switch como expresión (JLS 15.28, REQ-SUB-007, tarea 1.23)', () => {
+  it('con flechas ("case X -> valor") es NoSoportado, no un error de sintaxis', () => {
+    const expr = expresionDe('switch (dia) { case 1 -> 10; default -> 0; }');
+    expect(expr).toMatchObject({ tipo: 'expresion-no-soportada', codigo: 'switch-expresion-no-soportado' });
+  });
+
+  it('forma clásica con ":" y "yield" (igual que corpus/compilacion/avisos/37-yield.java) también es NoSoportado', () => {
+    const expr = expresionDe('switch (dia) { case 1: yield 1; default: yield 0; }');
+    expect(expr).toMatchObject({ tipo: 'expresion-no-soportada', codigo: 'switch-expresion-no-soportado' });
+  });
+
+  it('"yield" dentro de un bloque ("case X -> { yield valor; }") no rompe el balanceo de "{"/"}"', () => {
+    const expr = expresionDe('switch (dia) { case 1 -> { yield 10; } default -> { yield 0; } }');
+    expect(expr).toMatchObject({ tipo: 'expresion-no-soportada', codigo: 'switch-expresion-no-soportado' });
+  });
+
+  it('el rango va desde "switch" hasta el "}" que cierra, incluso con un bloque "yield" anidado', () => {
+    const texto = 'switch (dia) { case 1 -> { yield 10; } default -> { yield 0; } }';
+    expect(expresionDe(texto).rango).toEqual({ inicio: 0, fin: texto.length });
+  });
+
+  it('anidado como operando de otra expresión, el análisis sigue después (ADR 003)', () => {
+    const expr = expresionDe('1 + switch (n) { case 1 -> 10; default -> 0; }');
+    expect(expr).toMatchObject({
+      tipo: 'binaria',
+      operador: '+',
+      izquierda: { valor: 1n },
+      derecha: { tipo: 'expresion-no-soportada', codigo: 'switch-expresion-no-soportado' },
+    });
+  });
+
+  it('como argumento de una llamada (p. ej. System.out.println), el análisis sigue después del cierre', () => {
+    const expr = expresionDe('System.out.println(switch (n) { case 1 -> "uno"; default -> "otro"; })');
+    expect(expr).toMatchObject({
+      tipo: 'llamada',
+      argumentos: [{ tipo: 'expresion-no-soportada', codigo: 'switch-expresion-no-soportado' }],
+    });
   });
 });
 

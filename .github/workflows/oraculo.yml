@@ -8,10 +8,11 @@ name: Oráculo
 # archivo.
 #
 # "CI al día con lo que existe" (orquestador, 2026-09-25 — tasks.md → Convenciones): al cerrar el
-# lote 0 (sub-lote 0-C), `oraculo:generados` (fuzzing nocturno contra el JDK, tarea 2.21) y
-# `oraculo:mutantes` (veredictos de mutantes, tarea 1.16) TODAVÍA no existen como scripts reales —
-# solo `oraculo:verificar` (tarea 0.6) corre hoy. Los pasos nocturnos se agregan de vuelta cuando
-# esas tareas creen sus scripts.
+# lote 0 (sub-lote 0-C), `oraculo:generados` (fuzzing nocturno contra el JDK, tarea 2.21) TODAVÍA
+# no existe como script real — su paso nocturno se agrega cuando esa tarea lo cree.
+# `oraculo:mutantes` (veredictos de mutantes, tarea 1.16, sub-lote 1-D3) SÍ existe desde esta
+# sesión — su paso nocturno vive al final de este job (regenera y compara bytes, mismo patrón que
+# "Catálogo de datos del JDK" de abajo).
 #
 # Tarea 0.18 (tras el primer CI remoto): `ci.yml` (ubuntu-latest, SIN JDK) fallaba porque `npm
 # test` corría también las pruebas de `herramientas/oraculo/**`, que SIEMPRE requieren el JDK real
@@ -68,6 +69,31 @@ jobs:
           JDK17_HOME: ${{ steps.jdk.outputs.path }}
         run: npm run oraculo:verificar
 
+      - name: Catálogo de datos del JDK contra una regeneración real (bytes idénticos, ADR 010 punto 3; tarea 1.9)
+        env:
+          JDK17_HOME: ${{ steps.jdk.outputs.path }}
+        run: |
+          npm run oraculo:datos
+          git diff --exit-code -- corpus/datos src/motor/biblioteca/datos || {
+            echo '::error::corpus/datos/** o src/motor/biblioteca/datos/**.generado.ts no coinciden con una regeneración real contra el JDK (ADR 010). Corre "npm run oraculo:datos" localmente y confirma los cambios.' >&2
+            exit 1
+          }
+
+      # Nocturno (design.md §9: "de noche, oraculo:generados y oraculo:mutantes") — semilla FIJA
+      # (mutantes.ts), así que una regeneración real de una noche sin cambios en corpus/curso ni en
+      # el generador debe dar BYTES IDÉNTICOS (mismo criterio que "Catálogo de datos del JDK"
+      # arriba, ADR 010 punto 3) — si difiere, alguien cambió el corpus o el generador sin
+      # regenerar `corpus/mutantes/veredictos.jsonl` localmente primero.
+      - name: 'Nocturno: regenerar veredictos de mutantes contra una regeneración real (C7, tarea 1.16)'
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        env:
+          JDK17_HOME: ${{ steps.jdk.outputs.path }}
+        run: |
+          npm run oraculo:mutantes
+          git diff --exit-code -- corpus/mutantes || {
+            echo '::error::corpus/mutantes/veredictos.jsonl no coincide con una regeneración real contra el JDK (ADR 010, semilla fija de mutantes.ts). Corre "npm run oraculo:mutantes" localmente y confirma los cambios.' >&2
+            exit 1
+          }
+
       # Pasos nocturnos pendientes — se agregan cuando sus tareas creen los scripts reales:
       #   - Fuzzing contra el JDK real (C3): npm run oraculo:generados — tarea 2.21.
-      #   - Regenerar veredictos de mutantes (C7): npm run oraculo:mutantes — tarea 1.16.

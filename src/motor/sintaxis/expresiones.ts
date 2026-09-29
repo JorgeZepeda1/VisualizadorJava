@@ -11,7 +11,12 @@
 import { ErrorDeCompilacion } from '../error-de-compilacion.ts';
 import { PALABRAS_CLAVE_TIPO_PRIMITIVO, type Token } from '../lexico/tokens.ts';
 import { CursorDeTokens } from './cursor-de-tokens.ts';
-import type { NodoConversion, NodoExpresion, NodoNuevaInstancia } from './ast.ts';
+// Tarea 1.24: única fuente de verdad de códigos "no soportado" — antes este archivo emitía TODOS
+// sus códigos como strings inline, nunca importados de ninguna tabla (engram
+// visualizador-java/patron-codigos-inline-expresiones), lo que dejó pasar una discrepancia real:
+// aquí se emitía 'lambda' mientras la tabla central decía 'lambda-no-soportada'.
+import { CODIGOS_NO_SOPORTADO, esTipoPrimitivoNoSoportado, saltarHastaCerrar } from './no-soportado.ts';
+import type { NodoConversion, NodoExpresion, NodoExpresionNoSoportada, NodoNuevaInstancia } from './ast.ts';
 
 const PRECEDENCIA: Readonly<Record<string, number>> = {
   '||': 3,
@@ -38,13 +43,25 @@ const PRECEDENCIA: Readonly<Record<string, number>> = {
 
 const OPERADORES_NO_SOPORTADOS_BINARIOS: ReadonlySet<string> = new Set(['|', '^', '&', '<<', '>>', '>>>']);
 
-const CODIGOS_OPERADOR_NO_SOPORTADO: Readonly<Record<string, string>> = {
-  '|': 'operador-bits-or',
-  '^': 'operador-bits-xor',
-  '&': 'operador-bits-and',
-  '<<': 'operador-desplazamiento',
-  '>>': 'operador-desplazamiento',
-  '>>>': 'operador-desplazamiento',
+// Tarea 1.25: tipo ESTRECHO (los 4 códigos reales, no `CodigoNoSoportado` completo) — los 4 solo
+// necesitan `datos: {}` (ninguno nombra el operador en su texto, `textos/es-MX/no-soportado.ts`),
+// así que el sitio de construcción de abajo (`CODIGOS_OPERADOR_NO_SOPORTADO[operador]`) puede
+// verificar `datos: {}` de verdad: con el tipo ANCHO anterior, TypeScript no podía distinguir este
+// código de, por ejemplo, `arreglo-no-soportado` (que SÍ exige más datos) y el `{}` de abajo no
+// habría compilado.
+type CodigoOperadorNoSoportado =
+  | 'operador-bits-or'
+  | 'operador-bits-xor'
+  | 'operador-bits-and'
+  | 'operador-desplazamiento';
+
+const CODIGOS_OPERADOR_NO_SOPORTADO: Readonly<Record<string, CodigoOperadorNoSoportado>> = {
+  '|': CODIGOS_NO_SOPORTADO.operadorBitsOr,
+  '^': CODIGOS_NO_SOPORTADO.operadorBitsXor,
+  '&': CODIGOS_NO_SOPORTADO.operadorBitsAnd,
+  '<<': CODIGOS_NO_SOPORTADO.operadorDesplazamiento,
+  '>>': CODIGOS_NO_SOPORTADO.operadorDesplazamiento,
+  '>>>': CODIGOS_NO_SOPORTADO.operadorDesplazamiento,
 };
 
 const OPERADORES_ASIGNACION_SOPORTADOS: ReadonlySet<string> = new Set(['=', '+=', '-=', '*=', '/=', '%=']);
@@ -82,7 +99,8 @@ function analizarAsignacion(cursor: CursorDeTokens): NodoExpresion {
     const valor = analizarAsignacion(cursor);
     return {
       tipo: 'expresion-no-soportada',
-      codigo: 'asignacion-de-bits',
+      codigo: CODIGOS_NO_SOPORTADO.asignacionDeBits,
+      datos: {},
       rango: { inicio: izquierda.rango.inicio, fin: valor.rango.fin },
     };
   }
@@ -101,7 +119,8 @@ function analizarTernario(cursor: CursorDeTokens): NodoExpresion {
   const siFalso = analizarTernario(cursor);
   return {
     tipo: 'expresion-no-soportada',
-    codigo: 'operador-ternario',
+    codigo: CODIGOS_NO_SOPORTADO.operadorTernario,
+    datos: {},
     rango: { inicio: condicion.rango.inicio, fin: siFalso.rango.fin },
   };
 }
@@ -121,7 +140,8 @@ function analizarBinaria(cursor: CursorDeTokens, precedenciaMinima: number): Nod
       const tipo = cursor.esperarTipo('identificador');
       izquierda = {
         tipo: 'expresion-no-soportada',
-        codigo: 'instanceof',
+        codigo: CODIGOS_NO_SOPORTADO.instanceofNoSoportado,
+        datos: {},
         rango: { inicio: izquierda.rango.inicio, fin: tipo.rango.fin },
       };
       continue;
@@ -130,15 +150,20 @@ function analizarBinaria(cursor: CursorDeTokens, precedenciaMinima: number): Nod
     const derecha = analizarBinaria(cursor, precedencia + 1);
     const rango = { inicio: izquierda.rango.inicio, fin: derecha.rango.fin };
     izquierda = OPERADORES_NO_SOPORTADOS_BINARIOS.has(operador)
-      ? { tipo: 'expresion-no-soportada', codigo: CODIGOS_OPERADOR_NO_SOPORTADO[operador], rango }
+      ? { tipo: 'expresion-no-soportada', codigo: CODIGOS_OPERADOR_NO_SOPORTADO[operador], datos: {}, rango }
       : { tipo: 'binaria', operador, izquierda, derecha, rango };
   }
 
   return izquierda;
 }
 
-// Nivel 13: prefijos (design.md §2.4, §2.5.1 cast-vs-paréntesis).
+// Nivel 13: prefijos (design.md §2.4, §2.5.1 cast-vs-paréntesis). Corrección obligatoria (sub-lote
+// 1-B, tarea 1.6): "->" (lambdas) no se analizaba en absoluto — hoy produce su aviso NO-DISP en vez
+// de dejar que el resto del análisis se confunda con lo que sigue (C8).
 function analizarUnaria(cursor: CursorDeTokens): NodoExpresion {
+  const lambda = intentarAnalizarLambda(cursor);
+  if (lambda) return lambda;
+
   const token = cursor.actual();
 
   if (token.texto === '~') {
@@ -146,7 +171,8 @@ function analizarUnaria(cursor: CursorDeTokens): NodoExpresion {
     const operando = analizarUnaria(cursor);
     return {
       tipo: 'expresion-no-soportada',
-      codigo: 'operador-complemento-bits',
+      codigo: CODIGOS_NO_SOPORTADO.operadorComplementoBits,
+      datos: {},
       rango: { inicio: token.rango.inicio, fin: operando.rango.fin },
     };
   }
@@ -188,6 +214,69 @@ function esLiteralEnteroOLargo(token: Token): boolean {
   return token.tipo === 'entero' || token.tipo === 'largo';
 }
 
+// Lambdas (tarea 1.6, REQ-SUB-007, corrección obligatoria del sub-lote 1-B): "identificador ->" (un
+// solo parámetro sin paréntesis) o "(...) ->" (lista de parámetros, posiblemente vacía o con más de
+// uno — el contenido de los paréntesis no se interpreta, solo se delimita). Nunca se confunde con
+// un cast o una agrupación normal porque solo dispara si el "->" aparece de verdad después del
+// paréntesis que cierra.
+function intentarAnalizarLambda(cursor: CursorDeTokens): NodoExpresionNoSoportada | null {
+  const token = cursor.actual();
+
+  if (token.tipo === 'identificador' && cursor.mirar(1).texto === '->') {
+    cursor.avanzar();
+    cursor.avanzar();
+    const fin = consumirCuerpoDeLambda(cursor);
+    return {
+      tipo: 'expresion-no-soportada',
+      codigo: CODIGOS_NO_SOPORTADO.lambda,
+      datos: {},
+      rango: { inicio: token.rango.inicio, fin },
+    };
+  }
+
+  if (token.texto === '(') {
+    const desplazamientoCierre = buscarDesplazamientoDelParentesisQueCierra(cursor);
+    if (desplazamientoCierre !== null && cursor.mirar(desplazamientoCierre + 1).texto === '->') {
+      cursor.avanzar(); // '('
+      saltarHastaCerrar(cursor, '(', ')');
+      cursor.avanzar(); // '->'
+      const fin = consumirCuerpoDeLambda(cursor);
+      return {
+        tipo: 'expresion-no-soportada',
+        codigo: CODIGOS_NO_SOPORTADO.lambda,
+        datos: {},
+        rango: { inicio: token.rango.inicio, fin },
+      };
+    }
+  }
+
+  return null;
+}
+
+// Búsqueda SIN CONSUMIR (solo `mirar`) del desplazamiento del ")" que cierra el "(" en la posición
+// actual (desplazamiento 0). Devuelve `null` si no cierra antes de EOF.
+function buscarDesplazamientoDelParentesisQueCierra(cursor: CursorDeTokens): number | null {
+  let profundidad = 0;
+  for (let i = 0; i < 4096; i += 1) {
+    const token = cursor.mirar(i);
+    if (token.tipo === 'eof') return null;
+    if (token.texto === '(') profundidad += 1;
+    else if (token.texto === ')') {
+      profundidad -= 1;
+      if (profundidad === 0) return i;
+    }
+  }
+  return null;
+}
+
+function consumirCuerpoDeLambda(cursor: CursorDeTokens): number {
+  if (cursor.coincideTexto('{')) {
+    cursor.avanzar();
+    return saltarHastaCerrar(cursor, '{', '}').rango.fin;
+  }
+  return analizarAsignacion(cursor).rango.fin;
+}
+
 // JLS 3.10.1: "-2147483648" y "-9223372036854775808L" solo son literales válidos como operando
 // DIRECTO de un "-" unario (tarea 1.4). Se pliegan aquí a un literal negativo (nunca a
 // NodoUnaria{'-', literal}) — misma técnica para cualquier magnitud, así el caso límite sale
@@ -213,12 +302,22 @@ function errorLiteralDemasiadoGrande(rango: { inicio: number; fin: number }): Er
 // design.md §2.5.1 (JLS 15.16): "(" tipo primitivo ")" es SIEMPRE cast; "(" Nombre ")" es cast
 // solo si lo que sigue puede abrir una expresión unaria sin "+"/"-" — si no, es un paréntesis
 // normal ("lo demás, expresión", §2.5.2) y se deja que analizarPostfija/analizarPrimaria lo trate.
-function intentarAnalizarCast(cursor: CursorDeTokens): NodoConversion | null {
+//
+// Tarea 1.29 (causa 3): "primitivo" incluye `byte`/`short`/`float` — tipos REALES de Java que el
+// subconjunto no soporta (REQ-SUB-007: nunca se reinterpretan como `int`/`double`). Un cast a ellos
+// es el MISMO aviso que su declaración (`tipo-primitivo-no-soportado`), con el rango del paréntesis
+// de apertura al final del operando; antes no abría un cast y daba «se esperaba una expresión y se
+// encontró "byte"» para un programa que javac compila. El operando se analiza igual (un cast sin
+// operando sigue siendo un error de sintaxis real).
+function intentarAnalizarCast(cursor: CursorDeTokens): NodoConversion | NodoExpresionNoSoportada | null {
   if (cursor.actual().texto !== '(') return null;
 
   const posibleTipo = cursor.mirar(1);
+  // Tarea 1.30: el aviso nombra el tipo CONCRETO del cast (`(byte) x` → `byte`), igual que en la declaración.
+  const tipoNoSoportado =
+    posibleTipo.tipo === 'palabra-clave' && esTipoPrimitivoNoSoportado(posibleTipo.texto) ? posibleTipo.texto : null;
   const esPrimitivo =
-    posibleTipo.tipo === 'palabra-clave' && PALABRAS_CLAVE_TIPO_PRIMITIVO.has(posibleTipo.texto);
+    tipoNoSoportado !== null || (posibleTipo.tipo === 'palabra-clave' && PALABRAS_CLAVE_TIPO_PRIMITIVO.has(posibleTipo.texto));
   const esIdentificador = posibleTipo.tipo === 'identificador';
   if (!esPrimitivo && !esIdentificador) return null;
 
@@ -233,7 +332,16 @@ function intentarAnalizarCast(cursor: CursorDeTokens): NodoConversion | null {
   const tipo = cursor.avanzar(); // el nombre del tipo
   cursor.avanzar(); // ")"
   const operando = analizarUnaria(cursor);
-  return { tipo: 'conversion', nombreTipo: tipo.texto, operando, rango: { inicio, fin: operando.rango.fin } };
+  const rango = { inicio, fin: operando.rango.fin };
+  if (tipoNoSoportado !== null) {
+    return {
+      tipo: 'expresion-no-soportada',
+      codigo: CODIGOS_NO_SOPORTADO.tipoPrimitivoNoSoportado,
+      datos: { tipo: tipoNoSoportado },
+      rango,
+    };
+  }
+  return { tipo: 'conversion', nombreTipo: tipo.texto, operando, rango };
 }
 
 function abreExpresionUnariaSinSigno(token: Token): boolean {
@@ -247,7 +355,15 @@ function abreExpresionUnariaSinSigno(token: Token): boolean {
   ) {
     return true;
   }
-  if (token.tipo === 'palabra-clave' && (token.texto === 'true' || token.texto === 'false' || token.texto === 'new')) {
+  if (
+    token.tipo === 'palabra-clave' &&
+    (token.texto === 'true' ||
+      token.texto === 'false' ||
+      token.texto === 'new' ||
+      token.texto === 'this' ||
+      token.texto === 'super' ||
+      token.texto === 'null')
+  ) {
     return true;
   }
   return token.texto === '(' || token.texto === '!' || token.texto === '~';
@@ -274,7 +390,17 @@ function analizarPostfija(cursor: CursorDeTokens): NodoExpresion {
       continue;
     }
 
-    if (token.texto === '(') {
+    // Tarea NUEVA (sub-lote 1-D5, JLS 15.12, cierre de C7 -- mutante real
+    // u5-switch-menu-calculadora.java#49): "MethodInvocation" SIEMPRE exige un Identifier justo
+    // antes de "(" (`MethodName(...)` o `Primary.Identifier(...)`) -- NINGUNA forma de la JLS
+    // admite un Primary arbitrario (un literal de cadena, el resultado de "(a-b)"...) directamente
+    // seguido de "(...)". Antes de esta corrección, CUALQUIER expresión ya reducida podía "volverse"
+    // el callee de una llamada, así que `"texto"(args)` se aceptaba como una llamada real. Cuando
+    // `expresion` no es 'nombre' ni 'acceso-miembro', el "(" NUNCA se consume aquí -- se deja
+    // intacto para el contexto que sigue (quien SÍ sabe qué esperaba, p. ej. el ")" de un println
+    // envolvente) lo rechace con su propio error real, verificado contra javac 17 real: "')'
+    // expected" (el mismo mensaje que da javac para este mutante exacto).
+    if (token.texto === '(' && (expresion.tipo === 'nombre' || expresion.tipo === 'acceso-miembro')) {
       const argumentos = analizarArgumentos(cursor);
       const cierre = cursor.esperarTexto(')');
       expresion = {
@@ -304,7 +430,8 @@ function analizarPostfija(cursor: CursorDeTokens): NodoExpresion {
       const cierre = cursor.esperarTexto(']');
       expresion = {
         tipo: 'expresion-no-soportada',
-        codigo: 'acceso-arreglo',
+        codigo: CODIGOS_NO_SOPORTADO.accesoArreglo,
+        datos: {},
         rango: { inicio: expresion.rango.inicio, fin: cierre.rango.fin },
       };
       continue;
@@ -315,7 +442,8 @@ function analizarPostfija(cursor: CursorDeTokens): NodoExpresion {
       const miembro = cursor.avanzar(); // nombre de método, o "new"
       expresion = {
         tipo: 'expresion-no-soportada',
-        codigo: 'referencia-metodo',
+        codigo: CODIGOS_NO_SOPORTADO.referenciaMetodo,
+        datos: {},
         rango: { inicio: expresion.rango.inicio, fin: miembro.rango.fin },
       };
       continue;
@@ -343,6 +471,31 @@ function analizarArgumentos(cursor: CursorDeTokens): NodoExpresion[] {
 function analizarPrimaria(cursor: CursorDeTokens): NodoExpresion {
   const token = cursor.actual();
 
+  // Tarea NUEVA (sub-lote 1-D5, ADR 003 "deja seguir", cierre de C7 -- mutante real
+  // u6-ciclos-anidados-tabla.java#52): un token LÉXICO no-soportado (literal hex/octal/binario/
+  // float, `\uXXXX`...) es, para la GRAMÁTICA de expresiones, una primaria válida como cualquier
+  // otra -- javac los reconoce y tokeniza igual (verificado: "3f" es un literal float REAL, JLS
+  // 3.10.2). Antes de esta corrección, `analizarPrimaria` no tenía ninguna rama para
+  // `tipo:'no-soportado'`, así que SIEMPRE caía en el `throw` genérico de abajo -- cortando el
+  // análisis en seco en vez de "propagar" el aviso y dejar que el RESTO de la gramática (p. ej. el
+  // ';' que un "for" exige después de su condición) se siga verificando de verdad, como ya pasa con
+  // CUALQUIER otra construcción NO-DISP de este archivo (this/super/null/lambda/ternario/
+  // instanceof/bits...). El código real de esta construcción específica viaja en `token.codigo`
+  // (nunca un valor inventado aquí).
+  if (token.tipo === 'no-soportado') {
+    cursor.avanzar();
+    // Tarea 1.25: `token.codigo`/`token.datos` YA se construyeron juntos y verificados contra
+    // `DatosPorCodigoNoSoportado` en el léxico (`lexico/literales.ts`/`analizador-lexico.ts`, el
+    // ÚNICO lugar donde un `Token` no-soportado se crea) — aquí solo se re-envuelve ese mismo par en
+    // la forma de `NodoExpresionNoSoportada`. TypeScript no puede probar que la pareja sobrevive el
+    // re-envoltorio porque `token.codigo`/`token.datos` llegan anchos (`CodigoNoSoportado`/
+    // `Record<string, unknown>`, no el miembro específico que de verdad tienen en tiempo de
+    // ejecución) — el `as` es seguro por construcción, no un escape general de tipos.
+    const codigo = token.codigo ?? CODIGOS_NO_SOPORTADO.sinClasificar;
+    const datos = token.datos ?? {};
+    return { tipo: 'expresion-no-soportada', codigo, datos, rango: token.rango } as NodoExpresionNoSoportada;
+  }
+
   if (token.tipo === 'entero' || token.tipo === 'largo') {
     cursor.avanzar();
     const limite = token.tipo === 'largo' ? MAGNITUD_MAXIMA_LARGO_POSITIVO : MAGNITUD_MAXIMA_INT_POSITIVO;
@@ -368,6 +521,29 @@ function analizarPrimaria(cursor: CursorDeTokens): NodoExpresion {
     cursor.avanzar();
     return { tipo: 'literal-booleano', valor: token.texto === 'true', rango: token.rango };
   }
+  // "this"/"super"/"null" (tarea 1.6, REQ-SUB-007, design.md §2.6): se interceptan por TEXTO antes
+  // de caer en la rama genérica de identificador de abajo, para que nunca se traten como el nombre
+  // de una variable común.
+  if (token.texto === 'this' || token.texto === 'super') {
+    cursor.avanzar();
+    return { tipo: 'expresion-no-soportada', codigo: CODIGOS_NO_SOPORTADO.thisSuper, datos: {}, rango: token.rango };
+  }
+  if (token.texto === 'null') {
+    cursor.avanzar();
+    return { tipo: 'expresion-no-soportada', codigo: CODIGOS_NO_SOPORTADO.nullNoSoportado, datos: {}, rango: token.rango };
+  }
+  // Tarea 1.23 (agregada por el orquestador: hallazgo de la guarda de avisos, sub-lote 1-D6, JLS
+  // 15.28, Java 14+): "switch" en posición de EXPRESIÓN (inicializador, argumento, operando
+  // anidado...) es Java válido real (REQ-SUB-007, fila "switch flecha/expresión, yield") que este
+  // analizador no reconocía -- `analizarSwitch` (analizador-sintactico.ts) solo lo espera como
+  // inicio de SENTENCIA, así que antes de esta rama un "switch" aquí siempre caía en el `throw`
+  // genérico de abajo (error de sintaxis engañoso para algo que javac sí compila, C8/regla 5 de
+  // CLAUDE.md). Se delimita balanceado hasta su "}" que cierra, sin interpretar NADA de su interior
+  // (selector, etiquetas "case"/"default"/flecha, "yield") -- igual patrón que ya usa este mismo
+  // archivo para "new Tipo[]{...}" (arreglo-no-soportado) y "->" (lambda).
+  if (token.texto === 'switch') {
+    return analizarSwitchExpresionNoSoportado(cursor);
+  }
   if (token.texto === 'new') {
     return analizarNuevaInstancia(cursor);
   }
@@ -388,15 +564,73 @@ function analizarPrimaria(cursor: CursorDeTokens): NodoExpresion {
   );
 }
 
-function analizarNuevaInstancia(cursor: CursorDeTokens): NodoNuevaInstancia {
-  const inicio = cursor.esperarTexto('new').rango.inicio;
-  const tipo = cursor.esperarTipo('identificador');
+// "new Tipo(...)" (soportado, REQ-SUB-005) o "new Tipo[...]" / "new Tipo[]{...}" (arreglo, NO-DISP
+// — tarea 1.6, REQ-SUB-007). El tipo puede ser un identificador (Scanner, Random…) o una palabra
+// clave primitiva (el elemento de un arreglo, p. ej. "new int[5]").
+function analizarNuevaInstancia(cursor: CursorDeTokens): NodoNuevaInstancia | NodoExpresionNoSoportada {
+  const inicioToken = cursor.esperarTexto('new');
+  const tipoToken = cursor.avanzar();
+  // Tarea 1.29: el tipo puede llevar su paquete ("new java.util.Scanner(System.in)") — se guarda tal como
+  // se escribió; qué es lo decide la atribución.
+  let nombreTipo = tipoToken.texto;
+  while (cursor.coincideTexto('.') && cursor.mirar(1).tipo === 'identificador') {
+    cursor.avanzar();
+    nombreTipo += `.${cursor.avanzar().texto}`;
+  }
+
+  if (cursor.coincideTexto('[')) {
+    let fin = tipoToken.rango.fin;
+    // Tarea 1.25 (mismo hallazgo que la forma de declaración "Tipo[] x;", analizador-sintactico.ts
+    // — este sitio, "new Tipo[...]" en posición de EXPRESIÓN, es el ÚNICO que ninguna muestra de
+    // `corpus/compilacion/avisos/` ejercita, ver expresiones.test.ts): cuenta las dimensiones reales
+    // ("[5]", "[][]"…) para que `tipoArreglo` sea el tipo EXACTO que escribió el alumno, con tantos
+    // "[]" como pares haya, nunca "int[]" fijo.
+    let dimensiones = 0;
+    while (cursor.coincideTexto('[')) {
+      cursor.avanzar();
+      dimensiones += 1;
+      if (!cursor.coincideTexto(']')) analizarExpresion(cursor);
+      fin = cursor.esperarTexto(']').rango.fin;
+    }
+    if (cursor.coincideTexto('{')) {
+      cursor.avanzar();
+      fin = saltarHastaCerrar(cursor, '{', '}').rango.fin;
+    }
+    return {
+      tipo: 'expresion-no-soportada',
+      codigo: CODIGOS_NO_SOPORTADO.arregloNuevo,
+      datos: { tipoArreglo: `${nombreTipo}${'[]'.repeat(dimensiones)}` },
+      rango: { inicio: inicioToken.rango.inicio, fin },
+    };
+  }
+
   const argumentos = analizarArgumentos(cursor);
   const cierre = cursor.esperarTexto(')');
   return {
     tipo: 'nueva-instancia',
-    nombreTipo: tipo.texto,
+    nombreTipo,
     argumentos,
-    rango: { inicio, fin: cierre.rango.fin },
+    rango: { inicio: inicioToken.rango.inicio, fin: cierre.rango.fin },
+  };
+}
+
+// "switch (Selector) { ... }" en posición de expresión (tarea 1.23, JLS 15.28). El selector se
+// delimita balanceando SOLO "("/")" (nunca se interpreta como expresión real) para que un "{" que
+// pudiera aparecer DENTRO de él (p. ej. un inicializador de arreglo anónimo en el selector, rarísimo
+// pero sintácticamente legal) nunca se confunda con la apertura del cuerpo del switch. El cuerpo
+// completo -- etiquetas "case"/"default" (clásicas o con flecha) y cualquier "yield", en bloque o
+// no -- se delimita balanceando "{"/"}" sin interpretarlo (ADR 003 "deja seguir"): un "{" anidado de
+// una rama "case X -> { ... }" incrementa la misma profundidad y no rompe el balanceo.
+function analizarSwitchExpresionNoSoportado(cursor: CursorDeTokens): NodoExpresionNoSoportada {
+  const inicioToken = cursor.esperarTexto('switch');
+  cursor.esperarTexto('(');
+  saltarHastaCerrar(cursor, '(', ')');
+  cursor.esperarTexto('{');
+  const cierre = saltarHastaCerrar(cursor, '{', '}');
+  return {
+    tipo: 'expresion-no-soportada',
+    codigo: CODIGOS_NO_SOPORTADO.switchExpresion,
+    datos: {},
+    rango: { inicio: inicioToken.rango.inicio, fin: cierre.rango.fin },
   };
 }

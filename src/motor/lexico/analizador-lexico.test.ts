@@ -103,6 +103,136 @@ describe('tokenizar — literales numéricos (tarea 1.1, design.md §2.1)', () =
   });
 });
 
+// Tarea 1.29 (causa 7, hallada al comparar programas típicos con javac 17): JLS 3.10.2 — un literal
+// decimal de punto flotante puede empezar con el punto (`.5`), terminar en él (`5.`), o traer el
+// exponente justo tras el punto (`5.e2`, `.5e1`). El léxico exigía un dígito DESPUÉS del punto, así que
+// `double f = .5;` daba «se esperaba una expresión y se encontró "."» y `5.e2` se partía en `5`, `.` y el
+// identificador `e2`. Son literales `double` corrientes (SOPORTADOS): se leen como tales.
+describe('tokenizar — literales decimales con punto en cualquier posición (JLS 3.10.2, tarea 1.29)', () => {
+  it.each([
+    ['.5', 0.5],
+    ['5.', 5],
+    ['.5e1', 5],
+    ['5.e2', 500],
+    ['1_0.2_5', 10.25],
+    ['01.5', 1.5],
+    ['09.', 9],
+    ['5.d', 5],
+    ['.5D', 0.5],
+  ])('"%s" es UN solo token "doble" con valor %s', (texto, valor) => {
+    const tokens = tokenizar(texto);
+    expect(tokens).toHaveLength(2); // el literal y el fin de archivo
+    expect(tokens[0]).toMatchObject({ tipo: 'doble', texto, valorDoble: valor, rango: { inicio: 0, fin: texto.length } });
+  });
+
+  it.each(['.5f', '5.f', '.5e1F', '5.5F'])('"%s" (sufijo f) sigue siendo el aviso del literal float, no un double', (texto) => {
+    const tokens = tokenizar(texto);
+    expect(tokens).toHaveLength(2);
+    expect(tokens[0]).toMatchObject({ tipo: 'no-soportado', codigo: 'literal-float-no-soportado', texto });
+  });
+
+  it('un entero con punto y luego un identificador se parte como javac: "5.toString" es el literal "5." y el identificador "toString"', () => {
+    const tokens = tokenizar('5.toString');
+    expect(tokens.slice(0, -1).map((t) => [t.tipo, t.texto])).toEqual([
+      ['doble', '5.'],
+      ['identificador', 'toString'],
+    ]);
+  });
+
+  it('regresión: el punto de acceso, de varargs y los literales de siempre no cambian ("a.b", "String... args", "3.14", "42")', () => {
+    expect(tokenizar('a.b').slice(0, -1).map((t) => t.texto)).toEqual(['a', '.', 'b']);
+    expect(tokenizar('String... args').slice(0, -1).map((t) => t.texto)).toEqual(['String', '.', '.', '.', 'args']);
+    expect(tokenizar('3.14')[0]).toMatchObject({ tipo: 'doble', valorDoble: 3.14 });
+    expect(tokenizar('42')[0]).toMatchObject({ tipo: 'entero', valorEntero: 42n });
+    expect(tokenizar('x.length()').slice(0, -1).map((t) => t.texto)).toEqual(['x', '.', 'length', '(', ')']);
+  });
+
+  it('regresión: un octal sin punto sigue siendo el aviso octal ("010"), pero "010.5" es un decimal', () => {
+    expect(tokenizar('010')[0]).toMatchObject({ tipo: 'no-soportado', codigo: 'literal-octal-no-soportado' });
+    expect(tokenizar('010.5')[0]).toMatchObject({ tipo: 'doble', valorDoble: 10.5 });
+  });
+});
+
+// Tarea 1.29 (causa 8): JLS 3.8 — un identificador puede llevar cualquier letra Unicode
+// (`Character.isJavaIdentifierStart/Part`): `int año = 2020;`, `double área`, `String número` son Java
+// válido (verificado con javac 17) y de uso corriente en un curso en español. El léxico solo aceptaba
+// ASCII y respondía «carácter no reconocido: "ñ"» a un programa correcto.
+describe('tokenizar — identificadores con letras Unicode (JLS 3.8, tarea 1.29)', () => {
+  it.each(['año', 'número', 'área', 'Ñandú', 'ñoño', 'μ', '変数', 'ⅷ', '€', 'a1_$', 'x\u0301'])(
+    '"%s" es UN identificador',
+    (nombre) => {
+      const tokens = tokenizar(nombre);
+      expect(tokens).toHaveLength(2);
+      expect(tokens[0]).toMatchObject({ tipo: 'identificador', texto: nombre, rango: { inicio: 0, fin: nombre.length } });
+    },
+  );
+
+  it('una letra de fuera del plano básico (dos unidades UTF-16, "𝒳") también es identificador', () => {
+    const tokens = tokenizar('𝒳y');
+    expect(tokens).toHaveLength(2);
+    expect(tokens[0]).toMatchObject({ tipo: 'identificador', texto: '𝒳y', rango: { inicio: 0, fin: 3 } });
+  });
+
+  it('el identificador termina donde termina la letra: "año+1" son tres tokens; un dígito no inicia un identificador', () => {
+    expect(tokenizar('año+1').slice(0, -1).map((t) => [t.tipo, t.texto])).toEqual([
+      ['identificador', 'año'],
+      ['puntuacion', '+'],
+      ['entero', '1'],
+    ]);
+    expect(tokenizar('1año').slice(0, -1).map((t) => [t.tipo, t.texto])).toEqual([
+      ['entero', '1'],
+      ['identificador', 'año'],
+    ]);
+  });
+
+  it('una palabra reservada con acento NO lo es ("clásse" es un identificador) y las de siempre siguen siéndolo', () => {
+    expect(tokenizar('clásse')[0]).toMatchObject({ tipo: 'identificador' });
+    expect(tokenizar('class')[0]).toMatchObject({ tipo: 'palabra-clave' });
+  });
+
+  it.each(['§', '·', '😀', '\u00a0', '\ufeff'])('triangulación negativa: %j NO es un carácter de identificador — sigue siendo un error de javac', (caracter) => {
+    expect(() => tokenizar(`int ${caracter} = 5;`)).toThrow(ErrorDeCompilacion);
+  });
+
+  // La tabla sale del JDK 17 (Unicode 13), no de las propiedades del motor de JavaScript (Node 22: Unicode
+  // 17, que aceptaría ~14 000 letras nuevas que javac 17 rechaza) — ver `identificadores-java.generado.ts`.
+  it('una letra asignada en Unicode 14 (U+0870, árabe) NO es identificador para javac 17, y aquí tampoco', () => {
+    expect(() => tokenizar('int \u0870 = 5;')).toThrow(ErrorDeCompilacion);
+  });
+
+  it('un carácter ignorable (U+200D, unión de ancho cero) SÍ cabe DENTRO de un identificador para javac, pero no lo inicia', () => {
+    expect(tokenizar('a\u200db')[0]).toMatchObject({ tipo: 'identificador', texto: 'a\u200db' });
+    expect(() => tokenizar('int \u200db = 5;')).toThrow(ErrorDeCompilacion);
+  });
+
+  it('el rango del error cubre el carácter COMPLETO, también uno de dos unidades UTF-16 ("😀")', () => {
+    try {
+      tokenizar('int 😀 = 5;');
+      expect.unreachable('debía lanzar');
+    } catch (error) {
+      expect((error as ErrorDeCompilacion).rango).toEqual({ inicio: 4, fin: 6 });
+    }
+  });
+});
+
+// Tarea 1.29: JLS 3.6 — el salto de página (\f) también es espacio en blanco.
+describe('tokenizar — el salto de página es espacio en blanco (JLS 3.6, tarea 1.29)', () => {
+  it('"a\fb" son dos identificadores', () => {
+    expect(tokenizar('a\fb').slice(0, -1).map((t) => t.texto)).toEqual(['a', 'b']);
+  });
+});
+
+// Tarea 1.29 (causa 10): «@» abre una anotación (`@Override`, `@SuppressWarnings("resource")`) — Java válido
+// que el léxico rechazaba como carácter desconocido. Es puntuación; qué anotación es lo decide la sintaxis.
+describe('tokenizar — la arroba de las anotaciones (tarea 1.29)', () => {
+  it('"@Override" son dos tokens: la puntuación "@" y el identificador', () => {
+    expect(tokenizar('@Override').slice(0, -1).map((t) => [t.tipo, t.texto])).toEqual([
+      ['puntuacion', '@'],
+      ['identificador', 'Override'],
+    ]);
+  });
+});
+
 describe('tokenizar — literal char (tarea 1.1)', () => {
   it('produce un token "caracter" con el valor decodificado', () => {
     const [token] = tokenizar("'x'");
@@ -166,5 +296,38 @@ describe('tokenizar — reconocimiento NO-DISP léxico (tarea 1.1, ADR 003, desi
     expect(tokens[0]).toMatchObject({ tipo: 'palabra-clave', texto: 'class' });
     expect(tokens[1]).toMatchObject({ tipo: 'no-soportado', codigo: 'escape-unicode-no-soportado' });
     expect(tokens[2]).toMatchObject({ tipo: 'puntuacion', texto: '{' });
+  });
+
+  // Corrección obligatoria (sub-lote 1-B): hoy \uXXXX dentro de un comentario se ignoraba en
+  // silencio (simplificación documentada de 1-A). Verificado contra javac 17 real (compilando y
+  // EJECUTANDO un archivo real): Java traduce los escapes Unicode ANTES del análisis léxico (JLS
+  // 3.3), incluso dentro de "//" — "// \u000a int x = 99; System.out.println(x);" compila y corre
+  // como si el \u000a fuera un salto de línea real, así que "int x = 99; ..." deja de ser parte del
+  // comentario y se ejecuta de verdad (imprimió "99"). Como \uXXXX está fuera del subconjunto, esto
+  // NUNCA debe ignorarse en silencio: debe producir el aviso de "no soportado", igual que fuera de
+  // comentarios (nunca se reinterpreta el comentario, ADR 003 "deja seguir").
+  it('un \\uXXXX bien formado dentro de un comentario de línea (//) produce "no-soportado" y sigue', () => {
+    const fuente = ['int x = 1; // \\u0041 nota', 'int y = 2;'].join('\n');
+    const tokens = tokenizar(fuente);
+    const noSoportado = tokens.find((t) => t.codigo === 'escape-unicode-no-soportado');
+    expect(noSoportado).toBeDefined();
+    // El resto del programa se sigue tokenizando después del comentario (dos declaraciones completas).
+    const enteros = tokens.filter((t) => t.tipo === 'entero').map((t) => t.valorEntero);
+    expect(enteros).toEqual([1n, 2n]);
+  });
+
+  it('un \\uXXXX dentro de un comentario de bloque (/* */) también produce "no-soportado" y sigue', () => {
+    const fuente = 'int x = 1; /* antes \\u0041 despues */ int y = 2;';
+    const tokens = tokenizar(fuente);
+    const noSoportado = tokens.find((t) => t.codigo === 'escape-unicode-no-soportado');
+    expect(noSoportado).toBeDefined();
+    const enteros = tokens.filter((t) => t.tipo === 'entero').map((t) => t.valorEntero);
+    expect(enteros).toEqual([1n, 2n]);
+  });
+
+  it('un comentario sin ningún \\uXXXX no produce ningún token "no-soportado" (regresión)', () => {
+    const fuente = '// comentario normal sin nada raro\nint x = 1;';
+    const tokens = tokenizar(fuente);
+    expect(tokens.some((t) => t.tipo === 'no-soportado')).toBe(false);
   });
 });

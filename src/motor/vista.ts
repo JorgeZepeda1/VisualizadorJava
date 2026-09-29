@@ -6,3 +6,20 @@
 export { Traza } from './traza/traza.ts';
 export type { Cambio, ClasePaso, FinEjecucion, Paso, Segmento, Valor } from './traza/paso.ts';
 export type { VistaPrograma } from './compilador.ts';
+// Tarea 1.11: el catálogo de textos (`src/textos/es-MX/problemas.ts`, ADR 015) necesita estos
+// tipos para tipar sus funciones por sus datos — nunca el motor completo, solo las formas.
+export type { Categoria, CodigoProblema, Problema } from './problemas.ts';
+// Tarea 1.28: `Problema` es una unión discriminada por `categoria` con el código estrechado por
+// categoría y los datos EXACTOS de cada código — `DatosPorCodigoProblema` es la única fuente de
+// verdad de esa forma (movida aquí desde el catálogo de textos, como 1.25 hizo con los avisos), y
+// la usan el catálogo (`textos/es-MX/problemas.ts`) y la presentación (`texto-del-problema.ts`).
+export type { DatosPorCodigoProblema, ProblemaDeCompilacion, ProblemaNoDisponible } from './problemas.ts';
+// Tarea 1.15: idem para el catálogo de arranque (`src/textos/es-MX/arranque.ts`, ADR 015).
+export type { CodigoArranque, ProblemaArranque } from './problemas.ts';
+export type { Tipo } from './semantica/tipos.ts';
+// Tarea 1.24: idem para el catálogo de avisos "no soportado" (`src/textos/es-MX/no-soportado.ts`,
+// ADR 015) — la unión CERRADA de `motor/no-soportado.ts`, única fuente de verdad de estos códigos.
+// Tarea 1.25: también `DatosPorCodigoNoSoportado` — la forma EXACTA de datos que cada código exige,
+// para que el catálogo de textos tipe su argumento con el MISMO contrato que ya exige a los
+// emisores del motor (una sola fuente de verdad de la forma, nunca dos listas que puedan divergir).
+export type { CodigoNoSoportado, DatosPorCodigoNoSoportado } from './no-soportado.ts';

@@ -7,13 +7,14 @@
 // depende de si el literal viene tras un "-" unario (JLS 3.10.1).
 import type { Rango } from '../fuente/rango.ts';
 import { ErrorDeCompilacion } from '../error-de-compilacion.ts';
+// Tarea 1.24: única fuente de verdad de códigos "no soportado" (antes strings inline sueltos aquí).
+// Tarea 1.25: `ConDatosPorCodigo` liga cada código a los datos exactos que su texto necesita (el
+// literal octal es el hallazgo real de esta tarea: el texto pedía `textoOriginal`/`valorDecimal`
+// desde 1.24, pero nada obligaba a este archivo a mandarlos — el alumno veía "el número `undefined`").
+import { CODIGOS_NO_SOPORTADO, type ConDatosPorCodigo } from '../no-soportado.ts';
 
 /** Una construcción que Java sí acepta pero que este visualizador todavía no soporta (ADR 003). */
-export interface NoSoportadoLexico {
-  readonly codigo: string;
-  readonly nota: string;
-  readonly rango: Rango;
-}
+export type NoSoportadoLexico = ConDatosPorCodigo<{ readonly nota: string; readonly rango: Rango }>;
 
 const ESCAPES_VALIDOS: Readonly<Record<string, string>> = {
   '"': '"',
@@ -41,7 +42,7 @@ const DIGITO_HEX = /[0-9A-Fa-f]/;
 interface UnidadDecodificada {
   readonly texto: string;
   readonly longitudConsumida: number;
-  readonly noSoportado?: { codigo: string; nota: string };
+  readonly noSoportado?: ConDatosPorCodigo<{ readonly nota: string }>;
 }
 
 /**
@@ -63,8 +64,9 @@ function decodificarUnidad(fuente: string, cursor: number): UnidadDecodificada {
       texto: fuente.slice(cursor, cursor + 2),
       longitudConsumida: 2,
       noSoportado: {
-        codigo: 'escape-no-soportado',
+        codigo: CODIGOS_NO_SOPORTADO.escapeNoSoportado,
         nota: `Java sí reconoce el escape "\\${siguiente}" (${ESCAPES_NO_SOPORTADOS_SIMPLES[siguiente]}), pero este visualizador todavía no lo soporta.`,
+        datos: {},
       },
     };
   }
@@ -98,8 +100,9 @@ function decodificarEscapeOctal(fuente: string, cursor: number): UnidadDecodific
     texto: fuente.slice(cursor, cursor + longitud),
     longitudConsumida: longitud,
     noSoportado: {
-      codigo: 'escape-octal-no-soportado',
+      codigo: CODIGOS_NO_SOPORTADO.escapeOctalNoSoportado,
       nota: `Java sí reconoce el escape octal "\\${textoOctal}" (valor ${valorDecimal}), pero este visualizador todavía no lo soporta.`,
+      datos: {},
     },
   };
 }
@@ -120,8 +123,9 @@ function decodificarEscapeUnicode(fuente: string, cursor: number): UnidadDecodif
     texto: fuente.slice(cursor, cursor + longitud),
     longitudConsumida: longitud,
     noSoportado: {
-      codigo: 'escape-unicode-no-soportado',
+      codigo: CODIGOS_NO_SOPORTADO.escapeUnicodeNoSoportado,
       nota: `Java procesa "\\u${hex}" como el carácter Unicode U+${hex.toUpperCase()} antes de leer el resto del programa; este visualizador todavía no lo soporta.`,
+      datos: {},
     },
   };
 }
@@ -150,10 +154,15 @@ export function leerCadena(fuente: string, inicio: number): CadenaLeida {
 
   while (cursor < fuente.length && fuente[cursor] !== '"') {
     if (fuente[cursor] === '\n') {
-      throw new ErrorDeCompilacion('cadena sin cerrar antes del fin de línea', {
-        inicio,
-        fin: cursor,
-      });
+      // err15 de exploracion/03: verificado contra javac 17 real (unclosed string literal) que el
+      // error se ancla en la comilla de APERTURA ("inicio"), no en el fin de línea — el mismo
+      // "rango" que ya se usaba, solo con su código real en vez del catch-all.
+      throw new ErrorDeCompilacion(
+        'cadena sin cerrar antes del fin de línea',
+        { inicio, fin: cursor },
+        undefined,
+        'cadena-sin-cerrar',
+      );
     }
     const unidad = decodificarUnidad(fuente, cursor);
     if (unidad.noSoportado) {
@@ -167,7 +176,7 @@ export function leerCadena(fuente: string, inicio: number): CadenaLeida {
   }
 
   if (fuente[cursor] !== '"') {
-    throw new ErrorDeCompilacion('cadena sin cerrar', { inicio, fin: cursor });
+    throw new ErrorDeCompilacion('cadena sin cerrar', { inicio, fin: cursor }, undefined, 'cadena-sin-cerrar');
   }
 
   return { valor, longitud: cursor + 1 - inicio, noSoportados };
@@ -189,8 +198,9 @@ function leerBloqueDeTexto(fuente: string, inicio: number): CadenaLeida {
     longitud: fin - inicio,
     noSoportados: [
       {
-        codigo: 'bloque-de-texto-no-soportado',
+        codigo: CODIGOS_NO_SOPORTADO.bloqueDeTexto,
         nota: 'Java 17 sí acepta bloques de texto (""" … """), pero este visualizador todavía no los soporta.',
+        datos: {},
         rango: { inicio, fin },
       },
     ],
@@ -255,13 +265,14 @@ export interface NumeroLeido {
   readonly noSoportado?: NoSoportadoLexico;
 }
 
-/** Lee un literal numérico que empieza en `inicio` (apuntando a su primer dígito). */
+/** Lee un literal numérico que empieza en `inicio` (apuntando a su primer dígito, o al punto de un
+ * literal como `.5`, que `tokenizar` solo entrega aquí si un dígito lo sigue). */
 export function leerNumero(fuente: string, inicio: number): NumeroLeido {
   if (fuente[inicio] === '0' && (fuente[inicio + 1] === 'x' || fuente[inicio + 1] === 'X')) {
-    return leerBaseNoSoportada(fuente, inicio, DIGITO_HEX, 'literal-hexadecimal-no-soportado', 'hexadecimales (base 16)');
+    return leerBaseNoSoportada(fuente, inicio, DIGITO_HEX, CODIGOS_NO_SOPORTADO.literalHexadecimal, 'hexadecimales (base 16)');
   }
   if (fuente[inicio] === '0' && (fuente[inicio + 1] === 'b' || fuente[inicio + 1] === 'B')) {
-    return leerBaseNoSoportada(fuente, inicio, /[01]/, 'literal-binario-no-soportado', 'binarios (base 2)');
+    return leerBaseNoSoportada(fuente, inicio, /[01]/, CODIGOS_NO_SOPORTADO.literalBinario, 'binarios (base 2)');
   }
 
   let cursor = inicio;
@@ -269,16 +280,22 @@ export function leerNumero(fuente: string, inicio: number): NumeroLeido {
     cursor += 1;
   }
 
-  const parecePuntoDecimal = fuente[cursor] === '.' && DIGITO_DECIMAL.test(fuente[cursor + 1] ?? '');
-  const digitosTrasElCero = fuente.slice(inicio + 1, cursor).replace(/_/g, '');
-  const pareceOctal =
-    !parecePuntoDecimal &&
-    fuente[inicio] === '0' &&
-    digitosTrasElCero.length > 0 &&
-    [...digitosTrasElCero].every((d) => DIGITO_OCTAL.test(d));
+  // Tarea 1.29 (JLS 3.10.2): un punto tras los dígitos SIEMPRE abre la parte fraccionaria — «5.» (sin
+  // dígitos detrás), «5.e2» y «5.d» son literales `double`, y un literal puede empezar con el punto
+  // («.5»). Antes se exigía un dígito después del punto y «.5»/«5.» eran errores de javac inventados.
+  const parecePuntoDecimal = fuente[cursor] === '.';
 
-  if (pareceOctal) {
-    return leerLiteralOctal(fuente, inicio, cursor);
+  // JLS 3.10.1: "0" seguido de otro dígito decimal (sin punto) es SIEMPRE un intento de literal
+  // OCTAL — nunca decimal — incluso si trae dígitos 8/9 inválidos en base 8. Corrección obligatoria
+  // (sub-lote 1-B): la versión anterior escaneaba TODOS los dígitos decimales primero y solo
+  // rechazaba "pareceOctal" si alguno no era válido, cayendo de vuelta a leer "08"/"09" como
+  // decimal 8/9 — un resultado inventado que javac jamás produce (regla 5 de CLAUDE.md). Verificado
+  // contra javac 17 real: "int x = 08;" y "int y = 09;" dan "';' expected" señalando el dígito
+  // inválido (el literal octal termina en el último dígito 0-7 consecutivo; el dígito 8/9 arranca
+  // un token NUEVO, por eso el mensaje es de sintaxis, no de número mal formado). "010" (octal
+  // válido) y "01278" (se trunca en "0127", el "8" queda para el siguiente token) confirmados igual.
+  if (!parecePuntoDecimal && fuente[inicio] === '0' && DIGITO_DECIMAL.test(fuente[inicio + 1] ?? '')) {
+    return leerOctalOTruncadoEnDigitoInvalido(fuente, inicio);
   }
 
   let esDoble = parecePuntoDecimal;
@@ -304,8 +321,9 @@ export function leerNumero(fuente: string, inicio: number): NumeroLeido {
       valorDoble: 0,
       longitud: fin - inicio,
       noSoportado: {
-        codigo: 'literal-float-no-soportado',
+        codigo: CODIGOS_NO_SOPORTADO.literalFloat,
         nota: 'Java sí acepta el sufijo "f" (float), pero este visualizador solo soporta "double".',
+        datos: {},
         rango: { inicio, fin },
       },
     };
@@ -344,29 +362,56 @@ function consumirExponente(fuente: string, cursorE: number): number {
   return cursor;
 }
 
-function leerLiteralOctal(fuente: string, inicio: number, finDigitos: number): NumeroLeido {
-  let fin = finDigitos;
+// "0" ya confirmado seguido de un dígito decimal (por el llamador). Consume SOLO los dígitos 0-7
+// consecutivos que siguen — un 8/9 (o cualquier no-dígito) termina el literal ahí mismo, dejando el
+// resto para que `tokenizar()` lo re-lea como un token nuevo (así es como javac reporta "';'
+// expected" en vez de un error de número mal formado: ver la nota de más arriba).
+function leerOctalOTruncadoEnDigitoInvalido(fuente: string, inicio: number): NumeroLeido {
+  let cursor = inicio + 1;
+  while (cursor < fuente.length && (DIGITO_OCTAL.test(fuente[cursor]) || fuente[cursor] === '_')) {
+    cursor += 1;
+  }
+
+  const digitosOctales = fuente.slice(inicio + 1, cursor).replace(/_/g, '');
+  if (digitosOctales.length === 0) {
+    // "0" solo, inmediatamente seguido de un dígito inválido (8/9): el literal es el "0" decimal;
+    // el dígito inválido no es parte de este token (p. ej. "08" ⇒ "0" aquí, "8" en la próxima vuelta).
+    return { clase: 'entero', magnitud: 0n, valorDoble: 0, longitud: 1 };
+  }
+
+  let fin = cursor;
   if (fuente[fin] === 'l' || fuente[fin] === 'L') fin += 1;
-  const textoOctal = fuente.slice(inicio + 1, finDigitos).replace(/_/g, '');
-  const valorDecimal = Number.parseInt(textoOctal, 8);
+  const valorDecimal = Number.parseInt(digitosOctales, 8);
   return {
     clase: 'entero',
     magnitud: 0n,
     valorDoble: 0,
     longitud: fin - inicio,
     noSoportado: {
-      codigo: 'literal-octal-no-soportado',
+      codigo: CODIGOS_NO_SOPORTADO.literalOctal,
       nota: `Java lo lee como octal: ${valorDecimal}`,
+      // Tarea 1.25 (el hallazgo real): el texto es-MX (`literal-octal-no-soportado`) necesita el
+      // literal EXACTO que escribió el alumno ("010", "0127"…) y su valor decimal real — antes de
+      // esta tarea, `nota` (arriba) ya traía el valor formateado en PROSA para otro propósito (una
+      // nota interna, nunca leída por `textosNoSoportado`), pero nadie mandaba estos dos campos por
+      // separado. `fuente.slice(inicio, fin)` es el tramo REAL consumido (incluye el "0" inicial,
+      // nunca el sufijo "L"/"l" — `fin` ya lo incluye si estaba presente, igual que la longitud).
+      datos: { textoOriginal: fuente.slice(inicio, fin), valorDecimal },
       rango: { inicio, fin },
     },
   };
 }
 
+// Tarea 1.25: `codigo` se ESTRECHA a los 2 valores reales que de verdad se le pasan (hex/binario, ver
+// las 2 llamadas en `leerNumero`) — ambos textos (`literal-hexadecimal-no-soportado`/`literal-
+// binario-no-soportado`) solo necesitan la línea, así que `datos: {}` (abajo) puede verificarse de
+// verdad contra `DatosPorCodigoNoSoportado` (con `codigo: CodigoNoSoportado` sin estrechar, un
+// tercer código que SÍ exigiera datos reales habría dejado pasar `{}` sin ningún error).
 function leerBaseNoSoportada(
   fuente: string,
   inicio: number,
   patronDigito: RegExp,
-  codigo: string,
+  codigo: 'literal-hexadecimal-no-soportado' | 'literal-binario-no-soportado',
   descripcion: string,
 ): NumeroLeido {
   let cursor = inicio + 2;
@@ -382,6 +427,7 @@ function leerBaseNoSoportada(
     noSoportado: {
       codigo,
       nota: `Java sí acepta literales enteros ${descripcion}, pero este visualizador todavía no los soporta.`,
+      datos: {},
       rango: { inicio, fin: cursor },
     },
   };

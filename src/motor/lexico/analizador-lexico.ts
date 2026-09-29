@@ -7,11 +7,64 @@ import type { Rango } from '../fuente/rango.ts';
 import { ErrorDeCompilacion } from '../error-de-compilacion.ts';
 import { leerCadena, leerCaracter, leerNumero } from './literales.ts';
 import { OPERADORES_MULTICARACTER, PALABRAS_CLAVE, PUNTUACION, type Token } from './tokens.ts';
+// Tarea 1.24: única fuente de verdad de códigos "no soportado" (antes string inline suelto aquí).
+import { CODIGOS_NO_SOPORTADO } from '../no-soportado.ts';
+import { INICIO_DE_IDENTIFICADOR_JAVA, PARTE_DE_IDENTIFICADOR_JAVA } from '../biblioteca/datos/identificadores-java.generado.ts';
+import { crearTablaDeRangos } from './tabla-de-rangos.ts';
 
-const INICIO_IDENTIFICADOR = /[A-Za-z_$]/;
-const RESTO_IDENTIFICADOR = /[A-Za-z0-9_$]/;
+// JLS 3.8: qué puede llevar un identificador lo decide `Character.isJavaIdentifierStart/Part` — letras
+// Unicode (`año`, `número`), números-letra, símbolos de moneda (`$`, `€`), conectores (`_`) y, DENTRO del
+// identificador, dígitos, marcas combinantes y caracteres ignorables. Los rangos son los del JDK 17 (Unicode
+// 13), generados por el oráculo (`identificadores-java.generado.ts`, ADR 010) — NO las propiedades Unicode
+// de JavaScript (`\p{L}`…): las del motor de Node 22 son de Unicode 17 y aceptarían ~14 000 letras que javac
+// 17 rechaza. Tarea 1.29: antes solo ASCII, y `int año` daba «carácter no reconocido: "ñ"». Se prueba por
+// PUNTO DE CÓDIGO (un `𝒳` ocupa dos unidades UTF-16).
+const INICIO_IDENTIFICADOR = crearTablaDeRangos(INICIO_DE_IDENTIFICADOR_JAVA);
+const RESTO_IDENTIFICADOR = crearTablaDeRangos(PARTE_DE_IDENTIFICADOR_JAVA);
 const DIGITO_DECIMAL = /[0-9]/;
 const DIGITO_HEX = /[0-9A-Fa-f]/;
+
+interface EscapeUnicodeDetectado {
+  readonly longitud: number;
+  readonly hex: string;
+}
+
+// \uXXXX EN CUALQUIER LUGAR del código fuente, comentarios incluidos (JLS 3.3: Java traduce los
+// escapes Unicode en la fase 1, ANTES del análisis léxico — un "\u000a" dentro de un "//" cierra el
+// comentario ahí mismo porque se vuelve un salto de línea real ANTES de que exista el concepto de
+// "comentario"; verificado ejecutando javac/java 17 reales). Corrección obligatoria (sub-lote 1-B):
+// dentro de comentarios esto se ignoraba en silencio (simplificación documentada de 1-A) — como
+// \uXXXX está fuera del subconjunto (ADR 003), debe producir el aviso "no soportado" SIEMPRE, nunca
+// ignorarse ni reinterpretarse (no se realiza la traducción real: solo se detecta y se avisa).
+// Admite "u" repetida (JLS 3.3: "\uu0041" también es válido). Devuelve `null` si no hay un escape
+// bien formado en esta posición (4 dígitos hexadecimales exactos tras la(s) "u"); el llamador
+// decide qué hacer con un `\u` malformado (código: error real; comentario: se ignora como texto).
+function intentarLeerEscapeUnicode(fuente: string, cursor: number): EscapeUnicodeDetectado | null {
+  if (fuente[cursor] !== '\\' || fuente[cursor + 1] !== 'u') return null;
+  let inicioHex = cursor + 2;
+  while (fuente[inicioHex] === 'u') inicioHex += 1;
+  const hex = fuente.slice(inicioHex, inicioHex + 4);
+  if (hex.length !== 4 || ![...hex].every((c) => DIGITO_HEX.test(c))) return null;
+  return { longitud: inicioHex + 4 - cursor, hex };
+}
+
+function tokenNoSoportadoPorEscapeUnicode(
+  fuente: string,
+  cursor: number,
+  escape: EscapeUnicodeDetectado,
+  dentroDeComentario: boolean,
+): Token {
+  const fin = cursor + escape.longitud;
+  const sufijo = dentroDeComentario ? ', incluso dentro de comentarios,' : '';
+  return {
+    tipo: 'no-soportado',
+    texto: fuente.slice(cursor, fin),
+    rango: { inicio: cursor, fin },
+    codigo: CODIGOS_NO_SOPORTADO.escapeUnicodeNoSoportado,
+    nota: `Java procesa "\\u${escape.hex}" como el carácter Unicode U+${escape.hex.toUpperCase()}${sufijo} antes de leer el resto del programa; este visualizador todavía no lo soporta.`,
+    datos: {},
+  };
+}
 
 export function tokenizar(fuente: string): Token[] {
   const tokens: Token[] = [];
@@ -20,14 +73,23 @@ export function tokenizar(fuente: string): Token[] {
   while (cursor < fuente.length) {
     const caracter = fuente[cursor];
 
-    if (caracter === ' ' || caracter === '\t' || caracter === '\r' || caracter === '\n') {
+    // JLS 3.6: espacio, tabulador, SALTO DE PÁGINA (tarea 1.29), retorno y salto de línea.
+    if (caracter === ' ' || caracter === '\t' || caracter === '\f' || caracter === '\r' || caracter === '\n') {
       cursor += 1;
       continue;
     }
 
     if (caracter === '/' && fuente[cursor + 1] === '/') {
       cursor += 2;
-      while (cursor < fuente.length && fuente[cursor] !== '\n') cursor += 1;
+      while (cursor < fuente.length && fuente[cursor] !== '\n') {
+        const escape = intentarLeerEscapeUnicode(fuente, cursor);
+        if (escape) {
+          tokens.push(tokenNoSoportadoPorEscapeUnicode(fuente, cursor, escape, true));
+          cursor += escape.longitud;
+          continue;
+        }
+        cursor += 1;
+      }
       continue;
     }
 
@@ -35,6 +97,12 @@ export function tokenizar(fuente: string): Token[] {
       const inicioComentario = cursor;
       cursor += 2;
       while (cursor < fuente.length && !(fuente[cursor] === '*' && fuente[cursor + 1] === '/')) {
+        const escape = intentarLeerEscapeUnicode(fuente, cursor);
+        if (escape) {
+          tokens.push(tokenNoSoportadoPorEscapeUnicode(fuente, cursor, escape, true));
+          cursor += escape.longitud;
+          continue;
+        }
         cursor += 1;
       }
       if (cursor >= fuente.length) {
@@ -60,6 +128,7 @@ export function tokenizar(fuente: string): Token[] {
           rango,
           codigo: noSoportados[0].codigo,
           nota: noSoportados[0].nota,
+          datos: noSoportados[0].datos,
         });
       } else {
         tokens.push({ tipo: 'cadena', texto, valor, rango });
@@ -80,6 +149,7 @@ export function tokenizar(fuente: string): Token[] {
           rango,
           codigo: noSoportados[0].codigo,
           nota: noSoportados[0].nota,
+          datos: noSoportados[0].datos,
         });
       } else {
         tokens.push({ tipo: 'caracter', texto, valorCaracter: valor, rango });
@@ -87,41 +157,40 @@ export function tokenizar(fuente: string): Token[] {
       continue;
     }
 
-    // \uXXXX fuera de una cadena/char (design.md §2.6: "en cualquier lugar" del código; esta
-    // implementación lo reconoce en posición de código normal, no dentro de comentarios — ver
-    // discovery de la tarea 1.1: implementar la fidelidad completa de la fase de traducción 1 de
-    // la JLS exigiría reescribir el código fuente ANTES de tokenizar, desproporcionado para este
-    // lote y no exigido por ningún RED de tasks.md).
+    // \uXXXX fuera de una cadena/char, en posición de código normal (design.md §2.6). Dentro de
+    // comentarios lo manejan los dos bloques de arriba (misma detección, código 1.5/1.6).
     if (caracter === '\\' && fuente[cursor + 1] === 'u') {
-      const inicio = cursor;
-      let inicioHex = cursor + 2;
-      while (fuente[inicioHex] === 'u') inicioHex += 1;
-      const hex = fuente.slice(inicioHex, inicioHex + 4);
-      if (hex.length !== 4 || ![...hex].every((c) => DIGITO_HEX.test(c))) {
+      const escape = intentarLeerEscapeUnicode(fuente, cursor);
+      if (!escape) {
+        let inicioHex = cursor + 2;
+        while (fuente[inicioHex] === 'u') inicioHex += 1;
         throw new ErrorDeCompilacion(
           'secuencia unicode incompleta: se esperaban 4 dígitos hexadecimales tras "\\u"',
-          { inicio, fin: inicioHex },
+          { inicio: cursor, fin: inicioHex },
         );
       }
-      cursor = inicioHex + 4;
-      tokens.push({
-        tipo: 'no-soportado',
-        texto: fuente.slice(inicio, cursor),
-        rango: { inicio, fin: cursor },
-        codigo: 'escape-unicode-no-soportado',
-        nota: `Java procesa "\\u${hex}" como el carácter Unicode U+${hex.toUpperCase()} antes de leer el resto del programa; este visualizador todavía no lo soporta.`,
-      });
+      tokens.push(tokenNoSoportadoPorEscapeUnicode(fuente, cursor, escape, false));
+      cursor += escape.longitud;
       continue;
     }
 
-    if (DIGITO_DECIMAL.test(caracter)) {
+    // Un literal empieza con un dígito, o con el punto de «.5» (JLS 3.10.2, tarea 1.29): un punto sin dígito
+    // detrás es el acceso a un miembro («a.b») o los tres de un varargs.
+    if (DIGITO_DECIMAL.test(caracter) || (caracter === '.' && DIGITO_DECIMAL.test(fuente[cursor + 1] ?? ''))) {
       const inicio = cursor;
       const numero = leerNumero(fuente, cursor);
       cursor += numero.longitud;
       const rango: Rango = { inicio, fin: cursor };
       const texto = fuente.slice(inicio, cursor);
       if (numero.noSoportado) {
-        tokens.push({ tipo: 'no-soportado', texto, rango, codigo: numero.noSoportado.codigo, nota: numero.noSoportado.nota });
+        tokens.push({
+          tipo: 'no-soportado',
+          texto,
+          rango,
+          codigo: numero.noSoportado.codigo,
+          nota: numero.noSoportado.nota,
+          datos: numero.noSoportado.datos,
+        });
       } else if (numero.clase === 'doble') {
         tokens.push({ tipo: 'doble', texto, rango, valorDoble: numero.valorDoble });
       } else if (numero.clase === 'largo') {
@@ -147,19 +216,25 @@ export function tokenizar(fuente: string): Token[] {
       continue;
     }
 
-    if (INICIO_IDENTIFICADOR.test(caracter)) {
+    // El carácter completo (un punto de código: una letra fuera del plano básico ocupa dos unidades UTF-16).
+    const caracterCompleto = String.fromCodePoint(fuente.codePointAt(cursor) ?? 0);
+    if (INICIO_IDENTIFICADOR.contiene(caracterCompleto.codePointAt(0) ?? 0)) {
       const inicio = cursor;
-      cursor += 1;
-      while (cursor < fuente.length && RESTO_IDENTIFICADOR.test(fuente[cursor])) cursor += 1;
+      cursor += caracterCompleto.length;
+      while (cursor < fuente.length) {
+        const siguiente = String.fromCodePoint(fuente.codePointAt(cursor) ?? 0);
+        if (!RESTO_IDENTIFICADOR.contiene(siguiente.codePointAt(0) ?? 0)) break;
+        cursor += siguiente.length;
+      }
       const texto = fuente.slice(inicio, cursor);
       const tipo = PALABRAS_CLAVE.has(texto) ? 'palabra-clave' : 'identificador';
       tokens.push({ tipo, texto, rango: { inicio, fin: cursor } });
       continue;
     }
 
-    throw new ErrorDeCompilacion(`carácter no reconocido: "${caracter}"`, {
+    throw new ErrorDeCompilacion(`carácter no reconocido: "${caracterCompleto}"`, {
       inicio: cursor,
-      fin: cursor + 1,
+      fin: cursor + caracterCompleto.length,
     });
   }
 
