@@ -26,7 +26,7 @@ import type { ProblemaAtribucion } from './semantica/diagnostico.ts';
 import { ErrorDeEjecucionNoDisponible } from './ir/error-de-ejecucion-no-disponible.ts';
 import { generarIr } from './ir/generar-ir.ts';
 import type { ProgramaCompilado } from './ir/ir.ts';
-import type { CodigoProblema, Problema } from './problemas.ts';
+import type { CodigoDeSintaxis, Problema, ProblemaNoDisponible } from './problemas.ts';
 import { ErrorDeCompilacion } from './error-de-compilacion.ts';
 import { TablaDeLineas } from './fuente/tabla-de-lineas.ts';
 import type { Rango } from './fuente/rango.ts';
@@ -63,6 +63,7 @@ export function compilar(fuente: string): ResultadoCompilacion {
   try {
     tokens = tokenizar(fuente);
   } catch (error) {
+    if (!(error instanceof ErrorDeCompilacion)) throw error; // fallo interno (tarea 1.28), ver abajo
     return { ok: false, problema: construirProblema(error, fuente), adicionales: 0 };
   }
 
@@ -90,18 +91,23 @@ export function compilar(fuente: string): ResultadoCompilacion {
     // SEMÁNTICAS ya devolvieron cero problemas -- es decir, "todas las pasadas semánticas aceptaron
     // el programa" se cumple SIEMPRE que se llega aquí, sin necesitar una bandera aparte. Un tipo
     // PROPIO (nunca un `catch` genérico ni un `instanceof Error` ancho) para no tragarse un bug
-    // real de otra fase: cualquier OTRA excepción (incluida una real de sintaxis,
-    // `ErrorDeCompilacion`) sigue cayendo en la lógica de abajo, sin cambios.
+    // real de otra fase.
     if (error instanceof ErrorDeEjecucionNoDisponible) {
       return construirResultadoNoDisponible(
         [{ codigo: CODIGOS_NO_SOPORTADO.ejecucionNoDisponible, rango: error.rango, datos: {} }],
         fuente,
       );
     }
-    const rangoError = error instanceof ErrorDeCompilacion ? error.rango : null;
-    const avisosAntesDelError = rangoError
-      ? noSoportadosLexicos.filter((t) => avisoEnmascaraError(t, rangoError))
-      : noSoportadosLexicos;
+    // Tarea 1.28 (agregada por el orquestador, D2/regla 5 de CLAUDE.md): SOLO un `ErrorDeCompilacion`
+    // -- el error del ALUMNO, siempre con posición -- es un `error-compilacion`. Cualquier otra
+    // excepción (un TypeError, un RangeError por agotar la pila...) es un fallo del propio motor: se
+    // propaga, ni siquiera un aviso léxico previo la esconde (un aviso solo puede enmascarar a un
+    // error de sintaxis genuino, ver `avisoEnmascaraError`), y el trabajador la convierte en
+    // `error-interno`. Antes se disfrazaba de un error de sintaxis en la línea 1 con el mensaje de
+    // JavaScript, un resultado inventado en inglés (medición previa a este cambio: 0 de las 2 713
+    // fuentes de `corpus/{mutantes,compilacion,curso}` llegaban aquí con una excepción ajena).
+    if (!(error instanceof ErrorDeCompilacion)) throw error;
+    const avisosAntesDelError = noSoportadosLexicos.filter((t) => avisoEnmascaraError(t, error.rango));
     if (avisosAntesDelError.length > 0) {
       const noSoportados = avisosAntesDelError
         .map((t) => ({ codigo: t.codigo ?? CODIGOS_NO_SOPORTADO.sinClasificar, rango: t.rango, datos: t.datos ?? {} }))
@@ -160,17 +166,12 @@ function avisoEnmascaraError(aviso: Token, rangoError: Rango): boolean {
 function construirResultadoDeAtribucion(problema: ProblemaAtribucion, fuente: string): ResultadoCompilacion {
   const tabla = new TablaDeLineas(fuente);
   const { linea } = tabla.ubicar(problema.rango.inicio);
-  return {
-    ok: false,
-    adicionales: 0,
-    problema: {
-      categoria: problema.categoria ?? 'error-compilacion',
-      codigo: problema.codigo,
-      rango: problema.rango,
-      linea,
-      datos: problema.datos,
-    },
-  };
+  // Tarea 1.28: `ProblemaAtribucion` y `Problema` son uniones discriminadas (el código estrecha los
+  // datos); al copiar con `...problema` cada miembro conserva SU pareja código/datos, sin cast.
+  if (problema.categoria === 'no-disponible') {
+    return { ok: false, adicionales: 0, problema: { ...problema, linea } };
+  }
+  return { ok: false, adicionales: 0, problema: { ...problema, categoria: 'error-compilacion', linea } };
 }
 
 function construirResultadoNoDisponible(
@@ -180,36 +181,38 @@ function construirResultadoNoDisponible(
   const [primero, ...resto] = noSoportados;
   const tabla = new TablaDeLineas(fuente);
   const { linea } = tabla.ubicar(primero.rango.inicio);
-  return {
-    ok: false,
-    adicionales: resto.length,
-    problema: {
-      categoria: 'no-disponible',
-      codigo: primero.codigo,
-      rango: primero.rango,
-      linea,
-      // Tarea 1.25 (EL hallazgo: `datos: {}` fijo aquí, sin importar `primero.codigo`, es la causa
-      // raíz de que 4 textos le mostraran "undefined" al alumno — `literal-octal-no-soportado`
-      // necesitaba `textoOriginal`/`valorDecimal`, `arreglo-no-soportado` necesitaba `tipoArreglo`,
-      // y ESTA función los descartaba siempre). `primero.datos` ya viene correctamente construido
-      // desde el emisor real (léxico o sintaxis, ambos verificados contra `DatosPorCodigoNoSoportado`
-      // en su propio sitio de construcción, ver `motor/no-soportado.ts`).
-      datos: primero.datos,
-    },
-  };
+  // Tarea 1.25 (EL hallazgo: `datos: {}` fijo aquí, sin importar `primero.codigo`, era la causa raíz
+  // de que 4 textos le mostraran "undefined" al alumno). `primero.datos` ya viene correctamente
+  // construido desde el emisor real (léxico o sintaxis, ambos verificados contra
+  // `DatosPorCodigoNoSoportado` en su propio sitio de construcción, ver `motor/no-soportado.ts`).
+  //
+  // Tarea 1.28: `Problema` es una unión discriminada (`problemas.ts`) y `NoSoportadoColectado` sigue
+  // siendo una COPIA ancha (`codigo: CodigoNoSoportado`, `datos: Record<string, unknown>`), a propósito
+  // (1.25): TypeScript no puede probar que la pareja código/datos sobrevive a la copia, aunque en
+  // ejecución sea la MISMA que verificó su emisor — el `as` es seguro por construcción, no un escape
+  // general de tipos (mismo criterio que `analizarPrimaria`, `sintaxis/expresiones.ts`). Se eligen los
+  // cinco campos a mano, como siempre, y NO se copia con `...primero`: los avisos sintácticos son los
+  // propios nodos del árbol (`recolectarNoSoportados`) y traen su `tipo` interno, que no es parte de
+  // un `Problema`.
+  const problema = {
+    categoria: 'no-disponible',
+    codigo: primero.codigo,
+    rango: primero.rango,
+    linea,
+    datos: primero.datos,
+  } as ProblemaNoDisponible;
+  return { ok: false, adicionales: resto.length, problema };
 }
 
-function construirProblema(error: unknown, fuente: string): Problema {
-  const rango: Rango = error instanceof ErrorDeCompilacion ? error.rango : { inicio: 0, fin: 0 };
+function construirProblema(error: ErrorDeCompilacion, fuente: string): Problema {
   const tabla = new TablaDeLineas(fuente);
-  const { linea } = tabla.ubicar(rango.inicio);
-  const mensaje = error instanceof Error ? error.message : String(error);
+  const { linea } = tabla.ubicar(error.rango.inicio);
   return {
     categoria: 'error-compilacion',
     codigo: codigoDeSintaxis(error),
-    rango,
+    rango: error.rango,
     linea,
-    datos: { mensaje },
+    datos: { mensaje: error.message },
   };
 }
 
@@ -218,17 +221,15 @@ function construirProblema(error: unknown, fuente: string): Problema {
 // del catálogo, sin tener que tocar cada punto donde el analizador llama `esperarTexto`. Lo que no
 // mapea a un caso conocido (`esperarTipo`, errores léxicos, EOF inesperado…) sigue con el
 // catch-all honesto de siempre — nunca un código inventado para un caso no verificado (D2).
-const CODIGOS_POR_TEXTO_ESPERADO: Readonly<Record<string, CodigoProblema>> = {
+const CODIGOS_POR_TEXTO_ESPERADO: Readonly<Record<string, CodigoDeSintaxis>> = {
   ';': 'falta-punto-y-coma',
   ')': 'falta-parentesis-cierre',
 };
 
-function codigoDeSintaxis(error: unknown): CodigoProblema {
-  if (error instanceof ErrorDeCompilacion) {
-    // Sub-lote 1-D1: un código DIRECTO (`else-sin-if`, `fin-de-archivo-inesperado`…) gana sobre la
-    // tabla indirecta de `esperado` — ver la nota de `ErrorDeCompilacion.codigo`.
-    if (error.codigo !== undefined) return error.codigo;
-    if (error.esperado !== undefined) return CODIGOS_POR_TEXTO_ESPERADO[error.esperado] ?? 'error-no-clasificado';
-  }
+function codigoDeSintaxis(error: ErrorDeCompilacion): CodigoDeSintaxis {
+  // Sub-lote 1-D1: un código DIRECTO (`else-sin-if`, `fin-de-archivo-inesperado`…) gana sobre la
+  // tabla indirecta de `esperado` — ver la nota de `ErrorDeCompilacion.codigo`.
+  if (error.codigo !== undefined) return error.codigo;
+  if (error.esperado !== undefined) return CODIGOS_POR_TEXTO_ESPERADO[error.esperado] ?? 'error-no-clasificado';
   return 'error-no-clasificado';
 }

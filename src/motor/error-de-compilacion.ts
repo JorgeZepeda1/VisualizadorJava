@@ -2,7 +2,7 @@
 // fuente ocurrió un problema. `compilador.ts` lo atrapa y lo traduce a un `Problema` real
 // (design.md §2.2).
 import type { Rango } from './fuente/rango.ts';
-import type { CodigoProblema } from './problemas.ts';
+import type { CodigoDeSintaxis } from './problemas.ts';
 
 export class ErrorDeCompilacion extends Error {
   readonly rango: Rango;
@@ -17,9 +17,9 @@ export class ErrorDeCompilacion extends Error {
    * esperado (p. ej. "class") no siempre significa el MISMO problema en cualquier parte de la
    * gramática ("package" fuera de lugar vs. cualquier otro token inesperado ahí), a diferencia de
    * ";"/")" que sí. Cuando está presente, GANA sobre `esperado` (`compilador.ts`). */
-  readonly codigo?: CodigoProblema;
+  readonly codigo?: CodigoDeSintaxis;
 
-  constructor(mensaje: string, rango: Rango, esperado?: string, codigo?: CodigoProblema) {
+  constructor(mensaje: string, rango: Rango, esperado?: string, codigo?: CodigoDeSintaxis) {
     super(mensaje);
     this.name = 'ErrorDeCompilacion';
     this.rango = rango;

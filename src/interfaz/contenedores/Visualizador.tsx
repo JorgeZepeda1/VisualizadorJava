@@ -2,15 +2,27 @@
 // (presentacionales) con ClienteTrabajador y la Traza. `useSyncExternalStore` lee la Traza (fuera
 // de React, ADR 006) para que agregar pasos no dependa de que el contenedor decida re-renderizar.
 // Controles ◀▶ mínimos (design.md, tarea 0.14); velocidad, ⏮⏭⏯ y el deslizador «paso X de Y»
-// completo llegan en el lote 4. El mensaje de "no compila" es genérico — el catálogo de errores en
-// español (Problema → texto) llega en la tarea 1.11.
+// completo llegan en el lote 4.
+//
+// Tarea 1.28 (decisión del PO 2026-09-29): el aviso de un problema muestra el TEXTO REAL de cada
+// caso, con su línea — un error de compilación («Línea 3: Te falta un punto y coma…»), un aviso de
+// "no disponible" (con el código en línea dentro de `<code>`), un error de arranque (`main` sin
+// `static`) y el fallo interno del motor. Antes ignoraba el `problema` que manda el trabajador y
+// mostraba siempre un texto fijo. El ícono, el título y el subrayado siguen en la tarea 4.5.
 import { useRef, useState, useSyncExternalStore } from 'react';
 import { Traza } from '../../motor/vista.ts';
+import {
+  segmentarCodigoEnLinea,
+  textoDelArranque,
+  textoDelProblema,
+  type SegmentoDeTexto,
+} from '../../presentacion/index.ts';
 import { crearClienteTrabajador, type ClienteTrabajador } from '../../trabajador/cliente.ts';
 import type { ConfigEjecucion, MensajeTrabajadorAUi } from '../../trabajador/protocolo.ts';
 import { textosInterfaz } from '../../textos/es-MX/interfaz.ts';
 import { EditorJava } from '../editor/EditorJava.tsx';
 import { Consola } from '../componentes/Consola.tsx';
+import { TextoConCodigo } from '../componentes/TextoConCodigo.tsx';
 
 const PROGRAMA_INICIAL = [
   'public class MiPrograma {',
@@ -37,7 +49,8 @@ type Modo = 'edicion' | 'compilando' | 'visualizacion';
 export function Visualizador() {
   const [codigo, setCodigo] = useState(PROGRAMA_INICIAL);
   const [modo, setModo] = useState<Modo>('edicion');
-  const [mensajeCompilacion, setMensajeCompilacion] = useState<string | null>(null);
+  // El aviso de un problema, ya segmentado en texto / código en línea; `null` si no hay ninguno.
+  const [aviso, setAviso] = useState<readonly SegmentoDeTexto[] | null>(null);
   const [pasoActual, setPasoActual] = useState(0);
   const [traza] = useState(() => new Traza());
   const idEjecucionRef = useRef(0);
@@ -54,7 +67,7 @@ export function Visualizador() {
     clienteRef.current?.terminar(); // "editar o volver a visualizar termina el anterior" (ADR 007)
     traza.reiniciar();
     setPasoActual(0);
-    setMensajeCompilacion(null);
+    setAviso(null);
     setModo('compilando');
 
     idEjecucionRef.current += 1;
@@ -66,7 +79,7 @@ export function Visualizador() {
         switch (mensaje.tipo) {
           case 'compilado':
             if (!mensaje.ok) {
-              setMensajeCompilacion(textosInterfaz.noCompilaTodavia());
+              setAviso(segmentarCodigoEnLinea(textoDelProblema(mensaje.problema)));
               setModo('edicion');
             }
             return;
@@ -76,11 +89,23 @@ export function Visualizador() {
             setModo('visualizacion');
             return;
           case 'espera-entrada':
+            setModo('visualizacion');
+            return;
           case 'fin':
+            // Un `main` sin `static` (o sin `main`) COMPILA: el problema aparece al lanzar, sin ningún
+            // paso que mostrar. Se explica y se vuelve a la edición para poder corregirlo; el texto
+            // exacto del lanzador (detalle secundario) es de la consola, lotes 3-4.
+            if (mensaje.fin.arranque !== undefined) {
+              setAviso(segmentarCodigoEnLinea(textoDelArranque(mensaje.fin.arranque)));
+              setModo('edicion');
+              return;
+            }
             setModo('visualizacion');
             return;
           case 'error-interno':
-            setMensajeCompilacion(textosInterfaz.errorInterno());
+            // Un fallo del propio motor NUNCA se presenta como error del alumno: aviso genérico, y
+            // el detalle técnico (`mensaje.mensaje`) es solo para quien depure.
+            setAviso(segmentarCodigoEnLinea(textosInterfaz.errorInterno()));
             setModo('edicion');
             return;
         }
@@ -99,7 +124,13 @@ export function Visualizador() {
       <button type="button" onClick={visualizar} disabled={modo === 'compilando'}>
         {textosInterfaz.botonVisualizar()}
       </button>
-      {mensajeCompilacion && <p role="alert">{mensajeCompilacion}</p>}
+      {/* `role="alert"` = región viva asertiva: el lector de pantalla anuncia el problema en cuanto
+          aparece, sin mover el foco (el teclado no cambia). No depende del color: el aviso es texto. */}
+      {aviso && (
+        <p role="alert">
+          <TextoConCodigo segmentos={aviso} />
+        </p>
+      )}
       <Consola segmentos={segmentos} />
       <div className="controles-paso">
         <button

@@ -208,11 +208,12 @@ export interface DatosPorCodigoNoSoportado {
  * Construye, a partir de una forma común `Extra` (p. ej. `{ tipo:'no-soportado'; rango:Rango }`),
  * un tipo discriminado por `codigo` donde CADA miembro trae exactamente los datos que
  * `DatosPorCodigoNoSoportado` exige para ese código — nunca los de otro. Reusado por
- * `NodoNoSoportado`/`NodoExpresionNoSoportada` (sintaxis/ast.ts) y `NoSoportadoLexico` (léxico,
- * literales.ts): los TRES sitios donde un emisor construye un valor "codigo + datos" nuevo (a
- * diferencia de `NoSoportadoColectado`/`Problema.datos`, que solo COPIAN un valor ya construido
- * aquí — por eso esos dos siguen siendo `Record<string, unknown>`, igual que `ProblemaAtribucion.
- * datos` ya era desde la tarea 1.11: no hay nada nuevo que verificar en una copia).
+ * `NodoNoSoportado`/`NodoExpresionNoSoportada` (sintaxis/ast.ts), `NoSoportadoLexico` (léxico,
+ * literales.ts), `ProblemaAtribucion` (semantica/diagnostico.ts, tarea 1.28) y `ProblemaNoDisponible`
+ * (problemas.ts, tarea 1.28): los sitios donde un emisor construye un valor "codigo + datos" nuevo,
+ * o donde un tipo público lo expone. `NoSoportadoColectado` (sintaxis/no-soportado.ts) y `Token.datos`
+ * sí siguen siendo `Record<string, unknown>`: solo COPIAN un valor ya construido aquí, y
+ * `compilador.ts` re-afirma la pareja código/datos con un `as` documentado al armar el `Problema`.
  *
  * Un objeto construido con un `codigo` LITERAL (p. ej. `CODIGOS_NO_SOPORTADO.arreglo`) se verifica
  * de forma directa (TypeScript elige el miembro exacto de la unión y exige su `datos`). Un `codigo`

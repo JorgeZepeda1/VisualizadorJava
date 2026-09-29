@@ -2,132 +2,22 @@
 // tipadas por sus datos (ADR 015 punto 1): el motor (`src/motor/problemas.ts`,
 // `src/motor/semantica/*.ts`) SOLO emite `codigo` + `datos`, nunca texto; `textosProblemas` es el
 // ÚNICO lugar que arma la frase en español de México — TypeScript exige, por el tipo
-// `Record<CodigoProblema, ...>`, que existan las 17 claves del catálogo cerrado
+// `Record<CodigoProblema, ...>`, que existan TODAS las claves del catálogo cerrado
 // (`src/motor/problemas.ts`), así que no hay manera de olvidar una al agregarla allá sin que esto
 // deje de compilar.
 //
 // Tono (revisado por el PO, proposal.md): tuteo, directo, nunca "incorrecto" a secas — explica QUÉ
 // pasó y, cuando aplica, una pista de cómo arreglarlo. Solo puede importar tipos de `motor/vista`
 // (matriz de capas, herramientas/eslint/matriz-capas.ts).
-import type { CodigoProblema, Tipo } from '../../motor/vista.ts';
+import type { CodigoProblema, DatosPorCodigoProblema } from '../../motor/vista.ts';
 
-interface DatosNombre {
-  readonly nombre: string;
-}
+// Tarea 1.28: la forma de los datos de cada código YA NO se repite aquí. Vive en el motor
+// (`DatosPorCodigoProblema`, `motor/problemas.ts`, vía `motor/vista.ts`) — la MISMA que exige a cada
+// emisor (`semantica/*.ts`, `compilador.ts`) y que estrecha `Problema` — como la tarea 1.25 hizo con
+// los avisos. Si `CodigoProblema` agrega o quita una clave sin actualizar `DatosPorCodigoProblema`,
+// o esta tabla queda sin una clave, deja de compilar — la garantía real de ADR 015 punto 1.
 
-interface DatosNombreConSugerencia {
-  readonly nombre: string;
-  readonly sugerencia?: string;
-}
-
-interface DatosConversion {
-  readonly origen: Tipo;
-  readonly destino: Tipo;
-}
-
-interface DatosCondicion {
-  readonly tipo: Tipo;
-}
-
-interface DatosComparacion {
-  readonly izquierda: Tipo;
-  readonly derecha: Tipo;
-}
-
-interface DatosOperadorBinario {
-  readonly operador: string;
-  readonly izquierda: Tipo;
-  readonly derecha: Tipo;
-}
-
-// Tarea 1.21 (sub-lote 1-D4): un solo operando -- a diferencia de `DatosOperadorBinario`, que
-// siempre trae dos (izquierda/derecha).
-interface DatosOperadorUnario {
-  readonly operador: string;
-  readonly operando: Tipo;
-}
-
-interface DatosMensajeCrudo {
-  readonly mensaje: string;
-}
-
-// Sub-lote 1-D2c (REQ-SUB-005/007, task_c0cf2e6c): "clase"/"nombre" identifican el receptor real
-// (el "Math" de "Math.raiz", el "String" de "s.lenght") — nunca solo el nombre suelto, a
-// diferencia de "metodo-no-declarado" (que SÍ es un nombre suelto, sin receptor: REQ-SUB-007 dice
-// "ningún método propio existe en el subconjunto").
-interface DatosMiembro {
-  readonly clase: string;
-  readonly nombre: string;
-}
-
-// Tarea NUEVA (sub-lote 1-D5): `argumentos` es `string`, NO `Tipo` -- desde esta tarea puede traer
-// el nombre SIMPLE de una clase reflejada que el `Tipo` cerrado de 8 valores nunca representa
-// ("InputStream"/"PrintStream" para System.in/out/err, ver `nombreDeArgumentoParaMostrar` en
-// tipos.ts) -- es un valor puramente para MOSTRAR (nunca se vuelve a comparar/resolver con él),
-// así que ensancharlo de `Tipo` a `string` es seguro.
-interface DatosSinSobrecarga {
-  readonly clase: string;
-  readonly nombre: string;
-  readonly argumentos: readonly string[];
-}
-
-// Sub-lote 1-D3 (JLS 15.9): sin "nombre" -- a diferencia de un método, un constructor no tiene un
-// nombre propio distinto de su clase ("new Scanner(...)" nunca es "Scanner.algo(...)").
-interface DatosSinConstructor {
-  readonly clase: string;
-  readonly argumentos: readonly string[];
-}
-
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type -- vacío a propósito: estos 6 códigos no llevan datos
-interface DatosVacios {}
-
-// El mapeo código -> forma de sus datos: si `CodigoProblema` (motor/problemas.ts) alguna vez
-// agrega o quita una clave sin actualizar esto, `textosProblemas` de abajo deja de compilar — la
-// garantía real de ADR 015 punto 1 ("TypeScript exige que existan todas las claves").
-interface DatosPorCodigo {
-  'falta-punto-y-coma': DatosVacios;
-  'falta-parentesis-cierre': DatosVacios;
-  'error-no-clasificado': DatosMensajeCrudo;
-  'variable-no-declarada': DatosNombreConSugerencia;
-  'metodo-no-declarado': DatosNombre;
-  'variable-ya-definida': DatosNombre;
-  'tipo-no-reconocido': DatosNombre;
-  'campo-no-declarado': DatosMiembro;
-  'miembro-no-declarado': DatosMiembro;
-  'sin-sobrecarga-aplicable': DatosSinSobrecarga;
-  'sin-constructor-aplicable': DatosSinConstructor;
-  'conversion-con-perdida': DatosConversion;
-  'tipos-incompatibles-en-asignacion': DatosConversion;
-  'condicion-no-booleana': DatosCondicion;
-  'tipos-incomparables': DatosComparacion;
-  'operandos-invalidos-operador-binario': DatosOperadorBinario;
-  'operando-invalido-operador-unario': DatosOperadorUnario;
-  'importacion-no-reconocida': DatosNombre;
-  'objetivo-no-es-variable': DatosVacios;
-  'selector-de-switch-invalido': DatosCondicion;
-  'etiqueta-de-case-no-constante': DatosVacios;
-  'etiqueta-de-case-duplicada': DatosVacios;
-  'break-fuera-de-contexto': DatosVacios;
-  'continue-fuera-de-contexto': DatosVacios;
-  'else-sin-if': DatosVacios;
-  'cadena-sin-cerrar': DatosVacios;
-  'fin-de-archivo-inesperado': DatosVacios;
-  'llave-de-cierre-sobrante': DatosVacios;
-  'llave-de-metodo-faltante': DatosVacios;
-  'llave-de-clase-faltante': DatosVacios;
-  'paquete-despues-de-import': DatosVacios;
-  'tipo-requiere-import': DatosNombre;
-  // Lanzado como `ErrorDeCompilacion` (sintaxis) -- `construirProblema` (compilador.ts) SIEMPRE
-  // empaqueta `datos: { mensaje: error.message }` para cualquier código de esta familia (nunca un
-  // "nombre" estructurado aparte, a diferencia de los códigos de ATRIBUCIÓN) -- mismo shape que
-  // "error-no-clasificado".
-  'modificador-repetido': DatosMensajeCrudo;
-  'sentencia-inalcanzable': DatosVacios;
-  'variable-posiblemente-no-asignada': DatosNombre;
-  'variable-final-reasignada': DatosNombre;
-}
-
-export const textosProblemas: { readonly [K in CodigoProblema]: (datos: DatosPorCodigo[K]) => string } = {
+export const textosProblemas: { readonly [K in CodigoProblema]: (datos: DatosPorCodigoProblema[K]) => string } = {
   'falta-punto-y-coma': () => 'Te falta un punto y coma ";" al final de esta línea.',
   'falta-parentesis-cierre': () => 'Te falta cerrar un paréntesis ")".',
   'error-no-clasificado': ({ mensaje }) => `Hay un error de sintaxis aquí: ${mensaje}.`,

@@ -32,7 +32,7 @@ function archivosJava(ruta: string): string[] {
 // forma correcta a cada EMISOR — esta prueba solo verifica el resultado final, nunca reconstruye
 // esa exhaustividad en tiempo de ejecución (sería una segunda fuente de verdad, exactamente lo que
 // esta tarea eliminó).
-function renderizar(codigo: CodigoNoSoportado, linea: number, datos: Readonly<Record<string, unknown>>): string {
+function renderizar(codigo: CodigoNoSoportado, linea: number, datos: object): string {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- ver comentario de la función
   const generador = textosNoSoportado[codigo] as (d: any) => string;
   return generador({ linea, ...datos });

@@ -291,9 +291,10 @@ describe('atribuir — nombres de clase reconocidos nunca se marcan "variable no
 describe('atribuir — varios problemas: se devuelven TODOS, ordenados por posición en el texto', () => {
   it('dos variables no declaradas en líneas distintas aparecen en orden de aparición', () => {
     const problemas = atribuirCuerpo('int uno = primera + 1; int dos = segunda + 1;');
-    expect(problemas).toHaveLength(2);
-    expect(problemas[0].datos['nombre']).toBe('primera');
-    expect(problemas[1].datos['nombre']).toBe('segunda');
+    expect(problemas).toMatchObject([
+      { codigo: 'variable-no-declarada', datos: { nombre: 'primera' } },
+      { codigo: 'variable-no-declarada', datos: { nombre: 'segunda' } },
+    ]);
     expect(problemas[0].rango.inicio).toBeLessThan(problemas[1].rango.inicio);
   });
 });
@@ -455,7 +456,8 @@ describe('atribuir — err19 de exploracion/03: nombre no reconocido con sugeren
 
   it('control: un nombre no declarado SIN parecido a ninguna clase real no trae sugerencia', () => {
     const problemas = atribuirCuerpo('int y = edadDeLaPersona + 1;');
-    expect(problemas[0]?.datos['sugerencia']).toBeUndefined();
+    expect(problemas[0]).toMatchObject({ codigo: 'variable-no-declarada' });
+    expect(problemas[0]?.datos).toEqual({ nombre: 'edadDeLaPersona' });
   });
 });
 

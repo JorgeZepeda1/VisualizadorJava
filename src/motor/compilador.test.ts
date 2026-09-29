@@ -59,10 +59,74 @@ describe('compilar', () => {
     expect(resultado.problema.codigo).toBe('falta-parentesis-cierre');
   });
 
-  it('nunca lanza: hasta un carácter no reconocido se convierte en Problema, nunca en excepción (D2)', () => {
+  it('nunca lanza por un error del alumno: hasta un carácter no reconocido se convierte en Problema, nunca en excepción (D2)', () => {
     expect(() => compilar('#$%')).not.toThrow();
     const resultado = compilar('#$%');
     expect(resultado.ok).toBe(false);
+  });
+});
+
+// Tarea 1.28: `Problema` es una unión discriminada y su construcción, en `compilador.ts`, elige a mano
+// los cinco campos del contrato (design.md §2.2) — nunca copia el objeto de origen. Los avisos
+// sintácticos salen de los PROPIOS nodos del árbol (que traen su `tipo` interno), y una copia con
+// `...` los habría filtrado hacia la interfaz: esta prueba fija la forma EXACTA del `Problema`, venga
+// de la pasada que venga. Programas verificados con javac 17.0.18 real: `int[]`, el ternario, `0x10`,
+// `s.split` y `println(x)` COMPILAN; `int x = y;` (cannot find symbol) y `int x = 5` (';' expected) NO.
+describe('compilar — el Problema tiene EXACTAMENTE las claves del contrato, venga de la pasada que venga (tarea 1.28)', () => {
+  const CLAVES_DEL_CONTRATO = ['categoria', 'codigo', 'datos', 'linea', 'rango'];
+  const conMain = (cuerpo: string): string => `class C { public static void main(String[] a) { ${cuerpo} } }`;
+
+  it.each([
+    ['un aviso sintáctico (arreglo, nodo del árbol)', conMain('int[] d = new int[3];'), 'no-disponible'],
+    ['un aviso de expresión (ternario, nodo del árbol)', conMain('int x = 1 > 0 ? 1 : 2;'), 'no-disponible'],
+    ['un aviso léxico (literal hexadecimal, token)', conMain('int x = 0x10;'), 'no-disponible'],
+    ['un aviso de biblioteca (String.split, atribución)', conMain('String s = "a,b"; s.split(",");'), 'no-disponible'],
+    ['lo que el motor todavía no ejecuta (declaración con println)', conMain('int x = 5; System.out.println(x);'), 'no-disponible'],
+    ['un error de atribución (variable no declarada)', conMain('int x = y;'), 'error-compilacion'],
+    ['un error de sintaxis (falta el ";")', conMain('int x = 5'), 'error-compilacion'],
+  ] as const)('%s: solo categoria, codigo, rango, linea y datos', (_caso, fuente, categoria) => {
+    const resultado = compilar(fuente);
+    expect(resultado.ok).toBe(false);
+    if (resultado.ok) return;
+    expect(resultado.problema.categoria).toBe(categoria);
+    expect(Object.keys(resultado.problema).sort()).toEqual(CLAVES_DEL_CONTRATO);
+  });
+});
+
+// Tarea 1.28 (agregada por el orquestador — hallazgo verificado de punta a punta, D2/regla 5 de
+// CLAUDE.md): antes, el `catch` de `compilar()` convertía CUALQUIER excepción en un `Problema` de
+// `categoria:'error-compilacion'`, incluidos los fallos del propio motor (un TypeError, un
+// RangeError...): con `rango:{0,0}` (línea SIEMPRE 1) y el mensaje de JavaScript en `datos.mensaje`.
+// Una vez que la pantalla muestre el texto real de cada problema, un bug del motor se habría leído
+// como «Línea 1: Hay un error de sintaxis aquí: Maximum call stack size exceeded» — un error de
+// sintaxis inventado, en inglés, para un programa cuyo único problema es NUESTRO. Solo
+// `ErrorDeCompilacion` (el error del ALUMNO, con posición) es un `error-compilacion`; cualquier otra
+// excepción es un fallo interno y se propaga fuera de `compilar()` (el trabajador la convierte en
+// `error-interno`, ver `trabajador.test.ts`).
+//
+// Entrada que fuerza el fallo de forma legítima, sin simular nada: una expresión con paréntesis
+// anidados mucho más allá del límite de la pila del analizador (descenso recursivo). Verificada con
+// javac 17.0.18 real: 500 niveles compilan sin salida; 100 000 niveles matan al propio javac con su
+// `StackOverflowError` («The system is out of resources») — es una entrada patológica, no un
+// programa de alumno, y lo único que se afirma aquí es que NUESTRO fallo no se disfraza.
+describe('compilar — solo un ErrorDeCompilacion es un error de compilación (tarea 1.28)', () => {
+  const NIVELES_QUE_AGOTAN_LA_PILA = 100_000;
+  const anidada = `${'('.repeat(NIVELES_QUE_AGOTAN_LA_PILA)}1${')'.repeat(NIVELES_QUE_AGOTAN_LA_PILA)}`;
+
+  it('una excepción ajena al alumno (agotar la pila del analizador) se propaga: NO se disfraza de error de sintaxis', () => {
+    const fuente = `class C { public static void main(String[] a) { int x = ${anidada}; } }`;
+    expect(() => compilar(fuente)).toThrow(RangeError);
+  });
+
+  it('triangulación: aunque un aviso léxico ("0x10", hexadecimal) preceda a la falla, el fallo interno sigue propagándose', () => {
+    const fuente = `class C { public static void main(String[] a) { int y = 0x10; int x = ${anidada}; } }`;
+    expect(() => compilar(fuente)).toThrow(RangeError);
+  });
+
+  it('contraste: un ErrorDeCompilacion real (falta el ";") SIGUE siendo un Problema "error-compilacion", nunca una excepción', () => {
+    const fuente = 'class C { public static void main(String[] a) { int x = 5 } }';
+    const resultado = compilar(fuente);
+    expect(resultado).toMatchObject({ ok: false, problema: { categoria: 'error-compilacion', codigo: 'falta-punto-y-coma' } });
   });
 });
 

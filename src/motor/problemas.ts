@@ -20,11 +20,21 @@
 //     todavía (se muestra como excepción, design.md §2.2).
 //   - Los códigos de "no disponible" (`sintaxis/no-soportado.ts`, el léxico y
 //     `sintaxis/expresiones.ts`) — un catálogo YA organizado y probado desde 1.1-1.6/1.17, con su
-//     propia tabla `CODIGOS_NO_SOPORTADO`; unificarlo aquí sería una tarea aparte de re-tipado
-//     transversal, no lo que pide "errores de TIPO y SÍMBOLO". Por eso `Problema.codigo` sigue
-//     aceptando `string` ADEMÁS de `CodigoProblema`: un `Problema` de categoría `no-disponible`
-//     trae uno de esos códigos, no uno de los de aquí abajo.
+//     propia tabla `CODIGOS_NO_SOPORTADO` (`no-soportado.ts`, tareas 1.24-1.26): un `Problema` de
+//     categoría `no-disponible` trae uno de esos códigos, no uno de los de aquí abajo.
+//
+// Tarea 1.28 (agregada por el orquestador, decisión del PO 2026-09-29: «la pantalla muestra el
+// texto real de cada problema»): `Problema` deja de ser una interfaz plana (`codigo: CodigoProblema
+// | string`, `datos: Record<string, unknown>`, que la presentación no podía estrechar sin un `as`)
+// y pasa a ser una UNIÓN DISCRIMINADA por `categoria`, con el código estrechado por categoría y los
+// datos EXACTOS de cada código — el mismo mecanismo que la tarea 1.25 ya dio a los avisos
+// (`DatosPorCodigoNoSoportado`/`ConDatosPorCodigo`), ahora también para los errores de compilación
+// (`DatosPorCodigoProblema`, movido aquí desde el catálogo de textos). Un emisor que construye un
+// problema sin los datos que su texto exige deja de compilar (`npm run tipos`). No cambia nada en
+// ejecución: cada sitio de emisión ya construía sus datos exactos.
 import type { Rango } from './fuente/rango.ts';
+import type { ConDatosPorCodigo } from './no-soportado.ts';
+import type { Tipo } from './semantica/tipos.ts';
 
 export type Categoria = 'error-compilacion' | 'no-disponible' | 'error-arranque';
 
@@ -117,16 +127,171 @@ export type CodigoProblema =
   | 'variable-posiblemente-no-asignada' // err05, err06, err09, err10, switch sin "default"
   | 'variable-final-reasignada'; // err10c (JLS 4.12.4 + 16.1: una "final" solo admite un valor)
 
-export interface Problema {
-  readonly categoria: Categoria;
-  // "no disponible" trae un código del catálogo de `sintaxis/no-soportado.ts` (string, catálogo
-  // aparte — ver cabecera); "error-compilacion"/"error-arranque" traen uno de `CodigoProblema`.
-  readonly codigo: CodigoProblema | string;
+// Datos EXTRA que el texto es-MX (`src/textos/es-MX/problemas.ts`) necesita de cada código — la
+// ÚNICA fuente de verdad de su forma. Vive en el MOTOR (no en el catálogo) para que el propio emisor
+// (`semantica/*.ts`, `compilador.ts`) quede obligado a construir su problema CONTRA ella: nunca al
+// revés (un catálogo de textos no puede obligar a nada del lado del motor). El catálogo la importa
+// vía `motor/vista.ts` para tipar el argumento de cada función (ADR 015 punto 1), así que las DOS
+// puntas comparten un solo contrato. `Record<never, never>` (⇒ solo `{}`) para los códigos cuyo
+// texto no usa ningún dato.
+interface DatosNombre {
+  readonly nombre: string;
+}
+
+interface DatosNombreConSugerencia {
+  readonly nombre: string;
+  readonly sugerencia?: string;
+}
+
+interface DatosConversion {
+  readonly origen: Tipo;
+  readonly destino: Tipo;
+}
+
+interface DatosCondicion {
+  readonly tipo: Tipo;
+}
+
+interface DatosComparacion {
+  readonly izquierda: Tipo;
+  readonly derecha: Tipo;
+}
+
+interface DatosOperadorBinario {
+  readonly operador: string;
+  readonly izquierda: Tipo;
+  readonly derecha: Tipo;
+}
+
+// Tarea 1.21 (sub-lote 1-D4): un solo operando -- a diferencia de `DatosOperadorBinario`, que
+// siempre trae dos (izquierda/derecha).
+interface DatosOperadorUnario {
+  readonly operador: string;
+  readonly operando: Tipo;
+}
+
+// Lo que `compilador.ts` (`construirProblema`) empaqueta para CUALQUIER error de sintaxis: el
+// mensaje del `ErrorDeCompilacion`, en español, escrito por el propio analizador.
+interface DatosMensajeCrudo {
+  readonly mensaje: string;
+}
+
+// Sub-lote 1-D2c (REQ-SUB-005/007, task_c0cf2e6c): "clase"/"nombre" identifican el receptor real
+// (el "Math" de "Math.raiz", el "String" de "s.lenght") — nunca solo el nombre suelto, a
+// diferencia de "metodo-no-declarado" (que SÍ es un nombre suelto, sin receptor: REQ-SUB-007 dice
+// "ningún método propio existe en el subconjunto").
+interface DatosMiembro {
+  readonly clase: string;
+  readonly nombre: string;
+}
+
+// Tarea NUEVA (sub-lote 1-D5): `argumentos` es `string`, NO `Tipo` -- desde esta tarea puede traer
+// el nombre SIMPLE de una clase reflejada que el `Tipo` cerrado de 8 valores nunca representa
+// ("InputStream"/"PrintStream" para System.in/out/err, ver `nombreDeArgumentoParaMostrar` en
+// tipos.ts) -- es un valor puramente para MOSTRAR (nunca se vuelve a comparar/resolver con él),
+// así que ensancharlo de `Tipo` a `string` es seguro.
+interface DatosSinSobrecarga {
+  readonly clase: string;
+  readonly nombre: string;
+  readonly argumentos: readonly string[];
+}
+
+// Sub-lote 1-D3 (JLS 15.9): sin "nombre" -- a diferencia de un método, un constructor no tiene un
+// nombre propio distinto de su clase ("new Scanner(...)" nunca es "Scanner.algo(...)").
+interface DatosSinConstructor {
+  readonly clase: string;
+  readonly argumentos: readonly string[];
+}
+
+// `rangoExistente`: dónde se declaró antes el nombre repetido. El texto actual no lo usa; el motor
+// lo manda desde el sub-lote 1-C2 y queda disponible para señalarlo en el editor (lote 4).
+interface DatosVariableYaDefinida {
+  readonly nombre: string;
+  readonly rangoExistente: Rango;
+}
+
+export interface DatosPorCodigoProblema {
+  'falta-punto-y-coma': DatosMensajeCrudo;
+  'falta-parentesis-cierre': DatosMensajeCrudo;
+  'error-no-clasificado': DatosMensajeCrudo;
+  'variable-no-declarada': DatosNombreConSugerencia;
+  'metodo-no-declarado': DatosNombre;
+  'variable-ya-definida': DatosVariableYaDefinida;
+  'tipo-no-reconocido': DatosNombre;
+  'campo-no-declarado': DatosMiembro;
+  'miembro-no-declarado': DatosMiembro;
+  'sin-sobrecarga-aplicable': DatosSinSobrecarga;
+  'sin-constructor-aplicable': DatosSinConstructor;
+  'conversion-con-perdida': DatosConversion;
+  'tipos-incompatibles-en-asignacion': DatosConversion;
+  'condicion-no-booleana': DatosCondicion;
+  'tipos-incomparables': DatosComparacion;
+  'operandos-invalidos-operador-binario': DatosOperadorBinario;
+  'operando-invalido-operador-unario': DatosOperadorUnario;
+  'importacion-no-reconocida': DatosNombre;
+  'objetivo-no-es-variable': Record<never, never>;
+  'selector-de-switch-invalido': DatosCondicion;
+  'etiqueta-de-case-no-constante': Record<never, never>;
+  'etiqueta-de-case-duplicada': Record<never, never>;
+  'break-fuera-de-contexto': Record<never, never>;
+  'continue-fuera-de-contexto': Record<never, never>;
+  'else-sin-if': DatosMensajeCrudo;
+  'cadena-sin-cerrar': DatosMensajeCrudo;
+  'fin-de-archivo-inesperado': DatosMensajeCrudo;
+  'llave-de-cierre-sobrante': DatosMensajeCrudo;
+  'llave-de-metodo-faltante': DatosMensajeCrudo;
+  'llave-de-clase-faltante': DatosMensajeCrudo;
+  'paquete-despues-de-import': DatosMensajeCrudo;
+  'tipo-requiere-import': DatosNombre;
+  'modificador-repetido': DatosMensajeCrudo;
+  'sentencia-inalcanzable': Record<never, never>;
+  'variable-posiblemente-no-asignada': DatosNombre;
+  'variable-final-reasignada': DatosNombre;
+}
+
+// Los códigos que `compilar()` saca de un `ErrorDeCompilacion` (léxico y sintaxis): TODOS llevan
+// como datos el mensaje del propio error (`construirProblema`), a diferencia de los de atribución,
+// que traen los datos estructurados de su regla. Subconjunto de `CodigoProblema` — el tipo obliga
+// a que un `ErrorDeCompilacion` solo pueda declarar uno de estos, así que `construirProblema`
+// siempre arma datos que su código admite.
+export type CodigoDeSintaxis = Extract<
+  CodigoProblema,
+  | 'falta-punto-y-coma'
+  | 'falta-parentesis-cierre'
+  | 'error-no-clasificado'
+  | 'else-sin-if'
+  | 'cadena-sin-cerrar'
+  | 'fin-de-archivo-inesperado'
+  | 'llave-de-cierre-sobrante'
+  | 'llave-de-metodo-faltante'
+  | 'llave-de-clase-faltante'
+  | 'paquete-despues-de-import'
+  | 'modificador-repetido'
+>;
+
+interface ProblemaComun {
   readonly codigoJavac?: string;
   readonly rango: Rango;
   readonly linea: number;
-  readonly datos: Readonly<Record<string, unknown>>;
 }
+
+/** Un error del ALUMNO que javac también rechaza: un código de `CodigoProblema` con SUS datos. */
+export type ProblemaDeCompilacion = {
+  readonly [C in CodigoProblema]: ProblemaComun & {
+    readonly categoria: 'error-compilacion';
+    readonly codigo: C;
+    readonly datos: DatosPorCodigoProblema[C];
+  };
+}[CodigoProblema];
+
+/** Algo que Java acepta pero este visualizador no cubre (o todavía no ejecuta): un código de
+ * `CodigoNoSoportado` con SUS datos (`DatosPorCodigoNoSoportado`, tarea 1.25). */
+export type ProblemaNoDisponible = ConDatosPorCodigo<ProblemaComun & { readonly categoria: 'no-disponible' }>;
+
+// `categoria: 'error-arranque'` (`Categoria`, design.md §2.2) NO es una variante de `Problema`:
+// `compilar()` nunca devuelve `ok:false` por un arranque inválido (javac SÍ compila un `main` sin
+// `static`); ese problema viaja aparte, como `ProblemaArranque`, y aparece al ejecutar.
+export type Problema = ProblemaDeCompilacion | ProblemaNoDisponible;
 
 export type CausaFin =
   | 'terminado'

@@ -28,7 +28,14 @@ interface DatosLinea {
 // "undefined" en vez del literal/tipo/miembro real, ver `motor/no-soportado.ts` para el hallazgo
 // completo). Si `CodigoNoSoportado` agrega o quita un código sin actualizar `DatosPorCodigoNoSoportado`
 // (motor), `textosNoSoportado` de abajo deja de compilar — mecanismo sin cambios desde la tarea 1.24.
-type DatosPorCodigo = { readonly [K in CodigoNoSoportado]: DatosLinea & DatosPorCodigoNoSoportado[K] };
+//
+// Tarea 1.28: es un alias GENÉRICO (`DatosDe<K>`) y no un mapa `{ [K in …]: … }[K]`, a propósito: con
+// el alias, indexar el catálogo con un código genérico (`textosNoSoportado[codigo]`, en
+// `presentacion/texto-del-problema.ts`) deja el parámetro como `DatosLinea &
+// DatosPorCodigoNoSoportado[C]` y TypeScript correlaciona el código con SUS datos sin ningún cast;
+// con el mapa, el parámetro quedaba como un acceso indexado sin resolver y exigía la intersección de
+// los datos de los 45 códigos.
+type DatosDe<K extends CodigoNoSoportado> = DatosLinea & DatosPorCodigoNoSoportado[K];
 
 // Marco común a (casi) todos los avisos (REQ-SUB-006): "Tu programa usa QUÉ en la línea N. Java sí
 // lo acepta, pero este visualizador cubre las unidades 3 a 7 y todavía TODAVÍA-QUÉ.
@@ -45,7 +52,7 @@ function marco(linea: number, que: string, todavia: string, alternativa?: string
   );
 }
 
-export const textosNoSoportado: { readonly [K in CodigoNoSoportado]: (datos: DatosPorCodigo[K]) => string } = {
+export const textosNoSoportado: { readonly [K in CodigoNoSoportado]: (datos: DatosDe<K>) => string } = {
   'otro-tipo-de-nivel-superior-no-soportado': ({ linea }) =>
     marco(linea, 'otra clase, interfaz, enum o record además de la principal', 'no ejecuta programas con más de un tipo de nivel superior'),
 
