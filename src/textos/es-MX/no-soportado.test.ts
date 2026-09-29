@@ -34,6 +34,9 @@ const DATOS_DE_EJEMPLO: Record<CodigoNoSoportado, Record<string, unknown>> = {
   'try-catch-no-soportado': { linea: 1 },
   'throw-no-soportado': { linea: 1 },
   'switch-flecha-no-soportado': { linea: 1 },
+  'case-con-varias-etiquetas-no-soportado': { linea: 1 },
+  'anotacion-no-soportada': { linea: 1 },
+  'nombre-calificado-no-soportado': { linea: 1, nombre: 'java.util.Scanner' },
   'yield-no-soportado': { linea: 1 },
   'import-static-no-soportado': { linea: 1 },
   'lambda-no-soportada': { linea: 1 },
@@ -43,6 +46,15 @@ const DATOS_DE_EJEMPLO: Record<CodigoNoSoportado, Record<string, unknown>> = {
   'metodo-de-biblioteca-no-soportado': { linea: 1, clase: 'String', nombre: 'split' },
   'campo-de-biblioteca-no-soportado': { linea: 1, clase: 'Integer', nombre: 'SIZE' },
   'constructor-de-biblioteca-no-soportado': { linea: 1, clase: 'Scanner' },
+  // Tarea 1.29: una clase REAL del JDK (o la propia del programa) fuera del subconjunto — el import
+  // de `java.util.Locale`, `StringBuilder`, `JOptionPane`… — con el nombre tal como lo escribió el alumno.
+  'clase-no-soportada': { linea: 1, nombre: 'java.util.Locale' },
+  // Tarea 1.29: la cabecera de la clase con `extends` o `implements` (herencia o interfaces).
+  'herencia-no-soportada': { linea: 1 },
+  // Tarea 1.29: `assert`, un tipo declarado dentro de un método y un bloque `synchronized`.
+  'assert-no-soportado': { linea: 1 },
+  'clase-local-no-soportada': { linea: 1 },
+  'sincronizado-no-soportado': { linea: 1 },
   'escape-no-soportado': { linea: 1 },
   'escape-octal-no-soportado': { linea: 1 },
   'escape-unicode-no-soportado': { linea: 1 },
@@ -149,6 +161,66 @@ describe('textosNoSoportado — REQ-SUB-006 (spec subconjunto-java): formato y e
     expect(texto).toContain('`new Random`');
     expect(texto).toContain('crear un `Random`');
     expect(texto).not.toContain('Scanner');
+  });
+
+  // Tarea 1.29 (agregada por el orquestador): antes `import java.util.Locale;` daba «No reconozco
+  // "java.util.Locale"… revisa que esté bien escrito», un error FALSO (la clase existe): design.md
+  // §2.3 pide un aviso «clase existente no soportada». El nombre es el que escribió el alumno (el
+  // completo en un `import`, el simple en `StringBuilder sb`).
+  it('clase no soportada: el texto dice "la clase `NOMBRE`" con el nombre TAL COMO lo escribió el alumno, nunca uno fijo', () => {
+    const deImport = textosNoSoportado['clase-no-soportada']({ linea: 1, nombre: 'java.util.Locale' });
+    expect(deImport).toContain('la clase `java.util.Locale`');
+    expect(deImport).toContain('línea 1');
+    const simple = textosNoSoportado['clase-no-soportada']({ linea: 4, nombre: 'StringBuilder' });
+    expect(simple).toContain('la clase `StringBuilder`');
+    expect(simple).toContain('línea 4');
+    expect(simple).not.toContain('Locale');
+  });
+
+  it('clase no soportada: sigue el marco de REQ-SUB-006 (Java sí la acepta, unidades 3 a 7, no la ejecuta) y NO dice "no reconozco" ni "revisa que esté bien escrito"', () => {
+    const texto = textosNoSoportado['clase-no-soportada']({ linea: 2, nombre: 'javax.swing.JOptionPane' });
+    expect(texto).toMatch(/Java sí/);
+    expect(texto).toMatch(/unidades 3 a 7/);
+    expect(texto).toMatch(/No lo ejecuto/);
+    expect(texto).not.toMatch(/no reconozco|bien escrito/i);
+  });
+
+  // Tarea 1.29: `java.util.Scanner sc = new java.util.Scanner(System.in);` es Java válido (el nombre completo
+  // hace innecesario el import); el subconjunto solo entiende el nombre corto, con su `import`.
+  it('nombre completo de una clase: lo dice tal como lo escribió el alumno y explica cómo escribirlo (import + nombre corto)', () => {
+    const texto = textosNoSoportado['nombre-calificado-no-soportado']({ linea: 4, nombre: 'java.util.Scanner' });
+    expect(texto).toContain('línea 4');
+    expect(texto).toContain('`java.util.Scanner`');
+    expect(texto).toContain('`import java.util.Scanner;`');
+    expect(texto).toContain('`Scanner`');
+  });
+
+  it('triangulación: otra clase con su paquete se refleja tal cual (el import y el nombre corto salen del nombre completo)', () => {
+    const texto = textosNoSoportado['nombre-calificado-no-soportado']({ linea: 2, nombre: 'javax.swing.JOptionPane' });
+    expect(texto).toContain('`import javax.swing.JOptionPane;`');
+    expect(texto).toContain('`JOptionPane`');
+    expect(texto).not.toContain('Scanner');
+  });
+
+  // Tarea 1.29: una anotación (`@Override`, `@SuppressWarnings("resource")`) es Java válido que el subconjunto
+  // no interpreta; casi siempre solo silencia un aviso del editor, y quitarla no cambia el programa.
+  it('anotación: dice la línea, da ejemplos que el alumno reconoce y sugiere quitarla si solo silencia un aviso', () => {
+    const texto = textosNoSoportado['anotacion-no-soportada']({ linea: 3 });
+    expect(texto).toContain('línea 3');
+    expect(texto).toContain('`@Override`');
+    expect(texto).toContain('`@SuppressWarnings`');
+    expect(texto).toMatch(/quitar/);
+  });
+
+  // Tarea 1.29: `case 1, 2:` es Java válido (14+) que el subconjunto no ejecuta — la alternativa dentro
+  // del subconjunto existe y se nombra (un `case` por valor), con el ejemplo del propio alumno en mente.
+  it('varias etiquetas en un case: dice la línea, ofrece un `case` por valor y no habla de la flecha', () => {
+    const texto = textosNoSoportado['case-con-varias-etiquetas-no-soportado']({ linea: 5 });
+    expect(texto).toContain('línea 5');
+    expect(texto).toContain('`case 1, 2:`');
+    expect(texto).toContain('`case 1:`');
+    expect(texto).toContain('`case 2:`');
+    expect(texto).not.toContain('->');
   });
 
   // Tarea 1.27: a diferencia de TODO el resto del catálogo, esta construcción SÍ está dentro del

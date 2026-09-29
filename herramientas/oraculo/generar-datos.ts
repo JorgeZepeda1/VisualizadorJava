@@ -14,6 +14,11 @@ import { ejecutarPrograma } from './ejecutar.ts';
 const AQUI = dirname(fileURLToPath(import.meta.url));
 const RAIZ_PROYECTO = resolve(AQUI, '..', '..');
 
+// El oráculo acota lo que captura de stdout (`LIMITE_BYTES_CAPTURA_POR_OMISION`, 64 KiB, pensado para
+// UN programa del alumno). Las sondas de este archivo devuelven catálogos enteros (la lista de clases
+// pesa ~83 KB y `firmas` ya va por 41 KB): con el tope por omisión la lista salió CORTADA, en silencio.
+const LIMITE_BYTES_SONDAS = 16 * 1024 * 1024;
+
 // ---- Firmas de la API (GenerarFirmasApi.java) ----
 
 export interface FirmaMiembro {
@@ -59,6 +64,114 @@ export function analizarFirmasApi(salida: string): FirmaMiembro[] {
     .map((linea) => linea.trim())
     .filter((linea) => linea.length > 0)
     .map(analizarLineaFirma);
+}
+
+// ---- Supertipos (GenerarSupertipos.java, tarea 1.29) ----
+
+/** Tipo de referencia → TODOS sus supertipos (transitivos, incluido `java.lang.Object`). */
+export type SupertiposPorTipo = Readonly<Record<string, readonly string[]>>;
+
+/** Pura: una línea de `GenerarSupertipos.java` (`tipo|super1,super2`) → tipo y supertipos. */
+export function analizarLineaSupertipos(linea: string): { tipo: string; supertipos: string[] } {
+  const partes = linea.split('|');
+  if (partes.length !== 2) {
+    throw new Error(`línea de supertipos mal formada (se esperaban 2 campos separados por "|"): "${linea}"`);
+  }
+  const [tipo, supertipos] = partes as [string, string];
+  return { tipo, supertipos: supertipos === '' ? [] : supertipos.split(',') };
+}
+
+/** Pura: todo el stdout de `GenerarSupertipos.java` → tabla indexada por tipo (ignora líneas en blanco). */
+export function analizarSupertipos(salida: string): SupertiposPorTipo {
+  const entradas = salida
+    .split('\n')
+    .map((linea) => linea.trim())
+    .filter((linea) => linea.length > 0)
+    .map(analizarLineaSupertipos)
+    .map(({ tipo, supertipos }): [string, string[]] => [tipo, supertipos]);
+  return Object.fromEntries(entradas);
+}
+
+// ---- Clases del JDK (GenerarClasesJdk.java, tarea 1.29) ----
+
+/** Paquete → sus tipos públicos importables, por nombre canónico DENTRO del paquete (`Map.Entry`). */
+export type ClasesPorPaquete = Readonly<Record<string, readonly string[]>>;
+
+/** Pura: una línea de `GenerarClasesJdk.java` (`paquete|Clase1,Clase2`) → paquete y clases. */
+export function analizarLineaClases(linea: string): { paquete: string; clases: string[] } {
+  const partes = linea.split('|');
+  const [paquete, clases] = partes as [string, string?];
+  if (partes.length !== 2 || paquete === '' || clases === undefined || clases === '') {
+    throw new Error(`línea de clases mal formada (se esperaba "paquete|Clase1,Clase2"): "${linea}"`);
+  }
+  return { paquete, clases: clases.split(',') };
+}
+
+const PREFIJO_TOTAL_DE_CLASES = '#total|';
+
+/**
+ * Pura: todo el stdout de `GenerarClasesJdk.java` → tabla indexada por paquete (ignora líneas en
+ * blanco). Exige la línea final `#total|N` y que N sea la cantidad de clases realmente leídas: el
+ * oráculo acota lo que captura de stdout, y una lista CORTADA (sin error alguno) se guardaría como
+ * si fuera completa — cada clase que faltara se le mostraría al alumno como «no existe» (un error de
+ * compilación falso). Así una salida truncada revienta aquí, con un mensaje claro.
+ */
+export function analizarClasesJdk(salida: string): ClasesPorPaquete {
+  const lineas = salida
+    .split('\n')
+    .map((linea) => linea.trim())
+    .filter((linea) => linea.length > 0);
+  const lineaTotal = lineas.find((linea) => linea.startsWith(PREFIJO_TOTAL_DE_CLASES));
+  const entradas = lineas
+    .filter((linea) => !linea.startsWith(PREFIJO_TOTAL_DE_CLASES))
+    .map(analizarLineaClases)
+    .map(({ paquete, clases }): [string, string[]] => [paquete, clases]);
+  const leidas = entradas.reduce((total, [, clases]) => total + clases.length, 0);
+  if (lineaTotal === undefined || Number(lineaTotal.slice(PREFIJO_TOTAL_DE_CLASES.length)) !== leidas) {
+    throw new Error(
+      `La salida de GenerarClasesJdk.java está truncada o incompleta: se leyeron ${leidas} clases y la línea ` +
+        `"${PREFIJO_TOTAL_DE_CLASES}N" ${lineaTotal === undefined ? 'no aparece' : `dice "${lineaTotal}"`}. ` +
+        `Revisa el tope de captura del oráculo (LIMITE_BYTES_SONDAS).`,
+    );
+  }
+  return Object.fromEntries(entradas);
+}
+
+// ---- Identificadores (GenerarIdentificadores.java, tarea 1.29) ----
+
+/** Rangos de puntos de código (hexadecimal, "41-5a" o "5f", separados por comas) de un identificador. */
+export interface IdentificadoresJava {
+  /** `Character.isJavaIdentifierStart`: con qué puede EMPEZAR un identificador. */
+  readonly inicio: string;
+  /** `Character.isJavaIdentifierPart`: con qué puede CONTINUAR. */
+  readonly parte: string;
+}
+
+/**
+ * Pura: el stdout de `GenerarIdentificadores.java` (`inicio|…`, `parte|…`, `#total|N,M`) → las dos
+ * tablas. Exige la línea final y que N y M sean la cantidad de rangos realmente leídos: el oráculo
+ * acota lo que captura de stdout, y una tabla CORTADA se guardaría como si fuera completa.
+ */
+export function analizarIdentificadoresJava(salida: string): IdentificadoresJava {
+  const lineas = salida
+    .split('\n')
+    .map((linea) => linea.trim())
+    .filter((linea) => linea.length > 0);
+  const lineaDe = (prefijo: string): string | undefined => lineas.find((linea) => linea.startsWith(prefijo));
+  const inicio = lineaDe('inicio|')?.slice('inicio|'.length);
+  const parte = lineaDe('parte|')?.slice('parte|'.length);
+  if (inicio === undefined || parte === undefined || inicio === '' || parte === '') {
+    throw new Error('la salida de GenerarIdentificadores.java está mal formada (faltan las líneas "inicio|…" y "parte|…")');
+  }
+  const total = lineaDe('#total|')?.slice('#total|'.length);
+  const esperado = `${inicio.split(',').length},${parte.split(',').length}`;
+  if (total !== esperado) {
+    throw new Error(
+      `La salida de GenerarIdentificadores.java está truncada o incompleta: se leyeron ${esperado} rangos (inicio,parte) ` +
+        `y la línea "#total|N,M" ${total === undefined ? 'no aparece' : `dice "${total}"`}. Revisa el tope de captura del oráculo (LIMITE_BYTES_SONDAS).`,
+    );
+  }
+  return { inicio, parte };
 }
 
 // ---- Símbolos regionales (`DecimalFormatSymbols`, REQ-BIB-010) ----
@@ -122,6 +235,9 @@ const FUENTE_MAIN_NO_STATIC = 'public class MainNoStatic { public void main(Stri
 
 export interface DatosJdk {
   readonly firmas: readonly FirmaMiembro[];
+  readonly supertipos: SupertiposPorTipo;
+  readonly clases: ClasesPorPaquete;
+  readonly identificadores: IdentificadoresJava;
   readonly regional: Readonly<Record<'es-MX' | 'es-ES', SimbolosRegionales>>;
   readonly marcos: { readonly sinMain: MensajeArranque; readonly mainNoStatic: MensajeArranque };
 }
@@ -167,13 +283,40 @@ export async function generarDatos(jdk: InfoJdk): Promise<DatosJdk> {
   verificarVersionJdk(jdk);
 
   const fuenteFirmas = readFileSync(resolve(AQUI, 'java', 'GenerarFirmasApi.java'), 'utf-8');
-  const resultadoFirmas = await ejecutarPrograma(jdk, { fuente: fuenteFirmas });
+  const resultadoFirmas = await ejecutarPrograma(jdk, { fuente: fuenteFirmas, limiteBytesCaptura: LIMITE_BYTES_SONDAS });
   if (!resultadoFirmas.compilo) {
     throw new Error(
       `GenerarFirmasApi.java no compiló contra el JDK real:\n${resultadoFirmas.erroresCompilacion.toString('utf-8')}`,
     );
   }
   const firmas = analizarFirmasApi(resultadoFirmas.stdout.toString('utf-8'));
+
+  const fuenteSupertipos = readFileSync(resolve(AQUI, 'java', 'GenerarSupertipos.java'), 'utf-8');
+  const resultadoSupertipos = await ejecutarPrograma(jdk, { fuente: fuenteSupertipos, limiteBytesCaptura: LIMITE_BYTES_SONDAS });
+  if (!resultadoSupertipos.compilo) {
+    throw new Error(
+      `GenerarSupertipos.java no compiló contra el JDK real:\n${resultadoSupertipos.erroresCompilacion.toString('utf-8')}`,
+    );
+  }
+  const supertipos = analizarSupertipos(resultadoSupertipos.stdout.toString('utf-8'));
+
+  const fuenteClases = readFileSync(resolve(AQUI, 'java', 'GenerarClasesJdk.java'), 'utf-8');
+  const resultadoClases = await ejecutarPrograma(jdk, { fuente: fuenteClases, limiteBytesCaptura: LIMITE_BYTES_SONDAS });
+  if (!resultadoClases.compilo) {
+    throw new Error(
+      `GenerarClasesJdk.java no compiló contra el JDK real:\n${resultadoClases.erroresCompilacion.toString('utf-8')}`,
+    );
+  }
+  const clases = analizarClasesJdk(resultadoClases.stdout.toString('utf-8'));
+
+  const fuenteIdentificadores = readFileSync(resolve(AQUI, 'java', 'GenerarIdentificadores.java'), 'utf-8');
+  const resultadoIdentificadores = await ejecutarPrograma(jdk, { fuente: fuenteIdentificadores, limiteBytesCaptura: LIMITE_BYTES_SONDAS });
+  if (!resultadoIdentificadores.compilo) {
+    throw new Error(
+      `GenerarIdentificadores.java no compiló contra el JDK real:\n${resultadoIdentificadores.erroresCompilacion.toString('utf-8')}`,
+    );
+  }
+  const identificadores = analizarIdentificadoresJava(resultadoIdentificadores.stdout.toString('utf-8'));
 
   // Parte A.2: defensa adicional (además de -Duser.language/-Duser.country, que YA viaja vía
   // `regional`) para el gotcha de la JVM en frío -- fija también LANG/LC_ALL del proceso hijo.
@@ -197,6 +340,9 @@ export async function generarDatos(jdk: InfoJdk): Promise<DatosJdk> {
 
   return {
     firmas,
+    supertipos,
+    clases,
+    identificadores,
     regional: {
       'es-MX': analizarSalidaRegional(regionalMx.stdout.toString('utf-8')),
       'es-ES': analizarSalidaRegional(regionalEs.stdout.toString('utf-8')),
@@ -245,6 +391,39 @@ export function renderizarFirmasTs(firmas: readonly FirmaMiembro[]): string {
     `  readonly esVarargs: boolean;\n` +
     `}\n\n` +
     `export const FIRMAS_JDK: readonly FirmaMiembro[] = [\n${entradas}\n];\n`
+  );
+}
+
+export function renderizarSupertiposTs(supertipos: SupertiposPorTipo): string {
+  const entradas = Object.entries(supertipos)
+    .map(([tipo, lista]) => `  ${cadenaSimple(tipo)}: [${lista.map(cadenaSimple).join(', ')}],`)
+    .join('\n');
+  return (
+    `${cabecera('herramientas/oraculo/java/GenerarSupertipos.java')}` +
+    `export const SUPERTIPOS_JDK: Readonly<Record<string, readonly string[]>> = {\n${entradas}\n};\n`
+  );
+}
+
+/** Una cadena por paquete (clases separadas por comas), no un arreglo de cadenas: son ~4 400 nombres y el
+ * lote entra dos veces en los paquetes de producción (hilo principal y trabajador) — ver el peso
+ * medido en `tasks.md` 1.29. */
+export function renderizarClasesTs(clases: ClasesPorPaquete): string {
+  const entradas = Object.entries(clases)
+    .map(([paquete, lista]) => `  ${cadenaSimple(paquete)}: ${cadenaSimple(lista.join(','))},`)
+    .join('\n');
+  return (
+    `${cabecera('herramientas/oraculo/java/GenerarClasesJdk.java')}` +
+    `// Paquete -> tipos públicos importables (nombre canónico dentro del paquete, "Map.Entry"), separados por comas.\n` +
+    `export const CLASES_JDK: Readonly<Record<string, string>> = {\n${entradas}\n};\n`
+  );
+}
+
+export function renderizarIdentificadoresTs(identificadores: IdentificadoresJava): string {
+  return (
+    `${cabecera('herramientas/oraculo/java/GenerarIdentificadores.java')}` +
+    `// Rangos de puntos de código (hexadecimal: "41-5a" o un solo punto "5f", separados por comas) que el JDK 17 acepta en un identificador.\n` +
+    `export const INICIO_DE_IDENTIFICADOR_JAVA: string = ${cadenaSimple(identificadores.inicio)};\n` +
+    `export const PARTE_DE_IDENTIFICADOR_JAVA: string = ${cadenaSimple(identificadores.parte)};\n`
   );
 }
 
@@ -301,10 +480,21 @@ export function escribirDatos(raizProyecto: string, datos: DatosJdk): void {
     `${datos.firmas.map((f) => JSON.stringify(f)).join('\n')}\n`,
     'utf-8',
   );
+  writeFileSync(resolve(corpusApi, 'supertipos.json'), `${JSON.stringify(datos.supertipos, null, 2)}\n`, 'utf-8');
+  // Una línea por paquete (como `firmas.jsonl`, una por firma): un cambio del JDK toca UNA línea en el diff.
+  writeFileSync(
+    resolve(corpusApi, 'clases.jsonl'),
+    `${Object.entries(datos.clases).map(([paquete, clases]) => JSON.stringify({ paquete, clases })).join('\n')}\n`,
+    'utf-8',
+  );
+  writeFileSync(resolve(corpusApi, 'identificadores.json'), `${JSON.stringify(datos.identificadores, null, 2)}\n`, 'utf-8');
   writeFileSync(resolve(corpusRegional, 'simbolos.json'), `${JSON.stringify(datos.regional, null, 2)}\n`, 'utf-8');
   writeFileSync(resolve(corpusMarcos, 'arranque.json'), `${JSON.stringify(datos.marcos, null, 2)}\n`, 'utf-8');
 
   writeFileSync(resolve(bibliotecaDatos, 'firmas-jdk.generado.ts'), renderizarFirmasTs(datos.firmas), 'utf-8');
+  writeFileSync(resolve(bibliotecaDatos, 'supertipos-jdk.generado.ts'), renderizarSupertiposTs(datos.supertipos), 'utf-8');
+  writeFileSync(resolve(bibliotecaDatos, 'clases-jdk.generado.ts'), renderizarClasesTs(datos.clases), 'utf-8');
+  writeFileSync(resolve(bibliotecaDatos, 'identificadores-java.generado.ts'), renderizarIdentificadoresTs(datos.identificadores), 'utf-8');
   writeFileSync(resolve(bibliotecaDatos, 'regional.generado.ts'), renderizarRegionalTs(datos.regional), 'utf-8');
   writeFileSync(resolve(bibliotecaDatos, 'marcos-arranque.generado.ts'), renderizarMarcosTs(datos.marcos), 'utf-8');
 }
@@ -315,7 +505,10 @@ function main(): void {
     .then((datos) => {
       escribirDatos(RAIZ_PROYECTO, datos);
       console.log(
-        `Oráculo: ${datos.firmas.length} firmas, 2 locales regionales, 2 marcos de arranque ` +
+        `Oráculo: ${datos.firmas.length} firmas, ${Object.keys(datos.supertipos).length} tipos con sus supertipos, ` +
+          `${Object.values(datos.clases).reduce((total, lista) => total + lista.length, 0)} clases en ${Object.keys(datos.clases).length} paquetes, ` +
+          `tablas de identificador, ` +
+          `2 locales regionales, 2 marcos de arranque ` +
           `escritos en corpus/datos/** y src/motor/biblioteca/datos/*.generado.ts (${basename(RAIZ_PROYECTO)}).`,
       );
     })

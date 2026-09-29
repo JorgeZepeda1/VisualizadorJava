@@ -15,7 +15,7 @@ import { CursorDeTokens } from './cursor-de-tokens.ts';
 // sus códigos como strings inline, nunca importados de ninguna tabla (engram
 // visualizador-java/patron-codigos-inline-expresiones), lo que dejó pasar una discrepancia real:
 // aquí se emitía 'lambda' mientras la tabla central decía 'lambda-no-soportada'.
-import { CODIGOS_NO_SOPORTADO, saltarHastaCerrar } from './no-soportado.ts';
+import { CODIGOS_NO_SOPORTADO, PALABRAS_TIPO_PRIMITIVO_NO_SOPORTADO, saltarHastaCerrar } from './no-soportado.ts';
 import type { NodoConversion, NodoExpresion, NodoExpresionNoSoportada, NodoNuevaInstancia } from './ast.ts';
 
 const PRECEDENCIA: Readonly<Record<string, number>> = {
@@ -302,12 +302,21 @@ function errorLiteralDemasiadoGrande(rango: { inicio: number; fin: number }): Er
 // design.md §2.5.1 (JLS 15.16): "(" tipo primitivo ")" es SIEMPRE cast; "(" Nombre ")" es cast
 // solo si lo que sigue puede abrir una expresión unaria sin "+"/"-" — si no, es un paréntesis
 // normal ("lo demás, expresión", §2.5.2) y se deja que analizarPostfija/analizarPrimaria lo trate.
-function intentarAnalizarCast(cursor: CursorDeTokens): NodoConversion | null {
+//
+// Tarea 1.29 (causa 3): "primitivo" incluye `byte`/`short`/`float` — tipos REALES de Java que el
+// subconjunto no soporta (REQ-SUB-007: nunca se reinterpretan como `int`/`double`). Un cast a ellos
+// es el MISMO aviso que su declaración (`tipo-primitivo-no-soportado`), con el rango del paréntesis
+// de apertura al final del operando; antes no abría un cast y daba «se esperaba una expresión y se
+// encontró "byte"» para un programa que javac compila. El operando se analiza igual (un cast sin
+// operando sigue siendo un error de sintaxis real).
+function intentarAnalizarCast(cursor: CursorDeTokens): NodoConversion | NodoExpresionNoSoportada | null {
   if (cursor.actual().texto !== '(') return null;
 
   const posibleTipo = cursor.mirar(1);
+  const esPrimitivoNoSoportado =
+    posibleTipo.tipo === 'palabra-clave' && PALABRAS_TIPO_PRIMITIVO_NO_SOPORTADO.has(posibleTipo.texto);
   const esPrimitivo =
-    posibleTipo.tipo === 'palabra-clave' && PALABRAS_CLAVE_TIPO_PRIMITIVO.has(posibleTipo.texto);
+    esPrimitivoNoSoportado || (posibleTipo.tipo === 'palabra-clave' && PALABRAS_CLAVE_TIPO_PRIMITIVO.has(posibleTipo.texto));
   const esIdentificador = posibleTipo.tipo === 'identificador';
   if (!esPrimitivo && !esIdentificador) return null;
 
@@ -322,7 +331,11 @@ function intentarAnalizarCast(cursor: CursorDeTokens): NodoConversion | null {
   const tipo = cursor.avanzar(); // el nombre del tipo
   cursor.avanzar(); // ")"
   const operando = analizarUnaria(cursor);
-  return { tipo: 'conversion', nombreTipo: tipo.texto, operando, rango: { inicio, fin: operando.rango.fin } };
+  const rango = { inicio, fin: operando.rango.fin };
+  if (esPrimitivoNoSoportado) {
+    return { tipo: 'expresion-no-soportada', codigo: CODIGOS_NO_SOPORTADO.tipoPrimitivoNoSoportado, datos: {}, rango };
+  }
+  return { tipo: 'conversion', nombreTipo: tipo.texto, operando, rango };
 }
 
 function abreExpresionUnariaSinSigno(token: Token): boolean {
@@ -551,6 +564,13 @@ function analizarPrimaria(cursor: CursorDeTokens): NodoExpresion {
 function analizarNuevaInstancia(cursor: CursorDeTokens): NodoNuevaInstancia | NodoExpresionNoSoportada {
   const inicioToken = cursor.esperarTexto('new');
   const tipoToken = cursor.avanzar();
+  // Tarea 1.29: el tipo puede llevar su paquete ("new java.util.Scanner(System.in)") — se guarda tal como
+  // se escribió; qué es lo decide la atribución.
+  let nombreTipo = tipoToken.texto;
+  while (cursor.coincideTexto('.') && cursor.mirar(1).tipo === 'identificador') {
+    cursor.avanzar();
+    nombreTipo += `.${cursor.avanzar().texto}`;
+  }
 
   if (cursor.coincideTexto('[')) {
     let fin = tipoToken.rango.fin;
@@ -573,7 +593,7 @@ function analizarNuevaInstancia(cursor: CursorDeTokens): NodoNuevaInstancia | No
     return {
       tipo: 'expresion-no-soportada',
       codigo: CODIGOS_NO_SOPORTADO.arregloNuevo,
-      datos: { tipoArreglo: `${tipoToken.texto}${'[]'.repeat(dimensiones)}` },
+      datos: { tipoArreglo: `${nombreTipo}${'[]'.repeat(dimensiones)}` },
       rango: { inicio: inicioToken.rango.inicio, fin },
     };
   }
@@ -582,7 +602,7 @@ function analizarNuevaInstancia(cursor: CursorDeTokens): NodoNuevaInstancia | No
   const cierre = cursor.esperarTexto(')');
   return {
     tipo: 'nueva-instancia',
-    nombreTipo: tipoToken.texto,
+    nombreTipo,
     argumentos,
     rango: { inicio: inicioToken.rango.inicio, fin: cierre.rango.fin },
   };

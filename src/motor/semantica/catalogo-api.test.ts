@@ -140,3 +140,85 @@ describe('MIEMBROS_SOPORTADOS — cada entrada corresponde a un miembro REAL del
     expect(sinCorrespondencia).toEqual([]);
   });
 });
+
+// Tarea 1.29 (causa 1 de los 14 falsos rechazos, agregada por el orquestador): `Scanner` implementa
+// `Iterator<String>`, así que `javac` genera un método PUENTE sintético `next():Object` además del
+// real `next():String` — la reflexión los lista a los dos, y `GenerarFirmasApi.java` volcaba
+// ambos. Para javac los métodos puente NO existen (JLS 15.12: se resuelve sobre lo DECLARADO en el
+// fuente): un catálogo que los incluye trae DOS `next()` sin parámetros, y `resolverSobrecarga` no
+// tiene con qué desempatar (`sc.next()` daba «sin-sobrecarga-aplicable» en 7 programas de
+// `corpus/experimentos`). Medido antes de esta tarea: 13 métodos puente públicos en las 10 clases
+// del catálogo (5 `compareTo(Object)`, 3 `PrintStream.append`, 4 `resolveConstantDesc`, 1 `next`).
+describe('FIRMAS_JDK — sin métodos puente (tarea 1.29): javac solo ve lo declarado', () => {
+  it('ninguna firma (clase, género, nombre, parámetros) aparece dos veces', () => {
+    const conteo = new Map<string, number>();
+    for (const f of FIRMAS_JDK) {
+      const clave = `${f.clase}|${f.genero}|${f.nombre}(${f.parametros.join(',')})`;
+      conteo.set(clave, (conteo.get(clave) ?? 0) + 1);
+    }
+    const repetidas = [...conteo].filter(([, veces]) => veces > 1).map(([clave]) => clave);
+    expect(repetidas).toEqual([]);
+  });
+
+  it('Scanner.next() sin parámetros existe UNA vez y devuelve String (el puente next():Object no es de javac)', () => {
+    const sinParametros = FIRMAS_JDK.filter((f) => f.clase === 'Scanner' && f.nombre === 'next' && f.parametros.length === 0);
+    expect(sinParametros.map((f) => f.retorno)).toEqual(['java.lang.String']);
+  });
+
+  it('triangulación: String.compareTo tiene UNA sola firma (String), sin el puente compareTo(Object)', () => {
+    const parametros = FIRMAS_JDK.filter((f) => f.clase === 'String' && f.nombre === 'compareTo').map((f) => f.parametros);
+    expect(parametros).toEqual([['java.lang.String']]);
+  });
+
+  it('triangulación: PrintStream.append(char) existe UNA vez y devuelve PrintStream, no el puente que devuelve Appendable', () => {
+    const conChar = FIRMAS_JDK.filter((f) => f.clase === 'PrintStream' && f.nombre === 'append' && f.parametros.join(',') === 'char');
+    expect(conChar.map((f) => f.retorno)).toEqual(['java.io.PrintStream']);
+  });
+});
+
+// Tarea 1.29 (causa 6, hallada por el barrido diferencial contra javac de esta tarea: 12 216
+// llamadas de los 52 miembros soportados, 24 falsos rechazos): `GenerarFirmasApi.java` solo volcaba
+// lo DECLARADO por cada clase (`getDeclared*`), pero javac resuelve una llamada sobre TODOS los
+// miembros públicos de la clase, heredados incluidos (JLS 8.4.8). En el JDK 17 `Random` implementa
+// `RandomGenerator`, cuyos métodos por defecto `nextInt(int, int)`, `nextDouble(double)` y
+// `nextDouble(double, double)` son miembros de `Random` sin estar declarados en él — un alumno que
+// copia `azar.nextInt(1, 7)` (válido en Java 17) veía «sin-sobrecarga-aplicable». Lo mismo con los
+// métodos públicos de `Object` (`hashCode`, `getClass`…), que toda clase hereda.
+describe('FIRMAS_JDK — miembros heredados (tarea 1.29): javac ve los públicos de la clase Y los de sus supertipos', () => {
+  const parametrosDe = (clase: string, nombre: string): string[] =>
+    FIRMAS_JDK.filter((f) => f.clase === clase && f.nombre === nombre).map((f) => f.parametros.join(','));
+
+  it('Random.nextInt(int, int) existe: método por defecto heredado de RandomGenerator', () => {
+    expect(parametrosDe('Random', 'nextInt')).toContain('int,int');
+  });
+
+  it('triangulación: Random.nextDouble(double) y nextDouble(double, double) también, con su retorno real', () => {
+    const doubles = FIRMAS_JDK.filter((f) => f.clase === 'Random' && f.nombre === 'nextDouble');
+    expect(doubles.map((f) => f.parametros.join(','))).toEqual(expect.arrayContaining(['', 'double', 'double,double']));
+    expect(doubles.every((f) => f.retorno === 'double')).toBe(true);
+  });
+
+  it('cada clase trae los métodos públicos de Object que hereda: Random.hashCode y String.getClass', () => {
+    expect(parametrosDe('Random', 'hashCode')).toEqual(['']);
+    expect(parametrosDe('String', 'getClass')).toEqual(['']);
+  });
+
+  it('triangulación negativa: Random.nextInt(long) NO existe (javac lo rechaza; heredar no inventa sobrecargas)', () => {
+    expect(parametrosDe('Random', 'nextInt')).not.toContain('long');
+  });
+
+  it('un miembro heredado no rompe la unicidad: sigue habiendo UNA sola Random.nextInt(int)', () => {
+    expect(parametrosDe('Random', 'nextInt').filter((p) => p === 'int')).toHaveLength(1);
+  });
+});
+
+describe('clasificarMetodo — un miembro heredado existe, no es "no-existe" (tarea 1.29)', () => {
+  it('Random.hashCode() lo hereda de Object: existe pero no está soportado (aviso, nunca «no tiene ningún método»)', () => {
+    expect(clasificarMetodo('Random', 'hashCode')).toBe('existe-no-soportado');
+  });
+
+  it('control: Random.nextInt sigue soportado (por nombre) y un nombre inventado sigue siendo "no-existe"', () => {
+    expect(clasificarMetodo('Random', 'nextInt')).toBe('soportado');
+    expect(clasificarMetodo('Random', 'nextEntero')).toBe('no-existe');
+  });
+});

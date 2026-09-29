@@ -38,11 +38,15 @@ export class Alcance {
     this.bloques.push(new Map());
   }
 
-  salirBloque(): void {
-    if (this.bloques.length === 0) {
+  /** Cierra el bloque más interno y devuelve los nombres de las variables que declaró (tarea 1.29: al cerrarse un alcance
+   * sus variables MUEREN, y la asignación definida las olvida — la `x` de un `for` ya cerrado no debe confundirse con otra `x`
+   * declarada después). Quien no los necesita simplemente ignora el resultado. */
+  salirBloque(): string[] {
+    const cerrado = this.bloques.pop();
+    if (cerrado === undefined) {
       throw new Error('Alcance.salirBloque(): no hay ningún bloque abierto');
     }
-    this.bloques.pop();
+    return [...cerrado.keys()];
   }
 
   declarar(simbolo: SimboloVariable): ResultadoDeclarar {
@@ -56,6 +60,13 @@ export class Alcance {
     }
     bloqueActual.set(simbolo.nombre, simbolo);
     return { ok: true };
+  }
+
+  /** Los nombres de TODAS las variables visibles ahora (de todos los bloques abiertos). Tarea 1.29: la asignación
+   * definida arma con ellos su estado «vacuo» (JLS 16.1.1) — todo lo YA declarado en ese punto, nada de lo que se declare
+   * después. */
+  nombresVisibles(): string[] {
+    return this.bloques.flatMap((bloque) => [...bloque.keys()]);
   }
 
   /** Busca de adentro (el bloque más reciente) hacia afuera; `null` si no está visible en ningún

@@ -1,0 +1,31 @@
+// Archivo generado por `npm run oraculo:datos` a partir de herramientas/oraculo/java/GenerarSupertipos.java contra el JDK 17 de
+// referencia (Temurin 17.0.18+8, ADR 010) — no editar a mano. Cualquier cambio real viene de
+// regenerar contra el JDK, nunca de tocar este archivo directamente.
+
+export const SUPERTIPOS_JDK: Readonly<Record<string, readonly string[]>> = {
+  'java.io.Closeable': ['java.lang.AutoCloseable', 'java.lang.Object'],
+  'java.io.FilterOutputStream': ['java.io.Closeable', 'java.io.Flushable', 'java.io.OutputStream', 'java.lang.AutoCloseable', 'java.lang.Object'],
+  'java.io.Flushable': ['java.lang.Object'],
+  'java.io.InputStream': ['java.io.Closeable', 'java.lang.AutoCloseable', 'java.lang.Object'],
+  'java.io.OutputStream': ['java.io.Closeable', 'java.io.Flushable', 'java.lang.AutoCloseable', 'java.lang.Object'],
+  'java.io.PrintStream': ['java.io.Closeable', 'java.io.FilterOutputStream', 'java.io.Flushable', 'java.io.OutputStream', 'java.lang.Appendable', 'java.lang.AutoCloseable', 'java.lang.Object'],
+  'java.io.Serializable': ['java.lang.Object'],
+  'java.lang.Appendable': ['java.lang.Object'],
+  'java.lang.AutoCloseable': ['java.lang.Object'],
+  'java.lang.Boolean': ['java.io.Serializable', 'java.lang.Comparable', 'java.lang.Object', 'java.lang.constant.Constable'],
+  'java.lang.CharSequence': ['java.lang.Object'],
+  'java.lang.Character': ['java.io.Serializable', 'java.lang.Comparable', 'java.lang.Object', 'java.lang.constant.Constable'],
+  'java.lang.Comparable': ['java.lang.Object'],
+  'java.lang.Double': ['java.io.Serializable', 'java.lang.Comparable', 'java.lang.Number', 'java.lang.Object', 'java.lang.constant.Constable', 'java.lang.constant.ConstantDesc'],
+  'java.lang.Integer': ['java.io.Serializable', 'java.lang.Comparable', 'java.lang.Number', 'java.lang.Object', 'java.lang.constant.Constable', 'java.lang.constant.ConstantDesc'],
+  'java.lang.Long': ['java.io.Serializable', 'java.lang.Comparable', 'java.lang.Number', 'java.lang.Object', 'java.lang.constant.Constable', 'java.lang.constant.ConstantDesc'],
+  'java.lang.Number': ['java.io.Serializable', 'java.lang.Object'],
+  'java.lang.Object': [],
+  'java.lang.String': ['java.io.Serializable', 'java.lang.CharSequence', 'java.lang.Comparable', 'java.lang.Object', 'java.lang.constant.Constable', 'java.lang.constant.ConstantDesc'],
+  'java.lang.constant.Constable': ['java.lang.Object'],
+  'java.lang.constant.ConstantDesc': ['java.lang.Object'],
+  'java.util.Iterator': ['java.lang.Object'],
+  'java.util.Random': ['java.io.Serializable', 'java.lang.Object', 'java.util.random.RandomGenerator'],
+  'java.util.Scanner': ['java.io.Closeable', 'java.lang.AutoCloseable', 'java.lang.Object', 'java.util.Iterator'],
+  'java.util.random.RandomGenerator': ['java.lang.Object'],
+};

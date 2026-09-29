@@ -43,6 +43,19 @@ export const CODIGOS_NO_SOPORTADO = {
   tryCatch: 'try-catch-no-soportado',
   throwSentencia: 'throw-no-soportado',
   switchFlecha: 'switch-flecha-no-soportado',
+  // Tarea 1.29 (causa 5): `case 1, 2:` — varios valores en una etiqueta CLÁSICA (con dos puntos), Java 14+.
+  // La forma con flecha (`case 1, 2 ->`) sigue siendo `switchFlecha`: lo que la aleja del subconjunto es la
+  // flecha. Ambas se verificaron con javac 17 real.
+  caseConVariasEtiquetas: 'case-con-varias-etiquetas-no-soportado',
+  // Tarea 1.29 (design.md §2.3: «campo, método, clase interna, bloque, anotación → NO-DISP»): `@Override`,
+  // `@SuppressWarnings("resource")`… — Java válido que el subconjunto no interpreta. Una sola entrada para
+  // cualquier anotación (antes de la clase, de un miembro o de una declaración local).
+  anotacion: 'anotacion-no-soportada',
+  // Tarea 1.29 (design.md §2.3: «Tipo = … NombreDeTipo (* String, Scanner, Random, calificados o no *)»):
+  // `java.util.Scanner sc = new java.util.Scanner(System.in);`, `java.lang.Math.max(1, 2)` — el nombre
+  // COMPLETO de una clase (con su paquete, sin `import`) es Java válido; el subconjunto solo entiende el
+  // nombre corto. Lo emite `semantica/atribucion.ts` (necesita el catálogo de clases del JDK).
+  nombreCalificado: 'nombre-calificado-no-soportado',
   yield: 'yield-no-soportado',
   importStatic: 'import-static-no-soportado',
   lambda: 'lambda-no-soportada',
@@ -70,6 +83,25 @@ export const CODIGOS_NO_SOPORTADO = {
   metodoDeBiblioteca: 'metodo-de-biblioteca-no-soportado',
   campoDeBiblioteca: 'campo-de-biblioteca-no-soportado',
   constructorDeBiblioteca: 'constructor-de-biblioteca-no-soportado',
+  // Tarea 1.29 (agregada por el orquestador, design.md §2.3/§2.6: «clase existente no soportada →
+  // NO-DISP; inexistente → error»): una clase REAL del JDK (la lista sale del oráculo,
+  // `biblioteca/datos/clases-jdk.generado.ts`) que el subconjunto no simula — `import java.util.Locale;`,
+  // `javax.swing.JOptionPane`, `StringBuilder sb`, `Boolean.parseBoolean(...)` — o la clase del propio
+  // programa usada como tipo (`Main m = new Main();`, «objetos propios», REQ-SUB-007). Antes un import
+  // así daba `importacion-no-reconocida` («revisa que esté bien escrito»): un error FALSO. Lo emite
+  // `semantica/atribucion.ts` (necesita saber qué clases existen y cuáles están a la vista).
+  claseNoSoportada: 'clase-no-soportada',
+  // Tarea 1.29 (design.md §2.3: la clase es UNA, con `main`; REQ-SUB-007: «clases/objetos propios» → aviso):
+  // `class C extends B`, `class C implements A` — la herencia y las interfaces son Java válido que el
+  // subconjunto no simula. Una sola entrada para `extends`, `implements` o ambas (la cláusula completa). Los
+  // parámetros de tipo de la clase (`class C<T>`) avisan con `generico`.
+  herencia: 'herencia-no-soportada',
+  // Tarea 1.29 (design.md §2.3, REQ-SUB-007): `assert x > 0 : "mensaje";` — Java válido que el subconjunto no comprueba.
+  assert: 'assert-no-soportado',
+  // Tarea 1.29 (REQ-SUB-007: «clases/objetos propios» → aviso): una clase, interfaz, enum o record declarados DENTRO de un método.
+  claseLocal: 'clase-local-no-soportada',
+  // Tarea 1.29: `synchronized (obj) { … }` — el subconjunto no simula hilos ni sincronización.
+  sincronizado: 'sincronizado-no-soportado',
 
   // ---- Léxico (lexico/literales.ts, lexico/analizador-lexico.ts) — tarea 1.24: antes strings
   // inline, nunca reunidos en una tabla. ----
@@ -156,6 +188,11 @@ export interface DatosPorCodigoNoSoportado {
   'try-catch-no-soportado': Record<never, never>;
   'throw-no-soportado': Record<never, never>;
   'switch-flecha-no-soportado': Record<never, never>;
+  'case-con-varias-etiquetas-no-soportado': Record<never, never>;
+  'anotacion-no-soportada': Record<never, never>;
+  /** Tarea 1.29: el nombre completo tal como lo escribió el alumno (`java.util.Scanner`); si el uso es un
+   * miembro (`java.lang.System.out.println`), el de la CLASE que es su prefijo (`java.lang.System`). */
+  'nombre-calificado-no-soportado': { readonly nombre: string };
   'yield-no-soportado': Record<never, never>;
   'import-static-no-soportado': Record<never, never>;
   'lambda-no-soportada': Record<never, never>;
@@ -174,6 +211,17 @@ export interface DatosPorCodigoNoSoportado {
    * Scanner`") describía una sintaxis que Java no tiene. Solo `clase`: el texto arma la sintaxis
    * real (`new ${clase}`) él mismo, sin que el motor tenga que fingir un identificador. */
   'constructor-de-biblioteca-no-soportado': { readonly clase: string };
+  /** Tarea 1.29: el nombre TAL COMO lo escribió el alumno — el completo en un `import`
+   * (`java.util.Locale`), el simple en el resto (`StringBuilder`, `Locale`, el de su propia clase). */
+  'clase-no-soportada': { readonly nombre: string };
+  /** Tarea 1.29: la cláusula `extends`/`implements` de la cabecera de la clase; el texto no necesita más datos. */
+  'herencia-no-soportada': Record<never, never>;
+  /** Tarea 1.29: `assert cond;` o `assert cond : mensaje;`. */
+  'assert-no-soportado': Record<never, never>;
+  /** Tarea 1.29: un tipo (clase, interfaz, enum o record) declarado dentro de un método. */
+  'clase-local-no-soportada': Record<never, never>;
+  /** Tarea 1.29: un bloque `synchronized (obj) { … }`. */
+  'sincronizado-no-soportado': Record<never, never>;
   'escape-no-soportado': Record<never, never>;
   'escape-octal-no-soportado': Record<never, never>;
   'escape-unicode-no-soportado': Record<never, never>;

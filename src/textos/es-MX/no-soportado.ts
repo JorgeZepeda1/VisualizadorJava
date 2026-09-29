@@ -59,7 +59,7 @@ export const textosNoSoportado: { readonly [K in CodigoNoSoportado]: (datos: Dat
   'miembro-de-clase-no-soportado': ({ linea }) =>
     marco(
       linea,
-      'un miembro propio de la clase (un campo, un método distinto de `main`, una clase interna o un bloque inicializador)',
+      'un miembro propio de la clase (un campo, un constructor, un método distinto de `main`, una clase interna o un bloque inicializador)',
       'no ejecuta nada fuera de `main`',
       'Si necesitas repetir código, cópialo dentro de `main` por ahora.',
     ),
@@ -103,6 +103,34 @@ export const textosNoSoportado: { readonly [K in CodigoNoSoportado]: (datos: Dat
   'switch-flecha-no-soportado': ({ linea }) =>
     marco(linea, 'un `switch` con flecha (`case valor -> …`)', 'solo ejecuta la forma clásica de `switch`', 'Usa `case valor:` seguido de `break;`, la forma clásica.'),
 
+  // Tarea 1.29: `case 1, 2:` (Java 14+). Ofrece la forma que sí ejecuta el subconjunto: un `case` por valor.
+  'case-con-varias-etiquetas-no-soportado': ({ linea }) =>
+    marco(
+      linea,
+      'un `case` con varios valores separados por coma (`case 1, 2:`)',
+      'solo ejecuta un valor por cada `case`',
+      'Escribe un `case` por cada valor, uno debajo del otro: `case 1:` y luego `case 2:`.',
+    ),
+
+  // Tarea 1.29: una anotación. Casi siempre solo silencia un aviso del editor; quitarla no cambia el programa.
+  'anotacion-no-soportada': ({ linea }) =>
+    marco(
+      linea,
+      'una anotación (como `@Override` o `@SuppressWarnings`)',
+      'no interpreta anotaciones',
+      'Si solo silencia un aviso del editor, puedes quitarla.',
+    ),
+
+  // Tarea 1.29: el nombre COMPLETO de una clase (sin `import`). Se explica cómo escribirlo: el `import` y el
+  // nombre corto, que salen del propio nombre completo (el último segmento).
+  'nombre-calificado-no-soportado': ({ linea, nombre }) =>
+    marco(
+      linea,
+      `el nombre completo de una clase (\`${nombre}\`)`,
+      'solo entiende las clases por su nombre corto',
+      `Escribe \`import ${nombre};\` al principio del programa y usa solo \`${nombre.slice(nombre.lastIndexOf('.') + 1)}\`.`,
+    ),
+
   'yield-no-soportado': ({ linea }) =>
     marco(linea, 'la palabra `yield` dentro de un `switch`', 'no interpreta `yield`', 'Usa la forma clásica de `switch`, asignando el valor directamente dentro de cada `case`.'),
 
@@ -128,6 +156,23 @@ export const textosNoSoportado: { readonly [K in CodigoNoSoportado]: (datos: Dat
   // tenga que fingir un identificador que Java no usa.
   'constructor-de-biblioteca-no-soportado': ({ linea, clase }) =>
     marco(linea, `\`new ${clase}\` con esos argumentos`, `no simula esa forma de crear un \`${clase}\``),
+
+  // Tarea 1.29: la clase existe en Java (un import correcto ya no se lee como «no reconozco…, revisa que
+  // esté bien escrito»); el visualizador solo no la simula. El nombre es el que escribió el alumno.
+  'clase-no-soportada': ({ linea, nombre }) => marco(linea, `la clase \`${nombre}\``, 'no simula esa clase'),
+
+  // Tarea 1.29: la cabecera de la clase con `extends` (hereda de otra clase) o `implements` (cumple una interfaz).
+  'herencia-no-soportada': ({ linea }) =>
+    marco(linea, 'una clase que hereda de otra o implementa una interfaz (`extends` o `implements`)', 'no simula herencia ni interfaces'),
+
+  // Tarea 1.29: `assert`, un tipo declarado dentro de un método y un bloque `synchronized`.
+  'assert-no-soportado': ({ linea }) => marco(linea, 'una instrucción `assert`', 'no comprueba aserciones'),
+
+  'clase-local-no-soportada': ({ linea }) =>
+    marco(linea, 'un tipo declarado dentro de un método (una clase, interfaz, enum o record local)', 'no simula clases propias'),
+
+  'sincronizado-no-soportado': ({ linea }) =>
+    marco(linea, 'un bloque `synchronized`', 'no simula hilos ni sincronización'),
 
   'escape-no-soportado': ({ linea }) =>
     marco(linea, 'una secuencia de escape que Java reconoce pero este visualizador todavía no simula (como `\\r`, `\\b`, `\\f` o `\\s`)', 'no decodifica ese escape'),

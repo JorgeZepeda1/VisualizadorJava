@@ -927,3 +927,184 @@ describe('atribuir — el objetivo/operando debe ser una VARIABLE real (JLS 4.12
     expect(problemas[0]).toMatchObject({ codigo: 'variable-no-declarada' });
   });
 });
+
+// Tarea 1.29 (causa 2, agregada por el orquestador; design.md §2.3: «clase existente no soportada →
+// NO-DISP; inexistente → error»): antes CUALQUIER import fuera de las 10 clases del catálogo daba
+// `importacion-no-reconocida` («revisa que esté bien escrito»), incluido `import java.util.Locale;`,
+// `javax.swing.JOptionPane` o `java.text.DecimalFormatSymbols` — clases que existen y que javac
+// compila. La lista de clases reales sale del oráculo (`clases-jdk.generado.ts`), verificada
+// exhaustivamente contra javac 17 (`generar-datos.test.ts`).
+describe('atribuir — imports de clases REALES fuera del subconjunto son aviso, no error (tarea 1.29)', () => {
+  it.each([
+    'java.util.Locale',
+    'java.text.DecimalFormatSymbols',
+    'javax.swing.JOptionPane',
+    'java.math.BigDecimal',
+    'java.util.Map.Entry',
+    'java.io.PrintStream',
+    'java.lang.StringBuilder',
+  ])('"import %s;" (real): "clase-no-soportada" (no-disponible) con el nombre completo, anclado en el propio import', (nombre) => {
+    const problemas = atribuirPrograma(`import ${nombre};\nclass C { public static void main(String[] a) { } }`);
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toMatchObject({ codigo: 'clase-no-soportada', categoria: 'no-disponible', datos: { nombre } });
+    expect(problemas[0]!.rango.inicio).toBe(0);
+  });
+
+  it.each([
+    'java.util.Scaner',
+    'java.java.Scanner',
+    'javax.swing.JOptionPan',
+    'java.util.Map.Entri',
+    'java.util.HashMap.TreeNode',
+    'java.lang.Scanner',
+  ])('triangulación negativa: "import %s;" (NO existe o no es importable) sigue siendo "importacion-no-reconocida", un error real de javac', (nombre) => {
+    const problemas = atribuirPrograma(`import ${nombre};\nclass C { public static void main(String[] a) { } }`);
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toMatchObject({ codigo: 'importacion-no-reconocida', datos: { nombre } });
+    expect(problemas[0]!.categoria).toBeUndefined();
+  });
+
+  it('control: los imports que el subconjunto SÍ soporta (java.util.Scanner/Random) no producen ningún problema', () => {
+    expect(atribuirPrograma('import java.util.Scanner;\nimport java.util.Random;\nclass C { public static void main(String[] a) { } }')).toEqual([]);
+  });
+
+  it('varios imports: solo los reales fuera del subconjunto avisan (Scanner no), y salen en el orden del texto', () => {
+    const problemas = atribuirPrograma(
+      'import java.util.Locale;\nimport java.util.Scanner;\nimport javax.swing.JOptionPane;\nclass C { public static void main(String[] a) { } }',
+    );
+    expect(problemas).toMatchObject([
+      { codigo: 'clase-no-soportada', datos: { nombre: 'java.util.Locale' } },
+      { codigo: 'clase-no-soportada', datos: { nombre: 'javax.swing.JOptionPane' } },
+    ]);
+  });
+});
+
+// Tarea 1.29 (agregada por el orquestador, hallada al escribir programas típicos de alumno y
+// compararlos con javac): el motor solo conocía como «clase» las 10 de su catálogo, así que un
+// programa con `StringBuilder sb = new StringBuilder();`, `Object o;` o `Boolean.parseBoolean("true")`
+// (java.lang: se ve SIN import) o con `Locale.setDefault(Locale.US)` tras `import java.util.*;` daba
+// `tipo-no-reconocido`/`variable-no-declarada` — errores FALSOS: javac los compila. Cada caso de
+// abajo se verificó con javac 17 real; los que no se ven siguen siendo error (javac: «cannot find
+// symbol»). JLS 6.4.1/6.4.2: lo que se ve son los tipos de java.lang, los de los imports (exactos y
+// con comodín) y la clase del propio programa; una VARIABLE con el mismo nombre oculta a la clase.
+describe('atribuir — nombres SIMPLES de clases reales que el programa ve son aviso, no error (tarea 1.29)', () => {
+  it('java.lang se ve sin import: "StringBuilder sb = new StringBuilder();" avisa en la declaración y en el "new", nunca "tipo-no-reconocido"', () => {
+    expect(atribuirCuerpo('StringBuilder sb = new StringBuilder();')).toMatchObject([
+      { codigo: 'clase-no-soportada', categoria: 'no-disponible', datos: { nombre: 'StringBuilder' } },
+      { codigo: 'clase-no-soportada', categoria: 'no-disponible', datos: { nombre: 'StringBuilder' } },
+    ]);
+  });
+
+  it.each(['Object', 'Runtime', 'Thread', 'Number', 'Boolean'])('triangulación: "%s x;" (una clase de java.lang) también avisa, con su propio nombre', (clase) => {
+    expect(atribuirCuerpo(`${clase} x;`)).toMatchObject([
+      { codigo: 'clase-no-soportada', categoria: 'no-disponible', datos: { nombre: clase } },
+    ]);
+  });
+
+  it('receptor de un miembro estático: "Boolean.parseBoolean(\\"true\\");" avisa con el nombre de la clase, nunca "variable-no-declarada"', () => {
+    expect(atribuirCuerpo('boolean b = Boolean.parseBoolean("true");')).toMatchObject([
+      { codigo: 'clase-no-soportada', categoria: 'no-disponible', datos: { nombre: 'Boolean' } },
+    ]);
+  });
+
+  it('import con comodín: "import java.util.*;" deja ver Locale — "Locale.setDefault(Locale.US);" avisa dos veces (cada uso)', () => {
+    const problemas = atribuirPrograma('import java.util.*;\nclass C { public static void main(String[] a) { Locale.setDefault(Locale.US); } }');
+    expect(problemas).toMatchObject([
+      { codigo: 'clase-no-soportada', datos: { nombre: 'Locale' } },
+      { codigo: 'clase-no-soportada', datos: { nombre: 'Locale' } },
+    ]);
+  });
+
+  it('import exacto de una clase real: "import java.util.Locale;" además del aviso del import, la declaración "Locale l;" avisa (no es «no reconozco el tipo»)', () => {
+    const problemas = atribuirPrograma('import java.util.Locale;\nclass C { public static void main(String[] a) { Locale l; } }');
+    expect(problemas).toMatchObject([
+      { codigo: 'clase-no-soportada', datos: { nombre: 'java.util.Locale' } },
+      { codigo: 'clase-no-soportada', datos: { nombre: 'Locale' } },
+    ]);
+  });
+
+  it('un nombre que NO se ve sigue siendo error: sin el import, "Locale l = Locale.US;" es «no reconozco el tipo» y «variable no declarada» (javac: cannot find symbol ×2)', () => {
+    expect(atribuirCuerpo('Locale l = Locale.US;')).toMatchObject([
+      { codigo: 'tipo-no-reconocido', datos: { nombre: 'Locale' } },
+      { codigo: 'variable-no-declarada', datos: { nombre: 'Locale' } },
+    ]);
+  });
+
+  it('un import con comodín de OTRO paquete no deja ver la clase: "import java.io.*;" + "Locale l;" sigue siendo «no reconozco el tipo»', () => {
+    const problemas = atribuirPrograma('import java.io.*;\nclass C { public static void main(String[] a) { Locale l; } }');
+    expect(problemas).toMatchObject([{ codigo: 'tipo-no-reconocido', datos: { nombre: 'Locale' } }]);
+  });
+
+  it('la clase del propio programa: "C c = new C();" (objetos propios, REQ-SUB-007) avisa con el nombre de SU clase', () => {
+    expect(atribuirCuerpo('C c = new C();')).toMatchObject([
+      { codigo: 'clase-no-soportada', datos: { nombre: 'C' } },
+      { codigo: 'clase-no-soportada', datos: { nombre: 'C' } },
+    ]);
+  });
+
+  it('una VARIABLE con el nombre de una clase la oculta (JLS 6.4.2): "int Boolean = 5; int y = Boolean + 1;" no produce ningún problema', () => {
+    expect(atribuirCuerpo('int Boolean = 5; int y = Boolean + 1;')).toEqual([]);
+  });
+
+  it('control: los nombres del catálogo no cambian — String/Math siguen siendo clases soportadas, sin ningún problema', () => {
+    expect(atribuirCuerpo('String s = "a"; int m = Math.max(1, 2);')).toEqual([]);
+  });
+
+  // Los tres casos de abajo salieron de los MUTANTES de C7: la primera versión trataba cualquier nombre
+  // de clase visible como válido en cualquier posición y 29 mutantes (un identificador reemplazado por el
+  // nombre de la propia clase) pasaron de «cannot find symbol» (error) a «no disponible» — veredicto
+  // 2596/2625. Un nombre de clase solo vale como TIPO o como receptor de un miembro.
+  it('un nombre de clase suelto como VALOR sigue siendo error (javac: cannot find symbol: variable): "int y = Boolean;"', () => {
+    expect(atribuirCuerpo('int y = Boolean;')).toMatchObject([{ codigo: 'variable-no-declarada', datos: { nombre: 'Boolean' } }]);
+  });
+
+  it('la clase del propio programa NO es receptor válido de un miembro que no existe (mutante real: "Bienvenida.out.println(...)"): error', () => {
+    expect(atribuirCuerpo('C.out.println("hola");')).toMatchObject([{ codigo: 'variable-no-declarada', datos: { nombre: 'C' } }]);
+  });
+
+  it('...salvo para su propio "main" (recursión de main, REQ-SUB-007): "C.main(a);" avisa, no es error', () => {
+    expect(atribuirCuerpo('C.main(a);')).toMatchObject([{ codigo: 'clase-no-soportada', datos: { nombre: 'C' } }]);
+  });
+});
+
+// Tarea 1.29 (causa 11): un nombre de clase escrito CON su paquete (`java.util.Scanner`, `java.lang.Math`)
+// existe en el JDK y javac lo compila sin `import`; el subconjunto solo entiende el nombre corto — un
+// aviso, no un error. Una clase que NO existe con ese nombre completo sigue siendo el error de siempre.
+describe('atribuir — nombres de clase con su paquete (tarea 1.29)', () => {
+  it('"java.util.Scanner sc = new java.util.Scanner(System.in);" avisa en la declaración y en el new, con el nombre completo', () => {
+    expect(atribuirCuerpo('java.util.Scanner sc = new java.util.Scanner(System.in);')).toMatchObject([
+      { codigo: 'nombre-calificado-no-soportado', categoria: 'no-disponible', datos: { nombre: 'java.util.Scanner' } },
+      { codigo: 'nombre-calificado-no-soportado', categoria: 'no-disponible', datos: { nombre: 'java.util.Scanner' } },
+    ]);
+  });
+
+  it('una clase que existe pero el subconjunto no simula ("javax.swing.JOptionPane x;") también avisa por su nombre completo', () => {
+    expect(atribuirCuerpo('javax.swing.JOptionPane x;')).toMatchObject([
+      { codigo: 'nombre-calificado-no-soportado', datos: { nombre: 'javax.swing.JOptionPane' } },
+    ]);
+  });
+
+  it('un nombre completo que NO existe ("java.util.Scaner sc;") sigue siendo «no reconozco el tipo»', () => {
+    expect(atribuirCuerpo('java.util.Scaner sc;')).toMatchObject([{ codigo: 'tipo-no-reconocido', datos: { nombre: 'java.util.Scaner' } }]);
+  });
+
+  it('como receptor de un miembro estático ("int m = java.lang.Math.max(1, 2);") avisa con la clase, no con «java»', () => {
+    expect(atribuirCuerpo('int m = java.lang.Math.max(1, 2);')).toMatchObject([
+      { codigo: 'nombre-calificado-no-soportado', datos: { nombre: 'java.lang.Math' } },
+    ]);
+  });
+
+  it('un miembro anidado de la clase ("java.lang.System.out.println(1);") avisa con la CLASE que es el prefijo, no con "java.lang.System.out"', () => {
+    expect(atribuirCuerpo('java.lang.System.out.println(1);')).toMatchObject([
+      { codigo: 'nombre-calificado-no-soportado', datos: { nombre: 'java.lang.System' } },
+    ]);
+  });
+
+  it('una cadena con un primer nombre que no es paquete ni clase real sigue siendo «variable no declarada» ("java.util.Foo.bar();" → "java")', () => {
+    expect(atribuirCuerpo('java.util.Foo.bar();')).toMatchObject([{ codigo: 'variable-no-declarada', datos: { nombre: 'java' } }]);
+  });
+
+  it('una VARIABLE que se llama como un paquete oculta el nombre completo: "int java = 1; int x = java;" no produce problemas', () => {
+    expect(atribuirCuerpo('int java = 1; int x = java;')).toEqual([]);
+  });
+});

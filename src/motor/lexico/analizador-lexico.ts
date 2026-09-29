@@ -9,9 +9,18 @@ import { leerCadena, leerCaracter, leerNumero } from './literales.ts';
 import { OPERADORES_MULTICARACTER, PALABRAS_CLAVE, PUNTUACION, type Token } from './tokens.ts';
 // Tarea 1.24: única fuente de verdad de códigos "no soportado" (antes string inline suelto aquí).
 import { CODIGOS_NO_SOPORTADO } from '../no-soportado.ts';
+import { INICIO_DE_IDENTIFICADOR_JAVA, PARTE_DE_IDENTIFICADOR_JAVA } from '../biblioteca/datos/identificadores-java.generado.ts';
+import { crearTablaDeRangos } from './tabla-de-rangos.ts';
 
-const INICIO_IDENTIFICADOR = /[A-Za-z_$]/;
-const RESTO_IDENTIFICADOR = /[A-Za-z0-9_$]/;
+// JLS 3.8: qué puede llevar un identificador lo decide `Character.isJavaIdentifierStart/Part` — letras
+// Unicode (`año`, `número`), números-letra, símbolos de moneda (`$`, `€`), conectores (`_`) y, DENTRO del
+// identificador, dígitos, marcas combinantes y caracteres ignorables. Los rangos son los del JDK 17 (Unicode
+// 13), generados por el oráculo (`identificadores-java.generado.ts`, ADR 010) — NO las propiedades Unicode
+// de JavaScript (`\p{L}`…): las del motor de Node 22 son de Unicode 17 y aceptarían ~14 000 letras que javac
+// 17 rechaza. Tarea 1.29: antes solo ASCII, y `int año` daba «carácter no reconocido: "ñ"». Se prueba por
+// PUNTO DE CÓDIGO (un `𝒳` ocupa dos unidades UTF-16).
+const INICIO_IDENTIFICADOR = crearTablaDeRangos(INICIO_DE_IDENTIFICADOR_JAVA);
+const RESTO_IDENTIFICADOR = crearTablaDeRangos(PARTE_DE_IDENTIFICADOR_JAVA);
 const DIGITO_DECIMAL = /[0-9]/;
 const DIGITO_HEX = /[0-9A-Fa-f]/;
 
@@ -64,7 +73,8 @@ export function tokenizar(fuente: string): Token[] {
   while (cursor < fuente.length) {
     const caracter = fuente[cursor];
 
-    if (caracter === ' ' || caracter === '\t' || caracter === '\r' || caracter === '\n') {
+    // JLS 3.6: espacio, tabulador, SALTO DE PÁGINA (tarea 1.29), retorno y salto de línea.
+    if (caracter === ' ' || caracter === '\t' || caracter === '\f' || caracter === '\r' || caracter === '\n') {
       cursor += 1;
       continue;
     }
@@ -164,7 +174,9 @@ export function tokenizar(fuente: string): Token[] {
       continue;
     }
 
-    if (DIGITO_DECIMAL.test(caracter)) {
+    // Un literal empieza con un dígito, o con el punto de «.5» (JLS 3.10.2, tarea 1.29): un punto sin dígito
+    // detrás es el acceso a un miembro («a.b») o los tres de un varargs.
+    if (DIGITO_DECIMAL.test(caracter) || (caracter === '.' && DIGITO_DECIMAL.test(fuente[cursor + 1] ?? ''))) {
       const inicio = cursor;
       const numero = leerNumero(fuente, cursor);
       cursor += numero.longitud;
@@ -204,19 +216,25 @@ export function tokenizar(fuente: string): Token[] {
       continue;
     }
 
-    if (INICIO_IDENTIFICADOR.test(caracter)) {
+    // El carácter completo (un punto de código: una letra fuera del plano básico ocupa dos unidades UTF-16).
+    const caracterCompleto = String.fromCodePoint(fuente.codePointAt(cursor) ?? 0);
+    if (INICIO_IDENTIFICADOR.contiene(caracterCompleto.codePointAt(0) ?? 0)) {
       const inicio = cursor;
-      cursor += 1;
-      while (cursor < fuente.length && RESTO_IDENTIFICADOR.test(fuente[cursor])) cursor += 1;
+      cursor += caracterCompleto.length;
+      while (cursor < fuente.length) {
+        const siguiente = String.fromCodePoint(fuente.codePointAt(cursor) ?? 0);
+        if (!RESTO_IDENTIFICADOR.contiene(siguiente.codePointAt(0) ?? 0)) break;
+        cursor += siguiente.length;
+      }
       const texto = fuente.slice(inicio, cursor);
       const tipo = PALABRAS_CLAVE.has(texto) ? 'palabra-clave' : 'identificador';
       tokens.push({ tipo, texto, rango: { inicio, fin: cursor } });
       continue;
     }
 
-    throw new ErrorDeCompilacion(`carácter no reconocido: "${caracter}"`, {
+    throw new ErrorDeCompilacion(`carácter no reconocido: "${caracterCompleto}"`, {
       inicio: cursor,
-      fin: cursor + 1,
+      fin: cursor + caracterCompleto.length,
     });
   }
 

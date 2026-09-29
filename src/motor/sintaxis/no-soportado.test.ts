@@ -33,6 +33,64 @@ describe('no-soportado — otra clase/interfaz/enum/record de nivel superior', (
     );
     expect(programa.otrosTiposDeNivelSuperior).toHaveLength(1);
   });
+
+  // Tarea 1.29 (causa 12, hallada al comparar programas típicos con javac 17; REQ-SUB-007: «clases/objetos
+  // propios» → aviso): el archivo puede traer una interfaz, un enum o un record ANTES de la clase con `main`
+  // (`enum Dia { … }` arriba, muy habitual) y `analizarClase` exigía «class» como primerísima palabra: «se
+  // esperaba "class" y se encontró "enum"», un error FALSO. Esos tipos avisan y el análisis sigue con la primera
+  // clase, que es la principal. Un archivo sin NINGUNA clase (solo una interfaz, o un enum que trae su propio
+  // `main`) también es Java válido: avisa, y la «clase principal» queda sin `main`.
+  it.each([
+    ['una interfaz', 'interface Figura { double area(); }'],
+    ['un enum', 'enum Dia { LUNES, MARTES }'],
+    ['un record', 'record Punto(int x, int y) { }'],
+    ['un tipo de anotación', '@interface Nota { String value(); }'],
+    ['una interfaz pública con anotación y genéricos', '@FunctionalInterface public interface Operacion<T> { T aplicar(T a); }'],
+  ])('%s ANTES de la clase principal avisa y la clase con main se sigue reconociendo', (_nombre, tipoAnterior) => {
+    const programa = analizar(`${tipoAnterior} class C { public static void main(String[] a) { } }`);
+    expect(programa.clase.nombre).toBe('C');
+    expect(programa.clase.main).not.toBeNull();
+    expect(programa.otrosTiposDeNivelSuperior).toHaveLength(1);
+    expect(programa.otrosTiposDeNivelSuperior[0]).toMatchObject({ codigo: 'otro-tipo-de-nivel-superior-no-soportado' });
+  });
+
+  it('varios tipos antes de la clase principal (interfaz, enum y record) avisan uno por uno, en el orden del texto', () => {
+    const fuente = 'interface A { } enum B { X } record R(int n) { } public class C { public static void main(String[] a) { } }';
+    const programa = analizar(fuente);
+    expect(programa.clase.nombre).toBe('C');
+    expect(programa.otrosTiposDeNivelSuperior.map((t) => fuente.slice(t.rango.inicio, t.rango.fin))).toEqual([
+      'interface A { }',
+      'enum B { X }',
+      'record R(int n) { }',
+    ]);
+  });
+
+  it('un tipo antes Y otro después de la clase principal: los dos avisan', () => {
+    const programa = analizar('enum A { X } class C { public static void main(String[] a) { } } interface B { }');
+    expect(programa.clase.nombre).toBe('C');
+    expect(programa.otrosTiposDeNivelSuperior).toHaveLength(2);
+  });
+
+  it.each([
+    ['solo una interfaz', 'interface I { void f(); }', 'I'],
+    ['un enum que trae su propio main', 'public enum E { A, B; public static void main(String[] args) { } }', 'E'],
+    ['un record y una interfaz sin ninguna clase', 'record P(int x) { } interface Q { }', 'P'],
+  ])('un archivo SIN ninguna clase (%s) avisa y la clase principal queda sin main', (_nombre, fuente, nombreDelPrimerTipo) => {
+    const programa = analizar(fuente);
+    expect(programa.clase.main).toBeNull();
+    expect(programa.clase.nombre).toBe(nombreDelPrimerTipo);
+    expect(programa.otrosTiposDeNivelSuperior.length).toBeGreaterThanOrEqual(1);
+    expect(programa.otrosTiposDeNivelSuperior[0]).toMatchObject({ codigo: 'otro-tipo-de-nivel-superior-no-soportado' });
+  });
+
+  it('un tipo antes de la clase seguido de basura sigue siendo un error de sintaxis REAL (javac: class, interface, enum, or record expected)', () => {
+    expect(() => analizar('enum A { X } foo')).toThrow(ErrorDeCompilacion);
+  });
+
+  it('regresión: un archivo vacío (sin ningún tipo) sigue siendo un error de sintaxis real', () => {
+    expect(() => analizar('')).toThrow(ErrorDeCompilacion);
+    expect(() => analizar('import java.util.Scanner;')).toThrow(ErrorDeCompilacion);
+  });
 });
 
 describe('no-soportado — miembros de clase distintos de main (campos, métodos propios, anotaciones)', () => {
@@ -178,6 +236,112 @@ describe('no-soportado — arreglos (tipo, new, inicializador — el acceso [] y
   });
 });
 
+// Tarea 1.29 (causa 9, hallada al comparar programas típicos con javac 17): en Java los corchetes de un
+// arreglo pueden ir DESPUÉS del nombre — `int notas[] = new int[5];` — la forma «estilo C» que muchos
+// cursos y tutoriales en español enseñan. Solo `int[] notas` se reconocía; con los corchetes tras el
+// nombre `analizarDeclarador` esperaba `=` o `;` y daba «se esperaba ";" y se encontró "["», un error
+// FALSO. Es el MISMO aviso de arreglo, con el tipo tal como lo escribió el alumno (`int[]`).
+describe('no-soportado — arreglos con los corchetes después del nombre (estilo C, tarea 1.29)', () => {
+  it('"int notas[] = new int[5];" es el aviso de arreglo, con tipoArreglo "int[]" y el rango de toda la declaración', () => {
+    const fuente = 'class C { public static void main(String[] a) { int notas[] = new int[5]; } }';
+    const elemento = analizar(fuente).clase.main!.cuerpo.elementos[0] as NodoNoSoportado;
+    expect(elemento).toMatchObject({ tipo: 'no-soportado', codigo: 'arreglo-no-soportado', datos: { tipoArreglo: 'int[]' } });
+    expect(fuente.slice(elemento.rango.inicio, elemento.rango.fin)).toBe('int notas[] = new int[5];');
+  });
+
+  it('cada dimensión cuenta: "int m[][] = new int[2][2];" es "int[][]"; y con un tipo de referencia, "String nombres[];" es "String[]"', () => {
+    expect(primeraSentencia('int m[][] = new int[2][2];')).toMatchObject({ codigo: 'arreglo-no-soportado', datos: { tipoArreglo: 'int[][]' } });
+    expect(primeraSentencia('String nombres[];')).toMatchObject({ codigo: 'arreglo-no-soportado', datos: { tipoArreglo: 'String[]' } });
+  });
+
+  it('un declarador con corchetes DESPUÉS de uno normal ("int a = 1, b[] = { 2 };") también avisa, y consume toda la sentencia', () => {
+    const elementos = analizar('class C { public static void main(String[] a) { int x = 1, b[] = { 2 }; int y = 3; } }').clase.main!.cuerpo.elementos;
+    expect(elementos).toHaveLength(2);
+    expect(elementos[0]).toMatchObject({ tipo: 'no-soportado', codigo: 'arreglo-no-soportado', datos: { tipoArreglo: 'int[]' } });
+    expect(elementos[1]).toMatchObject({ tipo: 'declaracion-local' });
+  });
+
+  it('dentro de un for ("for (int v[] = { 1 }; ; ) { }") el aviso de arreglo sale de la declaración de siempre', () => {
+    expect(primeraSentencia('for (int v[] = { 1 }; ; ) { }')).toMatchObject({ tipo: 'no-soportado', codigo: 'arreglo-no-soportado' });
+  });
+
+  it('una dimensión con número ("int a[5];") NO es Java válido y sigue siendo un error de sintaxis real (javac: array dimension missing)', () => {
+    expect(() => primeraSentencia('int a[5];')).toThrow(ErrorDeCompilacion);
+  });
+
+  it('regresión: una declaración normal con varios declaradores no se toca ("int a = 1, b = 2;")', () => {
+    expect(primeraSentencia('int a = 1, b = 2;')).toMatchObject({ tipo: 'declaracion-local' });
+  });
+});
+
+// Tarea 1.29 (causa 10, hallada al comparar programas típicos con javac 17; design.md §2.3: «campo,
+// método, clase interna, bloque, anotación → NO-DISP»): las anotaciones (`@SuppressWarnings("resource")`
+// que Eclipse pone sobre un Scanner, `@Override`, `@Deprecated`) son Java válido y el léxico ni siquiera
+// conocía el carácter «@» («carácter no reconocido: "@"»). Se reconocen donde Java las admite —antes de la
+// clase, de un miembro y de una declaración local— y delimitan SOLO la anotación, el resto sigue.
+describe('no-soportado — anotaciones (design.md §2.3, tarea 1.29)', () => {
+  function anotacionesDeLaClase(fuente: string): { programa: ReturnType<typeof analizar>; anotaciones: NodoNoSoportado[] } {
+    const programa = analizar(fuente);
+    return { programa, anotaciones: programa.clase.otrosMiembros.filter((m) => m.codigo === 'anotacion-no-soportada') };
+  }
+
+  it('antes de main: "@SuppressWarnings("unused") public static void main" avisa y main se sigue reconociendo', () => {
+    const fuente = 'class C { @SuppressWarnings("unused") public static void main(String[] a) { } }';
+    const { programa, anotaciones } = anotacionesDeLaClase(fuente);
+    expect(programa.clase.main).not.toBeNull();
+    expect(anotaciones).toHaveLength(1);
+    expect(fuente.slice(anotaciones[0]!.rango.inicio, anotaciones[0]!.rango.fin)).toBe('@SuppressWarnings("unused")');
+  });
+
+  it('antes de la clase: "@SuppressWarnings("all") public class C" avisa, con los paréntesis anidados y las llaves del argumento bien delimitados', () => {
+    const fuente = '@SuppressWarnings({"a", "b"}) public class C { public static void main(String[] a) { } }';
+    const { programa, anotaciones } = anotacionesDeLaClase(fuente);
+    expect(programa.clase.main).not.toBeNull();
+    expect(anotaciones).toHaveLength(1);
+    expect(fuente.slice(anotaciones[0]!.rango.inicio, anotaciones[0]!.rango.fin)).toBe('@SuppressWarnings({"a", "b"})');
+  });
+
+  it('varias anotaciones seguidas ("@A @B(1) @p.C") son UN solo aviso que las cubre a todas', () => {
+    const fuente = '@A @B(1) @p.C class C { public static void main(String[] a) { } }';
+    const { anotaciones } = anotacionesDeLaClase(fuente);
+    expect(anotaciones).toHaveLength(1);
+    expect(fuente.slice(anotaciones[0]!.rango.inicio, anotaciones[0]!.rango.fin)).toBe('@A @B(1) @p.C');
+  });
+
+  it('sobre un método propio ("@Override public String toString() { … }"): la anotación y el miembro avisan, y main sigue en pie', () => {
+    const { programa, anotaciones } = anotacionesDeLaClase(
+      'class C { @Override public String toString() { return "x"; } public static void main(String[] a) { } }',
+    );
+    expect(anotaciones).toHaveLength(1);
+    expect(programa.clase.otrosMiembros).toHaveLength(2);
+    expect(programa.clase.main).not.toBeNull();
+  });
+
+  it('sobre una declaración local (el "@SuppressWarnings("resource")" de Eclipse): el aviso y, DESPUÉS, la declaración normal', () => {
+    const elementos = analizar(
+      'class C { public static void main(String[] a) { @SuppressWarnings("resource") Scanner sc = new Scanner(System.in); } }',
+    ).clase.main!.cuerpo.elementos;
+    expect(elementos).toHaveLength(2);
+    expect(elementos[0]).toMatchObject({ tipo: 'no-soportado', codigo: 'anotacion-no-soportada' });
+    expect(elementos[1]).toMatchObject({ tipo: 'declaracion-local', nombreTipo: 'Scanner' });
+  });
+
+  it('"@interface Nota { }" (declarar una anotación) tras la clase es otro tipo de nivel superior, no una anotación', () => {
+    const programa = analizar('class C { public static void main(String[] a) { } } @interface Nota { }');
+    expect(programa.otrosTiposDeNivelSuperior).toHaveLength(1);
+    expect(programa.otrosTiposDeNivelSuperior[0]).toMatchObject({ codigo: 'otro-tipo-de-nivel-superior-no-soportado' });
+  });
+
+  it('una anotación antes de OTRA clase de nivel superior ("@Deprecated class Otra { }") no rompe el análisis', () => {
+    const programa = analizar('class C { public static void main(String[] a) { } } @Deprecated class Otra { int x; }');
+    expect(programa.otrosTiposDeNivelSuperior).toHaveLength(1);
+  });
+
+  it('un "@" sin nombre detrás sigue siendo un error de sintaxis real (javac: illegal start of expression)', () => {
+    expect(() => primeraSentencia('@ int x = 1;')).toThrow(ErrorDeCompilacion);
+  });
+});
+
 describe('no-soportado — "var" (REQ-SUB-007)', () => {
   it('"var x = 5;" es NO-DISP', () => {
     const elemento = primeraSentencia('var x = 5;');
@@ -201,6 +365,27 @@ describe('no-soportado — genéricos (REQ-SUB-007)', () => {
   it('una comparación real ("total < limite") NUNCA se confunde con un genérico (regresión)', () => {
     const elemento = primeraSentencia('total = a < limite;');
     expect(elemento.tipo).toBe('sentencia-expresion');
+  });
+
+  // Tarea 1.29: los comodines y los arreglos dentro de un genérico también son Java válido (`Class<?> c`, `List<? extends
+  // Number> l`, `Map<String, ? super Integer> m`, `List<int[]> filas`, `List<String>[] listas`): `pareceGenericoDesde` solo
+  // dejaba pasar identificadores, comas y puntos, así que esas declaraciones se leían como una expresión y daban un error
+  // de sintaxis FALSO. Todas siguen siendo el mismo aviso de genérico.
+  it.each([
+    'Class<?> c;',
+    'List<? extends Number> lista;',
+    'Map<String, ? super Integer> mapa;',
+    'List<int[]> filas;',
+    'List<String>[] listas;',
+    'Map.Entry<String, Integer> par;',
+    'java.util.List<? extends Number> l;',
+    'Comparable<? super Integer> c = null;',
+  ])('«%s» es el aviso de genérico, no un error de sintaxis', (declaracion) => {
+    expect(primeraSentencia(declaracion)).toMatchObject({ tipo: 'no-soportado', codigo: 'generico-no-soportado' });
+  });
+
+  it('regresión: una comparación encadenada con «>» ("r = a < b == c > d;") sigue siendo una expresión', () => {
+    expect(primeraSentencia('r = a < b == c > d;').tipo).toBe('sentencia-expresion');
   });
 });
 
@@ -291,6 +476,52 @@ describe('no-soportado — switch con flecha / yield (REQ-SUB-007, verificado: f
   it('un switch clásico normal (con ":") NUNCA se confunde con el de flecha (regresión)', () => {
     const elemento = primeraSentencia('switch (dia) { case 1: total = 1; break; default: total = 0; }') as NodoSwitch;
     expect(elemento.elementos[0].tipo).toBe('etiqueta-case');
+  });
+});
+
+// Tarea 1.29 (causa 5, agregada por el orquestador): desde Java 14, `case 1, 2:` y `case 1, 2 ->` son
+// válidos (varios valores en una sola etiqueta; verificado con javac 17 real, incluidos valores de tipo
+// `char` y `String` y etiquetas partidas en varias líneas). `analizarEtiquetaCase` leía UN valor y
+// esperaba `:` o `->`, así que `case 1, 2 ->` (corpus/experimentos/texto/flow06_switch_flecha.java) daba
+// «se esperaba ":" y se encontró ","». La forma con flecha sigue siendo el mismo aviso de siempre
+// (`switch-flecha-no-soportado`: lo que aleja al programa del subconjunto es la flecha); la forma
+// clásica con dos puntos tiene su propio aviso, con la alternativa dentro del subconjunto (un `case` por
+// valor). Una coma sin valor detrás (`case 1, :`) sigue siendo un error real de javac.
+describe('no-soportado — varias etiquetas en un case (Java 14+, tarea 1.29)', () => {
+  it('"case 1, 2 -> ...;" es el aviso de la flecha (el mismo de "case 1 ->"), y el resto del switch sigue bien', () => {
+    const elemento = primeraSentencia('switch (dia) { case 1, 2 -> total = 1; default -> total = 0; }') as NodoSwitch;
+    expect(elemento.elementos).toHaveLength(2);
+    expect(elemento.elementos[0]).toMatchObject({ tipo: 'no-soportado', codigo: 'switch-flecha-no-soportado' });
+    expect(elemento.elementos[1]).toMatchObject({ tipo: 'no-soportado', codigo: 'switch-flecha-no-soportado' });
+  });
+
+  it('"case 1, 2, 3 -> { ... }" (tres valores, rama con bloque) también se delimita entera', () => {
+    const elemento = primeraSentencia('switch (dia) { case 1, 2, 3 -> { total = 1; } default -> { } }') as NodoSwitch;
+    expect(elemento.elementos).toHaveLength(2);
+    expect(elemento.elementos[0]).toMatchObject({ tipo: 'no-soportado', codigo: 'switch-flecha-no-soportado' });
+  });
+
+  it('"case 1, 2:" (forma clásica con varios valores) es NO-DISP con su propio código, y sus sentencias siguen siendo del switch', () => {
+    const elemento = primeraSentencia('switch (dia) { case 1, 2: total = 1; break; default: total = 0; }') as NodoSwitch;
+    expect(elemento.elementos[0]).toMatchObject({ tipo: 'no-soportado', codigo: 'case-con-varias-etiquetas-no-soportado' });
+    expect(elemento.elementos.slice(1).map((e) => e.tipo)).toEqual(['sentencia-expresion', 'break', 'etiqueta-default', 'sentencia-expresion']);
+  });
+
+  it('el rango del aviso cubre «case 1, 2:» completo (de "case" a los dos puntos), también con valores de texto', () => {
+    const fuente = 'class C { public static void main(String[] a) { switch (s) { case "a", "b": x = 1; } } }';
+    const programa = analizar(fuente);
+    const cambio = programa.clase.main!.cuerpo.elementos[0] as NodoSwitch;
+    const aviso = cambio.elementos[0] as NodoNoSoportado;
+    expect(fuente.slice(aviso.rango.inicio, aviso.rango.fin)).toBe('case "a", "b":');
+  });
+
+  it('una coma sin valor detrás sigue siendo un error de sintaxis REAL (javac: illegal start of expression): "case 1, :"', () => {
+    expect(() => primeraSentencia('switch (dia) { case 1, : total = 1; }')).toThrow(ErrorDeCompilacion);
+  });
+
+  it('regresión: "case 1:" y "case 1: case 2:" (una etiqueta cada una) siguen siendo etiquetas normales', () => {
+    const elemento = primeraSentencia('switch (dia) { case 1: case 2: total = 1; }') as NodoSwitch;
+    expect(elemento.elementos.slice(0, 2).map((e) => e.tipo)).toEqual(['etiqueta-case', 'etiqueta-case']);
   });
 });
 
@@ -404,5 +635,227 @@ describe('no-soportado — combinaciones que confirman "cero errores de sintaxis
     const elemento = primeraSentencia('if (listo) { var x = 5; }') as NodoIf;
     expect(elemento.tipo).toBe('if');
     expect((elemento.entonces as unknown as { elementos: { tipo: string }[] }).elementos[0].tipo).toBe('no-soportado');
+  });
+});
+
+// Tarea 1.29 (causa 11, hallada al comparar programas típicos con javac 17; REQ-SUB-007: «métodos propios,
+// recursión, clases/campos/objetos propios» y «arreglos» → aviso «Java sí lo acepta…»): la validación mínima
+// de la cabecera de un miembro («Tipo Identificador» y luego «(», «;», «{» o «=») rechazaba como error de
+// sintaxis formas perfectamente válidas de Java —el constructor (`Persona(String nombre) { … }`, que no lleva
+// tipo de retorno), los arreglos como tipo de un campo o de un método (`static int[] crear(int n)`), varios
+// campos en una declaración (`int a, b;`), los tipos genéricos (`List<String> nombres`), los métodos genéricos
+// (`static <T> T mayor(T a, T b)`) y los parámetros con tipos genéricos—. Todas son miembros propios: avisan,
+// nunca son un error. Cada muestra de la lista se compiló con javac 17 real dentro de una clase `C`.
+describe('consumirMiembroDeClase — cabeceras VÁLIDAS de Java avisan, nunca son error (tarea 1.29, REQ-SUB-007)', () => {
+  const miembrosValidos: readonly string[] = [
+    // constructores (sin tipo de retorno; el nombre es el de la clase)
+    'C() { }',
+    'public C(int x, String s) { }',
+    'private C(int x) { this.x = x; }',
+    'protected C() throws Exception { }',
+    '<T> C(T t) { }',
+    // campos: varios por declaración, arreglos, genéricos, calificados
+    'int a, b;',
+    'int a[];',
+    'static int[] a;',
+    'static int[][] m = new int[2][3];',
+    'static String[] nombres = { "a", "b" };',
+    'int[] a = { 1, 2 }, b = { 3 };',
+    'int a = 1, b[] = { 2 };',
+    'static final double PI = 3.14, E = 2.71;',
+    'java.util.List<String> nombres;',
+    'java.util.Map<String, java.util.List<Integer>> mapa = new java.util.HashMap<>();',
+    'private final List<List<Integer>> filas = new ArrayList<>();',
+    'Map.Entry<String, Integer> par;',
+    'List<String>[] listas;',
+    // métodos: arreglos, genéricos, varargs, `throws`, corchetes tras los paréntesis
+    'static int[] crear(int n) { return new int[n]; }',
+    'static <T extends Comparable<T>> T mayor(T a, T b) { return a; }',
+    'static <T> void f(T t) { }',
+    'static void mostrar(List<String> l, Map<String, Integer> m) { }',
+    'static void f(int... xs) { }',
+    'static java.util.List<String> f() { return null; }',
+    'static void f(int[] a, int b[]) { }',
+    'static double media(List<? extends Number> l) { return 0; }',
+    'static void f(Map.Entry<String, Integer> e) { }',
+    'static void f(final List<? super Integer> l, Map<String, List<Integer>> m) { }',
+    'int f()[] { return null; }',
+    'static List<String> nombres() { return new ArrayList<>(); }',
+    // tipos anidados y bloques inicializadores
+    'static class B extends A { }',
+    'class B<T> { }',
+    'interface I<T> extends J<T> { }',
+    'enum E implements I { A, B }',
+    'record P(int x, int y) implements I { }',
+    'static class Nodo<T> { T dato; Nodo<T> sig; Nodo(T d) { dato = d; } }',
+    'static { }',
+    '{ }',
+  ];
+
+  it.each(miembrosValidos)('el miembro «%s» avisa como miembro propio (rango exacto) y main se sigue reconociendo', (miembro) => {
+    const fuente = `class C { ${miembro} public static void main(String[] a) { } }`;
+    const programa = analizar(fuente);
+    expect(programa.clase.main).not.toBeNull();
+    expect(programa.clase.otrosMiembros).toHaveLength(1);
+    const aviso = programa.clase.otrosMiembros[0]!;
+    expect(aviso.codigo).toBe('miembro-de-clase-no-soportado');
+    expect(fuente.slice(aviso.rango.inicio, aviso.rango.fin)).toBe(miembro);
+  });
+
+  it('un campo de arreglo con inicializador de llaves termina en SU ";" (no deja un ";" suelto ni se come a main)', () => {
+    const fuente = 'class C { int[] a = { 1, 2 }; public static void main(String[] a) { } }';
+    const programa = analizar(fuente);
+    expect(programa.clase.otrosMiembros).toHaveLength(1);
+    expect(fuente.slice(programa.clase.otrosMiembros[0]!.rango.inicio, programa.clase.otrosMiembros[0]!.rango.fin)).toBe('int[] a = { 1, 2 };');
+    expect(programa.clase.main).not.toBeNull();
+  });
+
+  const miembrosInvalidos: ReadonlyArray<readonly [string, string]> = [
+    ['un método sin tipo de retorno cuyo nombre NO es el de la clase (javac: invalid method declaration; return type required)', 'foo() { }'],
+    ['una coma seguida de un paréntesis en vez de otro nombre de campo', 'static int cuadrado, (int n) { }'],
+    ['una coma sin nombre de campo detrás', 'int a, ;'],
+    ['una coma seguida de un número', 'int a, 5;'],
+    ['un corchete sin cerrar entre el tipo y el nombre', 'static int[ f() { }'],
+    ['un genérico sin cerrar', 'List<String x;'],
+    ['un corchete con número tras el nombre de un campo', 'int a[5];'],
+    ['un constructor con un parámetro roto', 'C([int x) { }'],
+    ['un parámetro con un genérico sin cerrar', 'static void f(List<String l) { }'],
+    ['un parámetro sin nombre tras un tipo genérico', 'static void f(List<String>) { }'],
+  ];
+
+  it.each(miembrosInvalidos)('sigue siendo un error de sintaxis REAL: %s', (_descripcion, miembro) => {
+    expect(() => analizar(`class C { ${miembro} public static void main(String[] a) { } }`)).toThrow(ErrorDeCompilacion);
+  });
+});
+
+// Tarea 1.29 (misma causa 11, en la cabecera de la CLASE): `class C extends B`, `class C implements A` y
+// `class C<T>` son Java válido y la cabecera exigía «{» justo tras el nombre («falta abrir "{" para el cuerpo
+// de la clase», un error FALSO). Lo que aleja al programa del subconjunto (design.md §2.3: la clase es una
+// sola, con `main`) es la herencia o el genérico: cada uno avisa con su código, dentro de la clase, y el resto
+// se analiza igual. Un `extends`/`implements` mal formado sigue siendo un error real de javac.
+describe('analizarClase — cabecera con genéricos, extends e implements avisa, nunca es error (tarea 1.29, REQ-SUB-007)', () => {
+  function avisosDeCabecera(cabecera: string) {
+    const fuente = `${cabecera} { public static void main(String[] a) { } }`;
+    const programa = analizar(fuente);
+    expect(programa.clase.main).not.toBeNull();
+    return programa.clase.otrosMiembros.map((m) => ({ codigo: m.codigo, texto: fuente.slice(m.rango.inicio, m.rango.fin) }));
+  }
+
+  it('"class C extends B": aviso de herencia que cubre desde "extends" hasta el nombre del padre', () => {
+    expect(avisosDeCabecera('class C extends B')).toEqual([{ codigo: 'herencia-no-soportada', texto: 'extends B' }]);
+  });
+
+  it('"class C implements A": aviso de herencia (una interfaz también es herencia de tipos)', () => {
+    expect(avisosDeCabecera('class C implements A')).toEqual([{ codigo: 'herencia-no-soportada', texto: 'implements A' }]);
+  });
+
+  it('"extends" e "implements" juntos son UN solo aviso que cubre ambas cláusulas, con lista de interfaces', () => {
+    expect(avisosDeCabecera('public final class C extends B implements A, D')).toEqual([
+      { codigo: 'herencia-no-soportada', texto: 'extends B implements A, D' },
+    ]);
+  });
+
+  it('nombres calificados y genéricos dentro de las cláusulas ("implements A<String>, java.io.Serializable")', () => {
+    expect(avisosDeCabecera('class C extends java.lang.Object implements Comparable<C>, java.io.Serializable')).toEqual([
+      { codigo: 'herencia-no-soportada', texto: 'extends java.lang.Object implements Comparable<C>, java.io.Serializable' },
+    ]);
+  });
+
+  it('"class C<T>": aviso de genérico con el rango de los parámetros de tipo', () => {
+    expect(avisosDeCabecera('class C<T>')).toEqual([{ codigo: 'generico-no-soportado', texto: '<T>' }]);
+  });
+
+  it('parámetros de tipo acotados MÁS herencia: dos avisos, en el orden del texto', () => {
+    expect(avisosDeCabecera('class C<T extends Comparable<T>> implements A<T>')).toEqual([
+      { codigo: 'generico-no-soportado', texto: '<T extends Comparable<T>>' },
+      { codigo: 'herencia-no-soportada', texto: 'implements A<T>' },
+    ]);
+  });
+
+  const cabecerasInvalidas: ReadonlyArray<readonly [string, string]> = [
+    ['"extends" sin tipo detrás', 'class C extends'],
+    ['"implements" sin tipo detrás', 'class C implements'],
+    ['dos "extends"', 'class C extends B extends D'],
+    ['una coma sin tipo tras "implements"', 'class C implements A,'],
+    ['una lista tras "extends" (una clase hereda de UNA sola)', 'class C extends B, D'],
+    ['parámetros de tipo sin cerrar', 'class C<T'],
+    ['"implements" antes de "extends"', 'class C implements A extends B'],
+    ['una palabra suelta tras el nombre', 'class C foo'],
+  ];
+
+  it.each(cabecerasInvalidas)('sigue siendo un error de sintaxis REAL: %s', (_descripcion, cabecera) => {
+    expect(() => analizar(`${cabecera} { public static void main(String[] a) { } }`)).toThrow(ErrorDeCompilacion);
+  });
+});
+
+// Tarea 1.29 (residuales de la caza diferencial contra javac 17; REQ-SUB-007 «clases/objetos propios» y design.md §2.3 «lo que
+// Java acepta y el subconjunto no simula → aviso»): `assert x > 0;`, una clase declarada DENTRO de un método y un bloque
+// `synchronized (obj) { … }` son Java válido; sin reconocerlos daban «se esperaba…» (un error FALSO). Cada uno avisa con su
+// código, delimita SOLO su construcción y el análisis sigue con la sentencia siguiente.
+describe('no-soportado — assert, tipos locales y synchronized (tarea 1.29)', () => {
+  function elementosDeMain(cuerpo: string) {
+    return analizar(`class C { public static void main(String[] a) { ${cuerpo} } }`).clase.main!.cuerpo.elementos;
+  }
+
+  it.each([
+    ['sin mensaje', 'assert x > 0;'],
+    ['con mensaje', 'assert x > 0 : "x debe ser positivo";'],
+    ['con paréntesis y llamadas', 'assert (x > 0 && f(x, 2)) : g("a;b");'],
+  ])('«assert» %s es el aviso de assert, con la sentencia siguiente intacta', (_variante, sentencia) => {
+    const elementos = elementosDeMain(`${sentencia} System.out.println(1);`);
+    expect(elementos).toHaveLength(2);
+    expect(elementos[0]).toMatchObject({ tipo: 'no-soportado', codigo: 'assert-no-soportado' });
+    expect(elementos[1]).toMatchObject({ tipo: 'impresion' });
+  });
+
+  it('el rango del aviso de assert cubre la sentencia completa, hasta su «;»', () => {
+    const fuente = 'class C { public static void main(String[] a) { assert x > 0 : "m"; } }';
+    const aviso = analizar(fuente).clase.main!.cuerpo.elementos[0] as NodoNoSoportado;
+    expect(fuente.slice(aviso.rango.inicio, aviso.rango.fin)).toBe('assert x > 0 : "m";');
+  });
+
+  it('«assert» sin condición o sin «;» sigue siendo un error de sintaxis REAL', () => {
+    expect(() => elementosDeMain('assert;')).toThrow(ErrorDeCompilacion);
+    expect(() => elementosDeMain('assert x > 0')).toThrow(ErrorDeCompilacion);
+  });
+
+  it.each([
+    ['una clase', 'class Local { int x; void f() { } }'],
+    ['una clase final', 'final class Local { }'],
+    ['una clase abstracta', 'abstract class Local { abstract void f(); }'],
+    ['una clase con cabecera larga', 'class Local<T> extends Base<T> implements I { }'],
+    ['una interfaz', 'interface Contrato { void f(); }'],
+    ['un enum', 'enum Dia { LUNES, MARTES; }'],
+    ['un record', 'record Punto(int x, int y) { }'],
+  ])('%s declarada dentro de main es el aviso de tipo local, con la sentencia siguiente intacta', (_tipo, declaracion) => {
+    const elementos = elementosDeMain(`${declaracion} System.out.println(1);`);
+    expect(elementos).toHaveLength(2);
+    expect(elementos[0]).toMatchObject({ tipo: 'no-soportado', codigo: 'clase-local-no-soportada' });
+    expect(elementos[1]).toMatchObject({ tipo: 'impresion' });
+  });
+
+  it('el rango del aviso de tipo local cubre el tipo completo, de la palabra «class» a su «}»', () => {
+    const fuente = 'class C { public static void main(String[] a) { class L { int x; } } }';
+    const aviso = analizar(fuente).clase.main!.cuerpo.elementos[0] as NodoNoSoportado;
+    expect(fuente.slice(aviso.rango.inicio, aviso.rango.fin)).toBe('class L { int x; }');
+  });
+
+  it('regresión: «final int x = 5;» y una variable llamada «record» NO son tipos locales', () => {
+    expect(elementosDeMain('final int x = 5;')[0]).toMatchObject({ tipo: 'declaracion-local', esFinal: true });
+    const elementos = elementosDeMain('int record = 1; record = 2;');
+    expect(elementos.map((e) => e.tipo)).toEqual(['declaracion-local', 'sentencia-expresion']);
+  });
+
+  it('«synchronized (obj) { … }» es el aviso de sincronización, con las llaves anidadas bien delimitadas y la sentencia siguiente intacta', () => {
+    const fuente = 'class C { public static void main(String[] a) { synchronized (lock) { if (x) { y = 1; } } System.out.println(1); } }';
+    const elementos = analizar(fuente).clase.main!.cuerpo.elementos;
+    expect(elementos).toHaveLength(2);
+    expect(elementos[0]).toMatchObject({ tipo: 'no-soportado', codigo: 'sincronizado-no-soportado' });
+    expect(fuente.slice(elementos[0]!.rango.inicio, elementos[0]!.rango.fin)).toBe('synchronized (lock) { if (x) { y = 1; } }');
+    expect(elementos[1]).toMatchObject({ tipo: 'impresion' });
+  });
+
+  it('«synchronized» sin su bloque sigue siendo un error de sintaxis REAL', () => {
+    expect(() => elementosDeMain('synchronized (lock) x = 1;')).toThrow(ErrorDeCompilacion);
   });
 });

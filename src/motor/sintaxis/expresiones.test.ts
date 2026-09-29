@@ -243,6 +243,47 @@ describe('expresiones — cast (design.md §2.4 nivel 13, sí soportado)', () =>
   });
 });
 
+// Tarea 1.29 (causa 3, agregada por el orquestador): «(» tipo primitivo «)» es SIEMPRE un cast
+// (design.md §2.5.1, JLS 15.16) — también con `byte`, `short` y `float`, que son tipos primitivos
+// REALES de Java fuera del subconjunto (REQ-SUB-007: nunca se reinterpretan como `int`/`double`).
+// Antes solo `int/long/double/boolean/char` abrían un cast, así que `(byte) x` daba «se esperaba una
+// expresión y se encontró "byte"» para dos programas de `corpus/experimentos` que javac compila. Es la
+// MISMA construcción que la declaración `byte b = 5;` (`tipo-primitivo-no-soportado`): un aviso.
+describe('expresiones — cast a un tipo primitivo fuera del subconjunto es aviso, no error (tarea 1.29)', () => {
+  it.each(['byte', 'short', 'float'])('"(%s) x" es NoSoportado con el mismo código que la declaración de ese tipo', (tipo) => {
+    expect(expresionDe(`(${tipo}) x`)).toMatchObject({ tipo: 'expresion-no-soportada', codigo: 'tipo-primitivo-no-soportado' });
+  });
+
+  it('el rango cubre el paréntesis de apertura hasta el final del operando: "(byte) 200" → 0..10', () => {
+    expect(expresionDe('(byte) 200').rango).toEqual({ inicio: 0, fin: 10 });
+  });
+
+  it('el análisis sigue después (ADR 003): "(byte) x + 1" es una suma cuyo primer operando es NoSoportado', () => {
+    expect(expresionDe('(byte) x + 1')).toMatchObject({
+      tipo: 'binaria',
+      operador: '+',
+      izquierda: { tipo: 'expresion-no-soportada', codigo: 'tipo-primitivo-no-soportado' },
+      derecha: { tipo: 'literal-entero', valor: 1n },
+    });
+  });
+
+  it('un cast soportado con un operando NoSoportado: "(int) (short) x" conserva el cast exterior', () => {
+    expect(expresionDe('(int) (short) x')).toMatchObject({
+      tipo: 'conversion',
+      nombreTipo: 'int',
+      operando: { tipo: 'expresion-no-soportada', codigo: 'tipo-primitivo-no-soportado' },
+    });
+  });
+
+  it('un cast sin operando sigue siendo un error de sintaxis real (javac: illegal start of expression): "(byte)" solo', () => {
+    expect(() => expresionDe('(byte)')).toThrow(ErrorDeCompilacion);
+  });
+
+  it('control: "byte" fuera de un cast no se confunde con uno: "(x) + 1" sigue siendo una agrupación', () => {
+    expect(expresionDe('(x) + 1')).toMatchObject({ tipo: 'binaria', operador: '+', izquierda: { tipo: 'nombre', nombre: 'x' } });
+  });
+});
+
 describe('expresiones — NO-DISP con precedencia real (design.md §2.6, ADR 003)', () => {
   it('bits & | ^ son NoSoportado, cada uno con su propio código', () => {
     expect(expresionDe('a & b')).toMatchObject({ tipo: 'expresion-no-soportada', codigo: 'operador-bits-and' });

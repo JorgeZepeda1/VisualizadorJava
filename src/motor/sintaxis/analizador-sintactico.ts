@@ -14,11 +14,16 @@ import {
   CODIGOS_NO_SOPORTADO,
   PALABRAS_TIPO_PRIMITIVO_NO_SOPORTADO,
   analizarClausulaThrowsOpcional,
+  consumirAnotaciones,
+  consumirCabeceraDeClase,
   consumirMiembroDeClase,
   consumirRestoDeSentenciaNoSoportada,
   consumirTipoDeNivelSuperior,
   pareceGenericoDesde,
+  nombreDelTipoDeNivelSuperior,
   pareceOtroTipoDeNivelSuperior,
+  pareceTipoDeclaradoEnUnMetodo,
+  pareceTipoDeNivelSuperiorQueNoEsClase,
   saltarHastaCerrar,
 } from './no-soportado.ts';
 import { ErrorDeCompilacion } from '../error-de-compilacion.ts';
@@ -49,7 +54,10 @@ import type {
   NodoWhile,
 } from './ast.ts';
 
-const MODIFICADORES_CLASE: ReadonlySet<string> = new Set(['public']);
+// Tarea 1.29: design.md §2.3 escribe `Clase = { "public" | "final" } "class"` — solo «public» se aceptaba.
+// `abstract` y `strictfp` también son válidos en una clase con `main` estático (verificado con javac 17) y no
+// cambian nada de lo que se ejecuta; `final` con `abstract` juntos es un error de javac (se comprueba abajo).
+const MODIFICADORES_CLASE: ReadonlySet<string> = new Set(['public', 'final', 'abstract', 'strictfp']);
 const MODIFICADORES_MAIN: ReadonlySet<string> = new Set(['public', 'static', 'final']);
 
 // Formas de expresión válidas en posición de sentencia (design.md §2.3 "ExprSentencia = Asignacion
@@ -75,9 +83,24 @@ export function analizarPrograma(tokens: readonly Token[]): NodoPrograma {
   // clase (abajo) pero no aquí, entre los imports y la clase. Verificado contra javac 17 real
   // (mutantes reales de esta sesión): "import java.util.Scanner; ;" compila limpio.
   consumirPuntosYComasSueltos(cursor);
-  const clase = analizarClase(cursor);
-
+  // Tarea 1.29 (REQ-SUB-007: «clases/objetos propios» → aviso): el archivo puede traer una interfaz, un enum o un
+  // record ANTES de la clase con `main` (`enum Dia { … }` arriba, muy habitual): cada uno avisa y el análisis sigue con
+  // la primera clase, que es la principal. Si tras ellos no queda ninguna clase (un archivo con solo una interfaz, o
+  // un enum que trae su propio `main`) también es Java válido: la «clase principal» es un relleno sin `main` y el aviso
+  // de esos tipos ya decidió el resultado (`compilar()` nunca llega a preguntar por su arranque).
   const otrosTiposDeNivelSuperior: NodoNoSoportado[] = [];
+  let nombreDelPrimerTipo: string | null = null;
+  while (pareceTipoDeNivelSuperiorQueNoEsClase(cursor)) {
+    nombreDelPrimerTipo ??= nombreDelTipoDeNivelSuperior(cursor);
+    otrosTiposDeNivelSuperior.push(consumirTipoDeNivelSuperior(cursor));
+    consumirPuntosYComasSueltos(cursor);
+  }
+  const primerTipoAnterior = otrosTiposDeNivelSuperior[0];
+  const clase: NodoClase =
+    primerTipoAnterior !== undefined && cursor.actual().tipo === 'eof'
+      ? { tipo: 'clase', nombre: nombreDelPrimerTipo ?? '', main: null, otrosMiembros: [], rango: primerTipoAnterior.rango }
+      : analizarClase(cursor);
+
   consumirPuntosYComasSueltos(cursor);
   while (pareceOtroTipoDeNivelSuperior(cursor)) {
     otrosTiposDeNivelSuperior.push(consumirTipoDeNivelSuperior(cursor));
@@ -188,9 +211,22 @@ function analizarClase(cursor: CursorDeTokens): NodoClase {
       'paquete-despues-de-import',
     );
   }
-  consumirModificadores(cursor, MODIFICADORES_CLASE, 'class');
+  // Tarea 1.29: las anotaciones de la propia clase ("@SuppressWarnings(...) public class C") avisan como
+  // cualquier otro miembro no soportado (design.md §2.3) y el resto de la clase se analiza igual.
+  const otrosMiembros: NodoNoSoportado[] = [];
+  const anotacionDeLaClase = consumirAnotaciones(cursor);
+  if (anotacionDeLaClase) otrosMiembros.push(anotacionDeLaClase);
+  const modificadoresDeLaClase = consumirModificadores(cursor, MODIFICADORES_CLASE, 'class');
   cursor.esperarTexto('class');
   const nombre = cursor.esperarTipo('identificador');
+  if (modificadoresDeLaClase.has('final') && modificadoresDeLaClase.has('abstract')) {
+    // JLS 8.1.1.2: una clase no puede ser a la vez `abstract` y `final` (javac: «illegal combination of
+    // modifiers: abstract and final», en el nombre de la clase).
+    throw new ErrorDeCompilacion('una clase no puede ser "abstract" y "final" a la vez', nombre.rango);
+  }
+  // Tarea 1.29 (REQ-SUB-007): `class C<T>`, `class C extends B`, `class C implements A` son Java válido; cada cláusula
+  // avisa por su cuenta y el resto de la clase se analiza igual.
+  otrosMiembros.push(...consumirCabeceraDeClase(cursor));
   // Tarea 1.21 (sub-lote 1-D4, mutante real contra veredicto de javac): a diferencia del resto de
   // `esperarTexto`, la "{" que abre el CUERPO DE LA CLASE ancla en el FIN del token anterior
   // (aquí, el propio nombre) cuando falta -- MISMO patrón que ya usa `analizarMain` para su propia
@@ -203,17 +239,22 @@ function analizarClase(cursor: CursorDeTokens): NodoClase {
   cursor.avanzar();
 
   let main: NodoMain | null = null;
-  const otrosMiembros: NodoNoSoportado[] = [];
   while (!cursor.coincideTexto('}')) {
     if (cursor.coincideTexto(';')) {
       cursor.avanzar();
+      continue;
+    }
+    // Tarea 1.29: una anotación antes de un miembro (o de `main`) avisa por su cuenta; el miembro sigue.
+    const anotacion = consumirAnotaciones(cursor);
+    if (anotacion) {
+      otrosMiembros.push(anotacion);
       continue;
     }
     if (main === null && pareceMain(cursor)) {
       main = analizarMain(cursor);
       continue;
     }
-    otrosMiembros.push(consumirMiembroDeClase(cursor));
+    otrosMiembros.push(consumirMiembroDeClase(cursor, nombre.texto));
   }
   const cierre = cursor.esperarTexto('}');
 
@@ -327,6 +368,12 @@ function analizarBloque(cursor: CursorDeTokens): NodoBloque {
 // design.md §2.3: "Bloque = '{' { DeclLocal ';' | Sentencia } '}'". `NodoNoSoportado` puede salir
 // de cualquiera de los dos caminos (una declaración con forma NO-DISP, o una sentencia NO-DISP).
 function analizarElementoDeBloque(cursor: CursorDeTokens): NodoElementoBloque {
+  // Tarea 1.29: una anotación sobre una declaración local ("@SuppressWarnings(\"resource\") Scanner sc = …;")
+  // es un elemento aparte — el aviso — y la declaración se analiza en la vuelta siguiente del bloque.
+  const anotacion = consumirAnotaciones(cursor);
+  if (anotacion) return anotacion;
+  // Tarea 1.29: una clase, interfaz, enum o record declarados DENTRO del método avisan y se delimitan enteros.
+  if (pareceTipoDeclaradoEnUnMetodo(cursor)) return consumirTipoDeNivelSuperior(cursor, CODIGOS_NO_SOPORTADO.claseLocal);
   if (pareceDeclaracionLocal(cursor)) {
     return analizarDeclaracionLocal(cursor);
   }
@@ -353,7 +400,36 @@ function pareceDeclaracionLocal(cursor: CursorDeTokens): boolean {
   if (token.tipo === 'identificador' && cursor.mirar(1).texto === '<' && pareceGenericoDesde(cursor, 1)) {
     return true;
   }
+  // Tarea 1.29 (design.md §2.3: `Tipo = … NombreDeTipo (* … calificados o no *)`): un tipo escrito con su
+  // paquete ("java.util.Scanner sc", "java.lang.String[] xs", "java.util.List<String> l") también abre una
+  // declaración. Una llamada con el nombre completo ("java.util.Arrays.sort(a)") NO: tras el nombre calificado
+  // no sigue un identificador, "[]" ni "<…>".
+  if (token.tipo === 'identificador' && cursor.mirar(1).texto === '.') {
+    const i = desplazamientoTrasNombreCalificado(cursor);
+    const siguiente = cursor.mirar(i);
+    if (siguiente.tipo === 'identificador') return true;
+    if (siguiente.texto === '[' && cursor.mirar(i + 1).texto === ']') return true;
+    if (siguiente.texto === '<' && pareceGenericoDesde(cursor, i)) return true;
+  }
   return false;
+}
+
+/** Desplazamiento (sin consumir nada) del primer token que sigue a "Id(.Id)*" desde el cursor. */
+function desplazamientoTrasNombreCalificado(cursor: CursorDeTokens): number {
+  let i = 1;
+  while (cursor.mirar(i).texto === '.' && cursor.mirar(i + 1).tipo === 'identificador') i += 2;
+  return i;
+}
+
+/** Consume "Id(.Id)*" y devuelve el nombre completo tal como se escribió ("java.util.Scanner"). */
+function consumirNombreDeTipo(cursor: CursorDeTokens): { readonly token: Token; readonly nombre: string } {
+  const token = cursor.avanzar();
+  let nombre = token.texto;
+  while (cursor.coincideTexto('.') && cursor.mirar(1).tipo === 'identificador') {
+    cursor.avanzar();
+    nombre += `.${cursor.avanzar().texto}`;
+  }
+  return { token, nombre };
 }
 
 function analizarDeclaracionLocal(cursor: CursorDeTokens): NodoDeclaracionLocal | NodoNoSoportado {
@@ -368,8 +444,7 @@ function analizarDeclaracionLocal(cursor: CursorDeTokens): NodoDeclaracionLocal 
     return consumirRestoDeSentenciaNoSoportada(cursor, inicio, CODIGOS_NO_SOPORTADO.var, {});
   }
 
-  const nombreTipoToken = cursor.avanzar();
-  const nombreTipo = nombreTipoToken.texto;
+  const { token: nombreTipoToken, nombre: nombreTipo } = consumirNombreDeTipo(cursor);
 
   if (PALABRAS_TIPO_PRIMITIVO_NO_SOPORTADO.has(nombreTipo)) {
     return consumirRestoDeSentenciaNoSoportada(cursor, inicio, CODIGOS_NO_SOPORTADO.tipoPrimitivoNoSoportado, {});
@@ -387,10 +462,19 @@ function analizarDeclaracionLocal(cursor: CursorDeTokens): NodoDeclaracionLocal 
     });
   }
 
-  const declaradores = [analizarDeclarador(cursor)];
-  while (cursor.coincideTexto(',')) {
-    cursor.avanzar();
+  const declaradores: NodoDeclarador[] = [];
+  for (;;) {
+    // Tarea 1.29: los corchetes DESPUÉS del nombre ("int notas[] = new int[5];", estilo C) son el mismo
+    // arreglo que "int[] notas" — mismo aviso, con el tipo tal como lo escribió el alumno.
+    const dimensiones = dimensionesDeArregloTrasElNombre(cursor);
+    if (dimensiones > 0) {
+      return consumirRestoDeSentenciaNoSoportada(cursor, inicio, CODIGOS_NO_SOPORTADO.arreglo, {
+        tipoArreglo: `${nombreTipo}${'[]'.repeat(dimensiones)}`,
+      });
+    }
     declaradores.push(analizarDeclarador(cursor));
+    if (!cursor.coincideTexto(',')) break;
+    cursor.avanzar();
   }
   const fin = cursor.esperarTexto(';').rango.fin;
 
@@ -400,6 +484,15 @@ function analizarDeclaracionLocal(cursor: CursorDeTokens): NodoDeclaracionLocal 
   }
 
   return { tipo: 'declaracion-local', esFinal, nombreTipo, declaradores, rango: { inicio, fin } };
+}
+
+/** Cuántos pares "[]" siguen a un nombre de variable ("notas[]" → 1, "m[][]" → 2), sin consumir nada; 0
+ * si el siguiente declarador no tiene corchetes (o los trae con contenido: "a[5]", que no es Java). */
+function dimensionesDeArregloTrasElNombre(cursor: CursorDeTokens): number {
+  if (cursor.actual().tipo !== 'identificador') return 0;
+  let dimensiones = 0;
+  while (cursor.mirar(1 + 2 * dimensiones).texto === '[' && cursor.mirar(2 + 2 * dimensiones).texto === ']') dimensiones += 1;
+  return dimensiones;
 }
 
 function analizarDeclarador(cursor: CursorDeTokens): NodoDeclarador {
@@ -446,6 +539,9 @@ function analizarSentencia(cursor: CursorDeTokens): NodoSentencia {
   if (cursor.coincideTexto('return')) return analizarRetorno(cursor);
   if (cursor.coincideTexto('try')) return analizarTry(cursor);
   if (cursor.coincideTexto('throw')) return analizarThrow(cursor);
+  // Tarea 1.29: `assert cond [: mensaje];` y `synchronized (obj) { … }` son Java válido fuera del subconjunto.
+  if (cursor.coincideTexto('assert')) return analizarAssert(cursor);
+  if (cursor.coincideTexto('synchronized') && cursor.mirar(1).texto === '(') return analizarSincronizado(cursor);
   if (cursor.actual().tipo === 'identificador' && cursor.mirar(1).texto === ':') return analizarEtiqueta(cursor);
   if (esInicioDeImpresion(cursor)) return analizarImpresion(cursor);
   return analizarSentenciaExpresion(cursor);
@@ -596,9 +692,20 @@ function analizarSwitch(cursor: CursorDeTokens): NodoSwitch {
 
 // "case Expr :" clásico (con caída, REQ-SUB-004) o "case Expr ->" (tarea 1.6, NO-DISP: switch de
 // flecha, design.md §2.6, sin reinterpretar el programa).
+//
+// Tarea 1.29 (causa 5): desde Java 14 una etiqueta puede traer VARIOS valores, "case 1, 2:" o
+// "case 1, 2 ->" (verificado con javac 17 real). Con flecha es el mismo aviso de siempre; con dos
+// puntos es `case-con-varias-etiquetas-no-soportado` (ofrece un `case` por valor). Cada valor se
+// analiza como expresión — una coma sin valor detrás ("case 1, :") sigue siendo un error real.
 function analizarEtiquetaCase(cursor: CursorDeTokens): NodoEtiquetaCase | NodoNoSoportado {
   const inicioToken = cursor.esperarTexto('case');
   const valor = analizarExpresion(cursor);
+  let tieneVariosValores = false;
+  while (cursor.coincideTexto(',')) {
+    cursor.avanzar();
+    analizarExpresion(cursor);
+    tieneVariosValores = true;
+  }
   if (cursor.coincideTexto('->')) {
     cursor.avanzar();
     const fin = consumirCuerpoDeFlecha(cursor);
@@ -610,6 +717,14 @@ function analizarEtiquetaCase(cursor: CursorDeTokens): NodoEtiquetaCase | NodoNo
     };
   }
   const fin = cursor.esperarTexto(':').rango.fin;
+  if (tieneVariosValores) {
+    return {
+      tipo: 'no-soportado',
+      codigo: CODIGOS_NO_SOPORTADO.caseConVariasEtiquetas,
+      datos: {},
+      rango: { inicio: inicioToken.rango.inicio, fin },
+    };
+  }
   return { tipo: 'etiqueta-case', valor, rango: { inicio: inicioToken.rango.inicio, fin } };
 }
 
@@ -711,6 +826,26 @@ function analizarTry(cursor: CursorDeTokens): NodoNoSoportado {
 function analizarThrow(cursor: CursorDeTokens): NodoNoSoportado {
   const inicioToken = cursor.esperarTexto('throw');
   return consumirRestoDeSentenciaNoSoportada(cursor, inicioToken.rango.inicio, CODIGOS_NO_SOPORTADO.throwSentencia, {});
+}
+
+// Tarea 1.29: `assert cond;` / `assert cond : mensaje;` — se delimita hasta su «;» de nivel superior (el mensaje puede traer
+// paréntesis, llaves o un «;» dentro de una cadena, que el léxico ya entrega como un solo token).
+function analizarAssert(cursor: CursorDeTokens): NodoNoSoportado {
+  const inicioToken = cursor.esperarTexto('assert');
+  if (cursor.coincideTexto(';')) {
+    throw new ErrorDeCompilacion('se esperaba una condición tras "assert"', cursor.actual().rango);
+  }
+  return consumirRestoDeSentenciaNoSoportada(cursor, inicioToken.rango.inicio, CODIGOS_NO_SOPORTADO.assert, {});
+}
+
+// Tarea 1.29: `synchronized (obj) { … }` — se delimitan los paréntesis y el bloque; lo de dentro no se interpreta.
+function analizarSincronizado(cursor: CursorDeTokens): NodoNoSoportado {
+  const inicioToken = cursor.avanzar(); // "synchronized"
+  cursor.esperarTexto('(');
+  saltarHastaCerrar(cursor, '(', ')');
+  cursor.esperarTexto('{');
+  const cierre = saltarHastaCerrar(cursor, '{', '}');
+  return { tipo: 'no-soportado', codigo: CODIGOS_NO_SOPORTADO.sincronizado, datos: {}, rango: { inicio: inicioToken.rango.inicio, fin: cierre.rango.fin } };
 }
 
 // "Id ':' Sentencia" (tarea 1.6, REQ-SUB-007): la etiqueta en sí es NO-DISP, pero delimita su

@@ -18,7 +18,7 @@
 // `double` (nunca al revés), así que `round(float)` es más específico. Se reusa igual en las 3
 // fases (el "candidato más específico" no depende de CUÁL conversión lo hizo aplicable).
 import { buscarFirmas } from './catalogo-api.ts';
-import { esConvertiblePorEnsanchamiento, esConvertiblePorInvocacionLaxa } from './conversiones.ts';
+import { esConvertiblePorEnsanchamiento, esConvertiblePorInvocacionLaxa, esSubtipoDeReferencia } from './conversiones.ts';
 import type { ArgumentoDeSobrecarga } from './tipos.ts';
 import type { FirmaMiembro } from '../biblioteca/datos/firmas-jdk.generado.ts';
 
@@ -34,7 +34,9 @@ function unParametroEnsanchaAOtro(paramA: string, paramB: string): boolean {
     float: ['double'],
   };
   if (paramA in PRIMITIVOS_REFLEJADOS) return PRIMITIVOS_REFLEJADOS[paramA]!.includes(paramB);
-  return paramA === 'java.lang.String' && paramB === 'java.lang.Object';
+  // Entre parámetros de REFERENCIA, "más específico" es subtipo (JLS 15.12.2.5) — la misma relación
+  // real que el ensanchamiento de `conversiones.ts` (tarea 1.29: antes solo `String -> Object`).
+  return esSubtipoDeReferencia(paramA, paramB);
 }
 
 /** `true` si `candidato` es aplicable a los parámetros de CUALQUIER otro miembro de `todos`

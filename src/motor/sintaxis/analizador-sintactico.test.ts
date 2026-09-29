@@ -397,3 +397,74 @@ describe('consumirModificadores — modificador repetido (JLS 8.3/8.4.3, sub-lot
     ).not.toThrow();
   });
 });
+
+// Tarea 1.29 (causa 11, hallada al comparar programas típicos con javac 17; design.md §2.3: «Tipo = … |
+// NombreDeTipo (* String, Scanner, Random, calificados o no *)»): `java.util.Scanner sc = new
+// java.util.Scanner(System.in);` es Java válido —el nombre completo, sin `import`— y el analizador solo
+// reconocía el nombre de UN token: la declaración no se detectaba («esta expresión no es una sentencia
+// válida») y `new java.util.Scanner` esperaba «(» tras «java». El tipo se guarda tal como se escribió
+// (`java.util.Scanner`); qué es lo decide la atribución.
+describe('analizarPrograma — nombres de tipo calificados con su paquete (tarea 1.29)', () => {
+  const cuerpo = (sentencias: string) => analizar(`class C { public static void main(String[] a) { ${sentencias} } }`).clase.main!.cuerpo.elementos;
+
+  it('"java.util.Scanner sc = new java.util.Scanner(System.in);" es una declaración cuyo tipo (y el del new) es el nombre completo', () => {
+    const [declaracion] = cuerpo('java.util.Scanner sc = new java.util.Scanner(System.in);');
+    expect(declaracion).toMatchObject({
+      tipo: 'declaracion-local',
+      nombreTipo: 'java.util.Scanner',
+      declaradores: [{ nombre: 'sc', inicializador: { tipo: 'nueva-instancia', nombreTipo: 'java.util.Scanner' } }],
+    });
+  });
+
+  it('un tipo calificado también abre una declaración con "final" y con varios declaradores', () => {
+    expect(cuerpo('final java.lang.String s = "a", t = "b";')[0]).toMatchObject({
+      tipo: 'declaracion-local',
+      esFinal: true,
+      nombreTipo: 'java.lang.String',
+    });
+  });
+
+  it('con corchetes o genéricos sigue siendo el aviso que corresponde ("java.util.Scanner[] xs;" arreglo, "java.util.List<String> l;" genérico)', () => {
+    expect(cuerpo('java.util.Scanner[] xs;')[0]).toMatchObject({
+      tipo: 'no-soportado',
+      codigo: 'arreglo-no-soportado',
+      datos: { tipoArreglo: 'java.util.Scanner[]' },
+    });
+    expect(cuerpo('java.util.List<String> l;')[0]).toMatchObject({ tipo: 'no-soportado', codigo: 'generico-no-soportado' });
+  });
+
+  it('una llamada con el nombre completo NO es una declaración: "java.util.Arrays.sort(a);" es una sentencia de expresión', () => {
+    expect(cuerpo('java.util.Arrays.sort(a);')[0]).toMatchObject({ tipo: 'sentencia-expresion', expresion: { tipo: 'llamada' } });
+  });
+
+  it('triangulación: una asignación a un campo ("a.b = 5;") ni un acceso suelto se confunden con un tipo calificado', () => {
+    expect(cuerpo('a.b = 5;')[0]).toMatchObject({ tipo: 'sentencia-expresion', expresion: { tipo: 'asignacion' } });
+  });
+
+  it('el punto sin identificador detrás sigue siendo un error de sintaxis real: "java.util. sc;"', () => {
+    expect(() => cuerpo('java.util. sc;')).toThrow(ErrorDeCompilacion);
+  });
+});
+
+// Tarea 1.29 (causa 12): el diseño (§2.3) escribe `Clase = { "public" | "final" } "class"` y el código solo
+// aceptaba «public» — `public final class Main { … }` daba «se esperaba "class" y se encontró "final"».
+// `abstract` también es válido en una clase con `main` estático (verificado con javac 17): no cambia nada de
+// lo que se ejecuta. `final` y `abstract` juntos sí es un error de javac («illegal combination of modifiers»).
+describe('analizarPrograma — modificadores de la clase (tarea 1.29)', () => {
+  const clase = (cabecera: string) => analizar(`${cabecera} class C { public static void main(String[] a) { } }`).clase;
+
+  it.each(['final', 'public final', 'final public', 'abstract', 'public abstract', 'public strictfp', 'public final strictfp'])(
+    '"%s class" se acepta y main se sigue reconociendo',
+    (modificadores) => {
+      expect(clase(modificadores).main).not.toBeNull();
+    },
+  );
+
+  it('"final abstract class" es un error real de javac (combinación ilegal), no se acepta en silencio', () => {
+    expect(() => clase('final abstract')).toThrow(ErrorDeCompilacion);
+  });
+
+  it('un modificador repetido sigue siendo el error de siempre ("public public class")', () => {
+    expect(() => clase('public public')).toThrow(/dos veces/);
+  });
+});

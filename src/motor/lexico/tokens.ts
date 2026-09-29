@@ -95,6 +95,8 @@ export const PALABRAS_CLAVE: ReadonlySet<string> = new Set([
   'float',
   'byte',
   'short',
+  // Tarea 1.29: `assert` es palabra reservada desde Java 1.4 (`assert x > 0;` es una sentencia, nunca «identificador identificador»).
+  'assert',
 ]);
 
 // Tipos primitivos válidos al inicio de una DeclLocal (design.md §2.3 "Tipo"); `String` no está
@@ -110,6 +112,9 @@ export const PALABRAS_CLAVE_TIPO_PRIMITIVO: ReadonlySet<string> = new Set([
 export const PUNTUACION: ReadonlySet<string> = new Set([
   '{', '}', '(', ')', '[', ']', ';', '.', ',',
   '+', '-', '*', '/', '%', '=', '<', '>', '!', '&', '|', '^', '~', '?', ':',
+  // Tarea 1.29: la arroba de las anotaciones (`@Override`, `@SuppressWarnings("resource")`); qué anotación es
+  // lo decide `sintaxis/no-soportado.ts` (`consumirAnotaciones`).
+  '@',
 ]);
 
 // Operadores de más de un carácter (design.md §2.4), del MÁS largo al más corto para que el lexer

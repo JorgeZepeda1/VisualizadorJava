@@ -265,7 +265,8 @@ export interface NumeroLeido {
   readonly noSoportado?: NoSoportadoLexico;
 }
 
-/** Lee un literal numérico que empieza en `inicio` (apuntando a su primer dígito). */
+/** Lee un literal numérico que empieza en `inicio` (apuntando a su primer dígito, o al punto de un
+ * literal como `.5`, que `tokenizar` solo entrega aquí si un dígito lo sigue). */
 export function leerNumero(fuente: string, inicio: number): NumeroLeido {
   if (fuente[inicio] === '0' && (fuente[inicio + 1] === 'x' || fuente[inicio + 1] === 'X')) {
     return leerBaseNoSoportada(fuente, inicio, DIGITO_HEX, CODIGOS_NO_SOPORTADO.literalHexadecimal, 'hexadecimales (base 16)');
@@ -279,7 +280,10 @@ export function leerNumero(fuente: string, inicio: number): NumeroLeido {
     cursor += 1;
   }
 
-  const parecePuntoDecimal = fuente[cursor] === '.' && DIGITO_DECIMAL.test(fuente[cursor + 1] ?? '');
+  // Tarea 1.29 (JLS 3.10.2): un punto tras los dígitos SIEMPRE abre la parte fraccionaria — «5.» (sin
+  // dígitos detrás), «5.e2» y «5.d» son literales `double`, y un literal puede empezar con el punto
+  // («.5»). Antes se exigía un dígito después del punto y «.5»/«5.» eran errores de javac inventados.
+  const parecePuntoDecimal = fuente[cursor] === '.';
 
   // JLS 3.10.1: "0" seguido de otro dígito decimal (sin punto) es SIEMPRE un intento de literal
   // OCTAL — nunca decimal — incluso si trae dígitos 8/9 inválidos en base 8. Corrección obligatoria

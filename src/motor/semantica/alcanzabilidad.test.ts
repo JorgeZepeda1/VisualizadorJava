@@ -219,3 +219,72 @@ describe('verificarAlcanzabilidad — "switch" (JLS 14.22, corrección sub-lote 
     expect(problemas[0]).toMatchObject({ codigo: 'sentencia-inalcanzable' });
   });
 });
+
+// Tarea 1.29 (causa 14, hallada por el fuzzer diferencial de sentencias contra javac 17, 73 falsos aceptos en 18 000
+// programas): dos reglas de JLS 14.22 que el modelo no cumplía. (1) El CUERPO de un `while`/`for` con condición constante
+// `false` es una sentencia inalcanzable en sí misma — javac la señala en el cuerpo (la «{» de un bloque), aunque el bloque
+// esté vacío; el modelo solo miraba las sentencias DENTRO del cuerpo, así que `while (false) { }` pasaba. (2) Un `do-while`
+// completa normalmente sii (su cuerpo completa normalmente O tiene un `continue` alcanzable que lo apunta) Y la condición no es
+// la constante `true`, O tiene un `break` que lo cierra; el modelo solo miraba la condición, y decía que un `do` cuyo cuerpo
+// no termina nunca (`do { return; } while (c);`, un bucle infinito dentro) completaba, dejando sin error lo que sigue. Cada
+// fuente se compiló con javac 17 real (veredicto en el título de cada caso).
+describe('verificarAlcanzabilidad — cuerpo de while/for con condición `false` y cuándo completa un do-while (JLS 14.22, tarea 1.29)', () => {
+  const alCompilarConJavac: ReadonlyArray<readonly [string, string]> = [
+    ['do { } while (false) SÍ ejecuta su cuerpo: es alcanzable',
+     'do { } while (false);'],
+    ['un continue alcanzable hace que la condición sea alcanzable',
+     'int n = 1; do { if (n > 5) continue; return; } while (n > 0); System.out.println(n);'],
+    ['un break alcanzable hace que el do complete',
+     'int n = 1; do { if (n > 5) break; return; } while (n > 0); System.out.println(n);'],
+    ['un continue dentro de un switch sigue siendo del do',
+     'int n = 1; do { switch (n) { case 0: continue; default: return; } } while (n > 0); System.out.println(n);'],
+    ['el caso normal sigue igual',
+     'int n = 1; do { n++; } while (n < 5); System.out.println(n);'],
+    ['do { break; } while (true); es alcanzable después',
+     'do { break; } while (true); System.out.println(1);'],
+    ['do { break; } while (n > 0): el break sale',
+     'int n = 1; do { break; } while (n > 0); System.out.println(n);'],
+    ['do { continue; } while (n > 0): el continue lleva a la condición',
+     'int n = 1; do { continue; } while (n > 0); System.out.println(n);'],
+  ];
+
+  it.each(alCompilarConJavac)('javac 17 lo COMPILA: %s', (_descripcion, cuerpo) => {
+    expect(alcanzabilidadDeCuerpo(cuerpo)).toEqual([]);
+  });
+
+  const alRechazarConJavac: ReadonlyArray<readonly [string, string]> = [
+    ['el cuerpo de while (false) es inalcanzable aunque sea un bloque vacío',
+     'while (false) { }'],
+    ['el cuerpo de while (false) es inalcanzable aunque sea UNA sentencia',
+     'int x = 0; while (false) x++;'],
+    ['el cuerpo de for con condición false es inalcanzable aunque esté vacío',
+     'for (int i = 0; false; i++) { }'],
+    ['una condición constante compuesta que vale false',
+     'while (\'\\n\' == \'x\') { }'],
+    ['while (false) dentro de otro bucle',
+     'for (int i = 0; i < 3; i++) { while (false) { } }'],
+    ['do { return; } while (n > 0); y luego una sentencia',
+     'int n = 1; do { return; } while (n > 0); System.out.println(n);'],
+    ['el cuerpo es un bucle infinito: el do no completa',
+     'int n = 1; do { while (true) { } } while (n > 0); System.out.println(n);'],
+    ['do { do { } while (true); } while (false);',
+     'do { do { } while (true); } while (false); System.out.println(1);'],
+    ['con condición true el do nunca completa aunque haya continue',
+     'do { continue; } while (true); System.out.println(1);'],
+    ['el continue del for interior no es del do: el do no completa',
+     'int n = 1; do { for (;;) { if (n > 0) continue; } } while (n > 0); System.out.println(n);'],
+  ];
+
+  it.each(alRechazarConJavac)('javac 17 lo RECHAZA («unreachable statement»): %s', (_descripcion, cuerpo) => {
+    const problemas = alcanzabilidadDeCuerpo(cuerpo);
+    expect(problemas.length).toBeGreaterThanOrEqual(1);
+    expect(problemas[0]).toMatchObject({ codigo: 'sentencia-inalcanzable' });
+  });
+
+  it('el aviso del cuerpo inalcanzable de while (false) señala el cuerpo mismo, en la línea de su «{» (como javac)', () => {
+    const fuente = 'class C { public static void main(String[] a) {\n  while (false) {\n    System.out.println(1);\n  }\n} }';
+    const problemas = verificarAlcanzabilidad(analizarPrograma(tokenizar(fuente)));
+    expect(problemas).toHaveLength(1);
+    expect(fuente.slice(problemas[0]!.rango.inicio, problemas[0]!.rango.inicio + 1)).toBe('{');
+  });
+});

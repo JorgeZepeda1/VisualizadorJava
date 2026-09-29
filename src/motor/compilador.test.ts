@@ -749,3 +749,120 @@ describe('compilar — un miembro de biblioteca real-pero-no-soportado es "no-di
     expect(resultado.problema.codigo).toBe('variable-no-declarada');
   });
 });
+
+// Tarea 1.29 (agregada por el orquestador, D2/regla 5 de CLAUDE.md): a través de `compilar()`
+// completo — lo que de verdad ve un alumno — una clase que EXISTE en Java (design.md §2.3: «clase
+// existente no soportada → NO-DISP; inexistente → error») es un aviso «No disponible», nunca «No
+// reconozco… revisa que esté bien escrito». Cada fuente se compiló con javac 17 real: las de
+// `import` real compilan; las de nombre mal escrito no.
+describe('compilar — una clase real fuera del subconjunto es "no-disponible", una inexistente sigue siendo error (tarea 1.29)', () => {
+  const conImport = (importacion: string): string =>
+    `${importacion}\npublic class C {\n  public static void main(String[] a) {\n    System.out.println("hola");\n  }\n}\n`;
+
+  it.each([
+    ['import java.util.Locale;', 'java.util.Locale'],
+    ['import javax.swing.JOptionPane;', 'javax.swing.JOptionPane'],
+    ['import java.text.DecimalFormat;', 'java.text.DecimalFormat'],
+    ['import java.math.BigDecimal;', 'java.math.BigDecimal'],
+  ])('"%s" → no-disponible/clase-no-soportada, en la línea del import, con el nombre completo', (importacion, nombre) => {
+    const resultado = compilar(conImport(importacion));
+    expect(resultado.ok).toBe(false);
+    if (resultado.ok) throw new Error('se esperaba ok:false');
+    expect(resultado.problema).toMatchObject({ categoria: 'no-disponible', codigo: 'clase-no-soportada', linea: 1, datos: { nombre } });
+  });
+
+  it.each(['import java.util.Scaner;', 'import javax.swing.JOptionPan;', 'import java.util.Locale2;'])(
+    'triangulación negativa: "%s" (no existe) sigue siendo error-compilacion/importacion-no-reconocida',
+    (importacion) => {
+      const resultado = compilar(conImport(importacion));
+      expect(resultado.ok).toBe(false);
+      if (resultado.ok) throw new Error('se esperaba ok:false');
+      expect(resultado.problema).toMatchObject({ categoria: 'error-compilacion', codigo: 'importacion-no-reconocida', linea: 1 });
+    },
+  );
+
+  it('una clase de java.lang usada sin import (StringBuilder) avisa en la línea de su declaración, no «no reconozco el tipo»', () => {
+    const resultado = compilar(
+      'public class C {\n  public static void main(String[] a) {\n    StringBuilder sb = new StringBuilder();\n  }\n}\n',
+    );
+    expect(resultado.ok).toBe(false);
+    if (resultado.ok) throw new Error('se esperaba ok:false');
+    expect(resultado.problema).toMatchObject({ categoria: 'no-disponible', codigo: 'clase-no-soportada', linea: 3, datos: { nombre: 'StringBuilder' } });
+  });
+});
+
+// Tarea 1.29 (causa 3): las dos fuentes REALES de `corpus/experimentos/numeros` que javac compila y que
+// `compilar()` rechazaba con «se esperaba una expresión y se encontró "byte"» — a través del compilador
+// completo, un cast a un primitivo fuera del subconjunto avisa en SU línea (nunca un resultado inventado).
+describe('compilar — un cast a byte/short/float es "no-disponible", nunca "error-compilacion" (tarea 1.29)', () => {
+  it.each(['byte', 'short', 'float'])('"(%s)" en la línea 3 → no-disponible/tipo-primitivo-no-soportado, línea 3', (tipo) => {
+    const resultado = compilar(
+      `public class C {\n  public static void main(String[] a) {\n    int x = (${tipo}) 200;\n  }\n}\n`,
+    );
+    expect(resultado.ok).toBe(false);
+    if (resultado.ok) throw new Error('se esperaba ok:false');
+    expect(resultado.problema).toMatchObject({ categoria: 'no-disponible', codigo: 'tipo-primitivo-no-soportado', linea: 3 });
+  });
+});
+
+// Tarea 1.29 (causa 5): las formas de `case` con varios valores que javac 17 compila — a través de
+// `compilar()` completo son avisos en la línea del `case`, nunca «se esperaba ":" y se encontró ","».
+describe('compilar — varios valores en un case es "no-disponible", nunca "error-compilacion" (tarea 1.29)', () => {
+  const conSwitch = (etiqueta: string): string =>
+    `public class C {\n  public static void main(String[] a) {\n    int x = 2;\n    switch (x) {\n      ${etiqueta}\n        x = 0;\n    }\n  }\n}\n`;
+
+  it.each([
+    ['case 1, 2:', 'case-con-varias-etiquetas-no-soportado'],
+    ['case 3, 4, 5:', 'case-con-varias-etiquetas-no-soportado'],
+    ['case 1, 2 ->', 'switch-flecha-no-soportado'],
+  ])('"%s" en la línea 5 → no-disponible/%s', (etiqueta, codigo) => {
+    const resultado = compilar(conSwitch(etiqueta));
+    expect(resultado.ok).toBe(false);
+    if (resultado.ok) throw new Error('se esperaba ok:false');
+    expect(resultado.problema).toMatchObject({ categoria: 'no-disponible', codigo, linea: 5 });
+  });
+});
+
+// Tarea 1.29 (causa 10): las anotaciones que javac 17 compila — a través de `compilar()` completo son un
+// aviso en la línea de la anotación, nunca «carácter no reconocido: "@"».
+describe('compilar — una anotación es "no-disponible", nunca "error-compilacion" (tarea 1.29)', () => {
+  it.each([
+    ['sobre main', '@SuppressWarnings("unused")\npublic class C {\n  public static void main(String[] a) { }\n}\n', 1],
+    ['sobre main (en la línea de main)', 'public class C {\n  @SuppressWarnings("unused")\n  public static void main(String[] a) { }\n}\n', 2],
+    ['sobre una declaración local', 'public class C {\n  public static void main(String[] a) {\n    @SuppressWarnings("unused") int x = 1;\n  }\n}\n', 3],
+  ])('%s → no-disponible/anotacion-no-soportada, con su línea', (_descripcion, fuente, linea) => {
+    const resultado = compilar(fuente);
+    expect(resultado.ok).toBe(false);
+    if (resultado.ok) throw new Error('se esperaba ok:false');
+    expect(resultado.problema).toMatchObject({ categoria: 'no-disponible', codigo: 'anotacion-no-soportada', linea });
+  });
+});
+
+// Tarea 1.29 (causas 11 y 12; REQ-SUB-007: «métodos propios, recursión, clases/campos/objetos propios» y «arreglos»
+// → aviso): los constructores, los miembros con arreglos o genéricos, la herencia y los tipos declarados antes de la
+// clase con `main` los compila javac 17 — a través de `compilar()` completo son un aviso en la línea del miembro, de
+// la cabecera o del tipo, nunca un `error-compilacion`.
+describe('compilar — miembros propios, herencia y tipos antes de la clase son "no-disponible", nunca "error-compilacion" (tarea 1.29)', () => {
+  it.each([
+    ['un constructor', 'public class C {\n  C(int x) { }\n  public static void main(String[] a) { }\n}\n', 'miembro-de-clase-no-soportado', 2],
+    ['un método que devuelve un arreglo', 'public class C {\n  static int[] crear(int n) { return new int[n]; }\n  public static void main(String[] a) { }\n}\n', 'miembro-de-clase-no-soportado', 2],
+    ['dos campos en una declaración', 'public class C {\n  static int a, b;\n  public static void main(String[] a) { }\n}\n', 'miembro-de-clase-no-soportado', 2],
+    ['un campo genérico', 'public class C {\n  static java.util.List<String> nombres;\n  public static void main(String[] a) { }\n}\n', 'miembro-de-clase-no-soportado', 2],
+    ['un método genérico', 'public class C {\n  static <T> T primero(T a) { return a; }\n  public static void main(String[] a) { }\n}\n', 'miembro-de-clase-no-soportado', 2],
+    ['una clase que hereda', 'public class C extends Thread {\n  public static void main(String[] a) { }\n}\n', 'herencia-no-soportada', 1],
+    ['una clase que implementa una interfaz', 'public class C implements Runnable {\n  public void run() { }\n  public static void main(String[] a) { }\n}\n', 'herencia-no-soportada', 1],
+    ['una clase genérica', 'public class C<T> {\n  public static void main(String[] a) { }\n}\n', 'generico-no-soportado', 1],
+    ['un enum antes de la clase', 'enum Dia { LUNES }\npublic class C {\n  public static void main(String[] a) { }\n}\n', 'otro-tipo-de-nivel-superior-no-soportado', 1],
+    ['una interfaz antes de la clase (línea 3)', '\n\ninterface F { }\npublic class C {\n  public static void main(String[] a) { }\n}\n', 'otro-tipo-de-nivel-superior-no-soportado', 3],
+    ['un archivo con solo una interfaz', 'interface I { void f(); }\n', 'otro-tipo-de-nivel-superior-no-soportado', 1],
+    ['un assert', 'public class C {\n  public static void main(String[] a) {\n    int x = 1;\n    assert x > 0 : "positivo";\n  }\n}\n', 'assert-no-soportado', 4],
+    ['una clase local', 'public class C {\n  public static void main(String[] a) {\n    class Local { }\n  }\n}\n', 'clase-local-no-soportada', 3],
+    ['un bloque synchronized', 'public class C {\n  public static void main(String[] a) {\n    synchronized (C.class) { }\n  }\n}\n', 'sincronizado-no-soportado', 3],
+    ['un genérico con comodín', 'public class C {\n  public static void main(String[] a) {\n    Class<?> c = null;\n  }\n}\n', 'generico-no-soportado', 3],
+  ])('%s → no-disponible/%s en la línea %d', (_descripcion, fuente, codigo, linea) => {
+    const resultado = compilar(fuente);
+    expect(resultado.ok).toBe(false);
+    if (resultado.ok) throw new Error('se esperaba ok:false');
+    expect(resultado.problema).toMatchObject({ categoria: 'no-disponible', codigo, linea });
+  });
+});

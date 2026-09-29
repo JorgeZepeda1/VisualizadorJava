@@ -78,3 +78,55 @@ describe('Alcance — salirBloque cierra el alcance: la variable deja de encontr
     expect(resultado.ok).toBe(true);
   });
 });
+
+// Tarea 1.29: la asignación definida (JLS 16.1.1) necesita el estado «vacuo» de una rama que nunca ocurre — todas las
+// variables YA declaradas en ese punto, ni una más —, y para armarlo pide a `Alcance` los nombres de todo lo visible.
+describe('Alcance — nombresVisibles (tarea 1.29)', () => {
+  it('sin ningún bloque abierto, o con uno vacío, no hay nombres', () => {
+    const alcance = new Alcance();
+    expect(alcance.nombresVisibles()).toEqual([]);
+    alcance.entrarBloque();
+    expect(alcance.nombresVisibles()).toEqual([]);
+  });
+
+  it('reúne los nombres de TODOS los bloques abiertos y olvida los del bloque que se cierra', () => {
+    const alcance = new Alcance();
+    alcance.entrarBloque();
+    alcance.declarar({ nombre: 'a', tipo: 'int', esFinal: false, rango: R(0, 1) });
+    alcance.entrarBloque();
+    alcance.declarar({ nombre: 'b', tipo: 'int', esFinal: false, rango: R(2, 3) });
+    expect([...alcance.nombresVisibles()].sort()).toEqual(['a', 'b']);
+    alcance.salirBloque();
+    expect(alcance.nombresVisibles()).toEqual(['a']);
+  });
+
+  it('una declaración rechazada por duplicada no agrega nada', () => {
+    const alcance = new Alcance();
+    alcance.entrarBloque();
+    alcance.declarar({ nombre: 'a', tipo: 'int', esFinal: false, rango: R(0, 1) });
+    alcance.declarar({ nombre: 'a', tipo: 'long', esFinal: false, rango: R(2, 3) });
+    expect(alcance.nombresVisibles()).toEqual(['a']);
+  });
+});
+
+// Tarea 1.29: al cerrarse un alcance, sus variables MUEREN — la asignación definida las olvida (si no, la `x` de un `for` ya
+// cerrado se confundiría con otra `x` declarada después). Para eso `salirBloque` entrega los nombres que se llevó.
+describe('Alcance — salirBloque devuelve los nombres del bloque que cierra (tarea 1.29)', () => {
+  it('devuelve SOLO los nombres del bloque más interno; los del exterior siguen visibles', () => {
+    const alcance = new Alcance();
+    alcance.entrarBloque();
+    alcance.declarar({ nombre: 'a', tipo: 'int', esFinal: false, rango: R(0, 1) });
+    alcance.entrarBloque();
+    alcance.declarar({ nombre: 'b', tipo: 'int', esFinal: false, rango: R(2, 3) });
+    alcance.declarar({ nombre: 'c', tipo: 'int', esFinal: false, rango: R(4, 5) });
+    expect([...alcance.salirBloque()].sort()).toEqual(['b', 'c']);
+    expect(alcance.buscar('a')).not.toBeNull();
+    expect(alcance.buscar('b')).toBeNull();
+  });
+
+  it('un bloque vacío devuelve una lista vacía', () => {
+    const alcance = new Alcance();
+    alcance.entrarBloque();
+    expect(alcance.salirBloque()).toEqual([]);
+  });
+});

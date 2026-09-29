@@ -17,8 +17,8 @@
 import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { spawn } from 'node:child_process';
-import { type InfoJdk, localizarJdk, verificarVersionJdk } from './jdk.ts';
+import { compilarEnLote } from './compilar-en-lote.ts';
+import { localizarJdk, verificarVersionJdk } from './jdk.ts';
 
 const AQUI = dirname(fileURLToPath(import.meta.url));
 const RAIZ_PROYECTO = resolve(AQUI, '..', '..');
@@ -504,76 +504,6 @@ export function generarTodosLosMutantes(raizProyecto: string = RAIZ_PROYECTO): M
     mutantes.push(...generarMutantesDePrograma(programa.fuente, programa.nombre, objetivoPorPrograma, SEMILLA_BASE + indice));
   });
   return mutantes;
-}
-
-/** Ejecuta `CompiladorEnLote.java` UNA sola vez (una JVM) contra TODOS los `mutantes`, vía el
- * protocolo de texto de la cabecera del archivo Java (stdin: "id\tbase64(fuente)" por línea;
- * stdout: "id\tcompila\tlinea\tcodigoJavac" por línea). */
-interface RespuestaJava {
-  readonly compila: boolean;
-  readonly linea: number;
-  readonly codigoJavac: string;
-  readonly mensajeJavac: string;
-}
-
-/** Inverso de `CompiladorEnLote.java:escaparParaUnaLinea` -- ver su javadoc. */
-function desescaparUnaLinea(texto: string): string {
-  return texto.replace(/\\n/g, '\n').replace(/\\t/g, '\t').replace(/\\r/g, '\r').replace(/\\\\/g, '\\');
-}
-
-function compilarEnLote(jdk: InfoJdk, mutantes: readonly Mutante[]): Promise<Map<string, RespuestaJava>> {
-  return new Promise((resolverPromesa, rechazarPromesa) => {
-    const rutaJava = resolve(AQUI, 'java', 'CompiladorEnLote.java');
-    const proceso = spawn(jdk.rutaJava, [rutaJava], { stdio: ['pipe', 'pipe', 'pipe'] });
-
-    let salidaAcumulada = '';
-    let errorAcumulado = '';
-    // Generoso: miles de compilaciones reales en una sola JVM (ver el informe de la sesión para
-    // el tiempo medido real) -- nunca el límite de 5s de `ejecutar.ts` (pensado para UN programa).
-    const limiteMs = 10 * 60 * 1000;
-    const temporizador = setTimeout(() => {
-      proceso.kill('SIGKILL');
-      rechazarPromesa(new Error(`CompiladorEnLote.java no terminó en ${limiteMs} ms (¿colgado?) -- salida parcial:\n${salidaAcumulada.slice(-2000)}`));
-    }, limiteMs);
-
-    proceso.stdout.on('data', (fragmento: Buffer) => {
-      salidaAcumulada += fragmento.toString('utf-8');
-    });
-    proceso.stderr.on('data', (fragmento: Buffer) => {
-      errorAcumulado += fragmento.toString('utf-8');
-    });
-
-    proceso.on('close', (codigo) => {
-      clearTimeout(temporizador);
-      if (codigo !== 0) {
-        rechazarPromesa(new Error(`CompiladorEnLote.java terminó con código ${codigo}. stderr:\n${errorAcumulado}`));
-        return;
-      }
-      const resultados = new Map<string, RespuestaJava>();
-      for (const linea of salidaAcumulada.split('\n')) {
-        if (linea.trim() === '') continue;
-        const [id, compilaTexto, lineaTexto, codigoJavac, mensajeEscapado] = linea.split('\t');
-        if (id === undefined || compilaTexto === undefined || lineaTexto === undefined) continue;
-        resultados.set(id, {
-          compila: compilaTexto === 'true',
-          linea: Number(lineaTexto),
-          codigoJavac: codigoJavac ?? '',
-          mensajeJavac: mensajeEscapado !== undefined ? desescaparUnaLinea(mensajeEscapado) : '',
-        });
-      }
-      resolverPromesa(resultados);
-    });
-
-    proceso.on('error', (error) => {
-      clearTimeout(temporizador);
-      rechazarPromesa(error);
-    });
-
-    // Manifiesto completo -- UNA escritura, cerramos stdin para que el bucle `readLine` del lado
-    // Java termine en EOF real (mismo patrón que `ejecutar.ts`: nunca deja el hijo esperando).
-    const manifiesto = mutantes.map((m) => `${m.id}\t${Buffer.from(m.fuente, 'utf-8').toString('base64')}`).join('\n');
-    proceso.stdin.end(`${manifiesto}\n`, 'utf-8');
-  });
 }
 
 /** Genera TODOS los mutantes de `corpus/curso/`, los compila en una sola JVM y escribe

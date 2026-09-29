@@ -16,9 +16,13 @@
 //   ramas son alcanzables si el `if` lo es (misma exención que arriba, nunca se usa la condición).
 // - `while`/`do-while`/`for`: el cuerpo es alcanzable sii el ciclo es alcanzable Y la condición NO
 //   es la constante `false` (`do-while` siempre alcanza su cuerpo: corre al menos una vez,
-//   IGNORANDO la condición para esto). El ciclo completa normalmente sii NO tiene una condición
-//   constante `true` (un `for` SIN condición cuenta como `true`, JLS 14.21) O tiene un `break`
-//   alcanzable que lo cierra (`contieneBreakQueSaleDelCiclo`, JLS 14.21).
+//   IGNORANDO la condición para esto). Un cuerpo inalcanzable se reporta EL CUERPO MISMO (la «{» de un
+//   bloque, aunque esté vacío), como javac (tarea 1.29). `while`/`for` completan normalmente sii NO
+//   tienen una condición constante `true` (un `for` SIN condición cuenta como `true`, JLS 14.21) O
+//   tienen un `break` alcanzable que los cierra (`contieneBreakQueSaleDelCiclo`, JLS 14.21). Un
+//   `do-while` completa normalmente sii (su cuerpo completa normalmente O tiene un `continue` que lo
+//   apunta) Y la condición NO es la constante `true`, O tiene un `break` que lo cierra (JLS 14.22,
+//   tarea 1.29).
 // - `switch`: fuera de alcance a propósito (D2, conservador — ver la nota en `visitarSentencia`).
 // - bloque: cada elemento es alcanzable sii el anterior completa normalmente (el primero, sii el
 //   bloque en sí lo es); el bloque completa normalmente sii su ÚLTIMO elemento procesado completa
@@ -220,9 +224,33 @@ function visitarCiclo(
   // "do-while" SIEMPRE ejecuta su cuerpo al menos una vez (JLS 14.22.2) — ignora la condición para
   // esto, a diferencia de "while"/"for" (JLS 14.22.1/.4).
   const cuerpoAlcanzable = esDoWhile ? alcanzable : alcanzable && !condicionFalsa;
-  visitarSentencia(cuerpo, alcance, cuerpoAlcanzable, problemas);
+  const cuerpoCompleta = visitarCuerpoDeCiclo(cuerpo, alcanzable, cuerpoAlcanzable, alcance, problemas);
   const tieneBreakQueSale = contieneBreakQueSaleDelCiclo(cuerpo);
+  if (esDoWhile) {
+    // JLS 14.22.2: la condición del do-while solo se alcanza si el cuerpo completa normalmente o hay un `continue` que la
+    // apunta; con la condición constante `true` el ciclo no termina por ella, solo por un `break`.
+    const alcanzaLaCondicion = cuerpoCompleta || contieneContinueQueApuntaAlCiclo(cuerpo);
+    return alcanzable && ((alcanzaLaCondicion && !condicionVerdadera) || tieneBreakQueSale);
+  }
   return alcanzable && (!condicionVerdadera || tieneBreakQueSale);
+}
+
+/** Tarea 1.29 (JLS 14.22.1/.4): el cuerpo de un `while`/`for` con condición constante `false` es una sentencia INALCANZABLE en
+ * sí misma — javac la señala a ella (la «{» de un bloque, aunque esté vacío; antes solo se miraban las sentencias DENTRO del
+ * bloque, así que `while (false) { }` pasaba) y sigue analizando su interior como vivo, sin cascadas (modo de recuperación).
+ * Devuelve si el cuerpo completa normalmente. */
+function visitarCuerpoDeCiclo(
+  cuerpo: NodoSentencia,
+  cicloAlcanzable: boolean,
+  cuerpoAlcanzable: boolean,
+  alcance: Alcance,
+  problemas: ProblemaAtribucion[],
+): boolean {
+  if (cicloAlcanzable && !cuerpoAlcanzable) {
+    problemas.push({ codigo: 'sentencia-inalcanzable', rango: cuerpo.rango, datos: {} });
+    return visitarSentencia(cuerpo, alcance, true, problemas);
+  }
+  return visitarSentencia(cuerpo, alcance, cuerpoAlcanzable, problemas);
 }
 
 function visitarFor(sentencia: NodoFor, alcance: Alcance, alcanzable: boolean, problemas: ProblemaAtribucion[]): boolean {
@@ -236,7 +264,7 @@ function visitarFor(sentencia: NodoFor, alcance: Alcance, alcanzable: boolean, p
   const condicionFalsa = condicion !== null && esCondicionConstante(condicion, alcance, false);
   const condicionVerdadera = condicion === null || esCondicionConstante(condicion, alcance, true);
   const cuerpoAlcanzable = alcanzable && !condicionFalsa;
-  visitarSentencia(sentencia.cuerpo, alcance, cuerpoAlcanzable, problemas);
+  visitarCuerpoDeCiclo(sentencia.cuerpo, alcanzable, cuerpoAlcanzable, alcance, problemas);
   const tieneBreakQueSale = contieneBreakQueSaleDelCiclo(sentencia.cuerpo);
   alcance.salirBloque();
   return alcanzable && (!condicionVerdadera || tieneBreakQueSale);
@@ -248,6 +276,34 @@ function visitarFor(sentencia: NodoFor, alcance: Alcance, alcanzable: boolean, p
 export function esCondicionConstante(condicion: NodoExpresion, alcance: Alcance, valorEsperado: boolean): boolean {
   const constante = valorConstante(condicion, alcance);
   return constante !== null && constante.tipo === 'boolean' && constante.valor === valorEsperado;
+}
+
+/** Tarea 1.29 (JLS 14.22.2): ¿hay un `continue` SIN etiqueta (1.6: `continueConEtiqueta` es NO-DISP) dentro de `cuerpo` que apunte
+ * a ESTE ciclo? Puramente estructural, igual que `contieneBreakQueSaleDelCiclo` (un `continue` ya muerto invalida el programa por
+ * otra vía). Desciende en `if`/bloques Y en `switch` — un `continue` dentro de un switch NO es del switch, es del ciclo que lo
+ * envuelve —, pero NUNCA en un `while`/`do-while`/`for` anidado (ahí es de ESE ciclo). */
+function contieneContinueQueApuntaAlCiclo(sentencia: NodoSentencia): boolean {
+  switch (sentencia.tipo) {
+    case 'continue':
+      return true;
+    case 'bloque':
+      return sentencia.elementos.some((elemento) => elemento.tipo !== 'declaracion-local' && contieneContinueQueApuntaAlCiclo(elemento));
+    case 'if':
+      return (
+        contieneContinueQueApuntaAlCiclo(sentencia.entonces) ||
+        (sentencia.sino !== null && contieneContinueQueApuntaAlCiclo(sentencia.sino))
+      );
+    case 'switch':
+      return sentencia.elementos.some(
+        (elemento) =>
+          elemento.tipo !== 'etiqueta-case' &&
+          elemento.tipo !== 'etiqueta-default' &&
+          elemento.tipo !== 'declaracion-local' &&
+          contieneContinueQueApuntaAlCiclo(elemento),
+      );
+    default:
+      return false;
+  }
 }
 
 /** ¿Hay un `break` SIN etiqueta (1.6: `breakConEtiqueta` es NO-DISP — todo `break` de este

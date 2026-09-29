@@ -48,6 +48,14 @@
 // (2102/2411)**. C7 CUMPLIDO por completo. Umbrales fijados como mínimos de C7 (veredicto 1.0,
 // línea 0.95 -- el mínimo que exige C7, con margen real de sobra por encima) + código en su valor
 // real medido (0.87, nunca inflado).
+//
+// Tarea 1.29 (D2: ningún programa que javac compila se presenta como error): el veredicto (2625/2625 = 100.00 %) y la línea
+// (2383/2411 = 98.84 %) quedan IDÉNTICOS; el CÓDIGO sube de 87.18 % (2102/2411) a 88.47 % (2133/2411): +31 mutantes de
+// «duplicar» del tipo `System.out.println println("…")` — javac lee `System.out.println println` como una declaración con un tipo
+// CALIFICADO y pide «;» (`compiler.err.expected` → `falta-punto-y-coma`); desde que el analizador reconoce declaraciones con tipo
+// calificado (`consumirNombreDeTipo`, `pareceDeclaracionLocal`) damos ese mismo código, en la misma línea (antes
+// `error-no-clasificado`). Comparados uno por uno contra `HEAD` (los 31 y solo esos). El umbral (0.87) NO se toca: es un mínimo
+// que exige no retroceder, no un valor medido.
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';

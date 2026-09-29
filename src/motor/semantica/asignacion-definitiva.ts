@@ -5,7 +5,7 @@
 // posición, mismo patrón que `atribuir()`/`verificarAlcanzabilidad()`.
 //
 // Cada pasada declara su PROPIO `Alcance` todavía (nota de arquitectura tras 1.12, engram
-// `visualizador-java/patron-semantica-atribucion-catalogo`): esta reusa `esCondicionConstante`/
+// `visualizador-java/patron-semantica-atribucion-catalogo`): esta reusa
 // `valorConstante` de `constantes.ts`, que YA resuelven variables `final` constantes con solo
 // poblar el campo `SimboloVariable.constante` al declarar (deuda 3 del commit 999a8ca).
 //
@@ -21,9 +21,23 @@
 // esta pasada es un solo conjunto (DA, `asignadas`) — más simple que el diseño general de JLS 16
 // con DA+DU, JUSTIFICADO por esta restricción real y verificada del subconjunto (D2: nunca más
 // mecanismo que el que el subconjunto puede ejercitar de verdad).
+//
+// Tarea 1.29 (D2: nunca un error de compilación donde javac compila — hallado por el fuzzer diferencial de sentencias,
+// ~36 falsos rechazos en 18 000 programas): el modelo se acercó a JLS 16 en lo que el subconjunto puede ejercitar.
+//   · JLS 16.1.1: una expresión CONSTANTE (`true`, `!(1 == 1)`, una `final` con inicializador constante) deja
+//     «vacuamente» asignada CUALQUIER variable en la rama que nunca ocurre («V is DA after any constant expression
+//     whose value is true when false / false when true»). El estado «vacuo» (`todasLasVisibles`) son las variables YA
+//     declaradas en ese punto —el rango de bits de javac—, no las que se declaren después (en otro grupo de `case`
+//     siguen sin asignar), y la regla se compone por `&&`/`||`/`!` (`n > 0 || true` no es constante, pero su «asignada
+//     si falso» es vacua por el operando `true`).
+//   · JLS 16.1.2-16.1.4: `a && b`/`a || b` usados como VALOR (`boolean r = c && (x = 1) > 0;`) valen la intersección de
+//     «asignada si verdadero» y «asignada si falso» — antes se evaluaban como una secuencia y se aceptaba de más.
+//   · JLS 16.2.10-16.2.12: el cuerpo de `while`/`for` entra con «asignada si verdadero» de la condición y el bucle sale
+//     con «asignada si falso» (más los `break`); la actualización del `for` y la condición del `do-while` entran con el
+//     estado tras el cuerpo Y antes de cada `continue` (antes la actualización veía solo el estado previo al cuerpo).
 import type { NodoBloque, NodoDeclaracionLocal, NodoElementoBloque, NodoExpresion, NodoPrograma, NodoSentencia } from '../sintaxis/ast.ts';
-import { esCondicionConstante } from './alcanzabilidad.ts';
 import { Alcance } from './alcance.ts';
+import { valorConstante, type ValorConstante } from './constantes.ts';
 import type { ProblemaAtribucion } from './diagnostico.ts';
 
 /** El conjunto de variables DEFINITIVAMENTE ASIGNADAS ("DA", JLS 16) en un punto del programa.
@@ -39,13 +53,15 @@ interface ResultadoFlujo {
   readonly completaNormal: boolean;
 }
 
-/** JLS 16.2.11 ("while(true)"/"for(;;)"): el punto donde un "break" SIN etiqueta entrega su estado
- * DE ESE momento -- cada ciclo/switch crea el SUYO propio para su cuerpo (nunca lo hereda de un
- * ciclo/switch envolvente, JLS 14.21: un "break" ahí adentro pertenece al más cercano) y lo
- * reemplaza mientras visita SU cuerpo; `if`/bloque simplemente lo hacen pasar, sin crear uno
- * nuevo. `null` fuera de todo ciclo/switch (un "break" ahí es error de OTRA pasada, atribucion.ts). */
+/** JLS 16.2.11 ("while(true)"/"for(;;)"): los puntos donde un "break" SIN etiqueta (y, desde la tarea 1.29, un
+ * "continue") entregan su estado DE ESE momento -- cada ciclo/switch crea el SUYO propio para su cuerpo (nunca lo hereda de
+ * un ciclo/switch envolvente, JLS 14.21: un "break" ahí adentro pertenece al más cercano) y lo reemplaza mientras visita SU
+ * cuerpo; `if`/bloque simplemente lo hacen pasar, sin crear uno nuevo. Un "switch" reenvía los "continue" al ciclo que lo
+ * envuelve (un "continue" no le pertenece). `null` fuera de todo ciclo/switch (un "break" ahí es error de OTRA pasada,
+ * atribucion.ts). */
 interface ContextoRuptura {
   readonly registrar: (estado: EstadoFlujo) => void;
+  readonly registrarContinue: (estado: EstadoFlujo) => void;
 }
 
 function conAgregada(conjunto: EstadoFlujo, nombre: string): EstadoFlujo {
@@ -71,6 +87,20 @@ function combinarEstados(estados: readonly EstadoFlujo[]): EstadoFlujo {
     resultado = new Set([...resultado].filter((nombre) => estado.has(nombre)));
   }
   return resultado;
+}
+
+/** Al cerrarse un alcance sus variables MUEREN: se olvidan del estado, para que otra variable con el mismo nombre declarada
+ * después (o un estado guardado antes de declararla, como el de un `case`) no herede su «asignada». */
+function sinLasCerradas(estado: EstadoFlujo, nombresCerrados: readonly string[]): EstadoFlujo {
+  return nombresCerrados.reduce(conQuitada, estado);
+}
+
+/** JLS 16.1.1: el estado «vacuo» de un punto al que no se llega por ese camino (la rama que una condición constante descarta,
+ * lo que sigue a un ciclo sin salida): todas las variables YA declaradas están asignadas, «vacuamente». Solo las de ahora — una
+ * variable que se declare después (p. ej. en otro grupo de `case`) empieza sin asignar, como en javac (rango de bits hasta la
+ * última variable declarada). */
+function todasLasVisibles(alcance: Alcance): EstadoFlujo {
+  return new Set(alcance.nombresVisibles());
 }
 
 export function verificarAsignacionDefinitiva(programa: NodoPrograma): ProblemaAtribucion[] {
@@ -104,8 +134,7 @@ function visitarBloque(
     estado = resultado.estado;
     completaNormal = resultado.completaNormal;
   }
-  alcance.salirBloque();
-  return { estado, completaNormal };
+  return { estado: sinLasCerradas(estado, alcance.salirBloque()), completaNormal };
 }
 
 function visitarElemento(
@@ -132,9 +161,13 @@ function visitarDeclaracionLocal(
 ): EstadoFlujo {
   let estado = entrada;
   for (const declarador of declaracion.declaradores) {
+    // Tarea 1.29 (JLS 4.12.4 + 16.1.1): una `final` con inicializador constante es una VARIABLE CONSTANTE — `if (DEBUG)` con
+    // `final boolean DEBUG = true;` es una condición constante (mismo campo que arman `atribucion.ts`/`alcanzabilidad.ts`).
+    let constante: ValorConstante | undefined;
     if (declarador.inicializador !== null) {
       estado = visitarExpresion(declarador.inicializador, alcance, estado, problemas);
       estado = conAgregada(estado, declarador.nombre);
+      constante = (declaracion.esFinal ? valorConstante(declarador.inicializador, alcance) : null) ?? undefined;
     } else {
       // "conQuitada" importa cuando el MISMO nombre ya vivió antes en un alcance hermano ya
       // cerrado (p. ej. la "i" de un "for" anterior) -- sin esto, una declaración nueva sin
@@ -142,7 +175,7 @@ function visitarDeclaracionLocal(
       // fuera de alcance (verificado con una prueba dedicada de esta tarea).
       estado = conQuitada(estado, declarador.nombre);
     }
-    alcance.declarar({ nombre: declarador.nombre, tipo: declaracion.nombreTipo, esFinal: declaracion.esFinal, rango: declarador.rango });
+    alcance.declarar({ nombre: declarador.nombre, tipo: declaracion.nombreTipo, esFinal: declaracion.esFinal, rango: declarador.rango, constante });
   }
   return estado;
 }
@@ -160,9 +193,12 @@ function visitarSentencia(
     case 'break':
       contextoRuptura?.registrar(entrada); // JLS 16.2.11: el "break" entrega el estado DE ESE punto
       return { estado: entrada, completaNormal: false };
-    case 'retorno':
     case 'continue':
-      return { estado: entrada, completaNormal: false }; // JLS 14.22: nunca completan normalmente
+      // JLS 16.2.12: el "continue" entrega su estado a la actualización del "for" / la condición del "do-while".
+      contextoRuptura?.registrarContinue(entrada);
+      return { estado: entrada, completaNormal: false };
+    case 'retorno':
+      return { estado: entrada, completaNormal: false }; // JLS 14.22: nunca completa normalmente
     case 'sentencia-vacia':
     case 'no-soportado':
       return { estado: entrada, completaNormal: true };
@@ -181,7 +217,7 @@ function visitarSentencia(
     case 'do-while':
       return visitarDoWhile(sentencia, alcance, entrada, problemas);
     case 'switch':
-      return visitarSwitch(sentencia, alcance, entrada, problemas);
+      return visitarSwitch(sentencia, alcance, entrada, contextoRuptura, problemas);
   }
 }
 
@@ -197,12 +233,17 @@ function visitarSwitch(
   sentencia: Extract<NodoSentencia, { tipo: 'switch' }>,
   alcance: Alcance,
   entrada: EstadoFlujo,
+  contextoEnvolvente: ContextoRuptura | null,
   problemas: ProblemaAtribucion[],
 ): ResultadoFlujo {
   const entradaSelector = visitarExpresion(sentencia.selector, alcance, entrada, problemas);
   const tieneDefault = sentencia.elementos.some((elemento) => elemento.tipo === 'etiqueta-default');
   const salidas: EstadoFlujo[] = [];
-  const contextoPropio: ContextoRuptura = { registrar: (estado) => salidas.push(estado) };
+  const contextoPropio: ContextoRuptura = {
+    registrar: (estado) => salidas.push(estado),
+    // Un "continue" dentro de un switch no le pertenece: es del ciclo que lo envuelve (tarea 1.29).
+    registrarContinue: (estado) => contextoEnvolvente?.registrarContinue(estado),
+  };
   alcance.entrarBloque();
   let actual = entradaSelector;
   let resultadoUltimoGrupo: ResultadoFlujo = { estado: entradaSelector, completaNormal: true };
@@ -215,47 +256,43 @@ function visitarSwitch(
     resultadoUltimoGrupo = visitarElemento(elemento, alcance, actual, contextoPropio, problemas);
     actual = resultadoUltimoGrupo.estado;
   }
-  alcance.salirBloque();
+  const cerradas = alcance.salirBloque();
   if (!tieneDefault) return { estado: entradaSelector, completaNormal: true };
   const candidatos = resultadoUltimoGrupo.completaNormal ? [...salidas, resultadoUltimoGrupo.estado] : salidas;
   return {
-    estado: candidatos.length > 0 ? combinarEstados(candidatos) : entradaSelector,
+    estado: sinLasCerradas(candidatos.length > 0 ? combinarEstados(candidatos) : entradaSelector, cerradas),
     completaNormal: salidas.length > 0 || resultadoUltimoGrupo.completaNormal,
   };
 }
 
-/** exploracion/03 §4.4 punto 3 (err09, JLS 16.2.5): "while(condición)" con condición NO constante
- * NUNCA garantiza asignación después del ciclo, aun si el cuerpo asigna en TODAS las vueltas -- el
- * compilador no sabe que el cuerpo corre al menos una vez (JLS no razona sobre el valor real de la
- * condición, solo sobre si es una CONSTANTE booleana literal). El cuerpo SÍ se recorre (para seguir
- * reportando lecturas inválidas dentro de él); su resultado se DESCARTA para lo que sigue al ciclo
- * salvo la excepción real de condición constante "true" (JLS 16.2.11, err08). */
+/** exploracion/03 §4.4 punto 3 (err09, JLS 16.2.10): "while(condición)" con condición NO constante NUNCA garantiza
+ * asignación después del ciclo, aun si el cuerpo asigna en TODAS las vueltas -- el compilador no sabe que el cuerpo corre al
+ * menos una vez (JLS no razona sobre el valor real de la condición, solo sobre si es una CONSTANTE booleana). El cuerpo SÍ se
+ * recorre (para seguir reportando lecturas inválidas dentro de él) y entra con «asignada si verdadero» de la condición; el
+ * ciclo SALE con «asignada si falso» de la condición Y el estado de cada `break` (tarea 1.29, JLS 16.2.10). La excepción real
+ * de la condición constante `true` (JLS 16.2.11, err08) ya no es un caso aparte: su «asignada si falso» es vacua
+ * (`todasLasVisibles`), así que el ciclo solo sale por sus `break` — y sin ninguno nada sigue al ciclo (alcanzabilidad.ts ya
+ * lo rechaza aparte). */
 function visitarWhile(
   sentencia: Extract<NodoSentencia, { tipo: 'while' }>,
   alcance: Alcance,
   entrada: EstadoFlujo,
   problemas: ProblemaAtribucion[],
 ): ResultadoFlujo {
-  const entradaCondicion = visitarExpresion(sentencia.condicion, alcance, entrada, problemas);
+  const condicion = visitarCondicion(sentencia.condicion, alcance, entrada, problemas);
   const salidas: EstadoFlujo[] = [];
-  const contextoPropio: ContextoRuptura = { registrar: (estado) => salidas.push(estado) };
-  visitarSentencia(sentencia.cuerpo, alcance, entradaCondicion, contextoPropio, problemas);
-  // exploracion/03 §4.4 punto 4 (err08, JLS 16.2.11): condición constante "true" es un caso
-  // especial -- el ciclo SOLO puede terminar por un "break" (nunca por la condición, que javac SABE
-  // que nunca es falsa); la asignación definitiva después se calcula sobre TODOS los puntos de
-  // "break" (si todos ocurrieron ya asignada, queda garantizada). Sin "break" alguno, nada sigue al
-  // ciclo (alcanzabilidad.ts ya lo rechaza aparte) -- aquí, sin puntos que combinar, no hay nada que
-  // garantizar: se usa la entrada tal cual, D2 (mejor no reportar que inventar).
-  if (esCondicionConstante(sentencia.condicion, alcance, true)) {
-    return { estado: salidas.length > 0 ? combinarEstados(salidas) : entradaCondicion, completaNormal: true };
-  }
-  return { estado: entradaCondicion, completaNormal: true };
+  // Un "continue" de un while vuelve a evaluar la condición: no cambia lo que sigue al ciclo (solo se rastrea el "break").
+  const contextoPropio: ContextoRuptura = { registrar: (estado) => salidas.push(estado), registrarContinue: () => undefined };
+  visitarSentencia(sentencia.cuerpo, alcance, condicion.siVerdadero, contextoPropio, problemas);
+  return { estado: combinarEstados([condicion.siFalso, ...salidas]), completaNormal: true };
 }
 
-/** exploracion/03 §4.4 punto 5 (err10): mismo principio que `visitarWhile` para "for(condición)" no
- * constante. El propio "for" abre su alcance (sus variables cubren condición, actualización y
- * cuerpo -- mismo patrón que `atribucion.ts`/`alcanzabilidad.ts`); la actualización se visita con
- * el estado que entra al cuerpo (esta pasada, como `alcanzabilidad.ts`, no modela iteraciones). */
+/** exploracion/03 §4.4 punto 5 (err10, JLS 16.2.12): mismo principio que `visitarWhile` para "for(condición)". El propio
+ * "for" abre su alcance (sus variables cubren condición, actualización y cuerpo -- mismo patrón que `atribucion.ts`/
+ * `alcanzabilidad.ts`). "for(;;)" (condición OMITIDA) cuenta como constante "true" (JLS 14.21): su «asignada si falso» es
+ * vacua. Tarea 1.29: la actualización entra con el estado tras el cuerpo Y antes de cada `continue` (`for (…; i += x) { x = 1; }`
+ * compila; con un `continue` antes de asignar, no), y sin ninguno de los dos (el cuerpo termina siempre en `break`/`return`) la
+ * actualización no se alcanza y es vacua. */
 function visitarFor(
   sentencia: Extract<NodoSentencia, { tipo: 'for' }>,
   alcance: Alcance,
@@ -270,30 +307,29 @@ function visitarFor(
   for (const expresionSentencia of sentencia.inicializacionExpresiones) {
     estado = visitarExpresion(expresionSentencia.expresion, alcance, estado, problemas);
   }
-  const entradaCondicion = sentencia.condicion !== null ? visitarExpresion(sentencia.condicion, alcance, estado, problemas) : estado;
+  // "for(;;)" (condición ausente) = constante `true`: entra tal cual y su «si falso» es vacuo.
+  const condicion: EstadosDeCondicion =
+    sentencia.condicion !== null ? visitarCondicion(sentencia.condicion, alcance, estado, problemas) : { siVerdadero: estado, siFalso: todasLasVisibles(alcance) };
+  const entradaCuerpo = condicion.siVerdadero;
+  const salidaDeLaCondicion = condicion.siFalso;
   const salidas: EstadoFlujo[] = [];
-  const contextoPropio: ContextoRuptura = { registrar: (e) => salidas.push(e) };
-  visitarSentencia(sentencia.cuerpo, alcance, entradaCondicion, contextoPropio, problemas);
+  const continues: EstadoFlujo[] = [];
+  const contextoPropio: ContextoRuptura = { registrar: (e) => salidas.push(e), registrarContinue: (e) => continues.push(e) };
+  const resCuerpo = visitarSentencia(sentencia.cuerpo, alcance, entradaCuerpo, contextoPropio, problemas);
+  const antesDeActualizar = [...(resCuerpo.completaNormal ? [resCuerpo.estado] : []), ...continues];
+  let estadoActualizacion = antesDeActualizar.length > 0 ? combinarEstados(antesDeActualizar) : todasLasVisibles(alcance);
   for (const expresionSentencia of sentencia.actualizacion) {
-    visitarExpresion(expresionSentencia.expresion, alcance, entradaCondicion, problemas);
+    estadoActualizacion = visitarExpresion(expresionSentencia.expresion, alcance, estadoActualizacion, problemas);
   }
-  // "for(;;)" (condición OMITIDA) cuenta como constante "true" (JLS 14.21, igual que
-  // `alcanzabilidad.ts`) -- mismo cálculo sobre los puntos de "break" que `visitarWhile`.
-  const esInfinito = sentencia.condicion === null || esCondicionConstante(sentencia.condicion, alcance, true);
-  const resultado = esInfinito
-    ? { estado: salidas.length > 0 ? combinarEstados(salidas) : entradaCondicion, completaNormal: true }
-    : { estado: entradaCondicion, completaNormal: true };
-  alcance.salirBloque();
-  return resultado;
+  const cerradas = alcance.salirBloque();
+  return { estado: sinLasCerradas(combinarEstados([salidaDeLaCondicion, ...salidas]), cerradas), completaNormal: true };
 }
 
-/** exploracion/03 §4.4 punto 6 (err10b, JLS 14.22.2/16.2.10): el cuerpo de "do-while" corre SIEMPRE
- * al menos una vez, sin importar la condición (a diferencia de `visitarWhile`/`visitarFor`) -- si
- * completa normal (sin "return"/"break" propio), su estado YA es una garantía real después del
- * ciclo, sin necesitar la excepción de "condición constante" de JLS 16.2.11 (esa es exclusiva de
- * while/for). Cualquier "break" (aunque el cuerpo COMPLETE normal, JLS 14.21: puede haber breaks
- * en un camino y una caída normal en otro) aporta sus propios puntos de salida, igual que
- * `visitarWhile`. */
+/** exploracion/03 §4.4 punto 6 (err10b, JLS 14.22.2/16.2.11): el cuerpo de "do-while" corre SIEMPRE al menos una vez, sin
+ * importar la condición (a diferencia de `visitarWhile`/`visitarFor`) -- si completa normal (sin "return"/"break" propio), su
+ * estado YA es una garantía real después del ciclo. Tarea 1.29 (JLS 16.2.11): la condición entra con el estado tras el cuerpo
+ * Y antes de cada `continue` (un `continue` que salta sobre la asignación la deja sin asignar), y el ciclo sale con
+ * «asignada si falso» de la condición Y el estado de cada `break`. */
 function visitarDoWhile(
   sentencia: Extract<NodoSentencia, { tipo: 'do-while' }>,
   alcance: Alcance,
@@ -301,11 +337,13 @@ function visitarDoWhile(
   problemas: ProblemaAtribucion[],
 ): ResultadoFlujo {
   const salidas: EstadoFlujo[] = [];
-  const contextoPropio: ContextoRuptura = { registrar: (estado) => salidas.push(estado) };
+  const continues: EstadoFlujo[] = [];
+  const contextoPropio: ContextoRuptura = { registrar: (estado) => salidas.push(estado), registrarContinue: (estado) => continues.push(estado) };
   const resCuerpo = visitarSentencia(sentencia.cuerpo, alcance, entrada, contextoPropio, problemas);
-  visitarExpresion(sentencia.condicion, alcance, resCuerpo.estado, problemas);
-  const candidatos = resCuerpo.completaNormal ? [...salidas, resCuerpo.estado] : salidas;
-  return { estado: candidatos.length > 0 ? combinarEstados(candidatos) : entrada, completaNormal: true };
+  const antesDeLaCondicion = [...(resCuerpo.completaNormal ? [resCuerpo.estado] : []), ...continues];
+  const entradaCondicion = antesDeLaCondicion.length > 0 ? combinarEstados(antesDeLaCondicion) : todasLasVisibles(alcance);
+  const condicion = visitarCondicion(sentencia.condicion, alcance, entradaCondicion, problemas);
+  return { estado: combinarEstados([condicion.siFalso, ...salidas]), completaNormal: true };
 }
 
 /** exploracion/03 §4.4 punto 2 (err06/err07, JLS 16.2.6): tras "if"/"else", una variable queda
@@ -321,9 +359,7 @@ function visitarIf(
   contextoRuptura: ContextoRuptura | null,
   problemas: ProblemaAtribucion[],
 ): ResultadoFlujo {
-  visitarExpresion(sentencia.condicion, alcance, entrada, problemas); // reporta lecturas inválidas; el estado se recalcula abajo
-  const entradaSiVerdadero = daSiVerdadero(sentencia.condicion, alcance, entrada);
-  const entradaSiFalso = daSiFalso(sentencia.condicion, alcance, entrada);
+  const { siVerdadero: entradaSiVerdadero, siFalso: entradaSiFalso } = visitarCondicion(sentencia.condicion, alcance, entrada, problemas);
   const resEntonces = visitarSentencia(sentencia.entonces, alcance, entradaSiVerdadero, contextoRuptura, problemas);
   if (sentencia.sino === null) {
     const estado = resEntonces.completaNormal ? combinarEstados([resEntonces.estado, entradaSiFalso]) : entradaSiFalso;
@@ -336,97 +372,47 @@ function visitarIf(
   return { estado: combinarEstados([resEntonces.estado, resSino.estado]), completaNormal: true };
 }
 
-/** JLS 16.1.2 ("&&"): "asignada-si-verdadero" tras "a && b" es la de "b" evaluado con la
- * "asignada-si-verdadero" de "a" como entrada (para llegar aquí, AMBOS fueron verdaderos, así que
- * el efecto de evaluar "b" con la entrada correcta de "a" ya cuenta). JLS 16.1.4 ("!"): invierte.
- * Fallback (cualquier otra expresión -- comparaciones, llamadas, nombres...): verdadero y falso dan
- * LO MISMO que el estado normal tras evaluarla (`propagar`) -- ver `daSiFalso`, su espejo. */
-function daSiVerdadero(expresion: NodoExpresion, alcance: Alcance, entrada: EstadoFlujo): EstadoFlujo {
+/** Los dos estados que deja una expresión BOOLEANA (JLS 16.1): la variable puede estar asignada «si la expresión vale verdadero» y/o
+ * «si vale falso». */
+interface EstadosDeCondicion {
+  readonly siVerdadero: EstadoFlujo;
+  readonly siFalso: EstadoFlujo;
+}
+
+/**
+ * Visita una condición y devuelve sus DOS estados (JLS 16.1), reportando las lecturas inválidas en el mismo recorrido — cada
+ * subexpresión se visita UNA sola vez (una primera versión calculaba los estados por separado desde cada nivel y su costo crecía como
+ * n⁴ con la longitud de una cadena de `&&`).
+ *   - Constante (JLS 16.1.1): `true` deja «vacuamente» todo asignado «si falso» y `false` «si verdadero» (`todasLasVisibles`); el
+ *     otro estado es la entrada (una constante no asigna nada).
+ *   - `a && b` (JLS 16.1.2): `b` solo se evalúa si `a` fue verdadera, así que entra con el «si verdadero» de `a`; «si verdadero» es el
+ *     de `b`, «si falso» la intersección de los dos «si falso» (cualquiera de los dos pudo hacer falso el resultado).
+ *   - `a || b` (JLS 16.1.3): espejo — `b` entra con el «si falso» de `a`.
+ *   - `!a` (JLS 16.1.4): intercambia verdadero y falso.
+ *   - Cualquier otra expresión (comparaciones, llamadas, nombres, asignaciones…): los dos estados son el estado tras evaluarla.
+ */
+function visitarCondicion(expresion: NodoExpresion, alcance: Alcance, entrada: EstadoFlujo, problemas: ProblemaAtribucion[]): EstadosDeCondicion {
+  const constante = valorConstante(expresion, alcance);
+  if (constante !== null && constante.tipo === 'boolean') {
+    const vacuo = todasLasVisibles(alcance);
+    return constante.valor ? { siVerdadero: entrada, siFalso: vacuo } : { siVerdadero: vacuo, siFalso: entrada };
+  }
   if (expresion.tipo === 'binaria' && expresion.operador === '&&') {
-    return daSiVerdadero(expresion.derecha, alcance, daSiVerdadero(expresion.izquierda, alcance, entrada));
+    const izquierda = visitarCondicion(expresion.izquierda, alcance, entrada, problemas);
+    const derecha = visitarCondicion(expresion.derecha, alcance, izquierda.siVerdadero, problemas);
+    return { siVerdadero: derecha.siVerdadero, siFalso: combinarEstados([izquierda.siFalso, derecha.siFalso]) };
   }
   if (expresion.tipo === 'binaria' && expresion.operador === '||') {
-    return combinarEstados([
-      daSiVerdadero(expresion.izquierda, alcance, entrada),
-      daSiVerdadero(expresion.derecha, alcance, daSiFalso(expresion.izquierda, alcance, entrada)),
-    ]);
+    const izquierda = visitarCondicion(expresion.izquierda, alcance, entrada, problemas);
+    const derecha = visitarCondicion(expresion.derecha, alcance, izquierda.siFalso, problemas);
+    return { siVerdadero: combinarEstados([izquierda.siVerdadero, derecha.siVerdadero]), siFalso: derecha.siFalso };
   }
   if (expresion.tipo === 'unaria' && expresion.operador === '!') {
-    return daSiFalso(expresion.operando, alcance, entrada);
+    const operando = visitarCondicion(expresion.operando, alcance, entrada, problemas);
+    return { siVerdadero: operando.siFalso, siFalso: operando.siVerdadero };
   }
-  return propagar(expresion, alcance, entrada);
-}
-
-/** JLS 16.1.3 ("||"): espejo de `daSiVerdadero` -- "asignada-si-falso" tras "a || b" es la de "b"
- * evaluado con la "asignada-si-falso" de "a" (para llegar aquí por "b", "a" tuvo que ser falso, así
- * que "b" SÍ se evaluó). "&&": "asignada-si-falso" es la INTERSECCIÓN de la de "a" y la de "b" con
- * la entrada de "a" verdadera (cualquiera de los dos pudo ser el que hizo falso el resultado). */
-function daSiFalso(expresion: NodoExpresion, alcance: Alcance, entrada: EstadoFlujo): EstadoFlujo {
-  if (expresion.tipo === 'binaria' && expresion.operador === '&&') {
-    return combinarEstados([
-      daSiFalso(expresion.izquierda, alcance, entrada),
-      daSiFalso(expresion.derecha, alcance, daSiVerdadero(expresion.izquierda, alcance, entrada)),
-    ]);
-  }
-  if (expresion.tipo === 'binaria' && expresion.operador === '||') {
-    return daSiFalso(expresion.derecha, alcance, daSiFalso(expresion.izquierda, alcance, entrada));
-  }
-  if (expresion.tipo === 'unaria' && expresion.operador === '!') {
-    return daSiVerdadero(expresion.operando, alcance, entrada);
-  }
-  return propagar(expresion, alcance, entrada);
-}
-
-/** Gemela PURA (nunca reporta) de `visitarExpresion` -- `daSiVerdadero`/`daSiFalso` la usan para
- * recalcular estados intermedios sin duplicar problemas: la condición completa YA se reportó UNA
- * vez, en el único `visitarExpresion(sentencia.condicion, ...)` de `visitarIf`. Mismo recorrido,
- * mismo orden de evaluación (design.md), solo sin el parámetro `problemas`. */
-function propagar(expresion: NodoExpresion, alcance: Alcance, entrada: EstadoFlujo): EstadoFlujo {
-  switch (expresion.tipo) {
-    case 'literal-entero':
-    case 'literal-largo':
-    case 'literal-doble':
-    case 'literal-caracter':
-    case 'literal-cadena':
-    case 'literal-booleano':
-    case 'expresion-no-soportada':
-    case 'nombre': // una lectura NUNCA cambia el estado -- solo se REPORTA, y eso ya lo hizo visitarExpresion
-      return entrada;
-    case 'binaria':
-      return propagar(expresion.derecha, alcance, propagar(expresion.izquierda, alcance, entrada));
-    case 'unaria':
-      return propagar(expresion.operando, alcance, entrada);
-    case 'asignacion':
-      return propagarAsignacion(expresion, alcance, entrada);
-    case 'incremento-decremento':
-      return propagar(expresion.operando, alcance, entrada);
-    case 'llamada': {
-      let estado = propagar(expresion.callee, alcance, entrada);
-      for (const argumento of expresion.argumentos) estado = propagar(argumento, alcance, estado);
-      return estado;
-    }
-    case 'acceso-miembro':
-      return propagar(expresion.objeto, alcance, entrada);
-    case 'nueva-instancia': {
-      let estado = entrada;
-      for (const argumento of expresion.argumentos) estado = propagar(argumento, alcance, estado);
-      return estado;
-    }
-    case 'conversion':
-      return propagar(expresion.operando, alcance, entrada);
-  }
-}
-
-/** Gemela pura de `visitarAsignacion` -- ver `propagar`. Nunca chequea reasignación de "final"
- * (eso es un PROBLEMA, no un cambio de estado, y ya lo reportó `visitarAsignacion` la única vez que
- * esta asignación se visitó de verdad). */
-function propagarAsignacion(expresion: Extract<NodoExpresion, { tipo: 'asignacion' }>, alcance: Alcance, entrada: EstadoFlujo): EstadoFlujo {
-  const objetivo = expresion.objetivo;
-  if (objetivo.tipo !== 'nombre') {
-    return propagar(expresion.valor, alcance, propagar(objetivo, alcance, entrada));
-  }
-  const estado = propagar(expresion.valor, alcance, entrada);
-  return conAgregada(estado, objetivo.nombre);
+  const despues = visitarExpresion(expresion, alcance, entrada, problemas);
+  return { siVerdadero: despues, siFalso: despues };
 }
 
 /** Visita una expresión de izquierda a derecha (design.md: orden de evaluación real de Java) y
@@ -445,11 +431,23 @@ function visitarExpresion(expresion: NodoExpresion, alcance: Alcance, entrada: E
     case 'nombre':
       return visitarNombreComoValor(expresion, alcance, entrada, problemas);
     case 'binaria': {
+      if (expresion.operador === '&&' || expresion.operador === '||') {
+        // JLS 16.1.2/16.1.3 (tarea 1.29): el valor completo vale la intersección de «asignada si verdadero» y «asignada si falso».
+        const estados = visitarCondicion(expresion, alcance, entrada, problemas);
+        return combinarEstados([estados.siVerdadero, estados.siFalso]);
+      }
       const trasIzquierda = visitarExpresion(expresion.izquierda, alcance, entrada, problemas);
       return visitarExpresion(expresion.derecha, alcance, trasIzquierda, problemas);
     }
-    case 'unaria':
+    case 'unaria': {
+      if (expresion.operador === '!') {
+        // JLS 16.1.4: el operando de `!` es una CONDICIÓN — una constante booleana no se recorre (javac no le exige estar asignada,
+        // igual que como operando de `&&`/`||`); el valor completo vale la intersección de sus dos estados.
+        const estados = visitarCondicion(expresion, alcance, entrada, problemas);
+        return combinarEstados([estados.siVerdadero, estados.siFalso]);
+      }
       return visitarExpresion(expresion.operando, alcance, entrada, problemas);
+    }
     case 'asignacion':
       return visitarAsignacion(expresion, alcance, entrada, problemas);
     case 'incremento-decremento':

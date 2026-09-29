@@ -3,6 +3,8 @@
 // regla se pueda probar y leer por separado, igual que ya hace `switch.ts` con el selector.
 import type { NodoExpresion } from '../sintaxis/ast.ts';
 import type { Alcance } from './alcance.ts';
+import type { AmbitoDeNombres } from './ambito-de-nombres.ts';
+import { existeClaseDelJdk } from './catalogo-clases.ts';
 import type { ValorConstante } from './constantes.ts';
 import { NOMBRES_DE_CLASE_RECONOCIDOS, type Tipo } from './tipos.ts';
 
@@ -76,21 +78,35 @@ const PRIMITIVOS_DEL_SUBCONJUNTO: ReadonlySet<string> = new Set(['int', 'long', 
 // `Set` ya soporta igual que un array.
 export const CLASES_QUE_REQUIEREN_IMPORT: ReadonlySet<string> = new Set(['Scanner', 'Random']);
 
-export type ResultadoNombreDeTipo = 'valido' | 'requiere-import' | 'no-reconocido';
+// Tarea 1.29: 'existente-no-soportada' = una clase REAL que el programa ve (java.lang, un import exacto
+// o con comodín, o su propia clase) pero que el subconjunto no simula — un aviso, nunca «no reconozco
+// el tipo» (design.md §2.3: «clase existente no soportada → NO-DISP; inexistente → error»).
+//
+// Tarea 1.29: 'calificado-existente' = el nombre está escrito CON su paquete (`java.util.Scanner`) y esa clase
+// existe — javac lo compila sin `import`; el subconjunto solo entiende el nombre corto (aviso). Un nombre con
+// paquete que no existe es 'no-reconocido', como siempre.
+export type ResultadoNombreDeTipo =
+  | 'valido'
+  | 'requiere-import'
+  | 'no-reconocido'
+  | 'existente-no-soportada'
+  | 'calificado-existente';
 
 /** err18 (`string nombre`, "cannot find symbol: class string") / err20 (`Scanner` sin import,
  * "cannot find symbol: class Scanner"): distingue un nombre GENUINAMENTE desconocido (ni
- * primitivo ni clase reflejada real — nunca una suposición sobre lo que "debería" existir) de uno
- * real de java.util al que le falta el import — mismo catálogo del oráculo (1.9), sin adivinar
- * ninguno de los dos casos. `nombresJavaUtilImportados`: qué de {Scanner, Random} el programa
- * importó de verdad (lo arma `atribucion.ts` con `NodoPrograma.importaciones`). */
-export function resultadoNombreDeTipo(
-  nombreTipo: string,
-  nombresJavaUtilImportados: ReadonlySet<string>,
-): ResultadoNombreDeTipo {
+ * primitivo, ni clase que el programa vea — nunca una suposición sobre lo que "debería" existir) de
+ * uno real de java.util al que le falta el import — mismo catálogo del oráculo (1.9), sin adivinar
+ * ninguno de los dos casos. `ambito`: qué clases ve el programa (lo arma `construirAmbito` con sus
+ * imports y su propia clase). Tarea 1.29: un nombre que NO es del catálogo pero SÍ es una clase real
+ * a la vista (`StringBuilder`, `Object`, `Locale` tras `import java.util.*;`) es
+ * 'existente-no-soportada', ya no 'no-reconocido'. */
+export function resultadoNombreDeTipo(nombreTipo: string, ambito: AmbitoDeNombres): ResultadoNombreDeTipo {
   if (PRIMITIVOS_DEL_SUBCONJUNTO.has(nombreTipo)) return 'valido';
-  if (!NOMBRES_DE_CLASE_RECONOCIDOS.has(nombreTipo)) return 'no-reconocido';
-  if (CLASES_QUE_REQUIEREN_IMPORT.has(nombreTipo) && !nombresJavaUtilImportados.has(nombreTipo)) {
+  if (nombreTipo.includes('.')) return existeClaseDelJdk(nombreTipo) ? 'calificado-existente' : 'no-reconocido';
+  if (!NOMBRES_DE_CLASE_RECONOCIDOS.has(nombreTipo)) {
+    return ambito.esClaseVisible(nombreTipo) ? 'existente-no-soportada' : 'no-reconocido';
+  }
+  if (CLASES_QUE_REQUIEREN_IMPORT.has(nombreTipo) && !ambito.importadasDeJavaUtil.has(nombreTipo)) {
     return 'requiere-import';
   }
   return 'valido';
