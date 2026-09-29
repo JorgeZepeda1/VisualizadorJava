@@ -1,7 +1,6 @@
 public class Aviso {
     public static void main(String[] args) {
-        int x = 5;
-        \u0041
-        System.out.println(x);
+        int \u0041 = 5;
+        System.out.println(\u0041);
     }
 }
