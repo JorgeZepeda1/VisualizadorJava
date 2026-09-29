@@ -341,7 +341,17 @@ function analizarPostfija(cursor: CursorDeTokens): NodoExpresion {
       continue;
     }
 
-    if (token.texto === '(') {
+    // Tarea NUEVA (sub-lote 1-D5, JLS 15.12, cierre de C7 -- mutante real
+    // u5-switch-menu-calculadora.java#49): "MethodInvocation" SIEMPRE exige un Identifier justo
+    // antes de "(" (`MethodName(...)` o `Primary.Identifier(...)`) -- NINGUNA forma de la JLS
+    // admite un Primary arbitrario (un literal de cadena, el resultado de "(a-b)"...) directamente
+    // seguido de "(...)". Antes de esta corrección, CUALQUIER expresión ya reducida podía "volverse"
+    // el callee de una llamada, así que `"texto"(args)` se aceptaba como una llamada real. Cuando
+    // `expresion` no es 'nombre' ni 'acceso-miembro', el "(" NUNCA se consume aquí -- se deja
+    // intacto para el contexto que sigue (quien SÍ sabe qué esperaba, p. ej. el ")" de un println
+    // envolvente) lo rechace con su propio error real, verificado contra javac 17 real: "')'
+    // expected" (el mismo mensaje que da javac para este mutante exacto).
+    if (token.texto === '(' && (expresion.tipo === 'nombre' || expresion.tipo === 'acceso-miembro')) {
       const argumentos = analizarArgumentos(cursor);
       const cierre = cursor.esperarTexto(')');
       expresion = {
@@ -409,6 +419,22 @@ function analizarArgumentos(cursor: CursorDeTokens): NodoExpresion[] {
 
 function analizarPrimaria(cursor: CursorDeTokens): NodoExpresion {
   const token = cursor.actual();
+
+  // Tarea NUEVA (sub-lote 1-D5, ADR 003 "deja seguir", cierre de C7 -- mutante real
+  // u6-ciclos-anidados-tabla.java#52): un token LÉXICO no-soportado (literal hex/octal/binario/
+  // float, `\uXXXX`...) es, para la GRAMÁTICA de expresiones, una primaria válida como cualquier
+  // otra -- javac los reconoce y tokeniza igual (verificado: "3f" es un literal float REAL, JLS
+  // 3.10.2). Antes de esta corrección, `analizarPrimaria` no tenía ninguna rama para
+  // `tipo:'no-soportado'`, así que SIEMPRE caía en el `throw` genérico de abajo -- cortando el
+  // análisis en seco en vez de "propagar" el aviso y dejar que el RESTO de la gramática (p. ej. el
+  // ';' que un "for" exige después de su condición) se siga verificando de verdad, como ya pasa con
+  // CUALQUIER otra construcción NO-DISP de este archivo (this/super/null/lambda/ternario/
+  // instanceof/bits...). El código real de esta construcción específica viaja en `token.codigo`
+  // (nunca un valor inventado aquí).
+  if (token.tipo === 'no-soportado') {
+    cursor.avanzar();
+    return { tipo: 'expresion-no-soportada', codigo: token.codigo ?? 'no-soportado', rango: token.rango };
+  }
 
   if (token.tipo === 'entero' || token.tipo === 'largo') {
     cursor.avanzar();

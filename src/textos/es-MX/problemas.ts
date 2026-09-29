@@ -60,17 +60,22 @@ interface DatosMiembro {
   readonly nombre: string;
 }
 
+// Tarea NUEVA (sub-lote 1-D5): `argumentos` es `string`, NO `Tipo` -- desde esta tarea puede traer
+// el nombre SIMPLE de una clase reflejada que el `Tipo` cerrado de 8 valores nunca representa
+// ("InputStream"/"PrintStream" para System.in/out/err, ver `nombreDeArgumentoParaMostrar` en
+// tipos.ts) -- es un valor puramente para MOSTRAR (nunca se vuelve a comparar/resolver con él),
+// así que ensancharlo de `Tipo` a `string` es seguro.
 interface DatosSinSobrecarga {
   readonly clase: string;
   readonly nombre: string;
-  readonly argumentos: readonly Tipo[];
+  readonly argumentos: readonly string[];
 }
 
 // Sub-lote 1-D3 (JLS 15.9): sin "nombre" -- a diferencia de un método, un constructor no tiene un
 // nombre propio distinto de su clase ("new Scanner(...)" nunca es "Scanner.algo(...)").
 interface DatosSinConstructor {
   readonly clase: string;
-  readonly argumentos: readonly Tipo[];
+  readonly argumentos: readonly string[];
 }
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type -- vacío a propósito: estos 6 códigos no llevan datos

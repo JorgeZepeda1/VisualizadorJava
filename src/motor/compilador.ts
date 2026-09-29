@@ -53,7 +53,8 @@ const PASADAS_SEMANTICAS: readonly ((programa: NodoPrograma) => readonly Problem
 // construcción que Java sí acepta). ADR 004: avisos y errores de sintaxis COMPITEN por posición en
 // el texto — si el análisis sintáctico se detiene con un error real, pero había un aviso léxico
 // ANTES de esa posición, gana el aviso (p. ej. un "\uXXXX" en un comentario que precede a un error
-// de sintaxis genuino más adelante).
+// de sintaxis genuino más adelante) -- ver `avisoEnmascaraError` para el criterio REAL, refinado en
+// el sub-lote 1-D5 (cierre de C7).
 export function compilar(fuente: string): ResultadoCompilacion {
   let tokens: Token[];
   try {
@@ -82,7 +83,7 @@ export function compilar(fuente: string): ResultadoCompilacion {
   } catch (error) {
     const rangoError = error instanceof ErrorDeCompilacion ? error.rango : null;
     const avisosAntesDelError = rangoError
-      ? noSoportadosLexicos.filter((t) => t.rango.inicio <= rangoError.inicio)
+      ? noSoportadosLexicos.filter((t) => avisoEnmascaraError(t, rangoError))
       : noSoportadosLexicos;
     if (avisosAntesDelError.length > 0) {
       const noSoportados = avisosAntesDelError
@@ -92,6 +93,39 @@ export function compilar(fuente: string): ResultadoCompilacion {
     }
     return { ok: false, problema: construirProblema(error, fuente), adicionales: 0 };
   }
+}
+
+/**
+ * Tarea NUEVA (sub-lote 1-D5, cierre de C7 -- mutante real u6-ciclos-anidados-tabla.java#52):
+ * ¿este aviso NO-DISP léxico debe ganarle a `rangoError` (un error de sintaxis real, posterior)?
+ * Antes de esta corrección, la regla era una sola comparación de POSICIÓN (`t.rango.inicio <=
+ * rangoError.inicio`) para CUALQUIER aviso -- suficiente mientras `analizarPrimaria` no sabía
+ * consumir un token no-soportado dentro de una expresión (SIEMPRE abortaba ahí mismo, así que el
+ * aviso y el error terminaban colocados exactamente en el mismo punto). Ahora que `analizarPrimaria`
+ * los consume como una expresión válida (ADR 003 "deja seguir", ver expresiones.ts), un literal
+ * hex/octal/binario/float DEJA de ser la causa real de un error que aparece MÁS ADELANTE -- p. ej.
+ * un "for" cuya condición contiene un literal float NO-DISP pero a la que igual le falta su propio
+ * ";" real (verificado contra javac 17 real: rechaza con "';' expected", un problema estructural
+ * del "for", INDEPENDIENTE de que el literal sea float). Distinción real, verificada contra javac
+ * 17 (ambos fixtures REALES de `corpus/compilacion/avisos/`, sub-lote 1-D5):
+ *   - `\uXXXX` (`escape-unicode-no-soportado`, JLS 3.3): la traducción real NUNCA se implementa
+ *     (D2 explícito, ver la cabecera de `analizador-lexico.ts`) -- así que SIEMPRE debe ganar,
+ *     incluso sobre un error posterior no colocado (p. ej. `07-escape-unicode-en-comentario.java`:
+ *     un "A" dentro de un comentario de línea dejaba a `int x = 5;` sin su propio punto de
+ *     entrada esperado tras la corrección de expresiones.ts -- pero javac SÍ compila ese programa
+ *     limpio, verificado; reportar "error-compilacion" ahí sería INVENTAR un rechazo que javac
+ *     nunca da, peor que la simplificación actual).
+ *   - Cualquier OTRO no-soportado léxico (literal hex/octal/binario/float...): un VALOR real y
+ *     bien entendido que simplemente no se RENDERIZA -- una vez que `analizarPrimaria` lo consume
+ *     sin abortar, solo debe seguir ganando si el error cae DENTRO de su propio rango (colocado,
+ *     el mismo caso de siempre para un no-soportado que TODAVÍA no sepa consumir alguna otra parte
+ *     de la gramática) -- nunca sobre un problema estructural genuinamente posterior e
+ *     independiente.
+ */
+function avisoEnmascaraError(aviso: Token, rangoError: Rango): boolean {
+  if (aviso.rango.inicio > rangoError.inicio) return false;
+  if (aviso.codigo === 'escape-unicode-no-soportado') return true;
+  return rangoError.inicio < aviso.rango.fin;
 }
 
 // Tarea 1.14: `ProblemaAtribucion` (semantica/diagnostico.ts) es deliberadamente angosto -- ni

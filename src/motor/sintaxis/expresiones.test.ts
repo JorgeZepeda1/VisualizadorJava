@@ -182,6 +182,34 @@ describe('expresiones — miembro, llamada y "new" (nivel 14, REQ-SUB-005)', () 
     });
   });
 
+  // Tarea NUEVA (sub-lote 1-D5, JLS 15.12, cierre de C7 -- mutante real u5-switch-menu-calculadora
+  // .java#49): "MethodInvocation" SIEMPRE exige un Identifier justo antes de "("
+  // (`MethodName(...)`/`Primary.Identifier(...)`) -- un Primary arbitrario (un literal de cadena,
+  // el resultado de "(a - b)"...) NUNCA puede ser el "callee" de una llamada real. El "(" que sigue
+  // a un Primary que no es 'nombre' ni 'acceso-miembro' NUNCA se consume como el inicio de una
+  // llamada -- se deja intacto para que el contexto que sigue lo rechace con su propio error real
+  // (ver compilador.test.ts para el caso completo dentro de println, con línea calibrada).
+  it('un literal de cadena seguido de "(" NUNCA forma una llamada (JLS 15.12): el "(" queda SIN consumir', () => {
+    expect(expresionDe('"texto"(1)')).toMatchObject({ tipo: 'literal-cadena', valor: 'texto' });
+  });
+
+  it('triangulación: "(a - b)" (una binaria, tras colapsar los paréntesis) seguida de "(" tampoco forma una llamada', () => {
+    expect(expresionDe('(a - b)(1)')).toMatchObject({
+      tipo: 'binaria',
+      operador: '-',
+      izquierda: { nombre: 'a' },
+      derecha: { nombre: 'b' },
+    });
+  });
+
+  it('control: una llamada encadenada SÍ sigue funcionando cuando el callee real es un acceso a miembro ("Primary.Identifier(...)", JLS 15.12)', () => {
+    const expr = expresionDe('new Scanner(System.in).nextInt()');
+    expect(expr).toMatchObject({
+      tipo: 'llamada',
+      callee: { tipo: 'acceso-miembro', objeto: { tipo: 'nueva-instancia', nombreTipo: 'Scanner' }, miembro: 'nextInt' },
+    });
+  });
+
   it('cadena de acceso a miembro de más de un nivel (Math.PI-like)', () => {
     const expr = expresionDe('a.b.c');
     expect(expr).toMatchObject({

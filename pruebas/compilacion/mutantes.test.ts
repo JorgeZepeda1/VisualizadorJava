@@ -1,4 +1,5 @@
-// Tarea 1.16 (Mutantes contra veredictos de javac, REQ-DIFF-006, criterio C7, sub-lotes 1-D3/1-D4).
+// Tarea 1.16 (Mutantes contra veredictos de javac, REQ-DIFF-006, criterio C7, sub-lotes
+// 1-D3/1-D4/1-D5) -- CERRADA en el sub-lote 1-D5: C7 CUMPLIDO (100% veredicto, línea ≥95%).
 // Compara `compilar()` (src/motor) contra `corpus/mutantes/veredictos.jsonl` -- datos REALES del
 // oráculo (ADR 010), generados por `npm run oraculo:mutantes` (`herramientas/oraculo/mutantes.ts`
 // + `CompiladorEnLote.java`, una sola JVM, `javax.tools`) a partir de ≥2000 mutaciones de un solo
@@ -10,39 +11,43 @@
 // como métrica secundaria, con un umbral que refleja lo REALMENTE alcanzado, nunca inflado.
 //
 // Historia real (nunca inflada): sub-lote 1-D3 arrancó en 88.69% veredicto/86.93% línea, cerró en
-// 98.02%/94.69% (línea todavía bajo el 95% de C7). Sub-lote 1-D4 (tarea 1.21, ESTA sesión) cerró
-// las 3 clases de discrepancia que 1-D3 dejó documentadas (tipos de operadores JLS 5.6 incluido
-// System.in/out/err como argumento, lista de parámetros dentro de paréntesis, import de clase
-// inexistente) MÁS 2 clases nuevas descubiertas al medir después de esas 3 correcciones (nunca
-// documentadas antes de esta sesión): el objetivo de una asignación/"++"/"--" debe ser una
-// VARIABLE real (JLS 4.12.3/15.14/15.26 -- "Scanner = ...;"/"fila++ ++;") y la "{" que abre el
-// CUERPO DE LA CLASE anclaba mal su línea cuando falta (mismo patrón que ya tenía "{" de "main").
-// Resultado: **veredicto 99.92% (2623/2625), línea 98.76% (2381/2411), código 86.85% (2094/2411)**.
-// Línea YA CUMPLE C7 (≥95%); veredicto queda a 2 mutantes de 100% -- 2 clases NUEVAS, chicas
-// (1 mutante cada una), investigadas y documentadas abajo, NO cerradas esta sesión (cada una toca
-// una zona de riesgo real -- parser de llamadas / propagación de NO-DISP dentro de un `for` -- que
-// merece su propia sesión dedicada, no un parche apurado al cierre de esta).
+// 98.02%/94.69% (línea todavía bajo el 95% de C7). Sub-lote 1-D4 (tarea 1.21) cerró las 3 clases
+// de discrepancia que 1-D3 dejó documentadas MÁS 2 clases nuevas descubiertas al medir después de
+// esas 3 correcciones, cerrando en 99.92% (2623/2625) veredicto / 98.76% línea (línea YA cumplía
+// C7, veredicto a 2 mutantes de 100%) -- 2 clases NUEVAS, chicas, documentadas pero NO cerradas esa
+// sesión: (a) `u5-switch-menu-calculadora.java#49`, un literal de cadena seguido de "(args)" se
+// aceptaba como llamada (el PARSER de `expresiones.ts` no restringía la forma de
+// `NodoLlamada.callee`, JLS 15.12 exige `MethodName(...)`/`Primary.Identifier(...)`, NUNCA un
+// Primary arbitrario); (b) `u6-ciclos-anidados-tabla.java#52`, un literal float NO-DISP ("3f",
+// verificado que javac también lo tokeniza así, JLS 3.10.2) dentro de la condición de un `for`
+// hacía que el `for` COMPLETO se aceptara como NO-DISP en silencio, aunque javac rechace el
+// programa por una razón estructural INDEPENDIENTE (falta el ";" real del "for", JLS 14.14).
 //
-// Clases de discrepancia PENDIENTES (documentadas, nunca una "exclusión" silenciosa -- los 2
-// mutantes siguen contándose en el denominador de VEREDICTO):
-//   - `u5-switch-menu-calculadora.java#49` (mutación "intercambiar-vecinos"): produce
-//     `"Resultado: " ( +a - b)` -- una CADENA LITERAL seguida de "(args)". Nuestro analizador de
-//     expresiones (Pratt, `expresiones.ts`) acepta CUALQUIER primaria como "callee" de una llamada
-//     (`NodoLlamada.callee: NodoExpresion`, sin restringir su forma en el PARSER) y `visitarLlamada`
-//     (atribucion.ts) no reporta nada cuando `callee.tipo` no es 'nombre' ni 'acceso-miembro' (cae
-//     al `else` genérico). Javac RECHAZA esto en el propio PARSER ("')' expected" -- ninguna forma
-//     de `MethodInvocation` de la JLS admite una cadena literal como blanco). Corregirlo bien
-//     exige restringir la GRAMÁTICA de llamada (expresiones.ts), no solo la atribución -- alcance
-//     mayor al de esta tarea (1.21 era tipos/paréntesis/import), queda para la continuación.
-//   - `u6-ciclos-anidados-tabla.java#52` (mutación "intercambiar-vecinos" sobre "3fila" dentro de
-//     un `for`): el LÉXICO tokeniza correctamente "3f" como flotante NO-SOPORTADO (verificado con
-//     `tokenizar()` directo esta sesión -- coincide con javac, que también lee "3f" como un literal
-//     float real) seguido de "ila" (identificador) -- pero el `for` completo termina aceptándose
-//     igual (`compila()` da `ok:true`), mientras que javac SÍ rechaza ("';' expected"). La causa
-//     real vive en cómo `analizarFor`/el recolector de NO-DISP tratan un token no-soportado DENTRO
-//     de una condición ya parcialmente inválida -- una pregunta de diseño más profunda (qué tan
-//     permisiva debe ser la propagación de NO-DISP anidada) que merece su propia investigación, no
-//     un parche apurado.
+// Sub-lote 1-D5 (ESTA sesión) cerró AMBAS clases pendientes:
+//   (a) `expresiones.ts`, `analizarPostfija`: el "(" que sigue a una expresión postfija SOLO forma
+//       una llamada cuando esa expresión es 'nombre' o 'acceso-miembro' (JLS 15.12) -- cualquier
+//       otro Primary (un literal, el resultado de "(a-b)"...) deja el "(" SIN CONSUMIR, así que el
+//       contexto que sigue (p. ej. el ")" de un println envolvente) lo rechaza con su propio error
+//       real, verificado idéntico a javac ("')' expected").
+//   (b) DOS correcciones juntas, porque una sola no bastaba: `expresiones.ts`, `analizarPrimaria`
+//       ahora trata CUALQUIER token léxico no-soportado (hex/octal/binario/float/`\uXXXX`...) como
+//       una primaria válida (ADR 003 "deja seguir", consume el token y produce
+//       `expresion-no-soportada` -- MISMO patrón que ya usa this/super/null/lambda/ternario/
+//       instanceof/bits, nunca una excepción). Y `compilador.ts`, `avisoEnmascaraError`: un aviso
+//       NO-DISP léxico solo enmascara un error de sintaxis POSTERIOR (no colocado en su propio
+//       rango) cuando su código es `escape-unicode-no-soportado` (JLS 3.3, la traducción real
+//       NUNCA se implementa a propósito, D2 explícito) -- CUALQUIER otro no-soportado léxico
+//       (literal hex/octal/binario/float) es un VALOR real y bien entendido que simplemente no se
+//       renderiza, así que una vez que la gramática lo consume sin abortar, un error estructural
+//       GENUINAMENTE posterior (p. ej. el ";" que le falta a un "for") debe ganar, no quedar
+//       enmascarado. Verificado contra javac 17 real que ambas correcciones son necesarias Y
+//       correctas (incluida la asimetría escape-unicode vs. literales, ver el discovery de esta
+//       sesión en engram sobre `07-escape-unicode-en-comentario.java`, que SÍ debe seguir
+//       enmascarando -- javac compila ese programa limpio -- vs. el "for" del mutante u6, que NO).
+// Resultado final: **veredicto 100.00% (2625/2625), línea 98.84% (2383/2411), código 87.18%
+// (2102/2411)**. C7 CUMPLIDO por completo. Umbrales fijados como mínimos de C7 (veredicto 1.0,
+// línea 0.95 -- el mínimo que exige C7, con margen real de sobra por encima) + código en su valor
+// real medido (0.87, nunca inflado).
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -203,15 +208,15 @@ describe('mutantes contra veredictos de javac (tarea 1.16, REQ-DIFF-006, criteri
     expect(veredictos.length).toBeGreaterThanOrEqual(2000);
   });
 
-  it('VEREDICTO: nuestro compilar() coincide con javac -- umbral real medido esta sesión (sub-lote 1-D4), nunca inflado; C7 pide 100%, quedan 2 mutantes (2 clases nuevas, chicas) documentados arriba', () => {
+  it('VEREDICTO: nuestro compilar() coincide con javac -- C7 pide 100%, CUMPLIDO desde el sub-lote 1-D5 (umbral fijado en el mínimo EXACTO de C7, nunca por debajo)', () => {
     const discrepancias = veredictos.filter((v) => nuestroVeredicto(v.fuente).compila !== v.compila);
     const proporcion = (veredictos.length - discrepancias.length) / veredictos.length;
     // eslint-disable-next-line no-console -- resumen intencional, útil para la próxima continuación (nunca un log completo, solo el conteo)
     console.log(`[mutantes] veredicto: ${veredictos.length - discrepancias.length}/${veredictos.length} = ${(proporcion * 100).toFixed(2)}%`);
-    expect(proporcion).toBeGreaterThanOrEqual(0.999);
+    expect(proporcion).toBeGreaterThanOrEqual(1);
   });
 
-  it('LINEA: entre los mutantes que javac SÍ rechaza, nuestra línea coincide -- C7 pide ≥95%, CUMPLIDO desde sub-lote 1-D4 (umbral fijado en el mínimo de C7 + margen real medido)', () => {
+  it('LINEA: entre los mutantes que javac SÍ rechaza, nuestra línea coincide -- C7 pide ≥95%, CUMPLIDO desde el sub-lote 1-D4 (umbral fijado en el MÍNIMO real de C7 -- el margen medido real, 98.84% desde 1-D5, queda documentado en la cabecera, nunca en el umbral)', () => {
     const rechazados = veredictos.filter((v) => !v.compila);
     let aciertos = 0;
     for (const v of rechazados) {
@@ -221,10 +226,10 @@ describe('mutantes contra veredictos de javac (tarea 1.16, REQ-DIFF-006, criteri
     const proporcion = aciertos / rechazados.length;
     // eslint-disable-next-line no-console -- ver nota de arriba
     console.log(`[mutantes] línea: ${aciertos}/${rechazados.length} = ${(proporcion * 100).toFixed(2)}%`);
-    expect(proporcion).toBeGreaterThanOrEqual(0.97);
+    expect(proporcion).toBeGreaterThanOrEqual(0.95);
   });
 
-  it('CODIGO: entre los mutantes mapeados, nuestro código coincide con el esperado -- métrica secundaria (C7 no le fija umbral), umbral real medido esta sesión (sub-lote 1-D4)', () => {
+  it('CODIGO: entre los mutantes mapeados, nuestro código coincide con el esperado -- métrica secundaria (C7 no le fija umbral), umbral real medido esta sesión (sub-lote 1-D5), nunca inflado', () => {
     const rechazados = veredictos.filter((v) => !v.compila);
     let mapeados = 0;
     let aciertos = 0;
@@ -238,7 +243,7 @@ describe('mutantes contra veredictos de javac (tarea 1.16, REQ-DIFF-006, criteri
     const proporcion = aciertos / mapeados;
     // eslint-disable-next-line no-console -- ver nota de arriba
     console.log(`[mutantes] código: ${aciertos}/${mapeados} (de ${rechazados.length} rechazados, ${mapeados} mapeados) = ${(proporcion * 100).toFixed(2)}%`);
-    expect(proporcion).toBeGreaterThanOrEqual(0.86);
+    expect(proporcion).toBeGreaterThanOrEqual(0.87);
   });
 
   it('triangulación: al menos un mutante de CADA uno de los 9 tipos de mutación aparece en el corpus (cobertura real de mutantes.ts)', () => {

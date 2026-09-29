@@ -224,6 +224,26 @@ export function argumentoDeSobrecarga(expresion: NodoExpresion, alcance: Alcance
   return campo === null ? tipoDeExpresion(expresion, alcance) : { reflejado: campo };
 }
 
+/**
+ * Tarea NUEVA (sub-lote 1-D5): el nombre a MOSTRAR de un argumento en "sin-constructor-aplicable"/
+ * "sin-sobrecarga-aplicable" (`datos.argumentos`, textos/es-MX/problemas.ts). Para CUALQUIER
+ * expresión normal, el mismo `Tipo` cerrado de siempre (`tipoDeExpresion`, ya es una cadena
+ * legible: "int", "String"...); para `System.in`/`System.out`/`System.err`, el nombre SIMPLE de su
+ * clase reflejada real (`campoReflejadoDeSystem` da el nombre CALIFICADO, "java.io.InputStream" --
+ * aquí se recorta al último segmento) -- verificado contra javac 17 real: sus propios mensajes
+ * muestran "PrintStream", NUNCA "java.io.PrintStream" ni "desconocido" ("no suitable constructor
+ * found for Scanner(PrintStream)"). Antes de esta corrección, `visitarNuevaInstancia`/
+ * `visitarLlamadaDeMiembro` (atribucion.ts) armaban `datos.argumentos` con `tipoDeExpresion`
+ * directo -- el `Tipo` cerrado de 8 valores nunca incluye InputStream/PrintStream (a propósito, ver
+ * `ArgumentoDeSobrecarga` arriba), así que siempre mostraba "desconocido" para estos 3 casos, menos
+ * preciso que javac aunque el CÓDIGO/VEREDICTO ya fueran correctos desde 1-D4. Devuelve `string`
+ * (no `Tipo`): es un valor puramente para MOSTRAR, nunca se vuelve a comparar/resolver con él. */
+export function nombreDeArgumentoParaMostrar(expresion: NodoExpresion, alcance: Alcance): string {
+  const campo = campoReflejadoDeSystem(expresion, alcance);
+  if (campo === null) return tipoDeExpresion(expresion, alcance);
+  return campo.slice(campo.lastIndexOf('.') + 1);
+}
+
 /** El nombre tal como lo reporta la reflexión del JDK para un `Tipo` nuestro (`FirmaMiembro` usa
  * `Class#getTypeName()`: los primitivos se quedan igual, `String`/`Scanner`/`Random` son su nombre
  * calificado). Exportada (sub-lote 1-D4): antes vivía privada en `conversiones.ts`; ahora vive

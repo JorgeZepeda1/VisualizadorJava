@@ -550,3 +550,90 @@ describe('compilar — REQ-COMP-009: el nombre de la clase pública nunca se val
 // de `src/motor/**` (tsconfig.motor.json fija `types: []`, ADR 001: el motor no toca Node/DOM ni
 // siquiera en sus pruebas), mismo patrón ya establecido por `pruebas/compilacion/catalogo.test.ts`
 // (tarea 1.17) para el mismo problema.
+
+// Tarea NUEVA (sub-lote 1-D5, JLS 15.12, cierre de C7 -- mutante REAL de la tarea 1.16,
+// `u5-switch-menu-calculadora.java#49` de `corpus/mutantes/veredictos.jsonl`, reproducido tal
+// cual): "MethodInvocation" SIEMPRE exige un Identifier justo antes de "("
+// (`MethodName(...)`/`Primary.Identifier(...)`) -- NINGUNA forma de la JLS admite un Primary
+// arbitrario (p. ej. un literal de cadena) directamente seguido de "(...)" como llamada. Antes de
+// esta tarea, `expresiones.ts` (Pratt) aceptaba CUALQUIER expresión primaria como "callee" sin
+// restricción sintáctica, así que `"texto"(argumentos)` se parseaba como una llamada válida (el
+// mutante de la línea 20 -- "intercambiar-vecinos" sobre "+ (" de "Resultado: " + (a - b) --
+// terminaba aceptándose en silencio). Verificado contra javac 17 real (mismo dato que
+// `veredictos.jsonl`): "')' expected" en la línea 20 -- el "(" nunca puede empezar una llamada tras
+// un literal de cadena, así que javac lo trata como el cierre que le falta a "println(...)".
+describe('compilar — mutante real u5-switch-menu-calculadora.java#49 (JLS 15.12, callee de una llamada)', () => {
+  it('"Resultado: " ( +a - b) dentro de println: mismo veredicto que javac -- "falta-parentesis-cierre" en la línea 20, NUNCA una llamada con callee de cadena', () => {
+    const fuente = [
+      'import java.util.Scanner;',
+      '',
+      'public class MenuCalculadora {',
+      '    public static void main(String[] args) {',
+      '        Scanner teclado = new Scanner(System.in);',
+      '',
+      '        System.out.print("Elige una operación (1=suma, 2=resta, 3=multiplicación): ");',
+      '        int opcion = teclado.nextInt();',
+      '',
+      '        System.out.print("Primer número: ");',
+      '        double a = teclado.nextDouble();',
+      '        System.out.print("Segundo número: ");',
+      '        double b = teclado.nextDouble();',
+      '',
+      '        switch (opcion) {',
+      '            case 1:',
+      '                System.out.println("Resultado: " + (a + b));',
+      '                break;',
+      '            case 2:',
+      '                System.out.println("Resultado: " ( +a - b));',
+      '                break;',
+      '            case 3:',
+      '                System.out.println("Resultado: " + (a * b));',
+      '                break;',
+      '            default:',
+      '                System.out.println("Opción no válida.");',
+      '        }',
+      '    }',
+      '}',
+      '',
+    ].join('\n');
+    const resultado = compilar(fuente);
+    expect(resultado.ok).toBe(false);
+    if (resultado.ok) throw new Error('se esperaba ok:false (javac lo rechaza: "\')\' expected")');
+    expect(resultado.problema.categoria).toBe('error-compilacion');
+    expect(resultado.problema.codigo).toBe('falta-parentesis-cierre');
+    expect(resultado.problema.linea).toBe(20);
+  });
+});
+
+// Tarea NUEVA (sub-lote 1-D5, cierre de C7 -- mutante REAL `u6-ciclos-anidados-tabla.java#52` de
+// `corpus/mutantes/veredictos.jsonl`, reproducido tal cual): un literal "3f" (float, léxicamente
+// NO-DISP pero un literal REAL y válido -- verificado que javac también lo tokeniza así, JLS
+// 3.10.2) DENTRO de la condición de un "for" hacía que el "for" COMPLETO se aceptara en silencio
+// (categoría 'no-disponible', el mismo trato que "no lo mostramos" en cualquier OTRA posición) --
+// aunque javac SÍ rechace el programa completo ("';' expected" en la línea 3, porque lo que sigue
+// al literal -- "ila" -- rompe la estructura real del "for", un problema TOTALMENTE independiente
+// de que el literal sea float). Verificado contra javac 17 real (mismo dato que
+// `veredictos.jsonl`).
+describe('compilar — mutante real u6-ciclos-anidados-tabla.java#52 (propagación de NO-DISP dentro de un "for")', () => {
+  it('"fila <= 3fila ;++" dentro del for: mismo veredicto que javac -- "falta-punto-y-coma" en la línea 3, NUNCA "no-disponible"', () => {
+    const fuente = [
+      'public class CiclosAnidadosTabla {',
+      '    public static void main(String[] args) {',
+      '        for (int fila = 1; fila <= 3fila ;++) {',
+      '            for (int columna = 1; columna <= 3; columna++) {',
+      '                System.out.print(fila * columna + " ");',
+      '            }',
+      '            System.out.println();',
+      '        }',
+      '    }',
+      '}',
+      '',
+    ].join('\n');
+    const resultado = compilar(fuente);
+    expect(resultado.ok).toBe(false);
+    if (resultado.ok) throw new Error('se esperaba ok:false (javac lo rechaza: "\';\' expected")');
+    expect(resultado.problema.categoria).toBe('error-compilacion');
+    expect(resultado.problema.codigo).toBe('falta-punto-y-coma');
+    expect(resultado.problema.linea).toBe(3);
+  });
+});

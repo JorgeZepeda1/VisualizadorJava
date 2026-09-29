@@ -36,6 +36,7 @@ import {
   argumentoDeSobrecarga,
   claseDelObjeto,
   NOMBRES_DE_CLASE_RECONOCIDOS,
+  nombreDeArgumentoParaMostrar,
   tipoDeExpresion,
   tipoDeNombreDeTipo,
   tipoDeOperadorAritmetico,
@@ -383,6 +384,7 @@ function visitarExpresion(
       visitarExpresion(expresion.objetivo, alcance, importadas, problemas);
       visitarExpresion(expresion.valor, alcance, importadas, problemas);
       verificarObjetivoDeAsignacion(expresion, alcance, problemas);
+      verificarAsignacionSimple(expresion, alcance, problemas);
       verificarAsignacionCompuesta(expresion, alcance, problemas);
       return;
     case 'incremento-decremento':
@@ -496,9 +498,35 @@ function verificarObjetivoDeAsignacion(expresion: NodoAsignacion, alcance: Alcan
   problemas.push({ codigo: 'objetivo-no-es-variable', rango: expresion.rango, datos: {} });
 }
 
-/** Tarea 1.21 (JLS 15.26.2, "E1 op= E2" ≡ "E1 = (T)(E1 op E2)"): una asignación SIMPLE ("=") no
- * verifica nada aquí (`visitarDeclaracionLocal`/una futura reasignación simple son asunto aparte,
- * fuera de esta tarea — ver el informe de la sesión). Una COMPUESTA revisa DOS cosas, en orden,
+/** Tarea NUEVA (sub-lote 1-D5, JLS 5.2/15.26.1: "el tipo de una expresión de asignación es el de
+ * la variable asignada"): una asignación SIMPLE ("x = expr;", fuera de una declaración) exige la
+ * MISMA conversión de asignación que un inicializador de declaración (`visitarDeclaracionLocal`,
+ * arriba) — reusa `esAsignable`/`codigoDeAsignacionInvalida`/`valorConstante`, las MISMAS que ya
+ * usa una declaración, nunca una segunda tabla de reglas. Verificado contra javac 17 real esta
+ * sesión: "int x; x = \"hola\";" → "incompatible types: String cannot be converted to int"; "int
+ * x; x = 3.5;" → "possible lossy conversion from double to int"; "char c; c = 65;" COMPILA limpio
+ * (constante que cabe, igual que una declaración); "double d; d = 5;" COMPILA limpio
+ * (ensanchamiento). `destino === 'desconocido'` cubre D2 para AMBOS casos de cascada: un objetivo
+ * genuinamente no declarado (ya reportado por `visitarNombreComoValor`) Y un objetivo que no es una
+ * variable real (ya reportado por `verificarObjetivoDeAsignacion`, arriba) — en los dos,
+ * `tipoDeExpresion` sobre el nombre da 'desconocido' porque `alcance.buscar` no lo encuentra, sin
+ * necesitar un segundo chequeo aquí. */
+function verificarAsignacionSimple(expresion: NodoAsignacion, alcance: Alcance, problemas: ProblemaAtribucion[]): void {
+  if (expresion.operador !== '=') return;
+  const destino = tipoDeExpresion(expresion.objetivo, alcance);
+  if (destino === 'desconocido') return;
+  const origen = tipoDeExpresion(expresion.valor, alcance);
+  const constanteOrigen = valorConstante(expresion.valor, alcance);
+  if (esAsignable(origen, destino, constanteOrigen)) return;
+  problemas.push({
+    codigo: codigoDeAsignacionInvalida(origen, destino),
+    rango: expresion.valor.rango,
+    datos: { origen, destino },
+  });
+}
+
+/** Tarea 1.21 (JLS 15.26.2, "E1 op= E2" ≡ "E1 = (T)(E1 op E2)"): una asignación COMPUESTA revisa
+ * DOS cosas, en orden,
  * igual que javac: (1) el operador BASE ("+ - * / %") debe aplicar entre el tipo del objetivo y el
  * del valor (`operandosValidosParaAritmetica`, MISMA regla que un "+"/"-" suelto — verificado:
  * "boolean b; b += false;"/"int x; x *= \"3\";" dan "bad operand types for binary operator"); (2)
@@ -609,7 +637,11 @@ function visitarLlamadaDeMiembro(
     });
     return;
   }
-  const tiposDeArgumentos = nodo.argumentos.map((argumento) => tipoDeExpresion(argumento, alcance));
+  // Tarea NUEVA (sub-lote 1-D5): `tiposDeArgumentos` (SOLO para el mensaje) usa
+  // `nombreDeArgumentoParaMostrar` -- MISMO nombre simple que javac muestra en sus propios mensajes
+  // ("PrintStream"/"InputStream" para System.out/System.in, nunca "desconocido" -- antes de esta
+  // corrección, un `Tipo` cerrado directo SIEMPRE daba 'desconocido' para estos 3 casos, ver tipos.ts).
+  const tiposDeArgumentos = nodo.argumentos.map((argumento) => nombreDeArgumentoParaMostrar(argumento, alcance));
   // Tarea 1.21 (sub-lote 1-D4): la RESOLUCIÓN en sí usa `argumentoDeSobrecarga` (nunca solo
   // `tipoDeExpresion`), para que "System.in"/"System.out"/"System.err" participen con su nombre
   // reflejado real en vez de apagar la cascada como 'desconocido' -- `tiposDeArgumentos`, arriba,
@@ -711,12 +743,14 @@ function visitarNuevaInstancia(
     return;
   }
 
-  // Tarea 1.21 (sub-lote 1-D4, gap "System.in/out/err como argumentos"): `tiposDeArgumentos` (el
-  // `Tipo` cerrado, SOLO para el mensaje) puede decir 'desconocido' para "System.in" (InputStream
-  // no es uno de los 8 `Tipo` declarables) aunque `argumentos` (abajo, lo que de verdad resuelve la
-  // sobrecarga) SÍ conoce su nombre reflejado real -- antes de esta tarea, "new Scanner(System.in)"
-  // se aceptaba en silencio SOLO porque este sumidero se disparaba sobre el "new" COMPLETO.
-  const tiposDeArgumentos = nodo.argumentos.map((argumento) => tipoDeExpresion(argumento, alcance));
+  // Tarea 1.21 (sub-lote 1-D4, gap "System.in/out/err como argumentos") + tarea NUEVA (sub-lote
+  // 1-D5, nombre de tipo en el mensaje): `tiposDeArgumentos` (SOLO para el mensaje) usa
+  // `nombreDeArgumentoParaMostrar` -- da "InputStream"/"PrintStream" para System.in/out/err (nunca
+  // "desconocido", igual que javac) mientras que `argumentos` (abajo, lo que de verdad resuelve la
+  // sobrecarga) sigue usando `argumentoDeSobrecarga` -- antes de la tarea 1.21, "new
+  // Scanner(System.in)" se aceptaba en silencio SOLO porque el sumidero de cascada se disparaba
+  // sobre el "new" COMPLETO.
+  const tiposDeArgumentos = nodo.argumentos.map((argumento) => nombreDeArgumentoParaMostrar(argumento, alcance));
   const argumentos = nodo.argumentos.map((argumento) => argumentoDeSobrecarga(argumento, alcance));
   if (argumentos.includes('desconocido')) return; // D2, mismo sumidero de cascada de siempre
 

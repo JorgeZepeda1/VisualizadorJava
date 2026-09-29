@@ -702,6 +702,55 @@ describe('atribuir — asignación compuesta (JLS 15.26.2, sub-lote 1-D4)', () =
   });
 });
 
+// Tarea NUEVA (sub-lote 1-D5, JLS 5.2/15.26.1: "el tipo de una expresión de asignación es el de
+// la variable asignada"): la asignación SIMPLE ("=") fuera de una declaración NUNCA se verificaba
+// -- a diferencia de un inicializador de declaración (`visitarDeclaracionLocal`, arriba) o de una
+// asignación COMPUESTA (describe anterior), "int x; x = \"hola\";" se aceptaba en silencio (hueco
+// documentado a propósito en el cierre de la tarea 1.21, sub-lote 1-D4). Reusa las MISMAS
+// `esAsignable`/`codigoDeAsignacionInvalida` que ya usa una declaración -- nunca una segunda tabla
+// de reglas. Verificado contra javac 17 real esta sesión (temurin-17.0.18, carpeta temporal
+// borrada tras verificar): las 5 líneas de abajo compilaron como un solo archivo con 7 clases,
+// javac reportó EXACTAMENTE estos 5 errores (y solo estos) en sus líneas reales.
+describe('atribuir — asignación SIMPLE fuera de declaración (JLS 5.2/15.26.1, sub-lote 1-D5)', () => {
+  it('"x = \\"hola\\"" con "x" int: "tipos-incompatibles-en-asignacion" (verificado: javac da "incompatible types: String cannot be converted to int")', () => {
+    const problemas = atribuirCuerpo('int x; x = "hola";');
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toMatchObject({ codigo: 'tipos-incompatibles-en-asignacion', datos: { origen: 'String', destino: 'int' } });
+  });
+
+  it('triangulación: "x = 3.5" con "x" int: "conversion-con-perdida" (verificado: javac da "possible lossy conversion from double to int")', () => {
+    const problemas = atribuirCuerpo('int x; x = 3.5;');
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toMatchObject({ codigo: 'conversion-con-perdida', datos: { origen: 'double', destino: 'int' } });
+  });
+
+  it('triangulación: "c = n" con "c" char y "n" int NO constante (una variable, no un literal): "conversion-con-perdida" (verificado: javac da "possible lossy conversion from int to char")', () => {
+    const problemas = atribuirCuerpo('char c; int n = 65; c = n;');
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toMatchObject({ codigo: 'conversion-con-perdida', datos: { origen: 'int', destino: 'char' } });
+  });
+
+  it('triangulación: "s = 5" con "s" String: "tipos-incompatibles-en-asignacion" (verificado: javac da "incompatible types: int cannot be converted to String")', () => {
+    const problemas = atribuirCuerpo('String s; s = 5;');
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toMatchObject({ codigo: 'tipos-incompatibles-en-asignacion', datos: { origen: 'int', destino: 'String' } });
+  });
+
+  it('triangulación: "b = 1" con "b" boolean: "tipos-incompatibles-en-asignacion" (verificado: javac da "incompatible types: int cannot be converted to boolean")', () => {
+    const problemas = atribuirCuerpo('boolean b; b = 1;');
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toMatchObject({ codigo: 'tipos-incompatibles-en-asignacion', datos: { origen: 'int', destino: 'boolean' } });
+  });
+
+  it('control: "c = 65" con "c" char SÍ es válido (constante int que cabe en char, JLS 5.2 -- verificado: javac compila limpio)', () => {
+    expect(atribuirCuerpo('char c; c = 65;')).toEqual([]);
+  });
+
+  it('control: "d = 5" con "d" double SÍ es válido (ensanchamiento int->double, verificado: javac compila limpio)', () => {
+    expect(atribuirCuerpo('double d; d = 5;')).toEqual([]);
+  });
+});
+
 // Tarea 1.21 (~15 mutantes de la tarea 1.16, "operator.cant.be.applied"/"prob.found.req" con una
 // sub-expresión ANIDADA como operando): antes de esta tarea, "(a + b) == true" nunca se rechazaba
 // -- "a + b" tipaba 'desconocido' (binaria fuera del alcance de 1.7/1.8) y la cascada de
@@ -738,7 +787,9 @@ describe('atribuir — System.in/System.out/System.err como ARGUMENTOS de un con
       'import java.util.Scanner; class C { public static void main(String[] a) { Scanner sc = new Scanner(System.out); } }',
     );
     expect(problemas).toHaveLength(1);
-    expect(problemas[0]).toMatchObject({ codigo: 'sin-constructor-aplicable', datos: { clase: 'Scanner' } });
+    // Tarea NUEVA (sub-lote 1-D5): `datos.argumentos` debe mostrar "PrintStream" (como javac),
+    // NUNCA "desconocido" -- ver el describe de abajo para el resto de la cobertura.
+    expect(problemas[0]).toMatchObject({ codigo: 'sin-constructor-aplicable', datos: { clase: 'Scanner', argumentos: ['PrintStream'] } });
   });
 
   it('control: "new Scanner(System.in)" bien tipado SIGUE sin problemas (no se volvió más estricto que javac)', () => {
@@ -746,6 +797,38 @@ describe('atribuir — System.in/System.out/System.err como ARGUMENTOS de un con
       'import java.util.Scanner; class C { public static void main(String[] a) { Scanner sc = new Scanner(System.in); } }',
     );
     expect(problemas).toEqual([]);
+  });
+});
+
+// Tarea NUEVA (sub-lote 1-D5): en "sin-constructor-aplicable"/"sin-sobrecarga-aplicable",
+// `datos.argumentos` mostraba "desconocido" para un argumento System.in/System.out/System.err --
+// technically correcto (NINGUNO es uno de los 8 `Tipo` cerrados, design.md §2.7), pero MENOS
+// preciso que javac, que SIEMPRE muestra el nombre simple de la clase real reflejada
+// ("InputStream"/"PrintStream") en sus propios mensajes ("no suitable constructor found for
+// Scanner(PrintStream)", nunca "Scanner(unknown)"). Reusa el MISMO canal que ya resuelve la
+// sobrecarga real (`campoReflejadoDeSystem`, tipos.ts) -- nunca una segunda tabla de nombres.
+describe('atribuir — nombres de tipo reflejado (InputStream/PrintStream) en los mensajes de sobrecarga (sub-lote 1-D5)', () => {
+  it('"new Random(System.in)" (InputStream, ningún constructor real de Random lo acepta -- catalogo-api.ts solo tiene Random()/Random(long)): "sin-constructor-aplicable" con argumentos: ["InputStream"], NUNCA "desconocido"', () => {
+    const problemas = atribuirPrograma(
+      'import java.util.Random; class C { public static void main(String[] a) { Random r = new Random(System.in); } }',
+    );
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toMatchObject({ codigo: 'sin-constructor-aplicable', datos: { clase: 'Random', argumentos: ['InputStream'] } });
+  });
+
+  it('triangulación: "Math.max(System.out, 1)" (PrintStream como argumento de un MÉTODO, no un constructor): "sin-sobrecarga-aplicable" con argumentos: ["PrintStream", "int"]', () => {
+    const problemas = atribuirCuerpo('Math.max(System.out, 1);');
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toMatchObject({
+      codigo: 'sin-sobrecarga-aplicable',
+      datos: { clase: 'Math', nombre: 'max', argumentos: ['PrintStream', 'int'] },
+    });
+  });
+
+  it('control: un argumento normal (no System.x) sigue mostrando su Tipo de siempre, sin cambios ("Math.max(\\"a\\", 1)" ya cubierto arriba con ["String", "int"])', () => {
+    const problemas = atribuirCuerpo('String s = "x"; s.charAt(true);');
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toMatchObject({ codigo: 'sin-sobrecarga-aplicable', datos: { argumentos: ['boolean'] } });
   });
 });
 
