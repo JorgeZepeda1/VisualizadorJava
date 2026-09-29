@@ -9,7 +9,16 @@
 // claro en vez de callar — `compilador.ts` ya lo atrapa y lo convierte en `Problema` (D2: nunca un
 // resultado inventado). Ningún caso de esta rebanada vertical ni de las tareas 1.1-1.4 necesita
 // que esto haga algo más: sus propias pruebas son de léxico/sintaxis, no de ejecución.
+//
+// Tarea 1.27 (agregada por el orquestador): antes de esta tarea ese error era un `Error` plano SIN
+// posición -- `compilador.ts` lo atrapaba con su catch-all genérico y lo presentaba como
+// `error-compilacion` (línea fija en 1), como si el programa tuviera un error de SINTAXIS. Java SÍ
+// acepta estos programas (verificado contra javac 17 real) -- `ErrorDeEjecucionNoDisponible` lleva
+// el `rango` REAL del elemento para que `compilador.ts` lo traduzca a `categoria:'no-disponible'`
+// con la línea correcta, nunca un resultado inventado (D2). Ruta defensiva PERMANENTE: sigue como
+// respaldo honesto incluso cuando el lote 2 baje todo el subconjunto a IR.
 import type { NodoElementoBloque, NodoPrograma } from '../sintaxis/ast.ts';
+import { ErrorDeEjecucionNoDisponible } from './error-de-ejecucion-no-disponible.ts';
 import type { ProgramaIr, SentenciaIr } from './ir.ts';
 
 export function generarIr(programa: NodoPrograma): ProgramaIr {
@@ -34,5 +43,8 @@ function generarSentenciaIr(elemento: NodoElementoBloque): SentenciaIr {
     if (elemento.argumento === null) return { tipo: 'impresion', texto: '' };
     if (elemento.argumento.tipo === 'literal-cadena') return { tipo: 'impresion', texto: elemento.argumento.valor };
   }
-  throw new Error(`la ejecución de "${elemento.tipo}" llega en el lote 2 (tareas 1.5/2.16)`);
+  throw new ErrorDeEjecucionNoDisponible(
+    `la ejecución de "${elemento.tipo}" llega en el lote 2 (tareas 1.5/2.16)`,
+    elemento.rango,
+  );
 }

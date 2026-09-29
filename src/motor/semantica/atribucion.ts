@@ -631,11 +631,12 @@ function visitarLlamadaDeMiembro(
   if (clasificacion === 'existe-no-soportado') {
     // Tarea 1.25 (hallazgo real, encontrado por esta MISMA tarea, no reportado por el orquestador:
     // ninguna muestra de `corpus/compilacion/avisos/` ejercita este código — solo la atribución lo
-    // produce): el texto es-MX (`miembro-de-biblioteca-no-soportado`) nombra el miembro CONCRETO
-    // desde la tarea 1.24 (`{ clase, nombre }`), pero este sitio mandaba `datos: {}` — el alumno
-    // veía "el miembro `undefined` de `undefined`" en vez de, p. ej., "split" de "String".
+    // produce): el texto es-MX nombra el miembro CONCRETO desde la tarea 1.24 (`{ clase, nombre }`),
+    // pero este sitio mandaba `datos: {}` — el alumno veía "el miembro `undefined` de `undefined`"
+    // en vez de, p. ej., "split" de "String". Tarea 1.26: código propio para MÉTODO (antes
+    // compartido con campo/constructor bajo "miembro-de-biblioteca-no-soportado").
     problemas.push({
-      codigo: CODIGOS_NO_SOPORTADO.miembroDeBiblioteca,
+      codigo: CODIGOS_NO_SOPORTADO.metodoDeBiblioteca,
       categoria: 'no-disponible',
       rango: callee.rango,
       datos: { clase, nombre: callee.miembro },
@@ -693,8 +694,9 @@ function visitarAccesoMiembro(
   if (clasificacion === 'existe-no-soportado') {
     // Tarea 1.25 (mismo hallazgo que `visitarLlamadaDeMiembro` arriba, sitio de emisión DISTINTO —
     // acceso de CAMPO, no llamada): "Integer.SIZE" mostraba "el miembro `undefined` de `undefined`".
+    // Tarea 1.26: código propio para CAMPO (antes compartido con método/constructor).
     problemas.push({
-      codigo: CODIGOS_NO_SOPORTADO.miembroDeBiblioteca,
+      codigo: CODIGOS_NO_SOPORTADO.campoDeBiblioteca,
       categoria: 'no-disponible',
       rango: nodo.rango,
       datos: { clase, nombre: nodo.miembro },
@@ -772,15 +774,17 @@ function visitarNuevaInstancia(
   }
   const claveDeFirma = `${nodo.nombreTipo}(${firma.parametros.join(',')})`;
   if (!CONSTRUCTORES_SOPORTADOS.has(claveDeFirma)) {
-    // Tarea 1.25 (mismo hallazgo, tercer sitio de emisión — CONSTRUCTOR): un constructor no tiene
-    // "nombre" propio en JLS (ver el comentario de "sin-constructor-aplicable" más abajo en este
-    // mismo archivo) — `nombre` describe la llamada tal como la escribió el alumno ("new Scanner")
-    // en vez de inventar un identificador que Java no usa (D2).
+    // Tarea 1.26 (hallazgo del orquestador, reemplaza el diseño de la 1.25 para este tercer sitio de
+    // emisión — CONSTRUCTOR): un constructor no tiene "nombre" propio en JLS (ver el comentario de
+    // "sin-constructor-aplicable" más abajo en este mismo archivo) — antes se inventaba `nombre:
+    // 'new ' + clase` para reusar el mismo código que método/campo, pero el texto resultante
+    // describía una sintaxis ("Scanner.new Scanner") que Java no tiene (D2). Código propio, datos
+    // SOLO `{ clase }` — el texto es-MX arma la sintaxis real (`new ${clase}`) él mismo.
     problemas.push({
-      codigo: CODIGOS_NO_SOPORTADO.miembroDeBiblioteca,
+      codigo: CODIGOS_NO_SOPORTADO.constructorDeBiblioteca,
       categoria: 'no-disponible',
       rango: nodo.rango,
-      datos: { clase: nodo.nombreTipo, nombre: `new ${nodo.nombreTipo}` },
+      datos: { clase: nodo.nombreTipo },
     });
   }
 }

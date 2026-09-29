@@ -81,19 +81,27 @@ describe('compilar — catálogo de exploracion/03 §4: veredicto, código y lí
   // Controles positivos: javac SÍ compila estos 4 limpio (sus .errores reales están vacíos). Las
   // pasadas 2-4 no deben rechazarlos -- pero el lote 1 todavía no genera IR real para
   // if/while/do-while ni para "println" de un valor que no sea un literal-cadena (llega en el
-  // lote 2, ver src/motor/ir/generar-ir.ts) -- por eso HOY compilar() da ok:false con el catch-all
-  // genérico "error-no-clasificado" (nunca un código semántico real) para los 4: prueba de que
-  // atribución/alcanzabilidad/asignación definitiva NO los rechazan por error, no de que ya se
-  // ejecuten de verdad.
+  // lote 2, ver src/motor/ir/generar-ir.ts).
+  //
+  // Tarea 1.27 (agregada por el orquestador, D2/regla 5 de CLAUDE.md): ANTES de esta tarea,
+  // `compilar()` daba `ok:false` con el catch-all GENÉRICO "error-no-clasificado"
+  // (`categoria:'error-compilacion'`) para los 4 -- un resultado inventado (un programa que javac
+  // acepta, presentado como si tuviera un error de SINTAXIS). Ahora `generarIr` lanza un error
+  // TIPADO (`ErrorDeEjecucionNoDisponible`) que `compilador.ts` traduce a
+  // `categoria:'no-disponible'`/`codigo:'ejecucion-no-disponible'` -- prueba de que
+  // atribución/alcanzabilidad/asignación definitiva NO los rechazan por error (siguen aceptándolos
+  // limpio, igual que javac) Y de que el hueco real (falta la IR del lote 2) ya no se disfraza de
+  // error de sintaxis.
   it.each([
     'err07_definite_assignment_if_else_ok',
     'err08_definite_assignment_while_true_break_ok',
     'err10b_definite_assignment_dowhile_ok',
     'flow17_shadowing_bloque_anidado',
-  ])('%s: javac SÍ compila (control positivo) — las pasadas 2-4 no lo rechazan (solo falta la IR del lote 2)', (archivo) => {
+  ])('%s: javac SÍ compila (control positivo) — las pasadas 2-4 no lo rechazan, y el hueco de IR del lote 2 es "no-disponible", nunca "error-compilacion"', (archivo) => {
     const resultado = compilar(fuenteDe(archivo));
     expect(resultado.ok).toBe(false);
     if (resultado.ok) throw new Error('se esperaba ok:false (falta la IR del lote 2, no un rechazo semántico)');
-    expect(resultado.problema.codigo).toBe('error-no-clasificado');
+    expect(resultado.problema.categoria).toBe('no-disponible');
+    expect(resultado.problema.codigo).toBe('ejecucion-no-disponible');
   });
 });

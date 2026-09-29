@@ -23,6 +23,7 @@ import { verificarAlcanzabilidad } from './semantica/alcanzabilidad.ts';
 import { verificarAsignacionDefinitiva } from './semantica/asignacion-definitiva.ts';
 import { verificarArranque } from './semantica/arranque.ts';
 import type { ProblemaAtribucion } from './semantica/diagnostico.ts';
+import { ErrorDeEjecucionNoDisponible } from './ir/error-de-ejecucion-no-disponible.ts';
 import { generarIr } from './ir/generar-ir.ts';
 import type { ProgramaCompilado } from './ir/ir.ts';
 import type { CodigoProblema, Problema } from './problemas.ts';
@@ -83,6 +84,20 @@ export function compilar(fuente: string): ResultadoCompilacion {
     const arranque = verificarArranque(programaAst.clase);
     return { ok: true, programa: { ir, arranque }, vista: { fuente } };
   } catch (error) {
+    // Tarea 1.27 (agregada por el orquestador, D2/regla 5 de CLAUDE.md): por construcción, este
+    // `catch` solo puede recibir un `ErrorDeEjecucionNoDisponible` DESPUÉS de que `analizarPrograma`
+    // ya devolvió un AST válido, `recolectarNoSoportados` ya devolvió cero avisos y las 3 PASADAS
+    // SEMÁNTICAS ya devolvieron cero problemas -- es decir, "todas las pasadas semánticas aceptaron
+    // el programa" se cumple SIEMPRE que se llega aquí, sin necesitar una bandera aparte. Un tipo
+    // PROPIO (nunca un `catch` genérico ni un `instanceof Error` ancho) para no tragarse un bug
+    // real de otra fase: cualquier OTRA excepción (incluida una real de sintaxis,
+    // `ErrorDeCompilacion`) sigue cayendo en la lógica de abajo, sin cambios.
+    if (error instanceof ErrorDeEjecucionNoDisponible) {
+      return construirResultadoNoDisponible(
+        [{ codigo: CODIGOS_NO_SOPORTADO.ejecucionNoDisponible, rango: error.rango, datos: {} }],
+        fuente,
+      );
+    }
     const rangoError = error instanceof ErrorDeCompilacion ? error.rango : null;
     const avisosAntesDelError = rangoError
       ? noSoportadosLexicos.filter((t) => avisoEnmascaraError(t, rangoError))

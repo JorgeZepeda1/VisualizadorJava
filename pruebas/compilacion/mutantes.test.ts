@@ -53,7 +53,6 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { compilar } from '../../src/motor/index.ts';
-import type { Problema } from '../../src/motor/index.ts';
 
 const AQUI = dirname(fileURLToPath(import.meta.url));
 const RUTA_VEREDICTOS = resolve(AQUI, '..', '..', 'corpus', 'mutantes', 'veredictos.jsonl');
@@ -83,34 +82,16 @@ interface NuestroVeredicto {
   readonly codigo: string | null;
 }
 
-/**
- * Tarea 1.16 (sub-lote 1-D2c, descubierto midiendo esta comparación): `generarIr` (lote 2, fuera
- * de alcance del lote 1) lanza a propósito para CUALQUIER sentencia que no sea "println" de un
- * literal (design.md, cabecera de `ir/generar-ir.ts`: "D2, nunca un resultado a medias") --
- * `compilar()` envuelve ESE throw exactamente igual que un error de compilación real
- * (`error-no-clasificado`). Para esta comparación (que solo evalúa las 4 pasadas de COMPILACIÓN,
- * nunca IR/ejecución -- fuera del alcance de la tarea 1.16), un programa que las 4 pasadas
- * aceptan pero que `generarIr` todavía no sabe bajar a IR SIGUE siendo "compila" desde el punto de
- * vista de javac -- nunca un error real. Detectado por el mensaje EXACTO que `generar-ir.ts` usa
- * (única fuente de ese texto, nunca inventado aquí).
- */
-function esGapDeIrTodaviaNoImplementado(problema: Problema): boolean {
-  return (
-    problema.categoria === 'error-compilacion' &&
-    problema.codigo === 'error-no-clasificado' &&
-    typeof problema.datos['mensaje'] === 'string' &&
-    (problema.datos['mensaje'] as string).includes('llega en el lote 2')
-  );
-}
-
 function nuestroVeredicto(fuente: string): NuestroVeredicto {
   const resultado = compilar(fuente);
   if (resultado.ok) return { compila: true, linea: null, codigo: null };
   // NO-DISP (categoria 'no-disponible'): javac SÍ compila estas construcciones (existen, fuera de
   // REQ-SUB-005/007) -- "no lo mostramos" nunca es "no compila" (D2, misma distinción que ya hace
-  // el resto del motor).
+  // el resto del motor). Desde la tarea 1.27 esto incluye el hueco de IR del lote 2
+  // (`ejecucion-no-disponible`): antes llegaba como `error-no-clasificado` y esta comparación lo
+  // reconocía por el texto del mensaje de `generar-ir.ts`, una regla que ya no puede coincidir con
+  // nada y que solo habría servido para esconder una regresión futura.
   if (resultado.problema.categoria === 'no-disponible') return { compila: true, linea: null, codigo: null };
-  if (esGapDeIrTodaviaNoImplementado(resultado.problema)) return { compila: true, linea: null, codigo: null };
   return { compila: false, linea: resultado.problema.linea, codigo: String(resultado.problema.codigo) };
 }
 

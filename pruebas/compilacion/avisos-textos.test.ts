@@ -106,50 +106,57 @@ describe('corpus/compilacion/avisos — cada muestra real produce, vía compilar
   );
 });
 
-// `miembro-de-biblioteca-no-soportado` (semantica/atribucion.ts) NO está cubierto por
-// `corpus/compilacion/avisos/` (esa carpeta solo ejercita léxico/sintaxis, tarea 1.6 — este código
-// necesita el catálogo real del JDK, ADR 010, que solo existe desde la atribución, tarea 1.19). Un
-// 5.º texto roto, encontrado por esta MISMA verificación de punta a punta durante la tarea 1.25 (no
-// reportado por el orquestador: ningún archivo de `avisos/` lo ejercita): `atribucion.ts` mandaba
-// `datos: {}` en sus 3 sitios de emisión (llamada de método, acceso de campo, constructor) aunque el
-// texto pide `{ clase, nombre }` desde la tarea 1.24 — "Tu programa usa el miembro `undefined` de
-// `undefined`...". Snippets verificados contra javac 17 real en `atribucion.test.ts` (líneas
-// 93-100, 178-182, 580-586).
-describe('miembro-de-biblioteca-no-soportado — no cubierto por corpus/avisos (necesita atribución, no solo sintaxis)', () => {
-  it('s.split(","): llamada de método — el texto nombra el miembro REAL ("split" de "String"), vía compilar() completo', () => {
+// Tarea 1.26 (agregada por el orquestador — hallazgo verificado de punta a punta): el código único
+// `miembro-de-biblioteca-no-soportado` mezclaba método/campo/constructor bajo el mismo texto
+// genérico ("el miembro X de Y") -- para el caso CONSTRUCTOR, `atribucion.ts` mandaba `nombre: 'new
+// ' + clase`, así que un alumno con `Scanner s = new Scanner("12 34");` leía "el miembro `new
+// Scanner` de `Scanner`... todavía no simula `Scanner.new Scanner`" -- `Scanner.new Scanner` NO es
+// Java (D2: casi un resultado inventado en el propio TEXTO del aviso). "miembro" tampoco es una
+// palabra que un alumno de U3-U7 conozca (conoce "método"). Dividido en TRES códigos, cada uno con
+// su propio texto es-MX y su propia forma de datos en `DatosPorCodigoNoSoportado`:
+// `metodo-de-biblioteca-no-soportado`/`campo-de-biblioteca-no-soportado` (`{ clase, nombre }`,
+// igual que antes) y `constructor-de-biblioteca-no-soportado` (solo `{ clase }` -- un constructor no
+// tiene "nombre" propio en JLS, no se inventa uno). Ninguno de los 3 está cubierto por
+// `corpus/compilacion/avisos/` (esa carpeta solo ejercita léxico/sintaxis, tarea 1.6 — estos 3
+// códigos necesitan el catálogo real del JDK, ADR 010, que solo existe desde la atribución, tarea
+// 1.19). Los 3 programas de abajo, verificados contra javac 17.0.18 REAL (carpeta temporal fuera del
+// repo, borrada tras verificar — ver el informe de la sesión): los 3 compilan limpio.
+describe('metodo/campo/constructor-de-biblioteca-no-soportado — no cubiertos por corpus/avisos (necesitan atribución, no solo sintaxis)', () => {
+  it('s.split(","): llamada de MÉTODO (visitarLlamadaDeMiembro) — código "metodo-de-biblioteca-no-soportado", el texto dice "el método `split` de `String`"', () => {
     const fuente = 'class C { public static void main(String[] a) { String s = "a,b"; s.split(","); } }';
     const resultado = compilar(fuente);
     expect(resultado.ok).toBe(false);
     if (resultado.ok) return;
     expect(resultado.problema.categoria).toBe('no-disponible');
-    expect(resultado.problema.codigo).toBe('miembro-de-biblioteca-no-soportado');
-    const texto = renderizar('miembro-de-biblioteca-no-soportado', resultado.problema.linea, resultado.problema.datos);
-    expect(texto).toContain('split');
-    expect(texto).toContain('String');
+    expect(resultado.problema.codigo).toBe('metodo-de-biblioteca-no-soportado');
+    const texto = renderizar('metodo-de-biblioteca-no-soportado', resultado.problema.linea, resultado.problema.datos);
+    expect(texto).toContain('el método `split` de `String`');
     expect(texto).not.toMatch(/undefined/);
   });
 
-  it('triangulación: Integer.SIZE (acceso de CAMPO, no llamada) nombra "SIZE"/"Integer" — sitio de emisión distinto (visitarAccesoMiembro)', () => {
+  it('Integer.SIZE: acceso de CAMPO, no llamada (visitarAccesoMiembro) — código "campo-de-biblioteca-no-soportado", el texto dice "`Integer.SIZE`" y NUNCA "miembro"', () => {
     const fuente = 'class C { public static void main(String[] a) { int n = Integer.SIZE; } }';
     const resultado = compilar(fuente);
     expect(resultado.ok).toBe(false);
     if (resultado.ok) return;
-    expect(resultado.problema.codigo).toBe('miembro-de-biblioteca-no-soportado');
-    const texto = renderizar('miembro-de-biblioteca-no-soportado', resultado.problema.linea, resultado.problema.datos);
-    expect(texto).toContain('SIZE');
-    expect(texto).toContain('Integer');
+    expect(resultado.problema.codigo).toBe('campo-de-biblioteca-no-soportado');
+    const texto = renderizar('campo-de-biblioteca-no-soportado', resultado.problema.linea, resultado.problema.datos);
+    expect(texto).toContain('`Integer.SIZE`');
+    expect(texto).not.toContain('miembro');
     expect(texto).not.toMatch(/undefined/);
   });
 
-  it('triangulación: new Scanner("texto") (CONSTRUCTOR, no método ni campo) — tercer sitio de emisión distinto (visitarNuevaInstancia)', () => {
+  it('new Scanner("12 34"): CONSTRUCTOR, ni método ni campo (visitarNuevaInstancia) — código "constructor-de-biblioteca-no-soportado", el texto dice "`new Scanner`"/"crear un `Scanner`" y NUNCA "`Scanner.new"', () => {
     const fuente =
-      'import java.util.Scanner; class C { public static void main(String[] a) { Scanner sc = new Scanner("texto"); } }';
+      'import java.util.Scanner; class C { public static void main(String[] a) { Scanner sc = new Scanner("12 34"); } }';
     const resultado = compilar(fuente);
     expect(resultado.ok).toBe(false);
     if (resultado.ok) return;
-    expect(resultado.problema.codigo).toBe('miembro-de-biblioteca-no-soportado');
-    const texto = renderizar('miembro-de-biblioteca-no-soportado', resultado.problema.linea, resultado.problema.datos);
-    expect(texto).toContain('Scanner');
+    expect(resultado.problema.codigo).toBe('constructor-de-biblioteca-no-soportado');
+    const texto = renderizar('constructor-de-biblioteca-no-soportado', resultado.problema.linea, resultado.problema.datos);
+    expect(texto).toContain('`new Scanner`');
+    expect(texto).toContain('crear un `Scanner`');
+    expect(texto).not.toContain('`Scanner.new');
     expect(texto).not.toMatch(/undefined/);
   });
 });

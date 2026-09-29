@@ -104,8 +104,23 @@ export const textosNoSoportado: { readonly [K in CodigoNoSoportado]: (datos: Dat
 
   'lambda-no-soportada': ({ linea }) => marco(linea, 'una expresión lambda (`->`)', 'no ejecuta lambdas'),
 
-  'miembro-de-biblioteca-no-soportado': ({ linea, clase, nombre }) =>
-    marco(linea, `el miembro \`${nombre}\` de \`${clase}\``, `no simula \`${clase}.${nombre}\``),
+  // Tarea 1.26 (agregada por el orquestador): el código único anterior, "miembro-de-biblioteca-no-
+  // soportado", usaba "miembro" (jerga que un alumno de U3-U7 no conoce — conoce "método") y, para
+  // un constructor, inventaba `nombre: 'new ' + clase` porque un constructor no tiene "nombre" propio
+  // en JLS — el texto resultante ("el miembro `new Scanner` de `Scanner`... `Scanner.new Scanner`")
+  // describía una sintaxis que Java no tiene. Divididos en 3 textos, cada uno con la palabra que el
+  // alumno SÍ reconoce.
+  'metodo-de-biblioteca-no-soportado': ({ linea, clase, nombre }) =>
+    marco(linea, `el método \`${nombre}\` de \`${clase}\``, 'no simula ese método'),
+
+  'campo-de-biblioteca-no-soportado': ({ linea, clase, nombre }) =>
+    marco(linea, `\`${clase}.${nombre}\``, 'no simula ese valor'),
+
+  // Un constructor no tiene "nombre" propio en JLS (`DatosPorCodigoNoSoportado` solo manda `clase`)
+  // — el texto arma la sintaxis real de la llamada ("new Scanner") él mismo, en vez de que el motor
+  // tenga que fingir un identificador que Java no usa.
+  'constructor-de-biblioteca-no-soportado': ({ linea, clase }) =>
+    marco(linea, `\`new ${clase}\` con esos argumentos`, `no simula esa forma de crear un \`${clase}\``),
 
   'escape-no-soportado': ({ linea }) =>
     marco(linea, 'una secuencia de escape que Java reconoce pero este visualizador todavía no simula (como `\\r`, `\\b`, `\\f` o `\\s`)', 'no decodifica ese escape'),
@@ -168,6 +183,16 @@ export const textosNoSoportado: { readonly [K in CodigoNoSoportado]: (datos: Dat
     marco(linea, 'el operador de bits `&`', 'no ejecuta operaciones de bits', 'Si buscabas la versión lógica de corto-circuito, en este subconjunto sí existe `&&`.'),
 
   'operador-desplazamiento': ({ linea }) => marco(linea, 'un operador de desplazamiento de bits (`<<`, `>>` o `>>>`)', 'no ejecuta operaciones de bits'),
+
+  // Tarea 1.27 (agregada por el orquestador, D2/regla 5 de CLAUDE.md): a diferencia de TODO el
+  // resto de este catálogo, esta construcción SÍ está dentro del subconjunto U3-U7 (por eso el texto
+  // NUNCA dice "este visualizador cubre las unidades 3 a 7" — sería engañoso, `marco()` no aplica
+  // aquí) — el hueco es que `generarIr` todavía no sabe EJECUTARLA (lote 2, tareas 1.5/2.16). Texto
+  // deliberadamente genérico, sin nombrar el elemento AST interno: "declaracion-local", "lote" y
+  // "tarea" son jerga de desarrollo que un alumno nunca debe leer.
+  'ejecucion-no-disponible': ({ linea }) =>
+    `Java sí acepta tu programa, pero este visualizador todavía no sabe ejecutar lo que escribiste ` +
+    `en la línea ${linea}. No lo ejecuto para no enseñarte un resultado que podría no ser el de Java.`,
 
   // Respaldo defensivo (`motor/no-soportado.ts` → `sinClasificar`): en la práctica nunca debería
   // alcanzarse (todo token `no-soportado` fija su código al crearse) — a diferencia del resto del

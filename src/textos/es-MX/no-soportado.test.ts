@@ -37,7 +37,12 @@ const DATOS_DE_EJEMPLO: Record<CodigoNoSoportado, Record<string, unknown>> = {
   'yield-no-soportado': { linea: 1 },
   'import-static-no-soportado': { linea: 1 },
   'lambda-no-soportada': { linea: 1 },
-  'miembro-de-biblioteca-no-soportado': { linea: 1, clase: 'String', nombre: 'split' },
+  // Tarea 1.26: el código único "miembro-de-biblioteca-no-soportado" se dividió en 3 -- método y
+  // campo conservan `{ clase, nombre }`; un constructor no tiene "nombre" propio en JLS, solo
+  // `{ clase }` (ver el comentario de `DatosPorCodigoNoSoportado` en motor/no-soportado.ts).
+  'metodo-de-biblioteca-no-soportado': { linea: 1, clase: 'String', nombre: 'split' },
+  'campo-de-biblioteca-no-soportado': { linea: 1, clase: 'Integer', nombre: 'SIZE' },
+  'constructor-de-biblioteca-no-soportado': { linea: 1, clase: 'Scanner' },
   'escape-no-soportado': { linea: 1 },
   'escape-octal-no-soportado': { linea: 1 },
   'escape-unicode-no-soportado': { linea: 1 },
@@ -59,6 +64,9 @@ const DATOS_DE_EJEMPLO: Record<CodigoNoSoportado, Record<string, unknown>> = {
   'operador-bits-xor': { linea: 1 },
   'operador-bits-and': { linea: 1 },
   'operador-desplazamiento': { linea: 1 },
+  // Tarea 1.27: única entrada de este catálogo para una construcción que SÍ está en el subconjunto
+  // (el motor la ACEPTA); el hueco es que `generarIr` todavía no sabe ejecutarla.
+  'ejecucion-no-disponible': { linea: 1 },
   'no-soportado': { linea: 1 },
 };
 
@@ -100,19 +108,60 @@ describe('textosNoSoportado — REQ-SUB-006 (spec subconjunto-java): formato y e
     expect(texto).toMatch(/octal/i);
   });
 
-  // "Para miembros de biblioteca (p. ej. s.split, Math.sin, sc.hasNextInt) el texto nombra el
-  // miembro concreto" (instrucción del orquestador para esta tarea).
-  it('miembro de biblioteca: el texto nombra el miembro CONCRETO (clase y nombre), nunca algo genérico', () => {
-    const texto = textosNoSoportado['miembro-de-biblioteca-no-soportado']({ linea: 5, clase: 'String', nombre: 'split' });
-    expect(texto).toContain('split');
-    expect(texto).toContain('String');
+  // Tarea 1.26 (agregada por el orquestador): "miembro" es jerga que un alumno de U3-U7 no conoce
+  // (conoce "método") y el código único anterior producía, para un constructor, "el miembro `new
+  // Scanner` de `Scanner`... `Scanner.new Scanner`" -- una construcción que NO es Java (D2). Ahora
+  // 3 textos independientes, cada uno con la palabra que el alumno SÍ reconoce.
+  it('método de biblioteca: el texto dice "el método `NOMBRE` de `CLASE`", nombra el método CONCRETO, nunca algo genérico', () => {
+    const texto = textosNoSoportado['metodo-de-biblioteca-no-soportado']({ linea: 5, clase: 'String', nombre: 'split' });
+    expect(texto).toContain('el método `split` de `String`');
   });
 
-  it('triangulación de miembro de biblioteca: otra clase/miembro distintos se reflejan tal cual (nunca "split"/"String" fijos)', () => {
-    const texto = textosNoSoportado['miembro-de-biblioteca-no-soportado']({ linea: 9, clase: 'Math', nombre: 'sin' });
-    expect(texto).toContain('sin');
-    expect(texto).toContain('Math');
+  it('triangulación de método de biblioteca: otra clase/método distintos se reflejan tal cual (nunca "split"/"String" fijos)', () => {
+    const texto = textosNoSoportado['metodo-de-biblioteca-no-soportado']({ linea: 9, clase: 'Math', nombre: 'sin' });
+    expect(texto).toContain('el método `sin` de `Math`');
     expect(texto).not.toContain('split');
+  });
+
+  it('campo de biblioteca: el texto dice "`CLASE.NOMBRE`" tal como se escribe en Java, y NUNCA usa la palabra "miembro"', () => {
+    const texto = textosNoSoportado['campo-de-biblioteca-no-soportado']({ linea: 5, clase: 'Integer', nombre: 'SIZE' });
+    expect(texto).toContain('`Integer.SIZE`');
+    expect(texto).not.toContain('miembro');
+  });
+
+  it('triangulación de campo de biblioteca: otra clase/campo distintos se reflejan tal cual (nunca "Integer"/"SIZE" fijos)', () => {
+    const texto = textosNoSoportado['campo-de-biblioteca-no-soportado']({ linea: 9, clase: 'Math', nombre: 'PI' });
+    expect(texto).toContain('`Math.PI`');
+    expect(texto).not.toContain('Integer');
+  });
+
+  // El constructor NO tiene "nombre" propio en JLS (solo `{ clase }`, ver DatosPorCodigoNoSoportado)
+  // -- el texto nombra la SINTAXIS real ("new Scanner"), nunca "Scanner.new Scanner" (eso no es Java).
+  it('constructor de biblioteca: el texto dice "`new CLASE`"/"crear un `CLASE`" y NUNCA "`CLASE.new" (eso no es Java)', () => {
+    const texto = textosNoSoportado['constructor-de-biblioteca-no-soportado']({ linea: 3, clase: 'Scanner' });
+    expect(texto).toContain('`new Scanner`');
+    expect(texto).toContain('crear un `Scanner`');
+    expect(texto).not.toContain('`Scanner.new');
+  });
+
+  it('triangulación de constructor de biblioteca: otra clase distinta se refleja tal cual (nunca "Scanner" fijo)', () => {
+    const texto = textosNoSoportado['constructor-de-biblioteca-no-soportado']({ linea: 6, clase: 'Random' });
+    expect(texto).toContain('`new Random`');
+    expect(texto).toContain('crear un `Random`');
+    expect(texto).not.toContain('Scanner');
+  });
+
+  // Tarea 1.27: a diferencia de TODO el resto del catálogo, esta construcción SÍ está dentro del
+  // subconjunto U3-U7 -- el texto NUNCA debe decir "este visualizador cubre las unidades 3 a 7"
+  // (sería engañoso) ni usar jerga de desarrollo ("lote", "tarea", "declaracion-local").
+  it('ejecución no disponible: el texto NUNCA dice "unidades 3 a 7" (sí está en el subconjunto) ni usa jerga de desarrollo', () => {
+    const texto = textosNoSoportado['ejecucion-no-disponible']({ linea: 3 });
+    expect(texto).toContain('línea 3');
+    expect(texto).toMatch(/Java sí/);
+    expect(texto).not.toMatch(/unidades 3 a 7/);
+    expect(texto).not.toContain('lote');
+    expect(texto).not.toContain('tarea');
+    expect(texto).not.toContain('declaracion-local');
   });
 
   // REQ-SUB-006: "señalar la línea y la construcción, decir que Java sí la acepta (cuando aplica),

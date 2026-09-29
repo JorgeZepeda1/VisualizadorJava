@@ -95,19 +95,20 @@ describe('atribuir — biblioteca conectada a la atribución (sub-lote 1-D2c, RE
     expect(problemas).toHaveLength(1);
     expect(problemas[0]).toMatchObject({
       categoria: 'no-disponible',
-      codigo: 'miembro-de-biblioteca-no-soportado',
+      // Tarea 1.26: el código único "miembro-de-biblioteca-no-soportado" se dividió en 3 (método,
+      // campo, constructor) -- "split" es una llamada de MÉTODO (visitarLlamadaDeMiembro).
+      codigo: 'metodo-de-biblioteca-no-soportado',
     });
-    // Tarea 1.25 (datos tipados): el texto es-MX (`miembro-de-biblioteca-no-soportado`) nombra el
-    // miembro CONCRETO desde la tarea 1.24 (`{ clase, nombre }`), pero este sitio de emisión
-    // (visitarLlamadaDeMiembro) mandaba `datos: {}` — el alumno veía "el miembro `undefined` de
-    // `undefined`" en vez de "split"/"String".
+    // Tarea 1.25 (datos tipados): el texto es-MX nombra el miembro CONCRETO desde la tarea 1.24
+    // (`{ clase, nombre }`), pero este sitio de emisión (visitarLlamadaDeMiembro) mandaba `datos: {}`
+    // — el alumno veía "el miembro `undefined` de `undefined`" en vez de "split"/"String".
     expect(problemas[0].datos).toEqual({ clase: 'String', nombre: 'split' });
   });
 
   it('triangulación: Math.sin(x) -- otra clase, mismo desenlace NO-DISP (trascendentes, REQ-SUB-007)', () => {
     const problemas = atribuirCuerpo('double x = 1.0; Math.sin(x);');
     expect(problemas).toHaveLength(1);
-    expect(problemas[0]).toMatchObject({ categoria: 'no-disponible', codigo: 'miembro-de-biblioteca-no-soportado' });
+    expect(problemas[0]).toMatchObject({ categoria: 'no-disponible', codigo: 'metodo-de-biblioteca-no-soportado' });
   });
 
   it('triangulación: sc.hasNextInt() -- Scanner real (con import), mismo desenlace NO-DISP (REQ-SUB-007)', () => {
@@ -115,7 +116,7 @@ describe('atribuir — biblioteca conectada a la atribución (sub-lote 1-D2c, RE
       'import java.util.Scanner; class C { public static void main(String[] a) { Scanner sc = new Scanner(System.in); sc.hasNextInt(); } }',
     );
     expect(problemas).toHaveLength(1);
-    expect(problemas[0]).toMatchObject({ categoria: 'no-disponible', codigo: 'miembro-de-biblioteca-no-soportado' });
+    expect(problemas[0]).toMatchObject({ categoria: 'no-disponible', codigo: 'metodo-de-biblioteca-no-soportado' });
   });
 
   it('s.lenght() (error de dedo real de un alumno) -- NO existe ningún miembro con ese nombre: "miembro-no-declarado" (verificado: javac da "cannot find symbol: method lenght()")', () => {
@@ -183,9 +184,11 @@ describe('atribuir — acceso a miembro como valor (sub-lote 1-D2c, REQ-SUB-005/
   it('Integer.SIZE -- campo real del JDK, fuera de REQ-SUB-005: aviso NO-DISP (verificado: javac compila Integer.SIZE limpio)', () => {
     const problemas = atribuirCuerpo('int n = Integer.SIZE;');
     expect(problemas).toHaveLength(1);
-    expect(problemas[0]).toMatchObject({ categoria: 'no-disponible', codigo: 'miembro-de-biblioteca-no-soportado' });
-    // Tarea 1.25, triangulación (sitio de emisión DISTINTO — visitarAccesoMiembro, campo, no
-    // llamada — y clase/nombre distintos de "split"/"String" para probar que no están fijos).
+    // Tarea 1.26: sitio de emisión CAMPO (visitarAccesoMiembro) -- código propio, distinto del de
+    // un método (ver "String.split" arriba) y del de un constructor (ver "new Scanner" abajo).
+    expect(problemas[0]).toMatchObject({ categoria: 'no-disponible', codigo: 'campo-de-biblioteca-no-soportado' });
+    // Tarea 1.25, triangulación (clase/nombre distintos de "split"/"String" para probar que no están
+    // fijos).
     expect(problemas[0].datos).toEqual({ clase: 'Integer', nombre: 'SIZE' });
   });
 
@@ -198,7 +201,7 @@ describe('atribuir — acceso a miembro como valor (sub-lote 1-D2c, REQ-SUB-005/
 
 // Sub-lote 1-D2c: corrección descubierta al conectar la biblioteca real -- antes de esta
 // corrección, "Scanner sc = ...;" SIN import producía DOS problemas ("tipo-requiere-import" +
-// "miembro-de-biblioteca-no-soportado" de "sc.hasNextInt()"), nunca solo uno -- javac SIEMPRE
+// "metodo-de-biblioteca-no-soportado" de "sc.hasNextInt()", tarea 1.26), nunca solo uno -- javac SIEMPRE
 // suprime la cascada cuando el TIPO mismo no se resolvió (D2, nunca más permisivo/estricto que
 // javac). Ver también el describe "err20" más abajo (control con import SÍ presente).
 describe('atribuir — corrección: un tipo sin resolver (sin import) suprime la cascada sobre sus propios usos (sub-lote 1-D2c)', () => {
@@ -591,12 +594,15 @@ describe('atribuir — "new Clase(...)" contra los constructores reales de FIRMA
     );
     expect(problemas).toHaveLength(1);
     expect(problemas[0]?.categoria).toBe('no-disponible');
-    // Tarea 1.25, triangulación (tercer sitio de emisión — visitarNuevaInstancia, constructor): un
-    // constructor no tiene "nombre" propio en JLS (ver el comentario de "sin-constructor-aplicable"
-    // más arriba), así que `nombre` describe la llamada tal como la escribió el alumno ("new
-    // Scanner") en vez de inventar un identificador que Java no usa.
-    expect(problemas[0]?.codigo).toBe('miembro-de-biblioteca-no-soportado');
-    expect(problemas[0]?.datos).toEqual({ clase: 'Scanner', nombre: 'new Scanner' });
+    // Tarea 1.26 (hallazgo del orquestador): el código único "miembro-de-biblioteca-no-soportado"
+    // mandaba, para el CONSTRUCTOR, `nombre: 'new ' + clase` -- el texto resultante ("el miembro
+    // `new Scanner` de `Scanner`... `Scanner.new Scanner`") describía una construcción que NO es
+    // Java. Sitio de emisión propio (visitarNuevaInstancia) con código propio
+    // "constructor-de-biblioteca-no-soportado" y datos SOLO `{ clase }` -- un constructor no tiene
+    // "nombre" propio en JLS (ver el comentario de "sin-constructor-aplicable" más arriba), así que
+    // ya no se inventa uno.
+    expect(problemas[0]?.codigo).toBe('constructor-de-biblioteca-no-soportado');
+    expect(problemas[0]?.datos).toEqual({ clase: 'Scanner' });
   });
 });
 

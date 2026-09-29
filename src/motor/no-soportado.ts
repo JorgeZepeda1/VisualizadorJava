@@ -51,11 +51,25 @@ export const CODIGOS_NO_SOPORTADO = {
   // sintácticas distintas — nunca dos construcciones distintas para el alumno.
   arregloNuevo: 'arreglo-no-soportado',
   // Sub-lote 1-D2c (design.md §2.6 fila "Atribución": "miembros existentes no soportados de clases
-  // soportadas" — `s.split`, `Math.sin`, `sc.hasNextInt`…). A diferencia de TODO lo demás en esta
-  // tabla, este código NO lo produce un reconocedor de `sintaxis/` (necesita el catálogo real del
-  // JDK para saber que el miembro EXISTE, ADR 010) — lo emite `semantica/atribucion.ts`
-  // directamente, reusando esta MISMA constante.
-  miembroDeBiblioteca: 'miembro-de-biblioteca-no-soportado',
+  // soportadas" — `s.split`, `Math.sin`, `sc.hasNextInt`, `new Scanner("texto")`…). A diferencia de
+  // TODO lo demás en esta tabla, estos 3 códigos NO los produce un reconocedor de `sintaxis/`
+  // (necesitan el catálogo real del JDK para saber que el miembro EXISTE, ADR 010) — los emite
+  // `semantica/atribucion.ts` directamente, reusando esta MISMA constante.
+  //
+  // Tarea 1.26 (agregada por el orquestador — hallazgo verificado de punta a punta): antes de esta
+  // tarea existía un solo código, `miembroDeBiblioteca: 'miembro-de-biblioteca-no-soportado'`,
+  // compartido por los 3 sitios de emisión de `atribucion.ts` (llamada de método, acceso de campo,
+  // constructor). Para el CONSTRUCTOR, que no tiene "nombre" propio en JLS, ese único código
+  // obligaba a inventar uno (`nombre: 'new ' + clase`) — el texto resultante, "el miembro `new
+  // Scanner` de `Scanner`... todavía no simula `Scanner.new Scanner`", describe una sintaxis que NO
+  // es Java (D2: casi un resultado inventado en el propio TEXTO del aviso). "miembro" tampoco es una
+  // palabra que un alumno de U3-U7 conozca (conoce "método"). Divididos en 3 códigos — cada uno con
+  // su propio texto es-MX (`textos/es-MX/no-soportado.ts`) y su propia forma de datos exacta abajo
+  // (`DatosPorCodigoNoSoportado`) — para que ni el motor ni el texto tengan que fingir un nombre que
+  // Java no usa.
+  metodoDeBiblioteca: 'metodo-de-biblioteca-no-soportado',
+  campoDeBiblioteca: 'campo-de-biblioteca-no-soportado',
+  constructorDeBiblioteca: 'constructor-de-biblioteca-no-soportado',
 
   // ---- Léxico (lexico/literales.ts, lexico/analizador-lexico.ts) — tarea 1.24: antes strings
   // inline, nunca reunidos en una tabla. ----
@@ -83,6 +97,15 @@ export const CODIGOS_NO_SOPORTADO = {
   operadorBitsXor: 'operador-bits-xor',
   operadorBitsAnd: 'operador-bits-and',
   operadorDesplazamiento: 'operador-desplazamiento',
+
+  // Tarea 1.27 (agregada por el orquestador, D2/regla 5 de CLAUDE.md): a diferencia de TODO lo
+  // demás en esta tabla (construcciones FUERA del subconjunto U3-U7 por diseño), este código cubre
+  // un programa QUE SÍ está en el subconjunto y que las 5 pasadas de `compilador.ts` YA ACEPTARON,
+  // pero que `generarIr` (motor/ir/generar-ir.ts) todavía no sabe bajar a IR porque el lote 2
+  // (tareas 1.5/2.16) no ha llegado a ese elemento — ruta defensiva PERMANENTE (ver el comentario de
+  // `ErrorDeEjecucionNoDisponible`, motor/ir/error-de-ejecucion-no-disponible.ts). Lo emite
+  // `compilador.ts` directamente (nunca un reconocedor de léxico/sintaxis/atribución).
+  ejecucionNoDisponible: 'ejecucion-no-disponible',
 
   // Respaldo defensivo: el `?? '...'` de `compilador.ts`/`sintaxis/no-soportado.ts`/
   // `sintaxis/expresiones.ts` para un token `tipo:'no-soportado'` sin `codigo` fijado. En la
@@ -136,12 +159,21 @@ export interface DatosPorCodigoNoSoportado {
   'yield-no-soportado': Record<never, never>;
   'import-static-no-soportado': Record<never, never>;
   'lambda-no-soportada': Record<never, never>;
-  /** Instrucción explícita del orquestador (tarea 1.24): el texto nombra el miembro CONCRETO, nunca
-   * un "miembro de biblioteca" genérico. Un constructor no tiene "nombre" propio en JLS (ver el
-   * comentario de `sin-constructor-aplicable` en `problemas.ts`) — `semantica/atribucion.ts` manda
-   * `nombre: 'new ' + clase` en ese único caso (los otros dos, método/campo, mandan el identificador
-   * real tal cual lo escribió el alumno). */
-  'miembro-de-biblioteca-no-soportado': { readonly clase: string; readonly nombre: string };
+  /** Tarea 1.26: instrucción explícita del orquestador (heredada de la 1.24) — el texto nombra el
+   * método CONCRETO, nunca un "miembro de biblioteca" genérico. `semantica/atribucion.ts` manda el
+   * identificador real tal cual lo escribió el alumno. */
+  'metodo-de-biblioteca-no-soportado': { readonly clase: string; readonly nombre: string };
+  /** Tarea 1.26: mismo criterio que el método, para un acceso de CAMPO (`Integer.SIZE`, sin
+   * paréntesis) — espacio de nombres separado (JLS 6.5.6), sitio de emisión propio
+   * (`visitarAccesoMiembro`). */
+  'campo-de-biblioteca-no-soportado': { readonly clase: string; readonly nombre: string };
+  /** Tarea 1.26 (hallazgo del orquestador): un constructor NO tiene "nombre" propio en JLS (ver el
+   * comentario de `sin-constructor-aplicable` en `problemas.ts`) — antes de esta tarea,
+   * `semantica/atribucion.ts` inventaba `nombre: 'new ' + clase` para reusar el mismo código que
+   * método/campo, y el texto resultante ("el miembro `new Scanner` de `Scanner`... `Scanner.new
+   * Scanner`") describía una sintaxis que Java no tiene. Solo `clase`: el texto arma la sintaxis
+   * real (`new ${clase}`) él mismo, sin que el motor tenga que fingir un identificador. */
+  'constructor-de-biblioteca-no-soportado': { readonly clase: string };
   'escape-no-soportado': Record<never, never>;
   'escape-octal-no-soportado': Record<never, never>;
   'escape-unicode-no-soportado': Record<never, never>;
@@ -165,6 +197,10 @@ export interface DatosPorCodigoNoSoportado {
   'operador-bits-xor': Record<never, never>;
   'operador-bits-and': Record<never, never>;
   'operador-desplazamiento': Record<never, never>;
+  /** Tarea 1.27: solo la línea (siempre calculada aparte, ver la cabecera de este archivo) — el
+   * texto es-MX es deliberadamente genérico, sin nombrar el elemento AST interno (D2: nunca jerga
+   * de desarrollo en un texto del alumno). */
+  'ejecucion-no-disponible': Record<never, never>;
   'no-soportado': Record<never, never>;
 }
 

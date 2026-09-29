@@ -156,12 +156,18 @@ describe('compilar — "println()" sin argumentos (corrección obligatoria, sub-
     // Antes de esta corrección, "println()" producía un error de SINTAXIS (categoría
     // 'error-compilacion', ni siquiera llegaba a clasificarse). Hoy el análisis léxico+sintáctico+
     // NO-DISP pasa limpio: lo único que falta es la IR real de "for" (lote 2, tarea 2.16) — un
-    // gap YA documentado y ajeno a esta corrección, nunca 'no-disponible' (println no es NO-DISP).
+    // gap YA documentado y ajeno a esta corrección.
     expect(resultado.ok).toBe(false);
     if (resultado.ok) throw new Error('se esperaba ok:false (falta la IR de "for", lote 2)');
-    // 'error-compilacion' (genérico, IR de "for" no implementada) y NUNCA 'no-disponible' (eso
-    // significaría que println() SIGUE sin reconocerse, que es justo lo que esta corrección arregla).
-    expect(resultado.problema.categoria).toBe('error-compilacion');
+    // Tarea 1.27 (agregada por el orquestador, D2): el hueco de IR del "for" ahora se reporta como
+    // 'no-disponible'/'ejecucion-no-disponible' (nunca 'error-compilacion' -- ese código
+    // desaparecería DE VERDAD si "println"/"for" volvieran a mis-clasificarse como una construcción
+    // NO-DISP real: el código sería uno de `CODIGOS_NO_SOPORTADO` DISTINTO de
+    // "ejecucion-no-disponible", p. ej. "for-mejorado-no-soportado" u otro -- esta aserción POSITIVA
+    // sigue probando, más precisa que antes, que ni "println" ni el "for" clásico disparan ningún
+    // código de no-soportado real: solo el hueco honesto de IR del lote 2).
+    expect(resultado.problema.categoria).toBe('no-disponible');
+    expect(resultado.problema.codigo).toBe('ejecucion-no-disponible');
   });
 });
 
@@ -657,16 +663,18 @@ describe('compilar — un miembro de biblioteca real-pero-no-soportado es "no-di
     expect(resultado.ok).toBe(false);
     if (resultado.ok) throw new Error('se esperaba ok:false');
     expect(resultado.problema.categoria).toBe('no-disponible');
-    expect(resultado.problema.codigo).toBe('miembro-de-biblioteca-no-soportado');
+    // Tarea 1.26: el código único "miembro-de-biblioteca-no-soportado" se dividió en 3 (método,
+    // campo, constructor) — "split" es una llamada de MÉTODO.
+    expect(resultado.problema.codigo).toBe('metodo-de-biblioteca-no-soportado');
   });
 
-  it('triangulación: "Math.sin(x)" (otro miembro real-pero-no-soportado, otra clase) también llega como "no-disponible"', () => {
+  it('triangulación: "Math.sin(x)" (otro método real-pero-no-soportado, otra clase) también llega como "no-disponible"', () => {
     const fuente = 'class C { public static void main(String[] a) { double x = 1.0; Math.sin(x); } }';
     const resultado = compilar(fuente);
     expect(resultado.ok).toBe(false);
     if (resultado.ok) throw new Error('se esperaba ok:false');
     expect(resultado.problema.categoria).toBe('no-disponible');
-    expect(resultado.problema.codigo).toBe('miembro-de-biblioteca-no-soportado');
+    expect(resultado.problema.codigo).toBe('metodo-de-biblioteca-no-soportado');
   });
 
   it('regresión: un error de atribución REAL (variable no declarada) sigue siendo "error-compilacion"', () => {
