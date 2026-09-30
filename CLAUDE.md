@@ -4,7 +4,7 @@ Proyecto: **Visualizador de Java paso a paso** — página web donde un alumno d
 
 ## Orientación al iniciar sesión (en este orden)
 
-1. `openspec/changes/visualizador-java/` — **fuente del plan**: `proposal.md` (alcance, riesgos y Definición de Terminado §13), `specs/` (73 requisitos y 96 escenarios), `design.md` (arquitectura, contratos y §9 versiones/scripts), `tasks.md` (7 lotes, 101 tareas, con su estado `[x]`/`[ ]`).
+1. `openspec/changes/visualizador-java/` — **fuente del plan**: `proposal.md` (alcance, riesgos y Definición de Terminado §13), `specs/` (73 requisitos y 96 escenarios), `design.md` (arquitectura, contratos y §9 versiones/scripts), `tasks.md` (7 lotes, 119 tareas, con su estado `[x]`/`[ ]`).
 2. `docs/adr/001…016` — decisiones de arquitectura, con alternativas consideradas y consecuencias.
 3. Este archivo, para las reglas no negociables y los comandos.
 
@@ -61,4 +61,4 @@ Versión exacta esperada: Temurin `17.0.18+8`. `herramientas/oraculo/jdk.ts` abo
 
 ## Estado del cambio
 
-El plan completo (73 requisitos, 96 escenarios, 7 lotes, 101 tareas) vive en `openspec/changes/visualizador-java/`. El avance real de cada tarea son las marcas `[x]`/`[ ]` de `tasks.md` y las secciones `phases`/`decisiones_po` de `state.yaml` — no hay otro tablero ni otro documento de progreso.
+El plan completo (73 requisitos, 96 escenarios, 7 lotes, 119 tareas) vive en `openspec/changes/visualizador-java/`. El avance real de cada tarea son las marcas `[x]`/`[ ]` de `tasks.md` y las secciones `phases`/`decisiones_po` de `state.yaml` — no hay otro tablero ni otro documento de progreso.

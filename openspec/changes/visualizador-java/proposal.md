@@ -75,7 +75,7 @@
 
 1. Se detecta **antes de ejecutar**: no corre ningún paso ni aparece salida.
 2. Marca la línea y la construcción; dice qué es, que es parte de Java (cuando aplica) sin afirmar que el programa compila, que por eso esa parte no se revisa, que el visualizador cubre U3–U7 y, si existe, una alternativa dentro del alcance. Ej.: «Tu programa usa un arreglo (`int[]`) en la línea 4. Es parte de Java, pero este visualizador cubre las unidades 3 a 7 y todavía no muestra arreglos, así que no puedo revisar si esa parte está bien escrita. No lo ejecuto para no enseñarte un resultado que podría no ser el de Java.»
-3. Cuatro mensajes distinguibles por icono y título, no solo por color: *Error de compilación* (Java tampoco lo acepta), *No disponible en el visualizador* (Java sí), *El programa se detuvo por un error* (excepción), *Se detuvo por seguridad* (límite de pasos).
+3. Cuatro mensajes distinguibles por icono y título, no solo por color: *Error de compilación* (Java tampoco lo acepta), *No disponible en el visualizador* (es parte de Java, pero el visualizador no la cubre y no revisa esa parte), *El programa se detuvo por un error* (excepción), *Se detuvo por seguridad* (límite de pasos).
 4. Varios problemas → el primero en el orden del texto, más "y N más".
 5. Lo que solo se sabe al ejecutar (formato de `printf` no literal) detiene la ejecución en ese paso con el mismo aviso; la traza previa sigue navegable; no se imprime nada inventado.
 
