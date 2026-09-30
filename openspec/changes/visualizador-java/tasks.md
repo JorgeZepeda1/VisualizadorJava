@@ -648,6 +648,7 @@
 - GREEN: `src/interfaz/componentes/AvisoProblema.tsx`.
 - Verif: `interfaz/componentes/AvisoProblema`
 - 1.28 adelantó el texto real de cada problema en pantalla (con su línea y el código en `<code>`); a la 4.5 le quedan el ícono, el título y el subrayado.
+- Pendiente de REQ-SUB-006 (re-verificación del lote 1, 2026-09-29): la cláusula «y N más». El motor ya calcula `adicionales` (por ejemplo, 2 con 3 arreglos), pero ninguna prueba usa N > 0 y la pantalla no lo muestra. La 4.5 lo muestra y lo prueba con N > 0.
 
 **4.6 Panel de variables** — REQ-VIS-005 · depende: 4.2
 - RED `componentes/PanelVariables.test.tsx`: `contador` 3→4 muestra "3 → 4" con el 3 atenuado; sin inicializar → "sin inicializar"; fuera de alcance → atenuada/retirada con nota; falla.
