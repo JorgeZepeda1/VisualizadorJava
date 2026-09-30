@@ -1,0 +1,4 @@
+F2VariablePrimitivaTapaSystem.java:5: error: int cannot be dereferenced
+        System.out.println("hola");
+              ^
+1 error

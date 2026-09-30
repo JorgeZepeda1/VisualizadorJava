@@ -1,0 +1,4 @@
+N1DoubleConEntero.java:4: error: incompatible types: int cannot be converted to Double
+        Double precio = 1;
+                        ^
+1 error

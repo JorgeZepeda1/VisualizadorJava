@@ -1,0 +1,4 @@
+F4SwitchTextoEtiquetaNumero.java:6: error: incompatible types: int cannot be converted to String
+            case 1:
+                 ^
+1 error

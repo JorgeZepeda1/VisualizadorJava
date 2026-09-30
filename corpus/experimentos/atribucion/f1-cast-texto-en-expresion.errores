@@ -1,0 +1,4 @@
+F1CastTextoEnExpresion.java:5: error: incompatible types: String cannot be converted to double
+        double total = 2 * (double) precio;
+                                    ^
+1 error

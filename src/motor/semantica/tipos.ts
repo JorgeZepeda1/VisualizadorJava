@@ -8,7 +8,7 @@
 // 'desconocido', que suprime errores en cascada (design.md §2.1: "nunca se informa un error que
 // Java podría no dar").
 import type { NodoExpresion } from '../sintaxis/ast.ts';
-import { FIRMAS_JDK } from '../biblioteca/datos/firmas-jdk.generado.ts';
+import { FIRMAS_JDK, type FirmaMiembro } from '../biblioteca/datos/firmas-jdk.generado.ts';
 import type { Alcance } from './alcance.ts';
 import { buscarFirmas } from './catalogo-api.ts';
 import { resolverSobrecarga } from './sobrecargas.ts';
@@ -16,6 +16,16 @@ import { resolverSobrecarga } from './sobrecargas.ts';
 // El tipo 'desconocido' (design.md §2.1/§2.7) es el sumidero de cascada: nunca se agrega aquí un
 // tipo por el que el motor todavía no puede responder con certeza.
 export type Tipo = 'int' | 'long' | 'double' | 'boolean' | 'char' | 'String' | 'Scanner' | 'Random' | 'desconocido';
+
+/** Los cinco tipos PRIMITIVOS del subconjunto: sus valores no son objetos (no tienen métodos ni campos, JLS 4.2 y 15.11). */
+export type TipoPrimitivo = 'int' | 'long' | 'double' | 'boolean' | 'char';
+
+const TIPOS_PRIMITIVOS_DEL_SUBCONJUNTO: ReadonlySet<Tipo> = new Set<Tipo>(['int', 'long', 'double', 'boolean', 'char']);
+
+/** Pura: ¿`tipo` es uno de los cinco primitivos? ('String', 'Scanner', 'Random' son de referencia; 'desconocido' no se sabe.) */
+export function esTipoPrimitivo(tipo: Tipo): tipo is TipoPrimitivo {
+  return TIPOS_PRIMITIVOS_DEL_SUBCONJUNTO.has(tipo);
+}
 
 const NOMBRES_DE_TIPO_CONOCIDOS: ReadonlySet<Tipo> = new Set([
   'int', 'long', 'double', 'boolean', 'char', 'String', 'Scanner', 'Random',
@@ -48,8 +58,12 @@ export function tipoDeExpresion(expresion: NodoExpresion, alcance: Alcance): Tip
       const simbolo = alcance.buscar(expresion.nombre);
       return simbolo === null ? 'desconocido' : tipoDeNombreDeTipo(simbolo.tipo);
     }
-    case 'conversion':
-      return tipoDeNombreDeTipo(expresion.nombreTipo);
+    // Tarea 1.32 (F1): el tipo de un cast VÁLIDO es su tipo destino; el de uno inválido es «desconocido» (javac: el tipo erróneo, que
+    // no se propaga: `String s = (int) true;` da solo el error del cast). `atribucion.ts` reporta el cast inválido aparte.
+    case 'conversion': {
+      const destino = tipoDeNombreDeTipo(expresion.nombreTipo);
+      return esCastPermitido(tipoDeExpresion(expresion.operando, alcance), destino) ? destino : 'desconocido';
+    }
     // 1.8 (JLS 15.12/5.6, REQ-BIB-004): tipo de retorno de una llamada/campo real, resuelto por
     // sobrecarga sobre el catálogo del oráculo (1.9) — nunca se inventa un tipo por adivinanza.
     case 'llamada':
@@ -90,6 +104,19 @@ export function tipoDeExpresion(expresion: NodoExpresion, alcance: Alcance): Tip
 }
 
 const TIPOS_NUMERICOS: ReadonlySet<Tipo> = new Set(['int', 'long', 'double', 'char']);
+
+/**
+ * Tarea 1.32 (F1, JLS 5.5 «casting contexts»): ¿se puede convertir `origen` en `destino` con un cast? Entre los ocho tipos del
+ * subconjunto solo hay dos formas de cast válido: los cuatro numéricos (`int`, `long`, `double`, `char`) entre sí —ensanchamiento o
+ * estrechamiento primitivo, JLS 5.1.2/5.1.3— y la identidad de cada tipo consigo mismo (`boolean`, `String`, `Scanner`, `Random`).
+ * Verificado contra javac 17.0.18 en los 64 pares: acepta exactamente esos 20. `boolean` no se convierte de ni a ningún otro tipo, un
+ * `String` no se convierte en número (ni al revés: `Integer.parseInt`/`String.valueOf`), y `Scanner`/`Random` no se relacionan entre
+ * sí. 'desconocido' (algo no soportado o ya inválido) nunca produce un error aquí — D2, suprime la cascada.
+ */
+export function esCastPermitido(origen: Tipo, destino: Tipo): boolean {
+  if (origen === 'desconocido' || destino === 'desconocido' || origen === destino) return true;
+  return TIPOS_NUMERICOS.has(origen) && TIPOS_NUMERICOS.has(destino);
+}
 
 // JLS 5.6.2 (promoción numérica BINARIA), restringida a los tipos alcanzables de este subconjunto
 // (sin byte/short/float, NO-DISP): si cualquiera de los dos es "double", el resultado es "double";
@@ -162,13 +189,29 @@ function tipoDeNuevaInstancia(expresion: Extract<NodoExpresion, { tipo: 'nueva-i
   return firma === null ? 'desconocido' : tipo;
 }
 
-function tipoDeLlamada(expresion: Extract<NodoExpresion, { tipo: 'llamada' }>, alcance: Alcance): Tipo {
-  if (expresion.callee.tipo !== 'acceso-miembro') return 'desconocido'; // llamada de nombre libre: 1.7 la marca aparte
+/** La firma real (del catálogo del oráculo) que resuelve una llamada `objeto.metodo(...)`, o `null` si no se puede resolver: una
+ * llamada de nombre libre (1.7 la marca aparte), un receptor sin clase del subconjunto o ninguna sobrecarga aplicable. */
+function firmaDeLlamada(expresion: Extract<NodoExpresion, { tipo: 'llamada' }>, alcance: Alcance): FirmaMiembro | null {
+  if (expresion.callee.tipo !== 'acceso-miembro') return null;
   const clase = claseDelObjeto(expresion.callee.objeto, alcance);
-  if (clase === null) return 'desconocido';
+  if (clase === null) return null;
   const argumentos = expresion.argumentos.map((argumento) => argumentoDeSobrecarga(argumento, alcance));
-  const firma = resolverSobrecarga(clase, expresion.callee.miembro, argumentos);
+  return resolverSobrecarga(clase, expresion.callee.miembro, argumentos);
+}
+
+function tipoDeLlamada(expresion: Extract<NodoExpresion, { tipo: 'llamada' }>, alcance: Alcance): Tipo {
+  const firma = firmaDeLlamada(expresion, alcance);
   return firma === null ? 'desconocido' : tipoDeNombreReflejado(firma.retorno);
+}
+
+/**
+ * Tarea 1.32 (F5): ¿`expresion` es una llamada a un método que NO devuelve nada (`void`: `System.out.print(7)`, `sc.close()`)? La
+ * respuesta sale de la firma REAL del oráculo (`retorno: 'void'`), nunca de una lista escrita a mano. `void` no es un `Tipo` del
+ * subconjunto (`tipoDeExpresion` da 'desconocido' para estas llamadas y así no se propaga ningún error en cascada): quien
+ * necesita un VALOR (`atribucion.ts`) pregunta aquí aparte. Pura, nunca lanza.
+ */
+export function esLlamadaSinValor(expresion: NodoExpresion, alcance: Alcance): boolean {
+  return expresion.tipo === 'llamada' && firmaDeLlamada(expresion, alcance)?.retorno === 'void';
 }
 
 // Sub-lote 1-D4 (gap documentado en engram "Gap: System.in/System.out/System.err..."): "System.in"

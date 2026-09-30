@@ -34,7 +34,7 @@
 // ejecución: cada sitio de emisión ya construía sus datos exactos.
 import type { Rango } from './fuente/rango.ts';
 import type { ConDatosPorCodigo } from './no-soportado.ts';
-import type { Tipo } from './semantica/tipos.ts';
+import type { Tipo, TipoPrimitivo } from './semantica/tipos.ts';
 
 export type Categoria = 'error-compilacion' | 'no-disponible' | 'error-arranque';
 
@@ -96,6 +96,11 @@ export type CodigoProblema =
   | 'selector-de-switch-invalido'
   | 'etiqueta-de-case-no-constante' // err34
   | 'etiqueta-de-case-duplicada' // flow05
+  // Tarea 1.32 (F4, JLS 14.11): cada `case` debe ser ASIGNABLE al tipo del selector — verificado contra javac 17 real: «incompatible
+  // types: String cannot be converted to int» (`prob.found.req`; con un selector `char` y `case 70000:`, «possible lossy conversion
+  // from int to char») — y solo puede haber UN `default` («duplicate default label», `duplicate.default.label`).
+  | 'etiqueta-de-case-de-otro-tipo'
+  | 'etiqueta-default-duplicada'
   // Flujo (pendiente heredado 1 del sub-lote 1-B, verificado que vive en esta pasada).
   | 'break-fuera-de-contexto' // err29
   | 'continue-fuera-de-contexto' // err30
@@ -125,7 +130,26 @@ export type CodigoProblema =
   // amable no distingue "nunca se asignó" de "solo en una rama" de "el ciclo podría no correr" —
   // todas dicen lo mismo con la palabra correcta ("podría no tener un valor").
   | 'variable-posiblemente-no-asignada' // err05, err06, err09, err10, switch sin "default"
-  | 'variable-final-reasignada'; // err10c (JLS 4.12.4 + 16.1: una "final" solo admite un valor)
+  | 'variable-final-reasignada' // err10c (JLS 4.12.4 + 16.1: una "final" solo admite un valor); desde la 1.32 lo da la atribución
+  // Tarea 1.32 (F5, REQ-COMP-001): una llamada a un método que NO devuelve nada (`void`: `System.out.print(...)`,
+  // `Scanner.close()`) usada donde se necesita un valor — verificado contra javac 17 real: «incompatible types: void cannot be
+  // converted to int» (`prob.found.req`, inicializador/asignación/condición/cast) y «'void' type not allowed here»
+  // (`void.not.allowed.here`, argumento u operando): dos frases de javac, un solo código nuestro (como
+  // "sin-sobrecarga-aplicable"). `void` NO es un `Tipo` del subconjunto: la llamada sigue tipándose «desconocido».
+  | 'llamada-sin-valor'
+  // Tarea 1.32 (F2, JLS 15.11/15.12 + 4.2): un miembro (método o campo) pedido a un valor PRIMITIVO — verificado contra javac 17
+  // real: «int cannot be dereferenced» (`cant.deref`) para `n.length()`, `0L.foo()`, `'a'.equals(5)`, `(x + 2).toString()`, y para una
+  // variable primitiva que tapa el nombre de una clase (`int System; System.out.println("")`, JLS 6.4.2).
+  | 'miembro-de-primitivo'
+  // Tarea 1.32 (F1, JLS 5.5): un cast que Java no permite — verificado contra javac 17 real en los 64 pares de los 8 tipos: acepta
+  // 20 (los numéricos entre sí y la identidad) y rechaza 44 con «incompatible types: String cannot be converted to int»
+  // (`prob.found.req`), señalando el OPERANDO. Los datos son el tipo de origen y el de destino (la forma de `conversion-con-perdida`).
+  | 'cast-invalido'
+  // Tarea 1.32 (F6, JLS 15.12.3): un método de INSTANCIA llamado con el NOMBRE DE LA CLASE (`String.trim()`, `Random.nextInt()`,
+  // `Scanner.close()`) — verificado contra javac 17 real: «non-static method trim() cannot be referenced from a static context»
+  // (`non-static.cant.be.ref`), una vez que la sobrecarga elegida es la de instancia. Los datos son los del receptor y el método
+  // (`DatosMiembro`, como «miembro-no-declarado»).
+  | 'metodo-de-instancia-sin-objeto';
 
 // Datos EXTRA que el texto es-MX (`src/textos/es-MX/problemas.ts`) necesita de cada código — la
 // ÚNICA fuente de verdad de su forma. Vive en el MOTOR (no en el catálogo) para que el propio emisor
@@ -203,6 +227,26 @@ interface DatosSinConstructor {
   readonly argumentos: readonly string[];
 }
 
+// Tarea 1.32 (F4): el tipo del `case` y el del selector del `switch`.
+interface DatosEtiquetaDeOtroTipo {
+  readonly etiqueta: Tipo;
+  readonly selector: Tipo;
+}
+
+// Tarea 1.32 (F5): la llamada tal como el alumno la escribió, sin argumentos ("System.out.print", "sc.close"); si el receptor no es
+// una cadena de nombres (`new Scanner(System.in).close()`), solo el nombre del método ("close").
+interface DatosLlamada {
+  readonly llamada: string;
+}
+
+// Tarea 1.32 (F2): `tipo` del valor primitivo, `nombre` del miembro que se le pidió (con o sin paréntesis) y, si el valor es una
+// VARIABLE (o `System` tapada por una), su nombre — con él el texto la nombra («`n` es de tipo `int`…»).
+interface DatosMiembroDePrimitivo {
+  readonly tipo: TipoPrimitivo;
+  readonly nombre: string;
+  readonly receptor?: string;
+}
+
 // `rangoExistente`: dónde se declaró antes el nombre repetido. El texto actual no lo usa; el motor
 // lo manda desde el sub-lote 1-C2 y queda disponible para señalarlo en el editor (lote 4).
 interface DatosVariableYaDefinida {
@@ -233,6 +277,8 @@ export interface DatosPorCodigoProblema {
   'selector-de-switch-invalido': DatosCondicion;
   'etiqueta-de-case-no-constante': Record<never, never>;
   'etiqueta-de-case-duplicada': Record<never, never>;
+  'etiqueta-de-case-de-otro-tipo': DatosEtiquetaDeOtroTipo;
+  'etiqueta-default-duplicada': Record<never, never>;
   'break-fuera-de-contexto': Record<never, never>;
   'continue-fuera-de-contexto': Record<never, never>;
   'else-sin-if': DatosMensajeCrudo;
@@ -247,6 +293,10 @@ export interface DatosPorCodigoProblema {
   'sentencia-inalcanzable': Record<never, never>;
   'variable-posiblemente-no-asignada': DatosNombre;
   'variable-final-reasignada': DatosNombre;
+  'llamada-sin-valor': DatosLlamada;
+  'miembro-de-primitivo': DatosMiembroDePrimitivo;
+  'cast-invalido': DatosConversion;
+  'metodo-de-instancia-sin-objeto': DatosMiembro;
 }
 
 // Los códigos que `compilar()` saca de un `ErrorDeCompilacion` (léxico y sintaxis): TODOS llevan

@@ -1,0 +1,6 @@
+N5RandomSinImportComoReceptor.java:4: error: cannot find symbol
+        int dado = Random.nextInt(6);
+                   ^
+  symbol:   variable Random
+  location: class N5RandomSinImportComoReceptor
+1 error

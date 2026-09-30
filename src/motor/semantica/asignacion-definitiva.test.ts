@@ -257,25 +257,13 @@ describe('verificarAsignacionDefinitiva — "switch" con "default" (JLS 16.2.9, 
   });
 });
 
-// exploracion/03 §4.4 punto 7 (err10c, JLS 4.12.4 + 16.1): una "final" solo admite UNA asignación
-// total. Descubrimiento de esta tarea (verificado contra el propio analizador sintáctico, tarea
-// 1.6): "final sin inicializador" ("blank final", p. ej. "final int x;") es NO-DISP desde la
-// SINTAXIS (REQ-SUB-007) -- nunca llega a esta pasada como una declaración real, así que los
-// escenarios de "blank final" verificados ad-hoc contra javac 17 real (FIN_A/B/C del reporte de la
-// tarea) NO APLICAN a este subconjunto y se descartaron; toda "final" real de este subconjunto
-// SIEMPRE tiene su inicializador, así que CUALQUIER asignación posterior es ilegal sin excepción,
-// sin necesitar mirar el flujo (if/else, ciclos, switch...).
-describe('verificarAsignacionDefinitiva — reasignación de "final" (err10c, JLS 4.12.4/16.1)', () => {
-  it('err10c: "final int x = 5; x = 10;" -- cualquier reasignación se rechaza', () => {
-    const problemas = asignacionDefinitivaDeCuerpo('final int x = 5; x = 10;');
-    expect(problemas).toHaveLength(1);
-    expect(problemas[0]).toMatchObject({ codigo: 'variable-final-reasignada', datos: { nombre: 'x' } });
-  });
-
-  it('triangulación: otro tipo/nombre y una asignación COMPUESTA ("listo += ...") -- la regla no depende del nombre "x" ni del "="', () => {
-    const problemas = asignacionDefinitivaDeCuerpo('final boolean listo = true; listo = false;');
-    expect(problemas).toHaveLength(1);
-    expect(problemas[0]).toMatchObject({ codigo: 'variable-final-reasignada', datos: { nombre: 'listo' } });
+// exploracion/03 §4.4 punto 7 (err10c, JLS 4.12.4 + 16.1): una "final" solo admite UNA asignación total. Tarea 1.32: ese ERROR
+// (`variable-final-reasignada`) lo da la pasada de ATRIBUCIÓN, como javac (`cant.assign.val.to.final.var`; sus pruebas viven en
+// `atribucion.test.ts`, «modificar una variable "final"»). Esta pasada solo confirma que una final nace asignada y que reasignar
+// una variable que NO es final nunca la rechaza.
+describe('verificarAsignacionDefinitiva — una "final" con inicializador nace asignada (err10c pasó a atribución, tarea 1.32)', () => {
+  it('una "final" con inicializador se LEE sin «podría no tener un valor»: nace definitivamente asignada', () => {
+    expect(asignacionDefinitivaDeCuerpo('final int x = 5; int y = x + 1; System.out.println(y);')).toEqual([]);
   });
 
   it('control negativo: una variable NO "final" se puede reasignar libremente -- nunca se rechaza', () => {
@@ -462,5 +450,37 @@ describe('verificarAsignacionDefinitiva — condiciones constantes y «asignada 
     const problemas = asignacionDefinitivaDeCuerpo(cuerpo);
     expect(problemas).toHaveLength(1);
     expect(problemas[0]).toMatchObject({ codigo: 'variable-posiblemente-no-asignada', datos: { nombre: 'x' } });
+  });
+});
+
+// N6 (tarea 1.32, JLS 6.3 + 16): el alcance de una variable local incluye su PROPIO inicializador, así que leerla ahí es leer una variable
+// que todavía no tiene valor — javac 17: «variable x might not have been initialized» (`var.might.not.have.been.initialized`), también
+// cuando la variable solo es el CALIFICADOR de un método estático (`String String = String.valueOf(5);`). Antes esta pasada declaraba
+// la variable después de su inicializador y nunca la veía, y solo la pasada de atribución (que declaraba igual de tarde) rechazaba
+// `int x = x + 1;`, con el mensaje equivocado de «no existe una variable llamada x».
+describe('verificarAsignacionDefinitiva — una variable se lee en su propio inicializador (N6, tarea 1.32)', () => {
+  it.each([
+    ['int x = x + 1;', 'x'],
+    ['int x = x;', 'x'],
+    ['boolean b = b && true;', 'b'],
+    ['int z = z++;', 'z'],
+    ['final int MAX = MAX + 1;', 'MAX'],
+    ['for (int i = i; i < 3; i++) { }', 'i'],
+    ['int n = Math.max(n, 1);', 'n'],
+    ['String String = String.valueOf(5);', 'String'],
+    ['int x = 5; { int y = x + y; }', 'y'],
+    ['for (int i = 0; i < 1; i++) { } int i = i + 1;', 'i'],
+  ])('%s → "variable-posiblemente-no-asignada" de %s', (cuerpo, nombre) => {
+    expect(asignacionDefinitivaDeCuerpo(cuerpo)).toMatchObject([{ codigo: 'variable-posiblemente-no-asignada', datos: { nombre } }]);
+  });
+
+  it('una asignación DENTRO del inicializador le da valor (javac compila `int y = (y = 5) + 1;`), y el siguiente declarador ya ve la anterior', () => {
+    expect(asignacionDefinitivaDeCuerpo('int y = (y = 5) + 1;')).toEqual([]);
+    expect(asignacionDefinitivaDeCuerpo('int p = 1, q = p + 1;')).toEqual([]);
+  });
+
+  it('control: una variable con inicializador se lee DESPUÉS sin problema, y una final constante sigue siendo constante para `if`', () => {
+    expect(asignacionDefinitivaDeCuerpo('int x = 5; int y = x + 1; System.out.println(y);')).toEqual([]);
+    expect(asignacionDefinitivaDeCuerpo('final boolean DEBUG = true; int x; if (DEBUG) { x = 1; } System.out.println(x);')).toEqual([]);
   });
 });

@@ -1,0 +1,4 @@
+N1LongConEntero.java:4: error: incompatible types: int cannot be converted to Long
+        Long grande = 0;
+                      ^
+1 error

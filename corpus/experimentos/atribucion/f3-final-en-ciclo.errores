@@ -1,0 +1,4 @@
+F3FinalEnCiclo.java:6: error: cannot assign a value to final variable contador
+            contador++;
+            ^
+1 error

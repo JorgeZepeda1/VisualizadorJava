@@ -1,0 +1,4 @@
+F1CastNumeroATexto.java:5: error: incompatible types: int cannot be converted to String
+        String texto = (String) edad;
+                                ^
+1 error

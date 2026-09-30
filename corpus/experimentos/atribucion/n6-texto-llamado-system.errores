@@ -1,0 +1,6 @@
+N6TextoLlamadoSystem.java:5: error: cannot find symbol
+        System.out.println("x");
+              ^
+  symbol:   variable out
+  location: variable System of type String
+1 error

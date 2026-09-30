@@ -64,6 +64,9 @@ export function operandosValidosParaAritmetica(operador: string, a: Tipo, b: Tip
 
 const PRIMITIVOS_DEL_SUBCONJUNTO: ReadonlySet<string> = new Set(['int', 'long', 'double', 'boolean', 'char']);
 
+// Tarea 1.32 (REQ-SUB-002/REQ-SUB-005): los tipos de REFERENCIA que puede tener una variable del subconjunto.
+const TIPOS_DE_REFERENCIA_DEL_SUBCONJUNTO: ReadonlySet<string> = new Set(['String', 'Scanner', 'Random']);
+
 // Deuda del commit 999a8ca (sub-lote 1-D1, err20 de exploracion/03): "Scanner"/"Random" son las 2
 // ÚNICAS clases de referencia de REQ-SUB-005 que viven en java.util -- a diferencia de "String"
 // (java.lang, SIEMPRE disponible sin import) -- así que son las ÚNICAS que Java exige importar de
@@ -103,7 +106,13 @@ export type ResultadoNombreDeTipo =
 export function resultadoNombreDeTipo(nombreTipo: string, ambito: AmbitoDeNombres): ResultadoNombreDeTipo {
   if (PRIMITIVOS_DEL_SUBCONJUNTO.has(nombreTipo)) return 'valido';
   if (nombreTipo.includes('.')) return existeClaseDelJdk(nombreTipo) ? 'calificado-existente' : 'no-reconocido';
-  if (!NOMBRES_DE_CLASE_RECONOCIDOS.has(nombreTipo)) {
+  // Tarea 1.32 (N1, REQ-SUB-002): los ÚNICOS tipos de referencia que una variable del subconjunto puede tener son `String`,
+  // `Scanner` y `Random` (`TIPOS_DE_REFERENCIA_DEL_SUBCONJUNTO`). Otras clases del catálogo de firmas —`Integer`, `Long`,
+  // `Double`, `Character`, `Math`, `System`, `PrintStream`— están ahí porque el subconjunto usa sus MIEMBROS ESTÁTICOS
+  // (`Integer.parseInt`, REQ-SUB-005), no porque una variable pueda ser de ese tipo: como tipo son una clase real fuera de
+  // U3–U7 (aviso, sin modelar el boxing) y, si el programa no las ve (`PrintStream` sin `import java.io.PrintStream;`), «no
+  // reconozco el tipo», igual que javac. Antes se daban por tipos válidos de tipo desconocido y todo lo que seguía se aceptaba.
+  if (!TIPOS_DE_REFERENCIA_DEL_SUBCONJUNTO.has(nombreTipo)) {
     return ambito.esClaseVisible(nombreTipo) ? 'existente-no-soportada' : 'no-reconocido';
   }
   if (CLASES_QUE_REQUIEREN_IMPORT.has(nombreTipo) && !ambito.importadasDeJavaUtil.has(nombreTipo)) {
@@ -137,7 +146,9 @@ export function nombreDeClaseImportadaEsValido(nombreCalificado: string): boolea
   const clase = nombreCalificado.slice(ultimoPunto + 1);
   if (!NOMBRES_DE_CLASE_RECONOCIDOS.has(clase)) return false;
   if (paquete === 'java.util') return CLASES_QUE_REQUIEREN_IMPORT.has(clase);
-  if (paquete === 'java.lang') return !CLASES_QUE_REQUIEREN_IMPORT.has(clase);
+  // Tarea 1.32: el nombre de la clase está en el catálogo de firmas, pero eso no dice de qué PAQUETE es (`PrintStream` es de `java.io`):
+  // `import java.lang.PrintStream;` no existe (javac: «cannot find symbol, location: package java.lang»). Se confirma con la lista real.
+  if (paquete === 'java.lang') return !CLASES_QUE_REQUIEREN_IMPORT.has(clase) && existeClaseDelJdk(nombreCalificado);
   return false;
 }
 

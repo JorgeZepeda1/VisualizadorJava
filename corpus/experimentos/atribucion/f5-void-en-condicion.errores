@@ -1,0 +1,4 @@
+F5VoidEnCondicion.java:4: error: incompatible types: void cannot be converted to boolean
+        if (System.out.println("hola")) {
+                              ^
+1 error

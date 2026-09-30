@@ -1,0 +1,4 @@
+F1CastNumeroABooleano.java:5: error: incompatible types: int cannot be converted to boolean
+        boolean b = (boolean) n;
+                              ^
+1 error

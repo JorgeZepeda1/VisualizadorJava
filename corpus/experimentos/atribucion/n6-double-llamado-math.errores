@@ -1,0 +1,6 @@
+N6DoubleLlamadoMath.java:5: error: cannot find symbol
+        double r = Math.sqrt(4.0);
+                       ^
+  symbol:   method sqrt(double)
+  location: variable Math of type Double
+1 error

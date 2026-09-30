@@ -21,9 +21,10 @@ const validos = programas.filter((programa) => programa.compilo);
 
 describe('corpus real → ningún programa que javac 17 compila se presenta como error de compilación', () => {
   it('el barrido encuentra los programas que javac compiló Y los que rechazó (guarda contra un recorrido vacío o un filtro trivial)', () => {
-    // 131 de `corpus/curso` + `corpus/experimentos/{numeros,texto}` y 20 de `corpus/experimentos/tipicos` (programas típicos de
-    // U3–U7 con constructores, arreglos, herencia, enum, genéricos, constantes…), todos con el veredicto real de javac 17.
-    expect(validos.length).toBeGreaterThanOrEqual(151);
+    // 131 de `corpus/curso` + `corpus/experimentos/{numeros,texto}`, 20 de `corpus/experimentos/tipicos` (programas típicos de
+    // U3–U7 con constructores, arreglos, herencia, enum, genéricos, constantes…) y los 10 controles de `corpus/experimentos/atribucion`
+    // (tarea 1.32: lo que javac SÍ acepta junto a cada familia de atribución), todos con el veredicto real de javac 17.
+    expect(validos.length).toBeGreaterThanOrEqual(161);
     // Si el filtro `compilo` no separara nada, la prueba de abajo revisaría también los que javac
     // rechazó (que SÍ deben ser error) y no distinguiría un rechazo legítimo de uno falso.
     expect(programas.length - validos.length).toBeGreaterThanOrEqual(1);

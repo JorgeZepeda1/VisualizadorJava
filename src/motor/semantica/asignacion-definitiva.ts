@@ -22,6 +22,11 @@
 // con DA+DU, JUSTIFICADO por esta restricción real y verificada del subconjunto (D2: nunca más
 // mecanismo que el que el subconjunto puede ejercitar de verdad).
 //
+// Tarea 1.32: el ERROR de modificar una `final` (`variable-final-reasignada`: `k = 2`, `k += 2`, `k++`, `--k`) YA NO se detecta
+// aquí. javac lo reporta en la pasada de ATRIBUCIÓN (`cant.assign.val.to.final.var`), por orden de aparición junto con los
+// errores de tipos, y `semantica/atribucion.ts` lo hace igual (`verificarModificacionDeFinal`); esta pasada solo ve programas
+// que ya la superaron. Aquí queda solo lo que la restricción de arriba permite: una `final` nace asignada.
+//
 // Tarea 1.29 (D2: nunca un error de compilación donde javac compila — hallado por el fuzzer diferencial de sentencias,
 // ~36 falsos rechazos en 18 000 programas): el modelo se acercó a JLS 16 en lo que el subconjunto puede ejercitar.
 //   · JLS 16.1.1: una expresión CONSTANTE (`true`, `!(1 == 1)`, una `final` con inicializador constante) deja
@@ -37,7 +42,7 @@
 //     estado tras el cuerpo Y antes de cada `continue` (antes la actualización veía solo el estado previo al cuerpo).
 import type { NodoBloque, NodoDeclaracionLocal, NodoElementoBloque, NodoExpresion, NodoPrograma, NodoSentencia } from '../sintaxis/ast.ts';
 import { Alcance } from './alcance.ts';
-import { valorConstante, type ValorConstante } from './constantes.ts';
+import { valorConstante } from './constantes.ts';
 import type { ProblemaAtribucion } from './diagnostico.ts';
 
 /** El conjunto de variables DEFINITIVAMENTE ASIGNADAS ("DA", JLS 16) en un punto del programa.
@@ -163,19 +168,18 @@ function visitarDeclaracionLocal(
   for (const declarador of declaracion.declaradores) {
     // Tarea 1.29 (JLS 4.12.4 + 16.1.1): una `final` con inicializador constante es una VARIABLE CONSTANTE — `if (DEBUG)` con
     // `final boolean DEBUG = true;` es una condición constante (mismo campo que arman `atribucion.ts`/`alcanzabilidad.ts`).
-    let constante: ValorConstante | undefined;
+    const constante =
+      declarador.inicializador !== null && declaracion.esFinal ? (valorConstante(declarador.inicializador, alcance) ?? undefined) : undefined;
+    // Tarea 1.32 (N6, JLS 6.3 + 16): el alcance de la variable EMPIEZA en su propio inicializador — se declara antes de visitarlo, sin valor
+    // (`conQuitada`: tampoco hereda el «asignada» de una variable homónima de un alcance hermano ya cerrado, p. ej. la `i` de un `for`
+    // anterior). Así `int x = x + 1;` lee una variable todavía sin valor («might not have been initialized»), como javac, y una
+    // asignación dentro del inicializador (`int y = (y = 5) + 1;`) le da el valor. Antes se declaraba DESPUÉS y esta pasada nunca la veía.
+    estado = conQuitada(estado, declarador.nombre);
+    alcance.declarar({ nombre: declarador.nombre, tipo: declaracion.nombreTipo, esFinal: declaracion.esFinal, rango: declarador.rango, constante });
     if (declarador.inicializador !== null) {
       estado = visitarExpresion(declarador.inicializador, alcance, estado, problemas);
       estado = conAgregada(estado, declarador.nombre);
-      constante = (declaracion.esFinal ? valorConstante(declarador.inicializador, alcance) : null) ?? undefined;
-    } else {
-      // "conQuitada" importa cuando el MISMO nombre ya vivió antes en un alcance hermano ya
-      // cerrado (p. ej. la "i" de un "for" anterior) -- sin esto, una declaración nueva sin
-      // inicializador podría heredar por error el "asignada" de una variable homónima previa, ya
-      // fuera de alcance (verificado con una prueba dedicada de esta tarea).
-      estado = conQuitada(estado, declarador.nombre);
     }
-    alcance.declarar({ nombre: declarador.nombre, tipo: declaracion.nombreTipo, esFinal: declaracion.esFinal, rango: declarador.rango, constante });
   }
   return estado;
 }
@@ -496,21 +500,7 @@ function visitarAsignacion(
     estado = visitarNombreComoValor(objetivo, alcance, estado, problemas);
   }
   estado = visitarExpresion(expresion.valor, alcance, estado, problemas);
-  verificarReasignacionDeFinal(objetivo, alcance, problemas);
   return conAgregada(estado, objetivo.nombre);
-}
-
-/** exploracion/03 §4.4 punto 7 (err10c, JLS 4.12.4 + 16.1): una "final" solo admite UNA asignación
- * total. Como "final sin inicializador" es NO-DISP desde la sintaxis (cabecera del archivo), una
- * "final" que llega aquí SIEMPRE tuvo su inicializador -- así que YA tiene su único valor desde la
- * declaración, y CUALQUIER asignación posterior (la que sea que estemos visitando en este punto)
- * es, por construcción, una reasignación ilegal. Nunca hace falta mirar el flujo (if/else,
- * ciclos...) para esta regla, a diferencia del resto de esta pasada. */
-function verificarReasignacionDeFinal(nodo: Extract<NodoExpresion, { tipo: 'nombre' }>, alcance: Alcance, problemas: ProblemaAtribucion[]): void {
-  const simbolo = alcance.buscar(nodo.nombre);
-  if (simbolo !== null && simbolo.esFinal) {
-    problemas.push({ codigo: 'variable-final-reasignada', rango: nodo.rango, datos: { nombre: nodo.nombre } });
-  }
 }
 
 /** err05 de exploracion/03 ("variable x might not have been initialized"): una lectura de una

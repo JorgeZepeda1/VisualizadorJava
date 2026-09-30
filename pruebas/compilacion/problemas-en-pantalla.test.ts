@@ -12,10 +12,12 @@
 // Fuentes (las de la medición previa de 1.28, más el catálogo de errores del oráculo):
 // `corpus/mutantes/veredictos.jsonl` (2 625 mutantes de un solo token sobre los programas del
 // curso), `corpus/compilacion/**` (avisos y errores de sintaxis del catálogo), `corpus/curso/*.java`
-// (los programas del curso) y `corpus/experimentos/texto/*.java` (las fuentes REALES que compiló
+// (los programas del curso), `corpus/experimentos/texto/*.java` (las fuentes REALES que compiló
 // javac 17 para el catálogo de errores de exploracion/03 §4: la única muestra que alcanza los
 // errores de asignación definitiva, `final` reasignada, `switch` mal armado, `break`/`continue`
-// fuera de contexto, etc.).
+// fuera de contexto, etc.) y, desde la tarea 1.32, `corpus/experimentos/atribucion/*.java` (el
+// programa mínimo de cada familia de atribución que encontró el generador: cast inválido, miembro de
+// un primitivo, `void` como valor, etiquetas de `switch`, método de instancia por el nombre de la clase…).
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -46,6 +48,7 @@ function fuentesDelCorpus(): FuenteDeCorpus[] {
     ...archivosJava(resolve(RAIZ, 'corpus/compilacion')),
     ...archivosJava(resolve(RAIZ, 'corpus/curso')),
     ...archivosJava(resolve(RAIZ, 'corpus/experimentos/texto')),
+    ...archivosJava(resolve(RAIZ, 'corpus/experimentos/atribucion')),
   ].map((ruta) => ({ id: relative(RAIZ, ruta), fuente: readFileSync(ruta, 'utf-8') }));
   const mutantes = readFileSync(resolve(RAIZ, 'corpus/mutantes/veredictos.jsonl'), 'utf-8')
     .split('\n')

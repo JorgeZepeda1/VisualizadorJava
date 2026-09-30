@@ -1,0 +1,4 @@
+F3FinalDecrementoPrefijo.java:5: error: cannot assign a value to final variable vidas
+        --vidas;
+          ^
+1 error

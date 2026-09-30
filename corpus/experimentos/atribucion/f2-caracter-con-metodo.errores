@@ -1,0 +1,4 @@
+F2CaracterConMetodo.java:5: error: char cannot be dereferenced
+        System.out.println(letra.toUpperCase());
+                                ^
+1 error

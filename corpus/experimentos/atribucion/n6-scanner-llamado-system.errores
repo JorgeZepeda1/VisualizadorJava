@@ -1,0 +1,6 @@
+N6ScannerLlamadoSystem.java:6: error: cannot find symbol
+        Scanner System = new Scanner(System.in);
+                                           ^
+  symbol:   variable in
+  location: variable System of type Scanner
+1 error

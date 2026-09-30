@@ -9,13 +9,53 @@
 // Tono (revisado por el PO, proposal.md): tuteo, directo, nunca "incorrecto" a secas — explica QUÉ
 // pasó y, cuando aplica, una pista de cómo arreglarlo. Solo puede importar tipos de `motor/vista`
 // (matriz de capas, herramientas/eslint/matriz-capas.ts).
-import type { CodigoProblema, DatosPorCodigoProblema } from '../../motor/vista.ts';
+import type { CodigoProblema, DatosPorCodigoProblema, Tipo } from '../../motor/vista.ts';
 
 // Tarea 1.28: la forma de los datos de cada código YA NO se repite aquí. Vive en el motor
 // (`DatosPorCodigoProblema`, `motor/problemas.ts`, vía `motor/vista.ts`) — la MISMA que exige a cada
 // emisor (`semantica/*.ts`, `compilador.ts`) y que estrecha `Problema` — como la tarea 1.25 hizo con
 // los avisos. Si `CodigoProblema` agrega o quita una clave sin actualizar `DatosPorCodigoProblema`,
 // o esta tabla queda sin una clave, deja de compilar — la garantía real de ADR 015 punto 1.
+
+// Tarea 1.32 (F1): cómo se nombra el valor de ORIGEN de un cast que Java rechaza («No puedes convertir un texto (`String`) en `int`…»).
+const ORIGEN_DE_UN_CAST: Readonly<Record<Tipo, string>> = {
+  int: 'un número entero (`int`)',
+  long: 'un número (`long`)',
+  double: 'un número decimal (`double`)',
+  char: 'un carácter (`char`)',
+  boolean: 'un valor `boolean`',
+  String: 'un texto (`String`)',
+  Scanner: 'un `Scanner`',
+  Random: 'un `Random`',
+  desconocido: 'un valor',
+};
+
+const NUMERICOS_DE_UN_CAST: ReadonlySet<Tipo> = new Set<Tipo>(['int', 'long', 'double', 'char']);
+
+// La salida que SÍ existe dentro del subconjunto (REQ-SUB-005: `Integer.parseInt`, `Double.parseDouble`, `String.valueOf`, `charAt`);
+// `null` cuando no hay una razonable — nunca se inventa una (`Long.parseLong` no está en el subconjunto, REQ-SUB-002).
+function sugerenciaParaUnCast(origen: Tipo, destino: Tipo): string | null {
+  if (origen === 'String') {
+    if (destino === 'int') return 'Para leer un número escrito como texto usa `Integer.parseInt(...)`.';
+    if (destino === 'double') return 'Para leer un número escrito como texto usa `Double.parseDouble(...)`.';
+    if (destino === 'char') return 'Para tomar una letra de un texto usa `charAt(...)`, por ejemplo `texto.charAt(0)`.';
+    return null;
+  }
+  if (destino === 'String' && (origen === 'boolean' || NUMERICOS_DE_UN_CAST.has(origen))) return 'Para convertirlo en texto usa `String.valueOf(...)`.';
+  if (origen === 'boolean' && NUMERICOS_DE_UN_CAST.has(destino)) {
+    return '`true` y `false` no son números en Java: si necesitas un número según una condición, usa un `if`.';
+  }
+  if (destino === 'boolean' && NUMERICOS_DE_UN_CAST.has(origen)) {
+    return 'En Java un número nunca es verdadero o falso: compáralo con algo, por ejemplo `numero != 0`.';
+  }
+  return null;
+}
+
+function textoDeUnCastInvalido(origen: Tipo, destino: Tipo): string {
+  const principio = `No puedes convertir ${ORIGEN_DE_UN_CAST[origen]} en \`${destino}\` con un cast`;
+  const sugerencia = sugerenciaParaUnCast(origen, destino);
+  return sugerencia === null ? `${principio}: Java no considera compatibles esos dos tipos.` : `${principio}. ${sugerencia}`;
+}
 
 export const textosProblemas: { readonly [K in CodigoProblema]: (datos: DatosPorCodigoProblema[K]) => string } = {
   'falta-punto-y-coma': () => 'Te falta un punto y coma ";" al final de esta línea.',
@@ -56,6 +96,13 @@ export const textosProblemas: { readonly [K in CodigoProblema]: (datos: DatosPor
   'selector-de-switch-invalido': ({ tipo }) => `El valor de un "switch" debe ser "int", "char" o "String", no "${tipo}".`,
   'etiqueta-de-case-no-constante': () => 'Cada "case" necesita un valor fijo (constante), no una variable ni un cálculo.',
   'etiqueta-de-case-duplicada': () => 'Ya existe un "case" con este mismo valor más arriba; cada valor solo puede aparecer una vez.',
+  // Tarea 1.32 (F4). Un `case` numérico con un `switch` de `char` es el único caso en que «otro tipo» sí puede servir (un número que
+  // quepa): se explica con el rango de `char` en vez de repetir «debe ser del mismo tipo».
+  'etiqueta-de-case-de-otro-tipo': ({ etiqueta, selector }) =>
+    etiqueta === 'int' && selector === 'char'
+      ? 'Este `case` es un número (`int`) que no cabe en un `char`: el `switch` compara caracteres, y un `case` con un número solo sirve si cabe en un `char` (de 0 a 65535).'
+      : `Este \`case\` es de tipo \`${etiqueta}\`, pero el \`switch\` compara valores de tipo \`${selector}\`: cada \`case\` debe ser del mismo tipo que el valor del \`switch\`.`,
+  'etiqueta-default-duplicada': () => 'Ya hay un `default` más arriba en este `switch`: solo puede haber uno.',
   'break-fuera-de-contexto': () => '"break" solo tiene sentido dentro de un ciclo o un "switch".',
   'continue-fuera-de-contexto': () => '"continue" solo tiene sentido dentro de un ciclo.',
   'else-sin-if': () => 'Este "else" no tiene un "if" al cual pertenecer; revisa las llaves "{ }".',
@@ -72,4 +119,19 @@ export const textosProblemas: { readonly [K in CodigoProblema]: (datos: DatosPor
   'variable-posiblemente-no-asignada': ({ nombre }) =>
     `La variable "${nombre}" podría no tener un valor asignado en este punto. Asegúrate de que SIEMPRE reciba uno antes de usarla.`,
   'variable-final-reasignada': ({ nombre }) => `"${nombre}" es "final": su valor se fija una sola vez y no se puede cambiar.`,
+  // Tarea 1.32 (F5). Ejemplo de tono aprobado en el encargo: «`System.out.print(...)` no devuelve ningún valor, así que no puedes
+  // usarlo como si fuera un número o un texto.» El nombre es la llamada tal como la escribió el alumno.
+  'llamada-sin-valor': ({ llamada }) =>
+    `\`${llamada}(...)\` no devuelve ningún valor, así que no puedes usarlo como si fuera un número o un texto.`,
+  // Tarea 1.32 (F2). Con la variable (`n.length()`) se la nombra; sin ella (un literal, una operación) se señala el `.miembro` que sobra.
+  // Tarea 1.32 (F1). Ejemplo de tono aprobado en el encargo: «No puedes convertir un texto (`String`) en `int` con un cast. Para leer un
+  // número escrito como texto usa `Integer.parseInt(...)`.»
+  'cast-invalido': ({ origen, destino }) => textoDeUnCastInvalido(origen, destino),
+  // Tarea 1.32 (F6): `String.trim()` — el método existe, pero se llama sobre una VARIABLE del tipo, no sobre el nombre de la clase.
+  'metodo-de-instancia-sin-objeto': ({ clase, nombre }) =>
+    `\`${clase}.${nombre}(...)\` no funciona: \`${nombre}()\` se llama sobre una variable de tipo \`${clase}\` (por ejemplo, \`variable.${nombre}(...)\`), no sobre el nombre de la clase.`,
+  'miembro-de-primitivo': ({ tipo, nombre, receptor }) =>
+    receptor === undefined
+      ? `Un valor de tipo \`${tipo}\` es primitivo: no tiene métodos ni campos, así que no puedes escribir \`.${nombre}\` después de él. Solo los objetos, como un \`String\`, los tienen.`
+      : `\`${receptor}\` es de tipo \`${tipo}\`, un tipo primitivo: no tiene métodos ni campos, así que no puedes escribir \`${receptor}.${nombre}\`. Solo los objetos, como un \`String\`, los tienen.`,
 };

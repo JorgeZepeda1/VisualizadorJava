@@ -1,0 +1,4 @@
+F2LiteralLargoConMetodo.java:4: error: long cannot be dereferenced
+        System.out.println(1000L.toString());
+                                ^
+1 error

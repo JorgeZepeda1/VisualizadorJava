@@ -1,0 +1,4 @@
+F1CastBooleanoAInt.java:5: error: incompatible types: boolean cannot be converted to int
+        int valor = (int) activo;
+                          ^
+1 error

@@ -3,6 +3,12 @@
 // `continue` (verificado contra javac 17 real esta sesión: AMBOS viven en la MISMA pasada que un
 // error de tipos, no en alcanzabilidad — ver engram `sdd/visualizador-java/apply-progress`).
 //
+// Tarea 1.32 (familias de atribución que encontró el generador diferencial de la 1.31, JLS 5.5/15.11/15.12/6.3/6.5.2): casts que Java
+// no permite, un miembro pedido a un valor primitivo o a una llamada `void`, `final` modificada con `++`/`--`, un método de instancia
+// llamado con el nombre de la clase, `Scanner`/`Random` sin `import` como receptor o como tipo de un cast, y el alcance de una variable
+// en su propio inicializador. Un tipo o una clase que el subconjunto no simula (`Long m = 0;`) es un AVISO, nunca una regla de javac
+// modelada a medias (D2).
+//
 // Recorre TODO el árbol (nunca se detiene en el primer problema, igual que `recolectarNoSoportados`
 // en 1.6/1.17) y devuelve la lista COMPLETA ordenada por posición en el texto; quien la conecte a
 // `compilador.ts` (tarea 1.14) decide quedarse solo con el primero, siguiendo ADR 004.
@@ -10,6 +16,7 @@ import type {
   NodoAccesoMiembro,
   NodoAsignacion,
   NodoBloque,
+  NodoConversion,
   NodoDeclaracionLocal,
   NodoElementoBloque,
   NodoElementoSwitch,
@@ -37,6 +44,9 @@ import { verificarEtiquetasDeCase, verificarSelectorDeSwitch } from './switch.ts
 import {
   argumentoDeSobrecarga,
   claseDelObjeto,
+  esCastPermitido,
+  esLlamadaSinValor,
+  esTipoPrimitivo,
   NOMBRES_DE_CLASE_RECONOCIDOS,
   nombreDeArgumentoParaMostrar,
   tipoDeExpresion,
@@ -45,6 +55,7 @@ import {
   type Tipo,
 } from './tipos.ts';
 import {
+  CLASES_QUE_REQUIEREN_IMPORT,
   codigoDeAsignacionInvalida,
   esAsignable,
   esConvertibleImplicitamenteEnAsignacionCompuesta,
@@ -146,24 +157,8 @@ function visitarDeclaracionLocal(
   // de tipo se valida UNA vez por declaración (no por declarador) — javac lo hace en el mismo
   // punto. "tipo-no-reconocido" (genuinamente desconocido) y "tipo-requiere-import" (real, de
   // java.util, sin importar) son códigos DISTINTOS — nunca el mismo mensaje para los dos casos.
-  const resultadoTipo = resultadoNombreDeTipo(declaracion.nombreTipo, ambito);
-  if (resultadoTipo === 'no-reconocido') {
-    problemas.push({
-      codigo: 'tipo-no-reconocido',
-      rango: declaracion.rango,
-      datos: { nombre: declaracion.nombreTipo },
-    });
-  } else if (resultadoTipo === 'requiere-import') {
-    problemas.push({
-      codigo: 'tipo-requiere-import',
-      rango: declaracion.rango,
-      datos: { nombre: declaracion.nombreTipo },
-    });
-  } else if (resultadoTipo === 'existente-no-soportada') {
-    problemas.push(avisoDeClaseNoSoportada(declaracion.nombreTipo, declaracion.rango));
-  } else if (resultadoTipo === 'calificado-existente') {
-    problemas.push(avisoDeNombreCalificado(declaracion.nombreTipo, declaracion.rango));
-  }
+  const problemaDelTipo = problemaDeNombreDeTipo(declaracion.nombreTipo, declaracion.rango, ambito);
+  if (problemaDelTipo !== null) problemas.push(problemaDelTipo);
   // Corrección obligatoria (sub-lote 1-D2c): descubierta al conectar la biblioteca real —
   // `alcance.declarar` guardaba SIEMPRE `declaracion.nombreTipo` tal cual, incluso cuando el tipo
   // NO se reconoció de verdad ("tipo-no-reconocido"/"tipo-requiere-import" arriba). Antes era
@@ -174,30 +169,20 @@ function visitarDeclaracionLocal(
   // NUNCA llega a resolver el miembro (cascada suprimida en su propio recovery, D2 nunca fue tan
   // permisivo). "desconocido" (el mismo sumidero de cascada de siempre) hace que cualquier uso
   // posterior de la variable no dispare ningún problema adicional por esta misma causa.
-  const tipoDelSimbolo = resultadoTipo === 'valido' ? declaracion.nombreTipo : 'desconocido';
+  const tipoDelSimbolo = problemaDelTipo === null ? declaracion.nombreTipo : 'desconocido';
   for (const declarador of declaracion.declaradores) {
     // Comparte el plegado (REFACTOR de la tarea 1.10) con la verificación de asignación DE ABAJO
     // Y con el campo "constante" del símbolo (deuda 3 del commit 999a8ca, JLS 4.12.4).
     const valorInicializador = declarador.inicializador !== null ? valorConstante(declarador.inicializador, alcance) : null;
-    if (declarador.inicializador !== null) {
-      visitarExpresion(declarador.inicializador, alcance, ambito, problemas);
-      // err04/err12 de exploracion/03 (JLS 5.2): solo si el TIPO de destino se reconoce (si no,
-      // ya se reportó un problema arriba — nunca dos problemas por la misma causa).
-      const destino = tipoDeNombreDeTipo(declaracion.nombreTipo);
-      const origen = tipoDeExpresion(declarador.inicializador, alcance);
-      if (destino !== 'desconocido' && !esAsignable(origen, destino, valorInicializador)) {
-        problemas.push({
-          codigo: codigoDeAsignacionInvalida(origen, destino),
-          rango: declarador.inicializador.rango,
-          datos: { origen, destino },
-        });
-      }
-    }
     // Deuda 3 del commit 999a8ca (JLS 4.12.4): una local "final" con inicializador CONSTANTE es
     // una VARIABLE CONSTANTE -- participa en expresiones constantes (etiquetas de "case",
     // alcanzabilidad, internado de String). `undefined` si no aplica (no es "final", o el
     // inicializador no es constante) -- `valorConstante` ya sabe leerlo de vuelta (constantes.ts).
     const constante = declaracion.esFinal && valorInicializador !== null ? valorInicializador : undefined;
+    // Tarea 1.32 (N6, JLS 6.3): «el alcance de una variable local empieza en SU PROPIO inicializador» — se declara ANTES de visitarlo.
+    // Así `Scanner System = new Scanner(System.in);` ve la variable `System` (JLS 6.5.2: una variable en alcance se clasifica como
+    // expresión antes que como tipo), `int y = (y = 5) + 1;` es válido y `int x = x + 1;` deja de ser «no existe la variable x»
+    // (es «podría no tener un valor», de la pasada de asignación definitiva). Antes se declaraba DESPUÉS del inicializador.
     const resultado = alcance.declarar({
       nombre: declarador.nombre,
       tipo: tipoDelSimbolo,
@@ -211,6 +196,20 @@ function visitarDeclaracionLocal(
         rango: declarador.rango,
         datos: { nombre: declarador.nombre, rangoExistente: resultado.existente.rango },
       });
+    }
+    if (declarador.inicializador !== null) {
+      visitarValor(declarador.inicializador, alcance, ambito, problemas);
+      // err04/err12 de exploracion/03 (JLS 5.2): solo si el TIPO de destino se reconoce (si no,
+      // ya se reportó un problema arriba — nunca dos problemas por la misma causa).
+      const destino = tipoDeNombreDeTipo(declaracion.nombreTipo);
+      const origen = tipoDeExpresion(declarador.inicializador, alcance);
+      if (destino !== 'desconocido' && !esAsignable(origen, destino, valorInicializador)) {
+        problemas.push({
+          codigo: codigoDeAsignacionInvalida(origen, destino),
+          rango: declarador.inicializador.rango,
+          datos: { origen, destino },
+        });
+      }
     }
   }
 }
@@ -227,9 +226,10 @@ function visitarSentencia(
       visitarBloque(sentencia, alcance, ambito, contexto, problemas);
       return;
     case 'impresion':
+      verificarSystemNoTapada(sentencia.rango, alcance, problemas);
       // Corrección obligatoria (sub-lote 1-C2): "println()" sin argumentos tiene `argumento:null`
       // (nunca hay símbolos que resolver en ese caso).
-      if (sentencia.argumento !== null) visitarExpresion(sentencia.argumento, alcance, ambito, problemas);
+      if (sentencia.argumento !== null) visitarValor(sentencia.argumento, alcance, ambito, problemas);
       return;
     case 'retorno':
     case 'sentencia-vacia':
@@ -239,19 +239,19 @@ function visitarSentencia(
       visitarExpresion(sentencia.expresion, alcance, ambito, problemas);
       return;
     case 'if':
-      visitarExpresion(sentencia.condicion, alcance, ambito, problemas);
+      visitarValor(sentencia.condicion, alcance, ambito, problemas);
       verificarCondicionBooleana(sentencia.condicion, alcance, problemas);
       visitarSentencia(sentencia.entonces, alcance, ambito, contexto, problemas);
       if (sentencia.sino !== null) visitarSentencia(sentencia.sino, alcance, ambito, contexto, problemas);
       return;
     case 'while':
-      visitarExpresion(sentencia.condicion, alcance, ambito, problemas);
+      visitarValor(sentencia.condicion, alcance, ambito, problemas);
       verificarCondicionBooleana(sentencia.condicion, alcance, problemas);
       visitarSentencia(sentencia.cuerpo, alcance, ambito, CONTEXTO_DENTRO_DE_CICLO, problemas);
       return;
     case 'do-while':
       visitarSentencia(sentencia.cuerpo, alcance, ambito, CONTEXTO_DENTRO_DE_CICLO, problemas);
-      visitarExpresion(sentencia.condicion, alcance, ambito, problemas);
+      visitarValor(sentencia.condicion, alcance, ambito, problemas);
       verificarCondicionBooleana(sentencia.condicion, alcance, problemas);
       return;
     case 'for':
@@ -286,6 +286,9 @@ function visitarSentencia(
  * recursión: REQ-SUB-007): sin otros miembros (con ellos, el aviso de sintaxis se reportó antes que
  * esta pasada) `Bienvenida.out` es un error de javac — los mutantes de C7 lo comprobaron: 29 que
  * cambian `System` por el nombre de la clase daban «no disponible» en vez de «cannot find symbol».
+ *
+ * Tarea 1.32: devuelve `false` cuando el receptor YA produjo su propio problema (un `import` que falta, una clase real fuera del
+ * subconjunto, un nombre completo) y por tanto no hay miembro que resolver; `true` cuando la resolución del miembro puede seguir.
  */
 function visitarReceptor(
   objeto: NodoExpresion,
@@ -293,13 +296,23 @@ function visitarReceptor(
   alcance: Alcance,
   ambito: AmbitoDeNombres,
   problemas: ProblemaAtribucion[],
-): void {
+): boolean {
+  // Tarea 1.32 (N5, JLS 6.5.2): el NOMBRE de una clase del catálogo (`Math`, `String`, `Scanner`…) que ninguna variable tapa es una
+  // referencia estática. `Scanner` y `Random` (java.util) solo existen para el programa con su `import`: sin él javac dice «cannot
+  // find symbol» y el miembro ni se busca (ni un método de instancia, F6, ni uno que no existe).
+  if (objeto.tipo === 'nombre' && esNombreDeClaseDelCatalogo(objeto, alcance)) {
+    if (CLASES_QUE_REQUIEREN_IMPORT.has(objeto.nombre) && !ambito.importadasDeJavaUtil.has(objeto.nombre)) {
+      problemas.push({ codigo: 'tipo-requiere-import', rango: objeto.rango, datos: { nombre: objeto.nombre } });
+      return false;
+    }
+    return true;
+  }
   if (objeto.tipo === 'nombre' && !NOMBRES_DE_CLASE_RECONOCIDOS.has(objeto.nombre) && alcance.buscar(objeto.nombre) === null) {
     const esClaseValidaComoReceptor =
       ambito.esClaseDelJdkVisible(objeto.nombre) || (ambito.esClaseDelPrograma(objeto.nombre) && miembro === 'main');
     if (esClaseValidaComoReceptor) {
       problemas.push(avisoDeClaseNoSoportada(objeto.nombre, objeto.rango));
-      return;
+      return false;
     }
   }
   // Nombre COMPLETO de una clase (`java.lang.Math.max(1, 2)`, `java.lang.System.out.println(1)`): una cadena
@@ -312,11 +325,38 @@ function visitarReceptor(
       const clase = prefijoQueEsClaseDelJdk(cadena);
       if (clase !== null) {
         problemas.push(avisoDeNombreCalificado(clase, objeto.rango));
-        return;
+        return false;
       }
     }
   }
   visitarExpresion(objeto, alcance, ambito, problemas);
+  return true;
+}
+
+/** Tarea 1.32 (F6/N5, JLS 6.5.2): ¿`objeto` es el NOMBRE de una clase del catálogo (`Math`, `String`, `Scanner`…) usado como
+ * referencia estática? Solo si ninguna variable en alcance lo tapa: una variable siempre gana (JLS 6.4.2). */
+function esNombreDeClaseDelCatalogo(objeto: NodoExpresion, alcance: Alcance): boolean {
+  return objeto.tipo === 'nombre' && alcance.buscar(objeto.nombre) === null && NOMBRES_DE_CLASE_RECONOCIDOS.has(objeto.nombre);
+}
+
+/**
+ * El problema (error o aviso) que produce usar `nombreTipo` como TIPO — una declaración, un `new`, un cast —, o `null` si es un tipo
+ * del subconjunto que el programa ve. Un solo lugar para las cuatro respuestas de `resultadoNombreDeTipo` (tarea 1.32: antes la
+ * declaración y el `new` repetían el mismo bloque, y el cast, que también nombra un tipo, no lo validaba).
+ */
+function problemaDeNombreDeTipo(nombreTipo: string, rango: Rango, ambito: AmbitoDeNombres): ProblemaAtribucion | null {
+  switch (resultadoNombreDeTipo(nombreTipo, ambito)) {
+    case 'valido':
+      return null;
+    case 'no-reconocido':
+      return { codigo: 'tipo-no-reconocido', rango, datos: { nombre: nombreTipo } };
+    case 'requiere-import':
+      return { codigo: 'tipo-requiere-import', rango, datos: { nombre: nombreTipo } };
+    case 'existente-no-soportada':
+      return avisoDeClaseNoSoportada(nombreTipo, rango);
+    case 'calificado-existente':
+      return avisoDeNombreCalificado(nombreTipo, rango);
+  }
 }
 
 /** Tarea 1.29: el aviso de un nombre de clase escrito CON su paquete (`java.util.Scanner`). */
@@ -377,7 +417,7 @@ function visitarFor(
     visitarExpresion(expresionSentencia.expresion, alcance, ambito, problemas);
   }
   if (sentencia.condicion !== null) {
-    visitarExpresion(sentencia.condicion, alcance, ambito, problemas);
+    visitarValor(sentencia.condicion, alcance, ambito, problemas);
     verificarCondicionBooleana(sentencia.condicion, alcance, problemas);
   }
   visitarSentencia(sentencia.cuerpo, alcance, ambito, CONTEXTO_DENTRO_DE_CICLO, problemas);
@@ -394,7 +434,7 @@ function visitarSwitch(
   contexto: ContextoFlujo,
   problemas: ProblemaAtribucion[],
 ): void {
-  visitarExpresion(sentencia.selector, alcance, ambito, problemas);
+  visitarValor(sentencia.selector, alcance, ambito, problemas);
   const problemaSelector = verificarSelectorDeSwitch(sentencia, alcance);
   if (problemaSelector !== null) problemas.push(problemaSelector);
   // err34/flow05 de exploracion/03 (tarea 1.11): etiquetas de "case" no constantes o duplicadas.
@@ -421,11 +461,102 @@ function visitarElementoSwitch(
   problemas: ProblemaAtribucion[],
 ): void {
   if (elemento.tipo === 'etiqueta-case') {
-    visitarExpresion(elemento.valor, alcance, ambito, problemas);
+    visitarValor(elemento.valor, alcance, ambito, problemas);
     return;
   }
   if (elemento.tipo === 'etiqueta-default') return;
   visitarElementoBloque(elemento, alcance, ambito, contexto, problemas);
+}
+
+/**
+ * Tarea 1.32 (F1, JLS 5.5): `(Tipo) operando`. Como en javac (`Attr.visitTypeCast`): primero el NOMBRE del tipo (se valida como el de
+ * una declaración: `(Foo) 5` no existe, `(Scanner) x` sin `import` no se ve, `(Integer) x` es un tipo que el subconjunto no
+ * simula), luego el operando (un valor) y por último si el cast es posible (`esCastPermitido`), señalando el OPERANDO. Un cast
+ * inválido se tipa «desconocido» (`tipoDeExpresion`), así que el error no se repite en la asignación que lo contiene.
+ */
+function visitarConversion(nodo: NodoConversion, alcance: Alcance, ambito: AmbitoDeNombres, problemas: ProblemaAtribucion[]): void {
+  const problemaDelTipo = problemaDeNombreDeTipo(nodo.nombreTipo, nodo.rango, ambito);
+  if (problemaDelTipo !== null) problemas.push(problemaDelTipo);
+  visitarValor(nodo.operando, alcance, ambito, problemas);
+  if (problemaDelTipo !== null) return;
+  const origen = tipoDeExpresion(nodo.operando, alcance);
+  const destino = tipoDeNombreDeTipo(nodo.nombreTipo);
+  if (esCastPermitido(origen, destino)) return;
+  problemas.push({ codigo: 'cast-invalido', rango: nodo.operando.rango, datos: { origen, destino } });
+}
+
+/**
+ * Tarea 1.32 (hermano de N5): visita el DESTINO de una asignación o el operando de `++`/`--`. El nombre de una clase en esa posición ya
+ * lo reporta `verificarObjetivoDeAsignacion`/`verificarOperandoIncrementoDecremento` (`objetivo-no-es-variable`, tarea 1.21): no se
+ * repite como «variable no declarada», que es lo que ahora significa un nombre de clase en posición de VALOR.
+ */
+function visitarDestino(destino: NodoExpresion, alcance: Alcance, ambito: AmbitoDeNombres, problemas: ProblemaAtribucion[]): void {
+  if (esNombreDeClaseDelCatalogo(destino, alcance)) return;
+  visitarExpresion(destino, alcance, ambito, problemas);
+}
+
+/**
+ * Tarea 1.32 (F5): visita una expresión que se usa como VALOR (inicializador, argumento, operando, condición, selector, operando
+ * de un cast, receptor…) y, además, exige que tenga uno. Una llamada a un método `void` solo es válida como SENTENCIA (o en la
+ * actualización de un `for`): ahí se llama `visitarExpresion` directo.
+ */
+function visitarValor(expresion: NodoExpresion, alcance: Alcance, ambito: AmbitoDeNombres, problemas: ProblemaAtribucion[]): void {
+  visitarExpresion(expresion, alcance, ambito, problemas);
+  verificarQueTengaValor(expresion, alcance, problemas);
+}
+
+/**
+ * Tarea 1.32 (F5, JLS 15.12.3 + 14.8: una llamada `void` es una expresión SIN tipo): `int b = System.out.print(7);`,
+ * `System.out.print(System.out.print(0))` o `if (sc.close())` se rechazan en javac 17 (`prob.found.req` / `void.not.allowed.here`).
+ * Reporta `llamada-sin-valor` y devuelve `true` si la expresión es una llamada `void` — quien la llama omite entonces el resto de
+ * sus comprobaciones de tipo (la llamada se tipa «desconocido», así que ninguna se dispararía de todos modos: sin cascada, como
+ * javac, que reporta el `void` y no lo que le pase después). `llamada` es el nombre tal como lo escribió el alumno
+ * (`System.out.print`, `sc.close`) o, si el receptor no es una cadena de nombres, solo el del método.
+ */
+function verificarQueTengaValor(expresion: NodoExpresion, alcance: Alcance, problemas: ProblemaAtribucion[]): boolean {
+  if (expresion.tipo !== 'llamada' || !esLlamadaSinValor(expresion, alcance)) return false;
+  const nombreDelMetodo = expresion.callee.tipo === 'acceso-miembro' ? expresion.callee.miembro : '';
+  const llamada = nombreCalificadoDeLaCadena(expresion.callee) ?? nombreDelMetodo;
+  problemas.push({ codigo: 'llamada-sin-valor', rango: expresion.rango, datos: { llamada } });
+  return true;
+}
+
+/**
+ * Tarea 1.32 (F2, JLS 15.11 + 15.12: solo un valor de REFERENCIA tiene miembros): `n.length()` con `int n`, `0L.foo()`,
+ * `'a'.equals(5)`, `(x + 2).toString()` o `s.length().foo()` se rechazan en javac 17 con «int cannot be dereferenced»
+ * (`cant.deref`). `datos.receptor` es el nombre de la variable cuando el receptor es una (el texto la nombra). Devuelve `true` si
+ * reportó el problema — quien la llama no resuelve el miembro (no hay clase donde buscarlo).
+ */
+function verificarQueNoSeaPrimitivo(
+  receptor: NodoExpresion,
+  miembro: string,
+  rango: Rango,
+  alcance: Alcance,
+  problemas: ProblemaAtribucion[],
+): boolean {
+  const tipo = tipoDeExpresion(receptor, alcance);
+  if (!esTipoPrimitivo(tipo)) return false;
+  const datos = receptor.tipo === 'nombre' ? { tipo, nombre: miembro, receptor: receptor.nombre } : { tipo, nombre: miembro };
+  problemas.push({ codigo: 'miembro-de-primitivo', rango, datos });
+  return true;
+}
+
+/**
+ * Tarea 1.32 (F2/N6, JLS 6.4.2 + 6.5.2): `System.out.println(...)` tiene una gramática propia (`NodoImpresion`) que da por hecho que
+ * `System` es la CLASE, pero un nombre simple que es una VARIABLE en alcance se clasifica como expresión antes que como tipo: con
+ * `int System = 3;` es `System.out` sobre un `int` (javac: «int cannot be dereferenced»), con `String System = "a";` es un campo
+ * `out` que `String` no tiene (javac: «cannot find symbol»). Una variable de un tipo que el subconjunto no modela ya avisó en su
+ * declaración (`Long System;`): sin cascada.
+ */
+function verificarSystemNoTapada(rango: Rango, alcance: Alcance, problemas: ProblemaAtribucion[]): void {
+  const variable = alcance.buscar('System');
+  if (variable === null) return;
+  const tipo = tipoDeNombreDeTipo(variable.tipo);
+  if (esTipoPrimitivo(tipo)) {
+    problemas.push({ codigo: 'miembro-de-primitivo', rango, datos: { tipo, nombre: 'out', receptor: 'System' } });
+  } else if (tipo !== 'desconocido') {
+    problemas.push({ codigo: 'campo-no-declarado', rango, datos: { clase: tipo, nombre: 'out' } });
+  }
 }
 
 function visitarExpresion(
@@ -447,23 +578,25 @@ function visitarExpresion(
       visitarNombreComoValor(expresion, alcance, problemas);
       return;
     case 'binaria':
-      visitarExpresion(expresion.izquierda, alcance, ambito, problemas);
-      visitarExpresion(expresion.derecha, alcance, ambito, problemas);
+      visitarValor(expresion.izquierda, alcance, ambito, problemas);
+      visitarValor(expresion.derecha, alcance, ambito, problemas);
       verificarOperandosBinaria(expresion, alcance, problemas);
       return;
     case 'unaria':
-      visitarExpresion(expresion.operando, alcance, ambito, problemas);
+      visitarValor(expresion.operando, alcance, ambito, problemas);
       verificarOperandoUnaria(expresion, alcance, problemas);
       return;
     case 'asignacion':
-      visitarExpresion(expresion.objetivo, alcance, ambito, problemas);
-      visitarExpresion(expresion.valor, alcance, ambito, problemas);
+      visitarDestino(expresion.objetivo, alcance, ambito, problemas);
+      // Tarea 1.32 (F3): javac lo reporta en ESTA pasada (`Attr.visitIdent` → `checkAssignable`), antes que los errores de tipos.
+      verificarModificacionDeFinal(expresion.objetivo, alcance, problemas);
+      visitarValor(expresion.valor, alcance, ambito, problemas);
       verificarObjetivoDeAsignacion(expresion, alcance, problemas);
       verificarAsignacionSimple(expresion, alcance, problemas);
       verificarAsignacionCompuesta(expresion, alcance, problemas);
       return;
     case 'incremento-decremento':
-      visitarExpresion(expresion.operando, alcance, ambito, problemas);
+      visitarDestino(expresion.operando, alcance, ambito, problemas);
       verificarOperandoIncrementoDecremento(expresion, alcance, problemas);
       return;
     case 'llamada':
@@ -476,7 +609,7 @@ function visitarExpresion(
       visitarNuevaInstancia(expresion, alcance, ambito, problemas);
       return;
     case 'conversion':
-      visitarExpresion(expresion.operando, alcance, ambito, problemas);
+      visitarConversion(expresion, alcance, ambito, problemas);
       return;
   }
 }
@@ -552,6 +685,8 @@ function verificarOperandoIncrementoDecremento(
     problemas.push({ codigo: 'objetivo-no-es-variable', rango: expresion.rango, datos: {} });
     return;
   }
+  // Tarea 1.32 (F3): «cannot assign a value to final variable k» gana al error de tipo del operando (`final String s; s++;`).
+  if (verificarModificacionDeFinal(expresion.operando, alcance, problemas)) return;
   const operando = tipoDeExpresion(expresion.operando, alcance);
   if (operandoValidoParaIncrementoDecremento(operando)) return;
   problemas.push({
@@ -559,6 +694,20 @@ function verificarOperandoIncrementoDecremento(
     rango: expresion.rango,
     datos: { operador: expresion.operador, operando },
   });
+}
+
+/** Tarea 1.32 (F3, JLS 15.26/15.14/15.15 + 4.12.4, exploracion/03 §4.4 punto 7 «err10c»): una variable `final` solo admite UN valor.
+ * Como «final sin inicializador» es NO-DISP desde la sintaxis (REQ-SUB-007), toda `final` que llega aquí YA tiene su valor desde la
+ * declaración, así que CUALQUIER modificación posterior —`k = 2`, `k += 2`, `k++`, `--k`— es un error, sin mirar el flujo. javac lo
+ * da en la pasada de ATRIBUCIÓN (`cant.assign.val.to.final.var`), junto con los errores de tipos y por orden de aparición; antes
+ * este motor lo detectaba en la de asignación definitiva (pasada 4) y solo para `=`/`op=`, y `k++` no se detectaba en ninguna.
+ * `true` si reportó el problema. */
+function verificarModificacionDeFinal(objetivo: NodoExpresion, alcance: Alcance, problemas: ProblemaAtribucion[]): boolean {
+  if (objetivo.tipo !== 'nombre') return false;
+  const simbolo = alcance.buscar(objetivo.nombre);
+  if (simbolo === null || !simbolo.esFinal) return false;
+  problemas.push({ codigo: 'variable-final-reasignada', rango: objetivo.rango, datos: { nombre: objetivo.nombre } });
+  return true;
 }
 
 /** Tarea 1.21 (sub-lote 1-D4, JLS 15.26/4.12.3, cierre de C7): el objetivo de CUALQUIER asignación
@@ -634,7 +783,9 @@ function verificarAsignacionCompuesta(expresion: NodoAsignacion, alcance: Alcanc
 }
 
 function visitarNombreComoValor(nodo: NodoNombre, alcance: Alcance, problemas: ProblemaAtribucion[]): void {
-  if (NOMBRES_DE_CLASE_RECONOCIDOS.has(nodo.nombre)) return; // referencia estática (Math, String…)
+  // Tarea 1.32 (hermano de N5, JLS 6.5.2): el nombre de una clase del catálogo (`Math`, `String`, `Scanner`…) solo es válido como TIPO o
+  // como RECEPTOR de un miembro (`visitarReceptor` lo resuelve sin pasar por aquí): como VALOR (`int y = Math;`) javac dice «cannot find
+  // symbol: variable Math» aunque la clase exista. Antes se daba por buena («referencia estática»), y era un falso acepto.
   if (alcance.buscar(nodo.nombre) !== null) return;
   const sugerencia = sugerenciaDeMayuscula(nodo.nombre);
   problemas.push({
@@ -666,7 +817,7 @@ function visitarLlamada(
   } else {
     visitarExpresion(nodo.callee, alcance, ambito, problemas);
   }
-  for (const argumento of nodo.argumentos) visitarExpresion(argumento, alcance, ambito, problemas);
+  for (const argumento of nodo.argumentos) visitarValor(argumento, alcance, ambito, problemas);
 }
 
 /**
@@ -695,7 +846,9 @@ function visitarLlamadaDeMiembro(
   ambito: AmbitoDeNombres,
   problemas: ProblemaAtribucion[],
 ): void {
-  visitarReceptor(callee.objeto, callee.miembro, alcance, ambito, problemas);
+  if (!visitarReceptor(callee.objeto, callee.miembro, alcance, ambito, problemas)) return;
+  if (verificarQueTengaValor(callee.objeto, alcance, problemas)) return;
+  if (verificarQueNoSeaPrimitivo(callee.objeto, callee.miembro, callee.rango, alcance, problemas)) return;
   const clase = claseDelObjeto(callee.objeto, alcance);
   if (clase === null) return;
   const clasificacion = clasificarMetodo(clase, callee.miembro);
@@ -735,12 +888,19 @@ function visitarLlamadaDeMiembro(
   // error que javac nunca daría -- mismo sumidero de cascada que ya usa TODO el resto de esta
   // pasada. El chequeo es sobre `argumentos` (NO `tiposDeArgumentos`): un `{reflejado}` (System.x)
   // SIEMPRE es un tipo conocido, nunca dispara este sumidero.
-  if (!argumentos.includes('desconocido') && resolverSobrecarga(clase, callee.miembro, argumentos) === null) {
+  if (argumentos.includes('desconocido')) return;
+  const firma = resolverSobrecarga(clase, callee.miembro, argumentos);
+  if (firma === null) {
     problemas.push({
       codigo: 'sin-sobrecarga-aplicable',
       rango: nodo.rango,
       datos: { clase, nombre: callee.miembro, argumentos: tiposDeArgumentos },
     });
+    return;
+  }
+  // Tarea 1.32 (F6, JLS 15.12.3): con el NOMBRE de la clase como receptor la sobrecarga elegida debe ser `static`.
+  if (esNombreDeClaseDelCatalogo(callee.objeto, alcance) && !firma.esEstatico) {
+    problemas.push({ codigo: 'metodo-de-instancia-sin-objeto', rango: callee.rango, datos: { clase, nombre: callee.miembro } });
   }
 }
 
@@ -758,7 +918,9 @@ function visitarAccesoMiembro(
   ambito: AmbitoDeNombres,
   problemas: ProblemaAtribucion[],
 ): void {
-  visitarReceptor(nodo.objeto, nodo.miembro, alcance, ambito, problemas);
+  if (!visitarReceptor(nodo.objeto, nodo.miembro, alcance, ambito, problemas)) return;
+  if (verificarQueTengaValor(nodo.objeto, alcance, problemas)) return;
+  if (verificarQueNoSeaPrimitivo(nodo.objeto, nodo.miembro, nodo.rango, alcance, problemas)) return;
   const clase = claseDelObjeto(nodo.objeto, alcance);
   if (clase === null) return;
   const clasificacion = clasificarCampo(clase, nodo.miembro);
@@ -815,23 +977,11 @@ function visitarNuevaInstancia(
   ambito: AmbitoDeNombres,
   problemas: ProblemaAtribucion[],
 ): void {
-  for (const argumento of nodo.argumentos) visitarExpresion(argumento, alcance, ambito, problemas);
+  for (const argumento of nodo.argumentos) visitarValor(argumento, alcance, ambito, problemas);
 
-  const resultadoTipo = resultadoNombreDeTipo(nodo.nombreTipo, ambito);
-  if (resultadoTipo === 'no-reconocido') {
-    problemas.push({ codigo: 'tipo-no-reconocido', rango: nodo.rango, datos: { nombre: nodo.nombreTipo } });
-    return;
-  }
-  if (resultadoTipo === 'requiere-import') {
-    problemas.push({ codigo: 'tipo-requiere-import', rango: nodo.rango, datos: { nombre: nodo.nombreTipo } });
-    return;
-  }
-  if (resultadoTipo === 'existente-no-soportada') {
-    problemas.push(avisoDeClaseNoSoportada(nodo.nombreTipo, nodo.rango));
-    return;
-  }
-  if (resultadoTipo === 'calificado-existente') {
-    problemas.push(avisoDeNombreCalificado(nodo.nombreTipo, nodo.rango));
+  const problemaDelTipo = problemaDeNombreDeTipo(nodo.nombreTipo, nodo.rango, ambito);
+  if (problemaDelTipo !== null) {
+    problemas.push(problemaDelTipo);
     return;
   }
 

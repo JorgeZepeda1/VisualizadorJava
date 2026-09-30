@@ -1,0 +1,6 @@
+N5ClaseComoValor.java:4: error: cannot find symbol
+        int resultado = Math;
+                        ^
+  symbol:   variable Math
+  location: class N5ClaseComoValor
+1 error

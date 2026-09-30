@@ -884,3 +884,21 @@ describe('compilar — miembros propios, herencia y tipos antes de la clase son 
     expect(resultado.problema).toMatchObject({ categoria: 'no-disponible', codigo, linea });
   });
 });
+
+// Tarea 1.32 (N6, JLS 6.3 y 16): leer una variable en su propio inicializador es «variable x might not have been initialized»
+// (`var.might.not.have.been.initialized`, pasada de asignación definitiva), no «no existe una variable llamada x»: la variable SÍ existe.
+describe('compilar — una variable leída en su propio inicializador (N6, tarea 1.32)', () => {
+  it('"int x = x + 1;" es «podría no tener un valor» en la línea de la declaración, no «variable no declarada»', () => {
+    const resultado = compilar(['class C {', '  public static void main(String[] a) {', '    int x = x + 1;', '  }', '}'].join('\n'));
+    expect(resultado.ok).toBe(false);
+    if (resultado.ok) throw new Error('se esperaba ok:false');
+    expect(resultado.problema).toMatchObject({ categoria: 'error-compilacion', codigo: 'variable-posiblemente-no-asignada', linea: 3, datos: { nombre: 'x' } });
+  });
+
+  it('control: `int y = (y = 5) + 1;` compila (javac lo acepta): ninguna pasada lo rechaza', () => {
+    const resultado = compilar(['class C {', '  public static void main(String[] a) {', '    int y = (y = 5) + 1;', '  }', '}'].join('\n'));
+    expect(resultado.ok).toBe(false);
+    if (resultado.ok) throw new Error('se esperaba ok:false (falta la IR del lote 2)');
+    expect(resultado.problema).toMatchObject({ categoria: 'no-disponible', codigo: 'ejecucion-no-disponible' });
+  });
+});

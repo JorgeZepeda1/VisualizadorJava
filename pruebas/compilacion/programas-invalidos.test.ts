@@ -35,11 +35,14 @@ const rechazados = programas.filter((programa) => !programa.compilo);
 
 describe('corpus real → a un programa que javac 17 rechaza nunca se le dice que Java lo acepta', () => {
   it('el barrido encuentra los programas que javac rechazó Y los que compiló (guarda contra un recorrido vacío o un filtro trivial)', () => {
-    // 45 rechazados entre `corpus/curso`, `corpus/compilacion`, `corpus/experimentos/{numeros,texto}` (errores de
-    // compilación reales: tipos, símbolos, asignación definida, etiquetas, estructura…), con el veredicto real de javac.
-    expect(rechazados.length).toBeGreaterThanOrEqual(45);
+    // 86 rechazados entre `corpus/curso`, `corpus/compilacion`, `corpus/experimentos/{numeros,texto}` (errores de
+    // compilación reales: tipos, símbolos, asignación definida, etiquetas, estructura…) y los 41 mínimos de
+    // `corpus/experimentos/atribucion` (tarea 1.32: cast inválido, miembro de un primitivo, `final` con `++`, etiquetas de `switch`,
+    // `void` como valor, método de instancia por el nombre de la clase, envoltorios, `Scanner` sin `import`, variable que tapa una
+    // clase), con el veredicto real de javac.
+    expect(rechazados.length).toBeGreaterThanOrEqual(86);
     // Si el filtro `compilo` no separara nada, la prueba de abajo no distinguiría un rechazo de un programa válido.
-    expect(programas.length - rechazados.length).toBeGreaterThanOrEqual(151);
+    expect(programas.length - rechazados.length).toBeGreaterThanOrEqual(161);
   });
 
   it('cada programa con "compilo": false sale como error o como aviso de una construcción, nunca como aceptado (ni ok, ni "ejecucion-no-disponible")', () => {

@@ -1108,3 +1108,591 @@ describe('atribuir — nombres de clase con su paquete (tarea 1.29)', () => {
     expect(atribuirCuerpo('int java = 1; int x = java;')).toEqual([]);
   });
 });
+
+// ============================================================================================================
+// Tarea 1.32 (agregada por el orquestador, decisión del PO 2026-09-29: «A, corrígelo antes del merge»): las familias de
+// ATRIBUCIÓN que encontró el generador diferencial de la 1.31. Cada caso está verificado contra javac 17.0.18 real (sonda del
+// 2026-09-29); el principio: dentro del subconjunto (REQ-SUB-002/REQ-SUB-005) se modela la regla de javac y sale un error;
+// fuera, aviso de «no disponible», sin modelar la regla.
+// ============================================================================================================
+
+// N1 — tipos envoltorio. REQ-SUB-002 lista los tipos de variable del subconjunto: `int`, `double`, `boolean`, `char`,
+// `String` y `long`; REQ-SUB-005 nombra `Integer`, `Double`, `Long` y `Character` solo como CLASES ESTÁTICAS (`Integer.parseInt`,
+// `Long.MAX_VALUE`, `Character.isDigit`). Declarar una variable `Long m = 0;` está FUERA de U3–U7: aviso de «no disponible», sin
+// modelar el boxing (javac rechaza `Long m = 0;` y `Integer k = 5; boolean b = k;`, y compila `Long l = 5L;`; el aviso es
+// la respuesta honesta para las tres). Antes el motor los tomaba por tipos válidos y desconocidos, y todo lo que seguía se
+// aceptaba en silencio (el generador encontró 211 discrepancias N1–N6 en 35 000 programas).
+describe('atribuir — tipos envoltorio como TIPO de variable (N1, tarea 1.32): fuera del subconjunto, aviso — sin modelar el boxing', () => {
+  it.each([
+    ['Long m = 0;', 'Long'],
+    ['Integer k = 5;', 'Integer'],
+    ['Double d = 1.5;', 'Double'],
+    ["Character c = 'a';", 'Character'],
+  ])('"%s" avisa la clase real que el subconjunto no simula', (cuerpo, nombre) => {
+    expect(atribuirCuerpo(cuerpo)).toMatchObject([{ codigo: 'clase-no-soportada', categoria: 'no-disponible', datos: { nombre } }]);
+  });
+
+  it('lo que sigue a la declaración no se modela: "Integer k = 5; boolean b = k;" da SOLO el aviso (una variable de tipo desconocido no cascada errores)', () => {
+    const problemas = atribuirCuerpo('Integer k = 5; boolean b = k;');
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toMatchObject({ codigo: 'clase-no-soportada', datos: { nombre: 'Integer' } });
+  });
+
+  it('el mismo nombre como clase ESTÁTICA sigue siendo del subconjunto (REQ-SUB-005): Integer.parseInt, Long.MAX_VALUE, Double.parseDouble, Character.isDigit', () => {
+    expect(
+      atribuirCuerpo(`int n = Integer.parseInt("5"); long m = Long.MAX_VALUE; double d = Double.parseDouble("2.5"); boolean b = Character.isDigit('5');`),
+    ).toEqual([]);
+  });
+
+  it('"new Integer(5)" también avisa la clase (no es uno de los constructores del subconjunto)', () => {
+    expect(atribuirCuerpo('new Integer(5);')).toMatchObject([{ codigo: 'clase-no-soportada', categoria: 'no-disponible', datos: { nombre: 'Integer' } }]);
+  });
+
+  it('un nombre del catálogo que NO es un tipo del subconjunto y ni siquiera está a la vista ("PrintStream", de java.io, sin import) es «no reconozco el tipo», como en javac', () => {
+    expect(atribuirPrograma('class C { public static void main(String[] a) { PrintStream p = System.out; } }')).toMatchObject([
+      { codigo: 'tipo-no-reconocido', datos: { nombre: 'PrintStream' } },
+    ]);
+  });
+
+  it('...y con su import es una clase real que el subconjunto no simula: aviso del import (tarea 1.29) y aviso de la declaración', () => {
+    expect(
+      atribuirPrograma('import java.io.PrintStream; class C { public static void main(String[] a) { PrintStream p = System.out; } }'),
+    ).toMatchObject([
+      { codigo: 'clase-no-soportada', datos: { nombre: 'java.io.PrintStream' } },
+      { codigo: 'clase-no-soportada', datos: { nombre: 'PrintStream' } },
+    ]);
+  });
+
+  it('control: los cuatro tipos de referencia y primitivos del subconjunto NO cambian — String, Scanner y Random con su import, y los cinco primitivos', () => {
+    expect(
+      atribuirPrograma(
+        'import java.util.*; class C { public static void main(String[] a) { String s = "x"; Scanner sc = new Scanner(System.in); Random r = new Random(); int i = 1; long l = 2L; double d = 3.0; boolean b = true; char c = \'c\'; } }',
+      ),
+    ).toEqual([]);
+  });
+});
+
+// F3 — `final` con `++`/`--` (JLS 15.14/15.15 + 4.12.4). javac 17 da `cant.assign.val.to.final.var` («cannot assign a value to
+// final variable k») en la pasada de ATRIBUCIÓN (`Attr.visitIdent` → `checkAssignable`) para `k = 2;`, `k += 2;`, `k++;`,
+// `++k;`, `k--;` y `--k;`, y lo da ANTES que cualquier error de tipos del mismo operando (`final String s; s++;`: solo el
+// `final`). Como «final sin inicializador» es NO-DISP (REQ-SUB-007), toda `final` del subconjunto ya trae su único valor: cualquier
+// modificación posterior es un error, sin mirar el flujo. Antes `k = 2;`/`k += 2;` se detectaban en la pasada de asignación
+// definitiva (4) y `k++;`/`++k;` no se detectaban en ninguna: el generador encontró 202 falsos aceptos de esta familia.
+describe('atribuir — modificar una variable "final" (F3, tarea 1.32): "=", "op=", "++" y "--" son el mismo error, en la pasada de atribución', () => {
+  it.each([
+    ['final int k = 0; k++;', 'k'],
+    ['final int k = 0; ++k;', 'k'],
+    ['final int k = 3; k--;', 'k'],
+    ['final int k = 3; --k;', 'k'],
+    ['final double t = 0.5; t++;', 't'],
+    ["final char c = 'a'; c++;", 'c'],
+    ['final int k = 0; k = 2;', 'k'],
+    ['final int k = 0; k += 2;', 'k'],
+    ['final boolean listo = true; listo = false;', 'listo'],
+  ])('%s → "variable-final-reasignada"', (cuerpo, nombre) => {
+    expect(atribuirCuerpo(cuerpo)).toMatchObject([{ codigo: 'variable-final-reasignada', datos: { nombre } }]);
+  });
+
+  it('el operando final SE INCREMENTA dentro de una expresión mayor: "final int k = 0; int j = k++;", "if (k-- > 0)", "for (…; …; k++)"', () => {
+    expect(atribuirCuerpo('final int k = 0; int j = k++;')).toMatchObject([{ codigo: 'variable-final-reasignada' }]);
+    expect(atribuirCuerpo('final int k = 5; if (k-- > 0) { }')).toMatchObject([{ codigo: 'variable-final-reasignada' }]);
+    expect(atribuirCuerpo('final int k = 0; for (int i = 0; i < 3; k++) { }')).toMatchObject([{ codigo: 'variable-final-reasignada' }]);
+  });
+
+  it('el error del `final` gana al del tipo del operando (javac: solo «cannot assign a value to final variable s»): "final String s = \\"a\\"; s++;"', () => {
+    expect(atribuirCuerpo('final String s = "a"; s++;')).toMatchObject([{ codigo: 'variable-final-reasignada', datos: { nombre: 's' } }]);
+  });
+
+  it('javac reporta en el ORDEN DEL TEXTO: un `final` modificado en la línea 1 gana a un error de tipos de la línea 2 (los dos son de atribución)', () => {
+    const problemas = atribuirCuerpo('final int k = 0;\nk = 2;\nint x = "s";');
+    expect(problemas).toMatchObject([{ codigo: 'variable-final-reasignada' }, { codigo: 'tipos-incompatibles-en-asignacion' }]);
+    expect(problemas[0].rango.inicio).toBeLessThan(problemas[1].rango.inicio);
+  });
+
+  it('triangulación: la asignación a una final con un valor de otro tipo da los dos errores, el del `final` primero (javac: lhs antes que rhs)', () => {
+    expect(atribuirCuerpo('final int k = 0; k = "a";')).toMatchObject([
+      { codigo: 'variable-final-reasignada' },
+      { codigo: 'tipos-incompatibles-en-asignacion' },
+    ]);
+  });
+
+  it('control: una variable NO final se modifica libremente, y una final se LEE sin problema', () => {
+    expect(atribuirCuerpo('int k = 0; k++; ++k; k--; --k; k = 2; k += 2;')).toEqual([]);
+    expect(atribuirCuerpo('final int k = 5; int y = k + 1; y++; final String s = "a"; String t = s + y;')).toEqual([]);
+  });
+
+  it('control: la "final" de un bloque hermano ya cerrado no afecta a otra variable con el mismo nombre', () => {
+    expect(atribuirCuerpo('if (true) { final int k = 1; } int k = 0; k++;')).toEqual([]);
+  });
+});
+
+// F5 — un método que NO devuelve nada (`void`: `System.out.print`, `System.out.println`, `Scanner.close`) usado como VALOR. javac 17
+// lo rechaza en todo contexto que necesita un valor: «incompatible types: void cannot be converted to int» (`prob.found.req`) en un
+// inicializador, una asignación, una condición o un cast, y «'void' type not allowed here» (`void.not.allowed.here`) como
+// argumento o como operando. Solo es válido como sentencia (y en la actualización de un `for`). El motor tipaba su llamada como
+// «desconocido» (el sumidero de cascada) y aceptaba todo: el generador encontró 392 falsos aceptos de esta familia. `void` NO es
+// un `Tipo` del subconjunto: `tipoDeExpresion` sigue dando «desconocido» (así ningún error se propaga en cascada) y un predicado
+// aparte (`esLlamadaSinValor`) reconoce la llamada cuya firma real, del oráculo, devuelve `void`.
+describe('atribuir — un método sin valor de retorno (void) usado como VALOR (F5, tarea 1.32)', () => {
+  it.each([
+    ['int b = System.out.print(7);', 'System.out.print'],
+    ['String s = System.out.println();', 'System.out.println'],
+    ['System.out.print(System.out.print(0));', 'System.out.print'],
+    ['System.out.println(System.out.println());', 'System.out.println'],
+    ['if (System.out.print(2)) { }', 'System.out.print'],
+    ['while (System.out.print(7)) { }', 'System.out.print'],
+    ['do { } while (System.out.print(7));', 'System.out.print'],
+    ['for (; System.out.print(7); ) { }', 'System.out.print'],
+    ['for (int i = System.out.print(1); i < 3; i++) { }', 'System.out.print'],
+    ['switch (System.out.print(7)) { }', 'System.out.print'],
+    ['int y; y = System.out.print(1);', 'System.out.print'],
+    ['int x = 1; x += System.out.print(1);', 'System.out.print'],
+    ['int x = 1 + System.out.print(1);', 'System.out.print'],
+    ['String t = "a" + System.out.print(1);', 'System.out.print'],
+    ['boolean q = System.out.print(1) == 1;', 'System.out.print'],
+    ['boolean z = !System.out.print(1);', 'System.out.print'],
+    ['int m = -System.out.print(1);', 'System.out.print'],
+    ['System.out.println((int) System.out.print(7));', 'System.out.print'],
+    ['Math.abs(System.out.println());', 'System.out.println'],
+    ['System.err.println(System.out.println());', 'System.out.println'],
+  ])('%s → "llamada-sin-valor" (una sola vez, sin cascada)', (cuerpo, llamada) => {
+    expect(atribuirCuerpo(cuerpo)).toMatchObject([{ codigo: 'llamada-sin-valor', datos: { llamada } }]);
+  });
+
+  it('el `void` de otra clase del subconjunto: "Scanner.close()" en un inicializador, en un argumento y como receptor de otra llamada', () => {
+    const programa = (cuerpo: string) => atribuirPrograma(`import java.util.Scanner; class C { public static void main(String[] a) { Scanner sc = new Scanner(System.in); ${cuerpo} } }`);
+    expect(programa('int h = sc.close();')).toMatchObject([{ codigo: 'llamada-sin-valor', datos: { llamada: 'sc.close' } }]);
+    expect(programa('System.out.println(sc.close());')).toMatchObject([{ codigo: 'llamada-sin-valor', datos: { llamada: 'sc.close' } }]);
+    expect(programa('sc.close().foo();')).toMatchObject([{ codigo: 'llamada-sin-valor', datos: { llamada: 'sc.close' } }]);
+  });
+
+  it('si el receptor no es una cadena de nombres, el texto usa solo el nombre del método: "new Scanner(System.in).close()"', () => {
+    const problemas = atribuirPrograma('import java.util.Scanner; class C { public static void main(String[] a) { int h = new Scanner(System.in).close(); } }');
+    expect(problemas).toMatchObject([{ codigo: 'llamada-sin-valor', datos: { llamada: 'close' } }]);
+  });
+
+  it('el problema señala la LLAMADA (la línea de javac), no el principio de la sentencia: "int p = 0;\\nint b = System.out.print(7);" señala la llamada, en la línea 3 del programa', () => {
+    const fuente = 'class C { public static void main(String[] a) {\nint p = 0;\nint b = System.out.print(7);\n} }';
+    const [problema] = atribuirPrograma(fuente);
+    expect(problema).toMatchObject({ codigo: 'llamada-sin-valor' });
+    if (problema === undefined) return;
+    expect(fuente.slice(problema.rango.inicio, problema.rango.fin)).toBe('System.out.print(7)');
+    expect(new TablaDeLineas(fuente).ubicar(problema.rango.inicio).linea).toBe(3);
+  });
+
+  it('control: un método void como SENTENCIA es correcto, también en la actualización de un `for` y con `printf` (que devuelve un PrintStream) como argumento', () => {
+    expect(atribuirCuerpo('System.out.println("a"); System.out.print(1); System.out.println();')).toEqual([]);
+    expect(atribuirCuerpo('for (int i = 0; i < 3; System.out.print(i), i++) { }')).toEqual([]);
+    expect(atribuirCuerpo('System.out.println(System.out.printf("%d", 1));')).toEqual([]);
+    expect(atribuirPrograma('import java.util.Scanner; class C { public static void main(String[] a) { Scanner sc = new Scanner(System.in); sc.close(); } }')).toEqual([]);
+  });
+
+  it('control: los métodos con valor se siguen usando como valor en todos esos contextos', () => {
+    expect(atribuirCuerpo('int n = Math.abs(-1); String s = String.valueOf(n); if (s.isEmpty()) { } while (s.length() > 3) { } System.out.println(Math.max(1, 2) + s);')).toEqual([]);
+  });
+});
+
+// F2 — un MIEMBRO de un valor primitivo. Un `int`, `long`, `double`, `char` o `boolean` no es un objeto: no tiene métodos ni campos.
+// javac 17 da `cant.deref` («int cannot be dereferenced») para `n.length()`, `n.length`, `0L.foo()`, `'a'.equals(5)`, `(x + 2).toString()`,
+// `s.length().foo()` y para una VARIABLE primitiva que tapa el nombre de una clase (`int System; System.out.println("");`, JLS 6.4.2
+// y 6.5.2: un nombre simple que es una variable en alcance se clasifica como expresión antes que como tipo). Antes el motor no
+// tenía clase para el receptor primitivo (`claseDelObjeto` da `null`) y callaba: el generador encontró 451 falsos aceptos.
+describe('atribuir — un miembro de un valor primitivo (F2, tarea 1.32): "int cannot be dereferenced"', () => {
+  it.each([
+    ['int n = 5; int d = n.length();', 'int', 'length', 'n'],
+    ['long g = 1L; g.foo();', 'long', 'foo', 'g'],
+    ['double p = 9.5; boolean q = p.equals(9.5);', 'double', 'equals', 'p'],
+    ["char c = 'a'; c.toUpperCase();", 'char', 'toUpperCase', 'c'],
+    ['boolean b = true; b.toString();', 'boolean', 'toString', 'b'],
+    ['int n = 5; int d = n.length;', 'int', 'length', 'n'],
+    ['int n = 1; System.out.println(n.toString());', 'int', 'toString', 'n'],
+    ['0L.foo();', 'long', 'foo', null],
+    ["'a'.equals(5);", 'char', 'equals', null],
+    ['0.0.equals(5);', 'double', 'equals', null],
+    ['true.foo();', 'boolean', 'foo', null],
+    ['String s = "a"; s.length().foo();', 'int', 'foo', null],
+    ['int x = 1; (x + 2).toString();', 'int', 'toString', null],
+    ['int x = 1; ((int) 2.5).toString();', 'int', 'toString', null],
+  ])('%s → "miembro-de-primitivo" (una sola vez)', (cuerpo, tipo, nombre, receptor) => {
+    const problemas = atribuirCuerpo(cuerpo);
+    expect(problemas).toMatchObject([{ codigo: 'miembro-de-primitivo' }]);
+    expect(problemas[0]?.datos).toEqual(receptor === null ? { tipo, nombre } : { tipo, nombre, receptor });
+  });
+
+  it('una VARIABLE primitiva que se llama como una clase del JDK la tapa (JLS 6.4.2): "int System = 3; System.out.println(...)" y las demás formas de `System.out`', () => {
+    const tapada = { tipo: 'int', receptor: 'System' };
+    expect(atribuirCuerpo('int System = 3; System.out.println("hola");')).toMatchObject([{ codigo: 'miembro-de-primitivo', datos: { ...tapada, nombre: 'out' } }]);
+    expect(atribuirCuerpo('int System = 3; System.out.print(1);')).toMatchObject([{ codigo: 'miembro-de-primitivo', datos: { ...tapada, nombre: 'out' } }]);
+    expect(atribuirCuerpo('int System = 3; System.err.println("x");')).toMatchObject([{ codigo: 'miembro-de-primitivo', datos: { ...tapada, nombre: 'err' } }]);
+    expect(atribuirCuerpo('int System = 3; System.out.printf("x");')).toMatchObject([{ codigo: 'miembro-de-primitivo', datos: { ...tapada, nombre: 'out' } }]);
+    expect(atribuirCuerpo('char Character = 0; int e = Character.SIZE;')).toMatchObject([{ codigo: 'miembro-de-primitivo', datos: { tipo: 'char', nombre: 'SIZE' } }]);
+  });
+
+  it('una VARIABLE de un tipo de referencia que tapa a `System` no tiene el campo `out`: "campo-no-declarado" (javac: cannot find symbol)', () => {
+    expect(atribuirCuerpo('String System = "a"; System.out.println("x");')).toMatchObject([
+      { codigo: 'campo-no-declarado', datos: { clase: 'String', nombre: 'out' } },
+    ]);
+    expect(atribuirPrograma('import java.util.Random; class C { public static void main(String[] a) { Random System = new Random(); System.out.print(1); } }')).toMatchObject([
+      { codigo: 'campo-no-declarado', datos: { clase: 'Random', nombre: 'out' } },
+    ]);
+  });
+
+  it('el error señala el miembro del valor primitivo (la línea de javac): "int n = 5;\\nint d = n.length();" en la línea 3 del programa', () => {
+    const fuente = 'class C { public static void main(String[] a) {\nint n = 5;\nint d = n.length();\n} }';
+    const [problema] = atribuirPrograma(fuente);
+    expect(problema).toMatchObject({ codigo: 'miembro-de-primitivo' });
+    if (problema === undefined) return;
+    expect(new TablaDeLineas(fuente).ubicar(problema.rango.inicio).linea).toBe(3);
+  });
+
+  it('control: los miembros de un String, de un Scanner, y los de las clases estáticas NO cambian', () => {
+    expect(atribuirCuerpo('String s = "hola"; int n = s.length(); char c = s.charAt(0); boolean v = s.isEmpty(); String m = s.toUpperCase();')).toEqual([]);
+    expect(atribuirCuerpo('int m = Math.max(1, 2); int p = Integer.parseInt("5"); boolean d = Character.isDigit(\'5\'); double x = Math.PI; long l = Long.MAX_VALUE;')).toEqual([]);
+    expect(atribuirCuerpo('System.out.println("hola"); System.err.println("x"); System.out.printf("%d", 1);')).toEqual([]);
+  });
+
+  it('control: una variable con el nombre de una clase pero de un tipo de referencia que SÍ tiene el miembro se usa con normalidad (javac compila)', () => {
+    expect(atribuirCuerpo('String String = "a"; int n = String.length();')).toEqual([]);
+    expect(atribuirCuerpo('int Math = 5; int y = Math + 1;')).toEqual([]);
+  });
+});
+
+// F1 — cast inválido (JLS 5.5). Entre los 8 tipos del subconjunto, javac 17.0.18 acepta un cast en 20 de los 64 pares
+// (origen → destino): los cuatro numéricos (`int`, `long`, `double`, `char`) entre sí (16) y la identidad de `boolean`, `String`,
+// `Scanner` y `Random` (4). Los otros 44 son `prob.found.req` («incompatible types: String cannot be converted to int»), reportado
+// en el OPERANDO del cast. La TABLA de los 64 pares es un dato de javac que vive en `pruebas/compilacion/tablas-de-atribucion.ts`
+// (con su prueba de punta a punta, `tablas-de-atribucion.test.ts`, y su verificación contra el JDK real, `herramientas/oraculo/
+// atribucion-tablas.test.ts`); aquí van las formas en que aparece un cast, dónde se señala y qué NO se propaga. Antes el motor aceptaba
+// los 44 (`tipoDeExpresion` de un cast era siempre el tipo destino): el generador encontró 1 848 falsos aceptos, la familia más grande.
+describe('atribuir — cast inválido (F1, tarea 1.32): formas, posición y cascada', () => {
+  it.each([
+    ['int c = (int) "";', 'String', 'int'],
+    ['System.out.println((long) "");', 'String', 'long'],
+    ['Math.abs((long) "");', 'String', 'long'],
+    ['int w; w = (int) "";', 'String', 'int'],
+    ['boolean z = 0 != (int) true;', 'boolean', 'int'],
+    ['int d = 0; d += (int) true;', 'boolean', 'int'],
+    ['if ((boolean) 1) { }', 'int', 'boolean'],
+    ['double t = 2 * (double) "9.5";', 'String', 'double'],
+  ])('%s → "cast-invalido" (%s → %s), una sola vez', (cuerpo, origen, destino) => {
+    expect(atribuirCuerpo(cuerpo)).toMatchObject([{ codigo: 'cast-invalido', datos: { origen, destino } }]);
+  });
+
+  it('un cast inválido NO se propaga: su tipo es «desconocido» (javac: tipo erróneo). "String s = (int) true;" da SOLO el cast, no también el de la asignación', () => {
+    expect(atribuirCuerpo('String s = (int) true;')).toMatchObject([{ codigo: 'cast-invalido', datos: { origen: 'boolean', destino: 'int' } }]);
+  });
+
+  it('javac señala el OPERANDO del cast (`int c = (int) texto;` con el signo ^ bajo `texto`), no el paréntesis', () => {
+    const fuente = 'class C { public static void main(String[] a) { String t = "1";\nint c = (int) t;\n} }';
+    const [problema] = atribuirPrograma(fuente);
+    expect(problema).toMatchObject({ codigo: 'cast-invalido' });
+    if (problema === undefined) return;
+    expect(fuente.slice(problema.rango.inicio, problema.rango.fin)).toBe('t');
+    expect(new TablaDeLineas(fuente).ubicar(problema.rango.inicio).linea).toBe(2);
+  });
+
+  it('un operando que ya es un error no se vuelve a reportar: "int c = (int) noExiste;" da solo la variable no declarada', () => {
+    expect(atribuirCuerpo('int c = (int) noExiste;')).toMatchObject([{ codigo: 'variable-no-declarada', datos: { nombre: 'noExiste' } }]);
+  });
+
+  it('el NOMBRE del tipo del cast se valida como el de una declaración: "(Foo) 5" → no reconozco el tipo; "(Scanner) 1L" sin import → falta el import (N5)', () => {
+    expect(atribuirCuerpo('int c = (Foo) 5;')).toMatchObject([{ codigo: 'tipo-no-reconocido', datos: { nombre: 'Foo' } }]);
+    expect(atribuirPrograma('import java.util.Random; class C { public static void main(String[] a) { System.out.println((Scanner) 1L); } }')).toMatchObject([
+      { codigo: 'tipo-requiere-import', datos: { nombre: 'Scanner' } },
+    ]);
+    expect(atribuirPrograma('class C { public static void main(String[] a) { Object o = (Random) 1L; } }')).toMatchObject([
+      { codigo: 'clase-no-soportada', datos: { nombre: 'Object' } },
+      { codigo: 'tipo-requiere-import', datos: { nombre: 'Random' } },
+    ]);
+  });
+
+  it('un cast a un tipo que el subconjunto no simula (un envoltorio) es un aviso, sin modelar javac: "(Integer) 5" y "(Integer) \\"5\\""', () => {
+    expect(atribuirCuerpo('Object o = (Integer) 5;')).toMatchObject([
+      { codigo: 'clase-no-soportada', datos: { nombre: 'Object' } },
+      { codigo: 'clase-no-soportada', datos: { nombre: 'Integer' } },
+    ]);
+    expect(atribuirCuerpo('System.out.println((Integer) "5");')).toMatchObject([{ codigo: 'clase-no-soportada', datos: { nombre: 'Integer' } }]);
+  });
+
+  it('control: los casts numéricos de siempre siguen limpios, dentro de expresiones', () => {
+    expect(atribuirCuerpo("int a1 = (int) 3.99; double b = (double) 3 / 2; char c = (char) (65 + 1); long l = (long) a1 * 2; int d = (int) 'a' + 1; String s = (String) \"x\";")).toEqual([]);
+  });
+});
+
+// F4 — etiquetas de `switch`. Cada `case` debe ser ASIGNABLE al tipo del selector (JLS 14.11) y solo puede haber un `default`. javac
+// 17.0.18 (sonda del 2026-09-29, `T v = valor; switch (v) { case E: }`) rechaza con `prob.found.req` la etiqueta de otro tipo y con
+// `duplicate.default.label` el segundo `default`; con un selector `long`, `double` o `boolean` rechaza el selector mismo
+// (`preview.feature.disabled.plural`). El tipo de la etiqueta se comprueba ANTES que su constancia y que su duplicado, como javac
+// (`attribTree(expr, …, seltype)`): `String t = ""; switch (0) { case t: }` es un error de TIPO, no «constant expression required».
+// Antes ninguna de las 15 celdas rechazadas por javac se detectaba: el generador encontró 115 falsos aceptos.
+// La TABLA de las 39 celdas selector × etiqueta (y los tres selectores que javac rechaza él mismo) es un dato de javac que vive en
+// `pruebas/compilacion/tablas-de-atribucion.ts`, con su prueba de punta a punta y su verificación contra el JDK real; aquí, el orden en
+// que se revisa cada etiqueta y sus casos límite.
+
+describe('atribuir — etiqueta de `switch` de otro tipo que el selector (F4, tarea 1.32): tipo, constancia y duplicado, en el orden de javac', () => {
+  it.each([
+    ['int v = 0; switch (v) { case "x": break; }', 'String', 'int'],
+    ['int v = 0; switch (v) { case 1L: break; }', 'long', 'int'],
+    ['int v = 0; switch (v) { case 1.5: break; }', 'double', 'int'],
+    ['int v = 0; switch (v) { case true: break; }', 'boolean', 'int'],
+    ["char v = 'a'; switch (v) { case 70000: break; }", 'int', 'char'],
+    ["char v = 'a'; switch (v) { case -1: break; }", 'int', 'char'],
+    ['String v = ""; switch (v) { case 1: break; }', 'int', 'String'],
+    ['String v = ""; switch (v) { case \'a\': break; }', 'char', 'String'],
+  ])('%s → "etiqueta-de-case-de-otro-tipo" (%s en un switch de %s)', (cuerpo, etiqueta, selector) => {
+    expect(atribuirCuerpo(cuerpo)).toMatchObject([{ codigo: 'etiqueta-de-case-de-otro-tipo', datos: { etiqueta, selector } }]);
+  });
+
+  it('lo que javac acepta no se rechaza: `char` en un `int`, un `int` constante que cabe en un `char`, una constante `String`', () => {
+    expect(atribuirCuerpo("int v = 0; switch (v) { case 'a': break; case 70000: break; case 1 + 1: break; }")).toEqual([]);
+    expect(atribuirCuerpo("char v = 'a'; switch (v) { case 65: break; case 'b': break; case (char) 5: break; case 'a' + 2: break; }")).toEqual([]);
+    expect(atribuirCuerpo('String v = ""; switch (v) { case "x": break; }')).toEqual([]);
+  });
+
+  it.each([['long', '0L'], ['double', '0.0'], ['boolean', 'true']])(
+    'un selector %s se rechaza él (y las etiquetas no dan un segundo error): "switch (v) { case 1: }"',
+    (selector, valor) => {
+      expect(atribuirCuerpo(`${selector} v = ${valor}; switch (v) { case 1: break; }`)).toMatchObject([
+        { codigo: 'selector-de-switch-invalido', datos: { tipo: selector } },
+      ]);
+    },
+  );
+
+  it('el tipo se comprueba ANTES que la constancia: una variable String no constante es un error de TIPO ("incompatible types"), no «constant expression required»', () => {
+    expect(atribuirCuerpo('String t = ""; switch (0) { case t: break; }')).toMatchObject([
+      { codigo: 'etiqueta-de-case-de-otro-tipo', datos: { etiqueta: 'String', selector: 'int' } },
+    ]);
+  });
+
+  it('una constante `final` también cuenta con su tipo: "final String t = \\"x\\"; switch (0) { case t: }" y "final int k = 1; switch (\\"a\\") { case k: }"', () => {
+    expect(atribuirCuerpo('final String t = "x"; switch (0) { case t: break; }')).toMatchObject([
+      { codigo: 'etiqueta-de-case-de-otro-tipo', datos: { etiqueta: 'String', selector: 'int' } },
+    ]);
+    expect(atribuirCuerpo('final int k = 1; switch ("a") { case k: break; }')).toMatchObject([
+      { codigo: 'etiqueta-de-case-de-otro-tipo', datos: { etiqueta: 'int', selector: 'String' } },
+    ]);
+    expect(atribuirCuerpo('final int k = 1; switch (0) { case k: break; }')).toEqual([]);
+  });
+
+  it('el orden es el del texto y del tipo antes que el duplicado: "case 1: case \\"a\\": case 1:" da primero el error de tipo de "a" y luego el duplicado', () => {
+    const problemas = atribuirCuerpo('switch (0) { case 1: case "a": case 1: }');
+    expect(problemas).toMatchObject([{ codigo: 'etiqueta-de-case-de-otro-tipo' }, { codigo: 'etiqueta-de-case-duplicada' }]);
+    expect(problemas[0]?.rango.inicio).toBeLessThan(problemas[1]?.rango.inicio ?? 0);
+  });
+
+  it('control: lo que NO cambia — una variable no constante sigue siendo «no constante», una etiqueta sin declarar no dispara el tipo, un duplicado sigue siendo duplicado', () => {
+    expect(atribuirCuerpo('int k = 1; switch (k) { case k: break; }')).toMatchObject([{ codigo: 'etiqueta-de-case-no-constante' }]);
+    expect(atribuirCuerpo('switch (0) { case zzz: break; }')).toMatchObject([{ codigo: 'etiqueta-de-case-no-constante' }, { codigo: 'variable-no-declarada' }]);
+    expect(atribuirCuerpo("char c = 'a'; switch (c) { case 66: case 66: break; }")).toMatchObject([{ codigo: 'etiqueta-de-case-duplicada' }]);
+  });
+});
+
+describe('atribuir — dos `default` en el mismo `switch` (F4, tarea 1.32): «duplicate default label»', () => {
+  it('el SEGUNDO `default` se rechaza, con la línea de ese `default` (la que señala javac)', () => {
+    const fuente = 'class C { public static void main(String[] a) {\nswitch (0) {\ndefault:\ndefault:\n}\n} }';
+    const problemas = atribuirPrograma(fuente);
+    expect(problemas).toMatchObject([{ codigo: 'etiqueta-default-duplicada' }]);
+    expect(new TablaDeLineas(fuente).ubicar(problemas[0]?.rango.inicio ?? 0).linea).toBe(4);
+  });
+
+  it('con tres `default` se rechazan el segundo y el tercero, y no importa lo que haya entre ellos: "case 1: default: case 2: default:"', () => {
+    expect(atribuirCuerpo('switch (0) { default: default: default: }')).toMatchObject([{ codigo: 'etiqueta-default-duplicada' }, { codigo: 'etiqueta-default-duplicada' }]);
+    expect(atribuirCuerpo('switch (0) { case 1: default: case 2: default: }')).toMatchObject([{ codigo: 'etiqueta-default-duplicada' }]);
+  });
+
+  it('un `default` por `switch` es correcto, también en `switch` anidados (cada uno cuenta el suyo)', () => {
+    expect(atribuirCuerpo('switch (0) { case 1: break; default: break; }')).toEqual([]);
+    expect(atribuirCuerpo('switch (0) { default: switch (1) { default: break; } }')).toEqual([]);
+  });
+});
+
+// F6 y N5 — el NOMBRE DE UNA CLASE como receptor (`String.trim()`, `Scanner.nextInt()`). javac 17 compara lo que el nombre designa
+// (JLS 6.5.2): una variable en alcance gana; si no, una clase que el programa VE (`java.lang` o un `import`). Con la clase a la
+// vista, el método elegido por sobrecarga debe ser `static` (F6: `non-static method trim() cannot be referenced from a static
+// context`, `non-static.cant.be.ref`); sin el `import` (N5) la clase ni siquiera existe (`cant.resolve.location`, «cannot find symbol»).
+// El generador encontró 141 falsos aceptos de F6 y varios de N5. La firma real (con `esEstatico`) viene del oráculo (`FIRMAS_JDK`).
+describe('atribuir — un método de instancia llamado con el nombre de la clase (F6, tarea 1.32): "non-static method … cannot be referenced from a static context"', () => {
+  const conImports = (cuerpo: string) => atribuirPrograma(`import java.util.*; class C { public static void main(String[] a) { ${cuerpo} } }`);
+
+  it.each([
+    ['String.trim();', 'String', 'trim'],
+    ['String.length();', 'String', 'length'],
+    ['String.replace("", "");', 'String', 'replace'],
+    ['String.charAt(0);', 'String', 'charAt'],
+    ['String.equals("a");', 'String', 'equals'],
+    ['String.isEmpty();', 'String', 'isEmpty'],
+    ['int n = String.length();', 'String', 'length'],
+    ['Random.nextInt();', 'Random', 'nextInt'],
+    ['Random.nextInt(5);', 'Random', 'nextInt'],
+    ['Scanner.close();', 'Scanner', 'close'],
+    ['int n = Scanner.nextInt();', 'Scanner', 'nextInt'],
+    ['String.valueOf(5).length().foo();', 'int', 'foo'],
+  ])('%s → "metodo-de-instancia-sin-objeto" (una sola vez)', (cuerpo, clase, nombre) => {
+    // La última fila es un control disfrazado: el receptor de `.length()` es una LLAMADA (no un nombre de clase) y el error es de F2.
+    const problemas = conImports(cuerpo);
+    if (clase === 'int') {
+      expect(problemas).toMatchObject([{ codigo: 'miembro-de-primitivo', datos: { tipo: 'int', nombre } }]);
+    } else {
+      expect(problemas).toMatchObject([{ codigo: 'metodo-de-instancia-sin-objeto', datos: { clase, nombre } }]);
+    }
+  });
+
+  it('los métodos ESTÁTICOS se siguen llamando con el nombre de la clase, sin problemas', () => {
+    expect(
+      conImports(
+        `String.valueOf(5); String.format("a"); Math.abs(5); Math.max(1, 2); Math.sqrt(4.0); Integer.parseInt("5"); Double.parseDouble("2.5"); Character.isDigit('5'); String.valueOf(1).length();`,
+      ),
+    ).toEqual([]);
+  });
+
+  it('el mismo método sobre una VARIABLE del tipo es lo correcto: "String t = \\"a\\"; t.trim();", "Scanner sc = …; sc.close();"', () => {
+    expect(conImports('String t = "a"; t.trim(); Scanner sc = new Scanner(System.in); sc.close(); Random r = new Random(); int n = r.nextInt(5);')).toEqual([]);
+  });
+
+  it('una VARIABLE con el nombre de la clase la tapa (JLS 6.4.2): "String String = \\"a\\"; int n = String.length();" es correcto, no es una referencia estática', () => {
+    expect(conImports('String String = "a"; int n = String.length();')).toEqual([]);
+  });
+
+  it('si ningún argumento encaja el problema es OTRO (javac: cant.apply.symbol), y un método de `Object` que el subconjunto no cubre sigue siendo un aviso', () => {
+    expect(conImports('String.length(5);')).toMatchObject([{ codigo: 'sin-sobrecarga-aplicable' }]);
+    expect(conImports('Math.hashCode();')).toMatchObject([{ codigo: 'metodo-de-biblioteca-no-soportado', categoria: 'no-disponible' }]);
+  });
+
+  it('el problema señala la llamada (la línea de javac): "String.trim();" en la línea 3 del programa', () => {
+    const fuente = 'class C { public static void main(String[] a) {\nint p = 0;\nString.trim();\n} }';
+    const [problema] = atribuirPrograma(fuente);
+    expect(problema).toMatchObject({ codigo: 'metodo-de-instancia-sin-objeto' });
+    expect(new TablaDeLineas(fuente).ubicar(problema?.rango.inicio ?? 0).linea).toBe(3);
+  });
+});
+
+describe('atribuir — `Scanner`/`Random` sin `import` como receptor (N5, tarea 1.32): «cannot find symbol», no un método de instancia', () => {
+  const sinImports = (cuerpo: string) => atribuirPrograma(`class C { public static void main(String[] a) { ${cuerpo} } }`);
+
+  it.each([
+    ['Scanner.next();', 'Scanner'],
+    ['int n = Scanner.nextInt();', 'Scanner'],
+    ['Random.nextInt();', 'Random'],
+    ['int d = Random.nextInt(6);', 'Random'],
+    ['int m = Scanner.MAX;', 'Scanner'],
+    ['System.out.println(Scanner.MAX);', 'Scanner'],
+  ])('%s → "tipo-requiere-import" de %s (una sola vez: el método no se resuelve)', (cuerpo, nombre) => {
+    expect(sinImports(cuerpo)).toMatchObject([{ codigo: 'tipo-requiere-import', datos: { nombre } }]);
+  });
+
+  it('con el `import` de la OTRA clase no basta: "import java.util.Random;" no deja ver a `Scanner` (y sí a `Random`, que pasa a ser F6)', () => {
+    const conRandom = (cuerpo: string) => atribuirPrograma(`import java.util.Random; class C { public static void main(String[] a) { ${cuerpo} } }`);
+    expect(conRandom('Scanner.next();')).toMatchObject([{ codigo: 'tipo-requiere-import', datos: { nombre: 'Scanner' } }]);
+    expect(conRandom('Random.nextInt();')).toMatchObject([{ codigo: 'metodo-de-instancia-sin-objeto', datos: { clase: 'Random', nombre: 'nextInt' } }]);
+  });
+
+  it('una VARIABLE con ese nombre gana aunque la clase no se importe (JLS 6.5.2): "int Random = 1; Random.nextInt();" es un miembro de un primitivo', () => {
+    expect(sinImports('int Random = 1; Random.nextInt();')).toMatchObject([{ codigo: 'miembro-de-primitivo', datos: { tipo: 'int', nombre: 'nextInt', receptor: 'Random' } }]);
+  });
+
+  it('control: las clases de `java.lang` (String, Math, Integer, Double, Character) no piden `import` como receptor', () => {
+    expect(sinImports(`int m = Math.max(1, 2); String s = String.valueOf(5); int p = Integer.parseInt("5"); double d = Double.parseDouble("2.5"); boolean b = Character.isDigit('5');`)).toEqual([]);
+  });
+});
+
+// N6 — una variable que tapa el nombre de una clase del JDK, y el ALCANCE de una variable local (JLS 6.3: «el alcance de una
+// declaración de variable local es el resto del bloque, EMPEZANDO POR SU PROPIO INICIALIZADOR»; JLS 6.5.2: un nombre simple que es una
+// variable en alcance se clasifica como expresión antes que como tipo). javac 17 (sonda del 2026-09-29): `Scanner System = new
+// Scanner(System.in);` es «cannot find symbol» — `System.in` ya es un miembro de la VARIABLE `System`, un `Scanner` —, `int Math =
+// Math.max(1, 2);` es «int cannot be dereferenced» e `int x = x + 1;` es «variable x might not have been initialized» (pasada de
+// asignación definitiva). El motor declaraba la variable DESPUÉS de visitar su inicializador: el alumno leía «Java sí acepta tu
+// programa» en las primeras y «no existe una variable llamada x» (falso: sí existe) en la última, y `int y = (y = 5) + 1;` —que
+// javac compila— se rechazaba como «variable no declarada».
+describe('atribuir — el alcance de una variable incluye su propio inicializador (N6, tarea 1.32, JLS 6.3 y 6.5.2)', () => {
+  const conScanner = (cuerpo: string) => atribuirPrograma(`import java.util.Scanner; class C { public static void main(String[] a) { ${cuerpo} } }`);
+
+  it('"Scanner System = new Scanner(System.in);": `System.in` es un campo de la variable, un Scanner, que no lo tiene', () => {
+    expect(conScanner('Scanner System = new Scanner(System.in);')).toMatchObject([
+      { codigo: 'campo-no-declarado', datos: { clase: 'Scanner', nombre: 'in' } },
+    ]);
+  });
+
+  it('con un primitivo es un miembro de un primitivo: "long Math = Math.min(0L, 5L);", "int Math = Math.max(1, 2);", "double Math = Math.sqrt(4.0);"', () => {
+    expect(atribuirCuerpo('long Math = Math.min(0L, 5L);')).toMatchObject([{ codigo: 'miembro-de-primitivo', datos: { tipo: 'long', nombre: 'min', receptor: 'Math' } }]);
+    expect(atribuirCuerpo('int Math = Math.max(1, 2);')).toMatchObject([{ codigo: 'miembro-de-primitivo', datos: { tipo: 'int', nombre: 'max', receptor: 'Math' } }]);
+    expect(atribuirCuerpo('double Math = Math.sqrt(4.0);')).toMatchObject([{ codigo: 'miembro-de-primitivo', datos: { tipo: 'double', nombre: 'sqrt', receptor: 'Math' } }]);
+  });
+
+  it('con un String, el método debe existir en String: "String System = System.lineSeparator();" → String no tiene `lineSeparator`', () => {
+    expect(atribuirCuerpo('String System = System.lineSeparator();')).toMatchObject([
+      { codigo: 'miembro-no-declarado', datos: { clase: 'String', nombre: 'lineSeparator' } },
+    ]);
+  });
+
+  it('el nombre de una variable ya NO es «no declarado» dentro de su inicializador: "int x = x + 1;" no es un error de atribución (lo es de asignación definitiva)', () => {
+    expect(atribuirCuerpo('int x = x + 1;')).toEqual([]);
+    expect(atribuirCuerpo('boolean b = b && true;')).toEqual([]);
+    expect(atribuirCuerpo('for (int i = i; i < 3; i++) { }')).toEqual([]);
+  });
+
+  it('y una asignación DENTRO del inicializador es válida (javac compila `int y = (y = 5) + 1;`): antes daba «variable no declarada»', () => {
+    expect(atribuirCuerpo('int y = (y = 5) + 1;')).toEqual([]);
+  });
+
+  it('los declaradores se ven de izquierda a derecha: "int a = 1, b = a + 1;" es válido; "int a = b + 1, b = 2;" usa `b` antes de declararla', () => {
+    expect(atribuirCuerpo('int p = 1, q = p + 1;')).toEqual([]);
+    expect(atribuirCuerpo('int p = q + 1, q = 2;')).toMatchObject([{ codigo: 'variable-no-declarada', datos: { nombre: 'q' } }]);
+  });
+
+  it('el tipo declarado también se conoce dentro del inicializador: "Scanner sc = new Scanner(sc);" es un constructor sin sobrecarga aplicable, no una variable no declarada', () => {
+    expect(conScanner('Scanner sc = new Scanner(sc);')).toMatchObject([{ codigo: 'sin-constructor-aplicable', datos: { clase: 'Scanner' } }]);
+  });
+
+  it('control: las variables con el nombre de una clase, usadas con su propio tipo y DESPUÉS de declararse, siguen siendo válidas', () => {
+    expect(conScanner('String String = "a"; int n = String.length(); Scanner Scanner = new Scanner(System.in); Scanner.close(); int Math = 5; int y = Math + 1;')).toEqual([]);
+  });
+});
+
+// HERMANOS DE N5 que el generador no sortea (hallados al sondear la familia con javac 17, 2026-09-29): (a) el nombre de una clase usado
+// como VALOR — `int y = Math;`, `"" + String`, `System.out.println(System)` — es «cannot find symbol: variable Math» (`cant.resolve.location`,
+// JLS 6.5.2: un nombre simple que no es una variable ni un tipo con miembro accedido no designa ningún valor) aunque la clase exista y esté
+// importada; y (b) `import java.lang.PrintStream;` no existe (`PrintStream` es de `java.io`): el motor daba por buena la clase porque su
+// nombre está en el catálogo de firmas, sin mirar el paquete. Un nombre de clase solo vale como TIPO o como receptor de un miembro.
+describe('atribuir — el nombre de una clase del catálogo usado como VALOR es «variable no declarada» (hermano de N5, tarea 1.32)', () => {
+  const conImports = (cuerpo: string) => atribuirPrograma(`import java.util.*; class C { public static void main(String[] a) { ${cuerpo} } }`);
+
+  it.each([
+    ['int y = Math;', 'Math'],
+    ['System.out.println(Math);', 'Math'],
+    ['String s = "" + String;', 'String'],
+    ['int z = System;', 'System'],
+    ['if (Math) { }', 'Math'],
+    ['int y = 1; y = Math;', 'Math'],
+    ['int y = Scanner;', 'Scanner'],
+    ['int r = Random + 1;', 'Random'],
+    ['int m = Math.max(Math, 1);', 'Math'],
+    ['switch (Integer) { }', 'Integer'],
+  ])('%s → "variable-no-declarada" de %s (una sola vez)', (cuerpo, nombre) => {
+    expect(conImports(cuerpo)).toMatchObject([{ codigo: 'variable-no-declarada', datos: { nombre } }]);
+  });
+
+  it('como DESTINO de una asignación o de un `++` sigue siendo «no es una variable» (tarea 1.21), no se repite como «no declarada»', () => {
+    expect(conImports('Math = 5;')).toMatchObject([{ codigo: 'objetivo-no-es-variable' }]);
+    expect(conImports('Scanner = new Scanner(System.in);')).toMatchObject([{ codigo: 'objetivo-no-es-variable' }]);
+    expect(conImports('Math++;')).toMatchObject([{ codigo: 'objetivo-no-es-variable' }]);
+  });
+
+  it('control: el mismo nombre como RECEPTOR de un miembro, o una VARIABLE con ese nombre, no cambian', () => {
+    expect(conImports('int m = Math.max(1, 2); double p = Math.PI; String s = String.valueOf(1); System.out.println(1);')).toEqual([]);
+    expect(conImports('int Math = 5; int y = Math; String String = "a"; String t = String;')).toEqual([]);
+  });
+});
+
+describe('atribuir — un import de java.lang solo vale para una clase de java.lang (hermano de N5, tarea 1.32)', () => {
+  const conImport = (importacion: string) => atribuirPrograma(`${importacion}\nclass C { public static void main(String[] a) { System.out.println(1); } }`);
+
+  it('"import java.lang.PrintStream;" no existe: `PrintStream` es de `java.io` (javac: cannot find symbol, location: package java.lang)', () => {
+    expect(conImport('import java.lang.PrintStream;')).toMatchObject([{ codigo: 'importacion-no-reconocida', datos: { nombre: 'java.lang.PrintStream' } }]);
+  });
+
+  it('control: "import java.lang.Math;", "import java.lang.String;" y "import java.util.Scanner;" siguen siendo válidos', () => {
+    expect(conImport('import java.lang.Math;')).toEqual([]);
+    expect(conImport('import java.lang.String;')).toEqual([]);
+    expect(conImport('import java.util.Scanner;')).toEqual([]);
+  });
+});

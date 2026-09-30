@@ -1,0 +1,4 @@
+F2DoubleConEquals.java:5: error: double cannot be dereferenced
+        if (precio.equals(9.5)) {
+                  ^
+1 error

@@ -10,6 +10,7 @@ import type { Alcance } from './alcance.ts';
 import { valorConstante, type ValorConstante } from './constantes.ts';
 import type { ProblemaAtribucion } from './diagnostico.ts';
 import { type Tipo, tipoDeExpresion } from './tipos.ts';
+import { esAsignable } from './verificaciones-de-tipo.ts';
 
 const TIPOS_DE_SELECTOR_VALIDOS: ReadonlySet<Tipo> = new Set(['int', 'char', 'String']);
 
@@ -35,18 +36,37 @@ function mismoValorDeEtiqueta(a: ValorConstante, b: ValorConstante): boolean {
 }
 
 /**
- * err34 de exploracion/03 ("constant expression required": una etiqueta de `case` que NO es una
- * expresión constante — JLS 15.29, `constantes.ts` de la tarea 1.10) y flow05 ("duplicate case
- * label": dos etiquetas constantes con el MISMO valor en el mismo `switch`). Devuelve TODOS los
- * problemas encontrados, en el ORDEN de las etiquetas (mismo patrón que `atribuir`/
- * `recolectarNoSoportados`) — un duplicado se reporta en su SEGUNDA aparición, igual que javac.
+ * Las etiquetas de un `switch`, en el ORDEN en que javac las revisa (`Attr.handleSwitch`), etiqueta por etiqueta:
+ *   1. tarea 1.32 (F4, JLS 14.11) su TIPO: cada `case` debe ser ASIGNABLE al del selector (`esAsignable`, con el valor constante para
+ *      el estrechamiento `case 65:` con un selector `char`) — `case "x":` con un `int`, `case 1:` con un `String`, `case 70000:` con un
+ *      `char` son `prob.found.req` en javac. Solo se mira con un selector válido (int, char, String): uno inválido ya se rechazó él, y
+ *      uno «desconocido» no se sabe (D2). Antes que la constancia, como javac: `case t:` con un `String t` no constante es un error de
+ *      TIPO, no «constant expression required»;
+ *   2. err34 de exploracion/03 («constant expression required»: una etiqueta que NO es una expresión constante — JLS 15.29,
+ *      `constantes.ts` de la tarea 1.10);
+ *   3. flow05 («duplicate case label»: dos etiquetas constantes con el MISMO valor), reportado en la SEGUNDA aparición, igual que javac.
+ * Y tarea 1.32: un segundo `default` («duplicate default label»), también en su segunda aparición. Devuelve TODOS los problemas
+ * encontrados, en el ORDEN de las etiquetas (mismo patrón que `atribuir`/`recolectarNoSoportados`).
  */
 export function verificarEtiquetasDeCase(nodo: NodoSwitch, alcance: Alcance): ProblemaAtribucion[] {
   const problemas: ProblemaAtribucion[] = [];
   const vistas: ValorConstante[] = [];
+  const tipoDelSelector = tipoDeExpresion(nodo.selector, alcance);
+  const selectorConocido = TIPOS_DE_SELECTOR_VALIDOS.has(tipoDelSelector);
+  let hayDefault = false;
   for (const elemento of nodo.elementos) {
+    if (elemento.tipo === 'etiqueta-default') {
+      if (hayDefault) problemas.push({ codigo: 'etiqueta-default-duplicada', rango: elemento.rango, datos: {} });
+      hayDefault = true;
+      continue;
+    }
     if (elemento.tipo !== 'etiqueta-case') continue;
     const constante = valorConstante(elemento.valor, alcance);
+    const tipoDeLaEtiqueta = tipoDeExpresion(elemento.valor, alcance);
+    if (selectorConocido && tipoDeLaEtiqueta !== 'desconocido' && !esAsignable(tipoDeLaEtiqueta, tipoDelSelector, constante)) {
+      problemas.push({ codigo: 'etiqueta-de-case-de-otro-tipo', rango: elemento.rango, datos: { etiqueta: tipoDeLaEtiqueta, selector: tipoDelSelector } });
+      continue;
+    }
     if (constante === null) {
       problemas.push({ codigo: 'etiqueta-de-case-no-constante', rango: elemento.rango, datos: {} });
       continue;
