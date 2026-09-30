@@ -5,6 +5,7 @@
 // NoSoportado).
 import { describe, expect, it } from 'vitest';
 import { leerCadena, leerCaracter, leerNumero } from './literales.ts';
+import { ErrorDeCompilacion } from '../error-de-compilacion.ts';
 
 describe('leerCadena', () => {
   it('lee una cadena simple sin escapes y reporta cuánto texto fuente consumió', () => {
@@ -280,3 +281,78 @@ describe('leerNumero — no soportado (design.md §2.6, REQ-SUB-007)', () => {
     expect(resultado.longitud).toBe(4);
   });
 });
+
+// ---- Tarea 1.33 (N3 y N4): JLS 3.10.1/3.10.2 — guion bajo mal puesto y flotantes hexadecimales ----
+//
+// Verificado contra javac 17.0.18 real (JavacTask.parse(), la tabla completa vive en `pruebas/compilacion/tablas-lexicas.ts` y la
+// vigila `herramientas/oraculo/tablas-lexicas.test.ts` con el JDK): un guion bajo solo puede ir ENTRE dos dígitos. No abre ni cierra
+// una racha de dígitos, no va justo tras `0x`/`0b`, ni junto al punto, ni antes o después de la `e`/`p` del exponente (ni de su signo),
+// ni antes del sufijo `L`/`f`/`d`. Antes de esta tarea el léxico quitaba los guiones bajos de cualquier lado y aceptaba `1_`, `1_L`,
+// `1_.0`… (falsos aceptos) y no reconocía `0x1p3` (un flotante hexadecimal válido: falso rechazo).
+function errorDe(texto: string): ErrorDeCompilacion {
+  try {
+    leerNumero(texto, 0);
+  } catch (error) {
+    if (error instanceof ErrorDeCompilacion) return error;
+    throw error;
+  }
+  throw new Error(`«${texto}» debía lanzar un ErrorDeCompilacion y salió un número`);
+}
+
+describe('leerNumero — guion bajo mal puesto (N3, JLS 3.10.1/3.10.2)', () => {
+  it.each([
+    '1_', '1__', '1_L', '1__L', '1_.0', '1._0', '1_e1', '1e_1', '1e1_', '1.0_', '1_f', '1_d', '1.5_', '1_.', '1._', '0_', '07_', '.5_',
+    '0x_1', '0x1_', '0x1__', '0b_1', '0b1_', '0x1_L', '1e+_1', '1e-1_', '0x1p_3', '0x1p3_', '0x1_p3', '0x1._8p1', '0x1.8_p1',
+  ])('«%s» es un error de guion bajo mal puesto, con el literal tal como se escribió', (texto) => {
+    const error = errorDe(`${texto};`);
+    expect(error.conDatos, texto).toEqual({ codigo: 'guion-bajo-mal-puesto', datos: { numero: texto } });
+    // El error señala el literal (nunca el «;» que le sigue).
+    expect(error.rango.inicio, texto).toBeGreaterThanOrEqual(0);
+    expect(error.rango.fin, texto).toBeLessThanOrEqual(texto.length);
+  });
+
+  it.each([
+    ['1_0', 3], ['1__0', 4], ['1_0_0', 5], ['0_1', 3], ['0__1', 4], ['0_7', 3], ['1_000.5_0', 9], ['1e1_0', 5], ['1E+1_0', 6], ['3_1.4_1e+1_0', 12], ['100_000L', 8], ['1_0d', 4],
+    ['0xF_F', 5], ['0b1_0', 5], ['0x1_0p1_0', 9], ['0x1.f_fp1', 9],
+  ])('«%s» (guiones bajos ENTRE dos dígitos) es un literal válido de %i caracteres', (texto, longitud) => {
+    expect(leerNumero(`${texto};`, 0).longitud, texto).toBe(longitud);
+  });
+
+  it('un guion bajo dentro de un identificador NO es un literal: `x_1` no llega a leerNumero, y `1_x` es el error del literal `1_`', () => {
+    expect(errorDe('1_x').conDatos).toEqual({ codigo: 'guion-bajo-mal-puesto', datos: { numero: '1_' } });
+  });
+
+  it('`0_8` es el literal `0_` con el guion bajo mal puesto: javac relee un octal solo con dígitos octales y el «8» queda para el siguiente token', () => {
+    const error = errorDe('0_8;');
+    expect(error.conDatos).toEqual({ codigo: 'guion-bajo-mal-puesto', datos: { numero: '0_' } });
+    expect(error.rango).toEqual({ inicio: 0, fin: 2 });
+  });
+});
+
+describe('leerNumero — flotantes hexadecimales (N4, JLS 3.10.2): NoSoportado, como los enteros hexadecimales', () => {
+  it.each([
+    ['0x1p3', 5], ['0x1.8p1', 7], ['0x.8p0', 6], ['0X1P-2', 6], ['0x1p3d', 6], ['0x1p3f', 6], ['0x1P+2', 6], ['0xA.Bp1', 7], ['0x1.p3', 6], ['0x1p3D', 6], ['0x1p3F', 6],
+  ])('«%s» es UN literal de %i caracteres, clase «doble», con el aviso de literal hexadecimal', (texto, longitud) => {
+    const resultado = leerNumero(`${texto};`, 0);
+    expect(resultado.clase).toBe('doble');
+    expect(resultado.longitud).toBe(longitud);
+    expect(resultado.noSoportado?.codigo).toBe('literal-hexadecimal-no-soportado');
+    expect(resultado.noSoportado?.rango).toEqual({ inicio: 0, fin: longitud });
+  });
+
+  it('un entero hexadecimal (0x1F) sigue siendo el aviso de literal hexadecimal, y un `.` que sigue a un decimal es un miembro (`0x1F.foo` no es un flotante)', () => {
+    expect(leerNumero('0x1F;', 0).noSoportado?.codigo).toBe('literal-hexadecimal-no-soportado');
+    expect(leerNumero('0x1F;', 0).clase).toBe('entero');
+  });
+
+  it.each(['0x1.8', '0x1.', '0x.', '0x.p1', '0x', '0X', '0x1p', '0x1p+', '0x1p-', '0x1.8p', '0b', '0B', '0b2', '0b_', '0xg'])('«%s» está mal formado: javac lo rechaza y aquí es un error, no un aviso', (texto) => {
+    expect(() => leerNumero(`${texto};`, 0), texto).toThrow(ErrorDeCompilacion);
+  });
+
+  it('un binario con un dígito de más (0b12) es el literal 0b1 y el 2 queda para el siguiente token (como javac: «\';\' expected»)', () => {
+    const resultado = leerNumero('0b12;', 0);
+    expect(resultado.noSoportado?.codigo).toBe('literal-binario-no-soportado');
+    expect(resultado.longitud).toBe(3);
+  });
+});
+

@@ -61,6 +61,11 @@ import type {
 const MODIFICADORES_CLASE: ReadonlySet<string> = new Set(['public', 'final', 'abstract', 'strictfp']);
 const MODIFICADORES_MAIN: ReadonlySet<string> = new Set(['public', 'static', 'final']);
 
+// Tarea 1.33 (V): los identificadores «restringidos» de JLS 3.9 que un TIPO no puede llamarse (javac 17: `restricted.type.not.allowed`, verificado con
+// la sonda de la tarea 1.33: cada uno rechaza `public class X {…}` y ninguno rechaza `module`, `open`, `opens`, `requires`, `transitive`, `exports`,
+// `to`, `uses`, `provides`, `with` ni `non`).
+const NOMBRES_DE_TIPO_RESTRINGIDOS: ReadonlySet<string> = new Set(['var', 'yield', 'record', 'sealed', 'permits']);
+
 // Formas de expresión válidas en posición de sentencia (design.md §2.3 "ExprSentencia = Asignacion
 // | IncDec | Llamada | 'new' NombreDeTipo Argumentos"); cualquier otra cosa es el error real de
 // javac "not a statement" (verificado). Se admite también 'expresion-no-soportada' para que una
@@ -220,6 +225,11 @@ function analizarClase(cursor: CursorDeTokens): NodoClase {
   const modificadoresDeLaClase = consumirModificadores(cursor, MODIFICADORES_CLASE, 'class');
   cursor.esperarTexto('class');
   const nombre = cursor.esperarTipo('identificador');
+  // Tarea 1.33 (V): `var`, `yield`, `record`, `sealed` y `permits` valen como nombre de variable pero NO como nombre de una clase (javac:
+  // `restricted.type.not.allowed`, JLS 3.9). `module`, `open`, `to`, `with`… sí pueden ser una clase.
+  if (NOMBRES_DE_TIPO_RESTRINGIDOS.has(nombre.texto)) {
+    throw new ErrorDeCompilacion(`"${nombre.texto}" no se puede usar como nombre de una clase: Java lo reserva para otro uso en ese lugar`, nombre.rango);
+  }
   if (modificadoresDeLaClase.has('final') && modificadoresDeLaClase.has('abstract')) {
     // JLS 8.1.1.2: una clase no puede ser a la vez `abstract` y `final` (javac: «illegal combination of
     // modifiers: abstract and final», en el nombre de la clase).
@@ -373,6 +383,8 @@ function analizarElementoDeBloque(cursor: CursorDeTokens): NodoElementoBloque {
   // es un elemento aparte — el aviso — y la declaración se analiza en la vuelta siguiente del bloque.
   const anotacion = consumirAnotaciones(cursor);
   if (anotacion) return anotacion;
+  // Tarea 1.33: `yield x;` NO es una declaración de una variable `x` de tipo `yield` (ver `esSentenciaYield`): se decide antes de mirar si parece una.
+  if (esSentenciaYield(cursor)) return analizarYield(cursor);
   // Tarea 1.29: una clase, interfaz, enum o record declarados DENTRO del método avisan y se delimitan enteros.
   if (pareceTipoDeclaradoEnUnMetodo(cursor)) return consumirTipoDeNivelSuperior(cursor, CODIGOS_NO_SOPORTADO.claseLocal);
   if (pareceDeclaracionLocal(cursor)) {
@@ -389,12 +401,17 @@ function analizarElementoDeBloque(cursor: CursorDeTokens): NodoElementoBloque {
 function pareceDeclaracionLocal(cursor: CursorDeTokens): boolean {
   const token = cursor.actual();
   if (token.texto === 'final') return true;
-  if (token.texto === 'var') return true;
+  // Tarea 1.33: `var` ya no es una palabra reservada (JLS 3.9: es un identificador que solo significa algo como TIPO de una variable local):
+  // `var x = 5;` es «identificador identificador» y llega aquí por esa regla, mientras `var = 5;` y `var++;` son expresiones sobre una variable llamada `var`.
   if (token.tipo === 'palabra-clave' && PALABRAS_CLAVE_TIPO_PRIMITIVO.has(token.texto)) return true;
   // float/byte/short (tarea 1.6): también son palabra-clave desde que se agregaron a PALABRAS_CLAVE
   // (para que "float f" no colara como "identificador identificador"), así que se comprueban aparte.
   if (token.tipo === 'palabra-clave' && PALABRAS_TIPO_PRIMITIVO_NO_SOPORTADO.has(token.texto)) return true;
   if (token.tipo === 'identificador' && cursor.mirar(1).tipo === 'identificador') return true;
+  // Tarea 1.33 (N2): «Tipo palabraReservada ;|=|,» (`String private = "a";`, `Scanner native;`) es una declaración cuyo NOMBRE es una palabra
+  // reservada: el error es ese (`palabra-reservada-como-nombre`), no un «falta el punto y coma» que manda a buscar lo que no falla. `instanceof`
+  // es el único operador que es palabra reservada y puede seguir a un nombre (`x instanceof String;`): esa es una expresión.
+  if (token.tipo === 'identificador' && esNombreReservadoTrasUnTipo(cursor)) return true;
   if (token.tipo === 'identificador' && cursor.mirar(1).texto === '[' && cursor.mirar(2).texto === ']') {
     return true;
   }
@@ -413,6 +430,14 @@ function pareceDeclaracionLocal(cursor: CursorDeTokens): boolean {
     if (siguiente.texto === '<' && pareceGenericoDesde(cursor, i)) return true;
   }
   return false;
+}
+
+/** ¿Lo que sigue al tipo (un identificador) es «palabra reservada» y luego `;`, `=` o `,`, la forma de un declarador? */
+function esNombreReservadoTrasUnTipo(cursor: CursorDeTokens): boolean {
+  const posibleNombre = cursor.mirar(1);
+  if (posibleNombre.tipo !== 'palabra-clave' || posibleNombre.texto === 'instanceof') return false;
+  const siguiente = cursor.mirar(2).texto;
+  return siguiente === ';' || siguiente === '=' || siguiente === ',';
 }
 
 /** Desplazamiento (sin consumir nada) del primer token que sigue a "Id(.Id)*" desde el cursor. */
@@ -441,7 +466,9 @@ function analizarDeclaracionLocal(cursor: CursorDeTokens): NodoDeclaracionLocal 
     esFinal = true;
   }
 
-  if (cursor.coincideTexto('var')) {
+  // Tarea 1.33: `var` como TIPO (Java 10) sigue siendo el aviso de var; como nombre (`int var;`) es una variable cualquiera y no llega aquí. Solo
+  // es el tipo si un nombre lo sigue (`var x = 5;`, `var var = 5;`): así el aviso no depende de que `var` sea una palabra reservada.
+  if (cursor.coincideTexto('var') && cursor.mirar(1).tipo === 'identificador') {
     return consumirRestoDeSentenciaNoSoportada(cursor, inicio, CODIGOS_NO_SOPORTADO.var, {});
   }
 
@@ -499,8 +526,24 @@ function dimensionesDeArregloTrasElNombre(cursor: CursorDeTokens): number {
   return dimensiones;
 }
 
+/** El nombre de una variable: un identificador. Una palabra reservada en su lugar (`int native;`, `int _ = 1;`) es el error de javac con la palabra
+ * que el alumno escribió (tarea 1.33, N2: 15 de las 54 reservadas se aceptaban como nombre). */
+function esperarNombreDeVariable(cursor: CursorDeTokens): Token {
+  const token = cursor.actual();
+  if (token.tipo === 'palabra-clave') {
+    throw new ErrorDeCompilacion(
+      `"${token.texto}" es una palabra reservada de Java: no se puede usar como nombre de una variable`,
+      token.rango,
+      undefined,
+      undefined,
+      { codigo: 'palabra-reservada-como-nombre', datos: { palabra: token.texto } },
+    );
+  }
+  return cursor.esperarTipo('identificador');
+}
+
 function analizarDeclarador(cursor: CursorDeTokens): NodoDeclarador {
-  const nombre = cursor.esperarTipo('identificador');
+  const nombre = esperarNombreDeVariable(cursor);
   let inicializador: NodoExpresion | null = null;
   let fin = nombre.rango.fin;
   if (cursor.coincideTexto('=')) {
@@ -511,12 +554,75 @@ function analizarDeclarador(cursor: CursorDeTokens): NodoDeclarador {
   return { tipo: 'declarador', nombre: nombre.texto, inicializador, rango: { inicio: nombre.rango.inicio, fin } };
 }
 
+// Tarea 1.33 (V): `yield` NO es una palabra reservada (JLS 3.9): `int yield = 1;`, `yield = 2;`, `yield++;` y `yield.length();` usan una variable llamada
+// así, y javac los compila. Solo es la sentencia `yield expresión;` (que fuera de un `switch` usado como expresión javac rechaza y aquí avisa: la
+// construcción es de Java y el visualizador todavía no la soporta) cuando el token que sigue abre una expresión. La regla es la de `JavacParser.blockStatement`
+// del JDK 17, que se verificó con `JavacTask.parse()` (tabla en `pruebas/compilacion/tablas-lexicas.ts`):
+//   - un literal, un nombre, `+`, `-`, `!`, `~`, `null`, `true`, `false`, `new`, `switch`, `this`, `super` o `;`  → la sentencia;
+//   - `++` o `--`  → la sentencia salvo que el tercer token sea `;` (`yield++;` es un incremento);
+//   - `(`  → la sentencia si dentro de los paréntesis no hay comas de primer nivel y no están vacíos (`yield(1, 2);` y `yield();` son llamadas), o si
+//     tras el «)» sigue una flecha;
+//   - cualquier otra cosa (`=`, `+=`, `.`, `[`, `<`…)  → una expresión sobre la variable.
+function esSentenciaYield(cursor: CursorDeTokens): boolean {
+  const actual = cursor.actual();
+  if (actual.tipo !== 'identificador' || actual.texto !== 'yield') return false;
+  const siguiente = cursor.mirar(1);
+  // Un literal (los que el léxico avisa como «no soportado» también lo son: `0x1F`, `1.5f`, una cadena con un escape aún no soportado) o un nombre.
+  if (siguiente.tipo === 'entero' || siguiente.tipo === 'largo' || siguiente.tipo === 'doble' || siguiente.tipo === 'caracter' || siguiente.tipo === 'cadena') return true;
+  if (siguiente.tipo === 'no-soportado' || siguiente.tipo === 'identificador') return true;
+  switch (siguiente.texto) {
+    case '+':
+    case '-':
+    case '!':
+    case '~':
+    case 'null':
+    case 'true':
+    case 'false':
+    case 'new':
+    case 'switch':
+    case 'this':
+    case 'super':
+    case ';':
+      return true;
+    case '++':
+    case '--':
+      return cursor.mirar(2).texto !== ';';
+    case '(':
+      return parentesisDeYieldAbrenUnaExpresion(cursor);
+    default:
+      return false;
+  }
+}
+
+/** El caso «yield (»: se recorren los paréntesis contando las comas de primer nivel, igual que `JavacParser` (`lookahead`/`balance`/`hasComma`). */
+function parentesisDeYieldAbrenUnaExpresion(cursor: CursorDeTokens): boolean {
+  let desplazamiento = 2;
+  let equilibrio = 1;
+  let hayComa = false;
+  let token = cursor.mirar(desplazamiento);
+  while (token.tipo !== 'eof' && equilibrio !== 0) {
+    if (token.texto === '(') equilibrio += 1;
+    else if (token.texto === ')') equilibrio -= 1;
+    else if (token.texto === ',' && equilibrio === 1) hayComa = true;
+    desplazamiento += 1;
+    token = cursor.mirar(desplazamiento);
+  }
+  // `desplazamiento === 3` es «yield ()»: los paréntesis vacíos son una llamada. `token` es el que sigue al «)» de cierre.
+  return (!hayComa && desplazamiento !== 3) || token.texto === '->';
+}
+
+function analizarYield(cursor: CursorDeTokens): NodoNoSoportado {
+  return consumirRestoDeSentenciaNoSoportada(cursor, cursor.actual().rango.inicio, CODIGOS_NO_SOPORTADO.yield, {});
+}
+
 // design.md §2.3 "Sentencia" completa (tarea 1.5) + reconocedores NO-DISP en posición de sentencia
 // (tarea 1.6: etiquetas, try/catch/throw). El orden importa poco (cada rama empieza con un token
 // distinguible), salvo que la sentencia de impresión (0.12, forma especial) se intenta ANTES que la
 // sentencia de expresión general para no romper su AST ya probado desde el lote 0.
 function analizarSentencia(cursor: CursorDeTokens): NodoSentencia {
   if (cursor.coincideTexto('{')) return analizarBloque(cursor);
+  // Tarea 1.33: el cuerpo de un `if`/`while`/`for` sin llaves también distingue `yield 1;` (la sentencia) de `yield = 1;` (una asignación).
+  if (esSentenciaYield(cursor)) return analizarYield(cursor);
   if (cursor.coincideTexto(';')) {
     const token = cursor.avanzar();
     return { tipo: 'sentencia-vacia', rango: token.rango };
@@ -683,11 +789,8 @@ function analizarSwitch(cursor: CursorDeTokens): NodoSwitch {
       elementos.push(analizarEtiquetaDefault(cursor));
       continue;
     }
-    if (cursor.coincideTexto('yield')) {
-      const inicio = cursor.actual().rango.inicio;
-      elementos.push(consumirRestoDeSentenciaNoSoportada(cursor, inicio, CODIGOS_NO_SOPORTADO.yield, {}));
-      continue;
-    }
+    // Tarea 1.33: `yield` ya no se decide aquí por su texto: `yield = 2;` y `yield.length();` son una variable llamada `yield`. La regla de javac
+    // (`esSentenciaYield`) la aplica `analizarElementoDeBloque`, igual dentro de un `switch` que en cualquier bloque.
     elementos.push(analizarElementoDeBloque(cursor));
   }
   const cierre = cursor.esperarTexto('}');
@@ -703,11 +806,13 @@ function analizarSwitch(cursor: CursorDeTokens): NodoSwitch {
 // analiza como expresión — una coma sin valor detrás ("case 1, :") sigue siendo un error real.
 function analizarEtiquetaCase(cursor: CursorDeTokens): NodoEtiquetaCase | NodoNoSoportado {
   const inicioToken = cursor.esperarTexto('case');
-  const valor = analizarExpresion(cursor);
+  // Tarea 1.33 (N4): la expresión de una etiqueta se analiza SIN lambdas (`term(EXPR | NOLAMBDA)` de javac): en `case s ->` y `case (1) ->` la flecha
+  // es la del `switch`, no la de una lambda (antes se leía como lambda y el programa terminaba en «se esperaba ":"» aunque javac lo compila).
+  const valor = analizarExpresion(cursor, true);
   let tieneVariosValores = false;
   while (cursor.coincideTexto(',')) {
     cursor.avanzar();
-    analizarExpresion(cursor);
+    analizarExpresion(cursor, true);
     tieneVariosValores = true;
   }
   if (cursor.coincideTexto('->')) {
@@ -791,10 +896,13 @@ function analizarContinue(cursor: CursorDeTokens): NodoContinue | NodoNoSoportad
   return { tipo: 'continue', rango: { inicio: inicioToken.rango.inicio, fin } };
 }
 
+// Tarea 1.33: `return expr;` conserva su expresión (`main` es `void`: la atribución lo rechaza con el «unexpected return value» de javac). Antes
+// solo se aceptaba `return;` y `return 0;` fallaba con «falta un punto y coma», un texto que mandaba al alumno a buscar lo que no era.
 function analizarRetorno(cursor: CursorDeTokens): NodoRetorno {
   const inicio = cursor.esperarTexto('return');
+  const valor = cursor.coincideTexto(';') ? null : analizarExpresion(cursor);
   const fin = cursor.esperarTexto(';');
-  return { tipo: 'retorno', rango: { inicio: inicio.rango.inicio, fin: fin.rango.fin } };
+  return { tipo: 'retorno', valor, rango: { inicio: inicio.rango.inicio, fin: fin.rango.fin } };
 }
 
 // "try (recursos)? { … } (catch (…) { … })* (finally { … })?" — se delimita completo como UN solo
@@ -870,15 +978,54 @@ function analizarEtiqueta(cursor: CursorDeTokens): NodoNoSoportado {
 // fuera a propósito (ningún RED de 1.5/1.6/1.8 lo pide todavía; sigue cayendo en el camino
 // genérico de `analizarSentenciaExpresion`, que hoy no ejecuta nada — mismo `throw` honesto que
 // cualquier otra sentencia sin IR real, nunca un resultado inventado).
+// Tarea 1.33 (WARNING-2 de la re-verificación del lote 1): la sentencia de impresión solo existe con los números de argumentos que `PrintStream`
+// tiene de verdad: `println()` y `println(x)`, `print(x)`. `println("a", x)` y `print()` NO existen: son una llamada cualquiera y la atribución la
+// rechaza con el «no suitable method found» de javac (antes este reconocedor las tomaba y fallaban con «falta un paréntesis», un texto que no era el problema).
 function esInicioDeImpresion(cursor: CursorDeTokens): boolean {
   const metodo = cursor.mirar(4).texto;
-  return (
-    cursor.coincideTexto('System') &&
-    cursor.mirar(1).texto === '.' &&
-    cursor.mirar(2).texto === 'out' &&
-    cursor.mirar(3).texto === '.' &&
-    (metodo === 'println' || metodo === 'print')
-  );
+  if (
+    !(
+      cursor.coincideTexto('System') &&
+      cursor.mirar(1).texto === '.' &&
+      cursor.mirar(2).texto === 'out' &&
+      cursor.mirar(3).texto === '.' &&
+      (metodo === 'println' || metodo === 'print')
+    )
+  ) {
+    return false;
+  }
+  // Sin «(» (`System.out.println;`) se sigue por el camino de siempre, que rechaza con su error de puntuación.
+  if (cursor.mirar(5).texto !== '(') return true;
+  const argumentos = contarArgumentosDeLaLlamada(cursor, 5);
+  // `null`: los paréntesis no cierran (`println("a";`): se sigue por el camino de siempre, que rechaza con su error de puntuación.
+  if (argumentos === null) return true;
+  return metodo === 'println' ? argumentos <= 1 : argumentos === 1;
+}
+
+/** Cuántos argumentos tiene la llamada cuyo «(» está en `cursor.mirar(desplazamientoDeApertura)`, contando las comas de su primer nivel (las de
+ * los paréntesis, corchetes y llaves anidados no cuentan: `println(f(1, 2))`, `println(new int[]{1, 2}.length)`). `null` si no cierra antes de un «;». */
+function contarArgumentosDeLaLlamada(cursor: CursorDeTokens, desplazamientoDeApertura: number): number | null {
+  let profundidad = 0;
+  let comas = 0;
+  let hayContenido = false;
+  for (let i = desplazamientoDeApertura; i < desplazamientoDeApertura + 4096; i += 1) {
+    const token = cursor.mirar(i);
+    if (token.tipo === 'eof') return null;
+    if (token.texto === '(' || token.texto === '[' || token.texto === '{') {
+      profundidad += 1;
+      if (profundidad > 1) hayContenido = true;
+      continue;
+    }
+    if (token.texto === ')' || token.texto === ']' || token.texto === '}') {
+      profundidad -= 1;
+      if (profundidad === 0) return hayContenido ? comas + 1 : 0;
+      continue;
+    }
+    if (profundidad === 1 && token.texto === ';') return null;
+    if (profundidad === 1 && token.texto === ',') comas += 1;
+    else hayContenido = true;
+  }
+  return null;
 }
 
 function analizarImpresion(cursor: CursorDeTokens): NodoImpresion {

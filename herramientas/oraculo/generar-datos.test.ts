@@ -14,6 +14,7 @@ import {
   analizarLineaClases,
   analizarLineaFirma,
   analizarLineaSupertipos,
+  analizarPalabrasReservadas,
   analizarSalidaRegional,
   analizarSupertipos,
   generarDatos,
@@ -22,6 +23,7 @@ import {
   renderizarFirmasTs,
   renderizarIdentificadoresTs,
   renderizarMarcosTs,
+  renderizarPalabrasReservadasTs,
   renderizarRegionalTs,
   renderizarSupertiposTs,
   verificarMarcoEnEspanol,
@@ -207,6 +209,31 @@ describe('renderizarIdentificadoresTs (pura) — genera el .ts compacto con cabe
     expect(texto).toContain('no editar');
     expect(texto).toContain("INICIO_DE_IDENTIFICADOR_JAVA: string = '24,41-5a'");
     expect(texto).toContain("PARTE_DE_IDENTIFICADOR_JAVA: string = '30-39'");
+  });
+});
+
+describe('analizarPalabrasReservadas (pura) — parsea la salida de GenerarPalabrasReservadas (tarea 1.33)', () => {
+  it('una línea "reservadas|a,b,c" y la línea "#total|N": la lista, tal cual y en el mismo orden', () => {
+    expect(analizarPalabrasReservadas('reservadas|_,abstract,while\n#total|3\n')).toEqual(['_', 'abstract', 'while']);
+  });
+
+  it('una salida sin la línea "#total|N", o con una cuenta que no coincide, lanza un error claro (nunca una lista a medias)', () => {
+    expect(() => analizarPalabrasReservadas('reservadas|_,abstract,while\n')).toThrow(/truncada|incompleta|#total/);
+    expect(() => analizarPalabrasReservadas('reservadas|_,abstract,while\n#total|54\n')).toThrow(/truncada|incompleta|#total/);
+  });
+
+  it('una salida sin la línea "reservadas|…" (o con ella vacía) lanza', () => {
+    expect(() => analizarPalabrasReservadas('#total|0\n')).toThrow(/reservadas/);
+    expect(() => analizarPalabrasReservadas('reservadas|\n#total|0\n')).toThrow(/reservadas/);
+  });
+});
+
+describe('renderizarPalabrasReservadasTs (pura) — genera el .ts con cabecera "no editar" (tarea 1.33)', () => {
+  it('exporta la lista como un arreglo de literales, con la cabecera generada y el origen (Tokens.TokenKind de javac)', () => {
+    const texto = renderizarPalabrasReservadasTs(['_', 'abstract', 'while']);
+    expect(texto).toContain('Archivo generado por `npm run oraculo:datos`');
+    expect(texto).toContain('GenerarPalabrasReservadas.java');
+    expect(texto).toContain("export const PALABRAS_RESERVADAS_JAVA: readonly string[] = ['_', 'abstract', 'while'];");
   });
 });
 
@@ -498,6 +525,36 @@ describe('generarDatos — integración contra el JDK real (Temurin 17.0.18)', (
     const discrepancias = casos.filter((caso) => veredictos.get(caso.id)?.compila !== caso.esperado).map((caso) => caso.id);
     expect(discrepancias).toEqual([]);
   }, 300_000);
+
+  // Tarea 1.33 (N2): las palabras reservadas NO se escriben de memoria (15 de 54 faltaban del léxico): salen de `Tokens.TokenKind` de javac
+  // y se cruzan con una fuente independiente (`SourceVersion.isKeyword`) dentro de la propia sonda. Aquí se verifica contra javac por
+  // COMPORTAMIENTO: cada una es un error como nombre de variable, y las palabras contextuales y los parecidos no.
+  it('palabras reservadas (tarea 1.33): son EXACTAMENTE las 54 de JLS 3.9 — 50 palabras clave, `_` y los literales true, false y null', () => {
+    expect(datos.palabrasReservadas).toHaveLength(54);
+    expect(new Set(datos.palabrasReservadas).size).toBe(54);
+    const esperadas = [
+      '_', 'abstract', 'assert', 'boolean', 'break', 'byte', 'case', 'catch', 'char', 'class', 'const', 'continue', 'default', 'do', 'double', 'else', 'enum', 'extends',
+      'false', 'final', 'finally', 'float', 'for', 'goto', 'if', 'implements', 'import', 'instanceof', 'int', 'interface', 'long', 'native', 'new', 'null', 'package',
+      'private', 'protected', 'public', 'return', 'short', 'static', 'strictfp', 'super', 'switch', 'synchronized', 'this', 'throw', 'throws', 'transient', 'true', 'try',
+      'void', 'volatile', 'while',
+    ];
+    expect([...datos.palabrasReservadas].sort()).toEqual([...esperadas].sort());
+    // `var` y `yield` NO son palabras reservadas (JLS 3.9: `var` es un nombre de tipo reservado y `yield` un identificador restringido).
+    expect(datos.palabrasReservadas).not.toContain('var');
+    expect(datos.palabrasReservadas).not.toContain('yield');
+  });
+
+  it('palabras reservadas (tarea 1.33): javac rechaza `int X;` con CADA una, y acepta las contextuales y los parecidos (una sola JVM)', async () => {
+    const contextuales = ['var', 'yield', 'record', 'sealed', 'permits', 'non', 'module', 'open', 'opens', 'requires', 'transitive', 'exports', 'to', 'uses', 'provides', 'with'];
+    const parecidos = ['nativo', '_x', 'x_', '__', 'enumerado', 'Native', '$goto', 'goto1'];
+    const casos = [
+      ...datos.palabrasReservadas.map((palabra) => ({ id: `reservada:${palabra}`, fuente: `class T { void m() { int ${palabra}; } }\n`, esperado: false })),
+      ...[...contextuales, ...parecidos].map((palabra) => ({ id: `valida:${palabra}`, fuente: `class T { void m() { int ${palabra}; } }\n`, esperado: true })),
+    ];
+    const veredictos = await compilarEnLote(jdk, casos);
+    const discrepancias = casos.filter((caso) => veredictos.get(caso.id)?.compila !== caso.esperado).map((caso) => caso.id);
+    expect(discrepancias).toEqual([]);
+  }, 120_000);
 
   it('String.split existe (miembro real, REQ-SUB-007 "existe pero no soportado")', async () => {
     expect(datos.firmas.some((f) => f.clase === 'String' && f.nombre === 'split')).toBe(true);

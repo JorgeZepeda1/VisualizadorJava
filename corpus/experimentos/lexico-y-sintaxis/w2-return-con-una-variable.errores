@@ -1,0 +1,4 @@
+W2ReturnConUnaVariable.java:5: error: incompatible types: unexpected return value
+        return x;
+               ^
+1 error

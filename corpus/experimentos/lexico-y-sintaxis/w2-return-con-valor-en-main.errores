@@ -1,0 +1,4 @@
+W2ReturnConValor.java:4: error: incompatible types: unexpected return value
+        return 0;
+               ^
+1 error

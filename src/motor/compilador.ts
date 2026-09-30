@@ -207,6 +207,9 @@ function construirResultadoNoDisponible(
 function construirProblema(error: ErrorDeCompilacion, fuente: string): Problema {
   const tabla = new TablaDeLineas(fuente);
   const { linea } = tabla.ubicar(error.rango.inicio);
+  // Tarea 1.33: un error con sus propios datos (palabra reservada como nombre, guion bajo mal puesto) los lleva tal cual; el spread de la
+  // unión conserva la pareja código/datos, sin cast (mismo patrón que `construirResultadoDeAtribucion`).
+  if (error.conDatos !== undefined) return { ...error.conDatos, categoria: 'error-compilacion', rango: error.rango, linea };
   return {
     categoria: 'error-compilacion',
     codigo: codigoDeSintaxis(error),

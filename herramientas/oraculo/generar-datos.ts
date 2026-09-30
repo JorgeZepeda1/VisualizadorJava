@@ -5,6 +5,7 @@
 // CLAUDE.md). `src/motor/biblioteca/datos/*.generado.ts` es lo único que consume el motor en
 // tiempo de ejecución (design.md §1.1: `motor` no importa nada fuera de sí mismo); `corpus/datos/`
 // es el conjunto crudo, auditable, del que salen esos archivos.
+import { spawn } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -174,6 +175,63 @@ export function analizarIdentificadoresJava(salida: string): IdentificadoresJava
   return { inicio, parte };
 }
 
+// ---- Palabras reservadas (GenerarPalabrasReservadas.java, tarea 1.33) ----
+
+/**
+ * Pura: el stdout de `GenerarPalabrasReservadas.java` (`reservadas|a,b,c` y `#total|N`) → la lista de palabras reservadas de Java 17
+ * (JLS 3.9: las palabras clave, `_` y los literales `true`, `false` y `null`), en el orden de la sonda. Exige la línea final y que N
+ * sea la cantidad de palabras realmente leídas: una lista CORTADA se guardaría como si fuera completa y el léxico volvería a aceptar
+ * como nombre de variable palabras que javac rechaza.
+ */
+export function analizarPalabrasReservadas(salida: string): string[] {
+  const lineas = salida
+    .split('\n')
+    .map((linea) => linea.trim())
+    .filter((linea) => linea.length > 0);
+  const lineaDe = (prefijo: string): string | undefined => lineas.find((linea) => linea.startsWith(prefijo));
+  const reservadas = lineaDe('reservadas|')?.slice('reservadas|'.length);
+  if (reservadas === undefined || reservadas === '') {
+    throw new Error('la salida de GenerarPalabrasReservadas.java está mal formada (falta la línea "reservadas|…" o viene vacía)');
+  }
+  const palabras = reservadas.split(',');
+  const total = lineaDe('#total|')?.slice('#total|'.length);
+  if (total !== String(palabras.length)) {
+    throw new Error(
+      `La salida de GenerarPalabrasReservadas.java está truncada o incompleta: se leyeron ${palabras.length} palabras y la línea ` +
+        `"#total|N" ${total === undefined ? 'no aparece' : `dice "${total}"`}.`,
+    );
+  }
+  return palabras;
+}
+
+/** Los argumentos `--add-exports` de la sonda: `Tokens.TokenKind` de javac vive en un paquete que el JDK no exporta. */
+const EXPORTS_DE_LA_SONDA_DE_PALABRAS = ['jdk.compiler/com.sun.tools.javac.parser=ALL-UNNAMED'] as const;
+
+/**
+ * Corre una sonda `.java` en modo de archivo fuente (`java Archivo.java`) con `--add-exports` (para leer APIs internas de javac) y
+ * devuelve su stdout. Solo la usa la sonda de palabras reservadas: `ejecutarPrograma` (`ejecutar.ts`) compila con `javac` y corre con
+ * `java -cp`, sin los `--add-exports` que necesita leer `TokenKind`. Falla con el stderr de la sonda si sale con un código distinto de 0.
+ */
+function ejecutarSondaConExports(jdk: InfoJdk, rutaFuente: string, exports: readonly string[]): Promise<string> {
+  return new Promise((resolverPromesa, rechazarPromesa) => {
+    const argumentos = [...exports.flatMap((e) => ['--add-exports', e]), rutaFuente];
+    const proceso = spawn(jdk.rutaJava, argumentos, { stdio: ['ignore', 'pipe', 'pipe'] });
+    let salida = '';
+    let error = '';
+    proceso.stdout.on('data', (fragmento: Buffer) => {
+      salida += fragmento.toString('utf-8');
+    });
+    proceso.stderr.on('data', (fragmento: Buffer) => {
+      error += fragmento.toString('utf-8');
+    });
+    proceso.on('error', rechazarPromesa);
+    proceso.on('close', (codigo) => {
+      if (codigo === 0) resolverPromesa(salida);
+      else rechazarPromesa(new Error(`${basename(rutaFuente)} terminó con código ${codigo}. stderr:\n${error}`));
+    });
+  });
+}
+
 // ---- Símbolos regionales (`DecimalFormatSymbols`, REQ-BIB-010) ----
 
 export interface SimbolosRegionales {
@@ -238,6 +296,8 @@ export interface DatosJdk {
   readonly supertipos: SupertiposPorTipo;
   readonly clases: ClasesPorPaquete;
   readonly identificadores: IdentificadoresJava;
+  /** Tarea 1.33: las 54 palabras reservadas de Java 17 (`Tokens.TokenKind` de javac), en orden alfabético con `_` primero. */
+  readonly palabrasReservadas: readonly string[];
   readonly regional: Readonly<Record<'es-MX' | 'es-ES', SimbolosRegionales>>;
   readonly marcos: { readonly sinMain: MensajeArranque; readonly mainNoStatic: MensajeArranque };
 }
@@ -318,6 +378,10 @@ export async function generarDatos(jdk: InfoJdk): Promise<DatosJdk> {
   }
   const identificadores = analizarIdentificadoresJava(resultadoIdentificadores.stdout.toString('utf-8'));
 
+  const palabrasReservadas = analizarPalabrasReservadas(
+    await ejecutarSondaConExports(jdk, resolve(AQUI, 'java', 'GenerarPalabrasReservadas.java'), EXPORTS_DE_LA_SONDA_DE_PALABRAS),
+  );
+
   // Parte A.2: defensa adicional (además de -Duser.language/-Duser.country, que YA viaja vía
   // `regional`) para el gotcha de la JVM en frío -- fija también LANG/LC_ALL del proceso hijo.
   // El experimento de esta sesión (≥10 repeticiones, ver el informe) NO logró reproducir el bug
@@ -343,6 +407,7 @@ export async function generarDatos(jdk: InfoJdk): Promise<DatosJdk> {
     supertipos,
     clases,
     identificadores,
+    palabrasReservadas,
     regional: {
       'es-MX': analizarSalidaRegional(regionalMx.stdout.toString('utf-8')),
       'es-ES': analizarSalidaRegional(regionalEs.stdout.toString('utf-8')),
@@ -427,6 +492,15 @@ export function renderizarIdentificadoresTs(identificadores: IdentificadoresJava
   );
 }
 
+export function renderizarPalabrasReservadasTs(palabras: readonly string[]): string {
+  return (
+    `${cabecera('herramientas/oraculo/java/GenerarPalabrasReservadas.java')}` +
+    `// Las palabras reservadas de Java 17 (JLS 3.9): las palabras clave, \`_\` (Java 9) y los literales true, false y null — cada ficha de\n` +
+    `// \`Tokens.TokenKind\` de javac con un nombre alfabético. \`var\` y \`yield\` NO están: no son reservadas (JLS 3.9).\n` +
+    `export const PALABRAS_RESERVADAS_JAVA: readonly string[] = [${palabras.map(cadenaSimple).join(', ')}];\n`
+  );
+}
+
 export function renderizarRegionalTs(regional: Readonly<Record<'es-MX' | 'es-ES', SimbolosRegionales>>): string {
   const unLocale = (s: SimbolosRegionales): string =>
     `{ decimal: ${cadenaSimple(s.decimal)}, miles: ${cadenaSimple(s.miles)}, menos: ${cadenaSimple(s.menos)}, ` +
@@ -488,6 +562,9 @@ export function escribirDatos(raizProyecto: string, datos: DatosJdk): void {
     'utf-8',
   );
   writeFileSync(resolve(corpusApi, 'identificadores.json'), `${JSON.stringify(datos.identificadores, null, 2)}\n`, 'utf-8');
+  // Tarea 1.33: el dato crudo, auditable, que el generador diferencial (`generados/vocabulario.ts`) cruza con su propia lista.
+  mkdirSync(resolve(raizProyecto, 'corpus', 'datos', 'lexico'), { recursive: true });
+  writeFileSync(resolve(raizProyecto, 'corpus', 'datos', 'lexico', 'palabras-reservadas.json'), `${JSON.stringify({ reservadas: datos.palabrasReservadas }, null, 2)}\n`, 'utf-8');
   writeFileSync(resolve(corpusRegional, 'simbolos.json'), `${JSON.stringify(datos.regional, null, 2)}\n`, 'utf-8');
   writeFileSync(resolve(corpusMarcos, 'arranque.json'), `${JSON.stringify(datos.marcos, null, 2)}\n`, 'utf-8');
 
@@ -495,6 +572,7 @@ export function escribirDatos(raizProyecto: string, datos: DatosJdk): void {
   writeFileSync(resolve(bibliotecaDatos, 'supertipos-jdk.generado.ts'), renderizarSupertiposTs(datos.supertipos), 'utf-8');
   writeFileSync(resolve(bibliotecaDatos, 'clases-jdk.generado.ts'), renderizarClasesTs(datos.clases), 'utf-8');
   writeFileSync(resolve(bibliotecaDatos, 'identificadores-java.generado.ts'), renderizarIdentificadoresTs(datos.identificadores), 'utf-8');
+  writeFileSync(resolve(bibliotecaDatos, 'palabras-reservadas-java.generado.ts'), renderizarPalabrasReservadasTs(datos.palabrasReservadas), 'utf-8');
   writeFileSync(resolve(bibliotecaDatos, 'regional.generado.ts'), renderizarRegionalTs(datos.regional), 'utf-8');
   writeFileSync(resolve(bibliotecaDatos, 'marcos-arranque.generado.ts'), renderizarMarcosTs(datos.marcos), 'utf-8');
 }
@@ -507,7 +585,7 @@ function main(): void {
       console.log(
         `Oráculo: ${datos.firmas.length} firmas, ${Object.keys(datos.supertipos).length} tipos con sus supertipos, ` +
           `${Object.values(datos.clases).reduce((total, lista) => total + lista.length, 0)} clases en ${Object.keys(datos.clases).length} paquetes, ` +
-          `tablas de identificador, ` +
+          `tablas de identificador, ${datos.palabrasReservadas.length} palabras reservadas, ` +
           `2 locales regionales, 2 marcos de arranque ` +
           `escritos en corpus/datos/** y src/motor/biblioteca/datos/*.generado.ts (${basename(RAIZ_PROYECTO)}).`,
       );

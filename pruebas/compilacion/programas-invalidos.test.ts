@@ -39,10 +39,11 @@ describe('corpus real → a un programa que javac 17 rechaza nunca se le dice qu
     // compilación reales: tipos, símbolos, asignación definida, etiquetas, estructura…) y los 41 mínimos de
     // `corpus/experimentos/atribucion` (tarea 1.32: cast inválido, miembro de un primitivo, `final` con `++`, etiquetas de `switch`,
     // `void` como valor, método de instancia por el nombre de la clase, envoltorios, `Scanner` sin `import`, variable que tapa una
-    // clase), con el veredicto real de javac.
-    expect(rechazados.length).toBeGreaterThanOrEqual(86);
+    // clase) y los 31 mínimos de `corpus/experimentos/lexico-y-sintaxis` (tarea 1.33: una palabra reservada como nombre, un guion bajo mal puesto,
+    // un literal mal formado, `return 0;` en `main`, `println("a", x)` y `print()`, `printf` como valor, `yield` como sentencia…), con el veredicto real de javac.
+    expect(rechazados.length).toBeGreaterThanOrEqual(117);
     // Si el filtro `compilo` no separara nada, la prueba de abajo no distinguiría un rechazo de un programa válido.
-    expect(programas.length - rechazados.length).toBeGreaterThanOrEqual(161);
+    expect(programas.length - rechazados.length).toBeGreaterThanOrEqual(178);
   });
 
   it('cada programa con "compilo": false sale como error o como aviso de una construcción, nunca como aceptado (ni ok, ni "ejecucion-no-disponible")', () => {

@@ -107,7 +107,8 @@ const VALIDOS: ReadonlyArray<readonly [archivo: string, codigo: string]> = [
   ['f2-metodos-validos', 'ejecucion-no-disponible'],
   ['f3-final-valida', 'ejecucion-no-disponible'],
   ['f4-switch-etiquetas-validas', 'ejecucion-no-disponible'],
-  ['f5-void-como-sentencia-valido', 'ejecucion-no-disponible'],
+  // Tarea 1.33: el programa termina con `System.out.println(System.out.printf("%d", 1));` — `printf` como ARGUMENTO devuelve un PrintStream que el subconjunto no modela: el aviso propio, no el genérico.
+  ['f5-void-como-sentencia-valido', 'valor-de-tipo-no-soportado'],
   ['f6-metodos-de-clase-validos', 'ejecucion-no-disponible'],
   ['n1-envoltorios-validos', 'clase-no-soportada'],
   ['n5-imports-con-comodin-validos', 'ejecucion-no-disponible'],

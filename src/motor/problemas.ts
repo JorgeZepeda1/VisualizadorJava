@@ -149,7 +149,17 @@ export type CodigoProblema =
   // `Scanner.close()`) — verificado contra javac 17 real: «non-static method trim() cannot be referenced from a static context»
   // (`non-static.cant.be.ref`), una vez que la sobrecarga elegida es la de instancia. Los datos son los del receptor y el método
   // (`DatosMiembro`, como «miembro-no-declarado»).
-  | 'metodo-de-instancia-sin-objeto';
+  | 'metodo-de-instancia-sin-objeto'
+  // Tarea 1.33 (N2, JLS 3.9): una palabra reservada (`native`, `enum`, `goto`, `_`, `class`…) usada como NOMBRE de una variable —
+  // verificado contra javac 17 real: `not.stmt` («not a statement») para casi todas, `enum.as.identifier`, `assert.as.identifier`,
+  // `underscore.as.identifier` y `expected` («<identifier> expected») para otras. Un solo código propio, con la palabra tal como se escribió.
+  | 'palabra-reservada-como-nombre'
+  // Tarea 1.33 (N3, JLS 3.10.1/3.10.2): un guion bajo que no está ENTRE DOS DÍGITOS en un literal numérico (`1_`, `1_L`, `1_.0`, `1._0`,
+  // `1_e1`, `0x_1`, `07_`…) — javac 17: `illegal.underscore` («illegal underscore»). Los datos son el número tal como se escribió.
+  | 'guion-bajo-mal-puesto'
+  // Tarea 1.33 (WARNING-2 de la re-verificación del lote 1, JLS 14.17): `return 0;` en `main`, que es `void` — verificado contra javac 17
+  // real: `prob.found.req` («incompatible types: unexpected return value»), señalando el VALOR. Antes decía «Te falta un punto y coma».
+  | 'retorno-con-valor';
 
 // Datos EXTRA que el texto es-MX (`src/textos/es-MX/problemas.ts`) necesita de cada código — la
 // ÚNICA fuente de verdad de su forma. Vive en el MOTOR (no en el catálogo) para que el propio emisor
@@ -254,6 +264,16 @@ interface DatosVariableYaDefinida {
   readonly rangoExistente: Rango;
 }
 
+// Tarea 1.33 (N2): la palabra reservada tal como la escribió el alumno (`native`, `_`, `true`…).
+interface DatosPalabra {
+  readonly palabra: string;
+}
+
+// Tarea 1.33 (N3): el literal numérico con el guion bajo mal puesto, tal como se escribió (`1_L`, `0x_1`, `1_.0`).
+interface DatosNumero {
+  readonly numero: string;
+}
+
 export interface DatosPorCodigoProblema {
   'falta-punto-y-coma': DatosMensajeCrudo;
   'falta-parentesis-cierre': DatosMensajeCrudo;
@@ -297,6 +317,9 @@ export interface DatosPorCodigoProblema {
   'miembro-de-primitivo': DatosMiembroDePrimitivo;
   'cast-invalido': DatosConversion;
   'metodo-de-instancia-sin-objeto': DatosMiembro;
+  'palabra-reservada-como-nombre': DatosPalabra;
+  'guion-bajo-mal-puesto': DatosNumero;
+  'retorno-con-valor': Record<never, never>;
 }
 
 // Los códigos que `compilar()` saca de un `ErrorDeCompilacion` (léxico y sintaxis): TODOS llevan
@@ -318,6 +341,18 @@ export type CodigoDeSintaxis = Extract<
   | 'paquete-despues-de-import'
   | 'modificador-repetido'
 >;
+
+/**
+ * Tarea 1.33: los errores de léxico y sintaxis que llevan sus PROPIOS datos, no solo el mensaje (`DatosMensajeCrudo`): la palabra reservada
+ * que se usó como nombre, el número con el guion bajo mal puesto. Un `ErrorDeCompilacion` los transporta en `conDatos`; `compilador.ts` los
+ * copia al `Problema` con su código, así que el código sigue estrechando los datos (como en `ProblemaDeCompilacion`). Subconjunto de
+ * `CodigoProblema`, aparte de `CodigoDeSintaxis` (cuyos códigos traen todos `{ mensaje }`).
+ */
+export type CodigoDeSintaxisConDatos = Extract<CodigoProblema, 'palabra-reservada-como-nombre' | 'guion-bajo-mal-puesto'>;
+
+export type ProblemaDeSintaxisConDatos = {
+  readonly [C in CodigoDeSintaxisConDatos]: { readonly codigo: C; readonly datos: DatosPorCodigoProblema[C] };
+}[CodigoDeSintaxisConDatos];
 
 interface ProblemaComun {
   readonly codigoJavac?: string;

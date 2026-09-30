@@ -1,0 +1,4 @@
+VYieldFueraDeSwitch.java:5: error: yield outside of switch expression
+        yield x;
+        ^
+1 error

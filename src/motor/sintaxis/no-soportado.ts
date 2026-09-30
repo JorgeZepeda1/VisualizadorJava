@@ -276,11 +276,12 @@ function esFinalDeMiembro(token: Token): boolean {
 // solo se recorren para saber dónde termina el tipo y dónde empieza el NOMBRE del miembro o del parámetro. ----
 
 /** ¿`token` puede ir DENTRO de los argumentos o parámetros de tipo de un genérico (`<T extends A & B, ? super C>`)?
- * `extends` no es palabra clave de este léxico (es un identificador); `super` sí. */
+ * `extends` y `super` son palabras reservadas (desde la tarea 1.33 el léxico entrega las 54 de javac como `palabra-clave`; antes `extends`
+ * era un identificador), y en un genérico las dos son parte del tipo (`? extends Number`, `T extends Comparable<T>`). */
 function esTokenDeArgumentoDeTipo(token: Token): boolean {
   if (token.tipo === 'identificador') return true;
   if (PALABRAS_CLAVE_TIPO_PRIMITIVO.has(token.texto) || PALABRAS_TIPO_PRIMITIVO_NO_SOPORTADO.has(token.texto)) return true; // List<int[]>
-  return token.texto === 'super' || token.texto === '.' || token.texto === ',' || token.texto === '?' || token.texto === '&' || token.texto === '[' || token.texto === ']';
+  return token.texto === 'super' || token.texto === 'extends' || token.texto === '.' || token.texto === ',' || token.texto === '?' || token.texto === '&' || token.texto === '[' || token.texto === ']';
 }
 
 /**

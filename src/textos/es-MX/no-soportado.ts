@@ -190,6 +190,15 @@ export const textosNoSoportado: { readonly [K in CodigoNoSoportado]: (datos: Dat
   // Tarea 1.29: `assert`, un tipo declarado dentro de un método y un bloque `synchronized`.
   'assert-no-soportado': ({ linea }) => marco(linea, 'una instrucción `assert`', 'no comprueba aserciones'),
 
+  // Tarea 1.33: `printf` devuelve un `PrintStream`, un tipo que el subconjunto no modela; usar su resultado como valor no se puede revisar.
+  'valor-de-tipo-no-soportado': ({ linea, llamada }) =>
+    marco(
+      linea,
+      `el resultado de \`${llamada}(...)\` como un valor`,
+      'no maneja el tipo de ese resultado',
+      `Escribe \`${llamada}(...)\` como una sentencia aparte, sin usar lo que devuelve.`,
+    ),
+
   'clase-local-no-soportada': ({ linea }) =>
     marco(linea, 'un tipo declarado dentro de un método (una clase, interfaz, enum o record local)', 'no simula clases propias'),
 

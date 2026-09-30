@@ -1,6 +1,7 @@
 // Vocabulario del generador diferencial (tarea 1.31): los tipos, literales, nombres y operadores con que
 // se arman los programas. Son DATOS, no lógica: ampliar la cobertura del generador casi siempre es
 // agregar una entrada aquí o subir el peso de una plantilla (`plantillas.ts`).
+import type { Etiqueta } from './programa.ts';
 
 /** Los 8 tipos del subconjunto (design.md §2.7). */
 export const TIPOS_DEL_SUBCONJUNTO = ['int', 'long', 'double', 'boolean', 'char', 'String', 'Scanner', 'Random'] as const;
@@ -115,25 +116,47 @@ export interface LiteralRaro {
   readonly tipo: string;
   readonly texto: string;
   readonly valido: boolean;
+  /** Tarea 1.33: el rasgo de construcción que ejerce (con él la familia de una discrepancia no sale «sin rasgos»). */
+  readonly rasgos: readonly Etiqueta[];
 }
+
+type EntradaDeLiteral = readonly [tipo: string, texto: string, ...rasgos: Etiqueta[]];
+
+const GUION_BAJO: Etiqueta = 'guion-bajo-en-literal';
+const FLOTANTE_HEXADECIMAL: Etiqueta = 'flotante-hexadecimal';
 
 /**
  * Formas de literal que un curso rara vez usa pero que Java acepta (hexadecimal, octal, binario, guiones bajos,
  * escapes Unicode y octales, flotante hexadecimal…) y las que rechaza (guion bajo al final, un 9 en un octal,
  * un entero que no cabe, un carácter con dos símbolos…). Es el terreno del analizador léxico.
+ *
+ * Tarea 1.33: cada forma de guion bajo mal puesto y de flotante hexadecimal va con el TIPO que pide (`long t = 1_L;`,
+ * `double t = 1_.0;`): con otro tipo, un error de conversión taparía el del guion bajo y la comparación con javac
+ * saldría «coinciden» por accidente. Las ocho formas que la campaña de la 1.32 NO sorteaba (`1_L`, `1_.0`, `1._0`,
+ * `1_e1`, `0x1.8p1`, `0x.8p0`, `0X1P-2` y `0x1p3d`) entran aquí, y el resto de las reglas de JLS 3.10.1/3.10.2 (un guion
+ * bajo tras `0x`/`0b`, al final de un octal, al final de un exponente…) con ellas.
  */
 export const LITERALES_RAROS: readonly LiteralRaro[] = [
-  ...[
-    ['int', '0x1F'], ['int', '0x7fffffff'], ['int', '017'], ['int', '00'], ['int', '0b101'], ['int', '1_000'], ['int', '1__0'], ['int', '100_000_000'], ['int', '2147483647'], ['int', '-2147483648'],
-    ['long', '0xFFL'], ['long', '1_000L'], ['long', '9223372036854775807L'], ['long', '1l'],
-    ['double', '.5'], ['double', '5.'], ['double', '1e3'], ['double', '1E-3'], ['double', '0x1p3'], ['double', '1d'], ['double', '1_0.5_0'], ['double', '0.5e1'],
-    ['char', "'\\u0041'"], ['char', "'\\t'"], ['char', "'\\\\'"], ['char', "'\\''"], ['char', "'\\101'"],
-    ['String', '"\\"q\\""'], ['String', '"\\u00e9"'], ['String', '"tab\\t"'], ['String', '"a\\\\b"'],
-  ].map(([tipo, texto]): LiteralRaro => ({ tipo: tipo!, texto: texto!, valido: true })),
-  ...[
-    ['int', '09'], ['int', '0x'], ['int', '1_'], ['int', '1__'], ['int', '0b2'], ['int', '3000000000'], ['long', '3000000000'], ['double', '1e'],
-    ['char', "'ab'"], ['char', "''"], ['char', "'\\q'"], ['String', '"\\q"'],
-  ].map(([tipo, texto]): LiteralRaro => ({ tipo: tipo!, texto: texto!, valido: false })),
+  ...(
+    [
+      ['int', '0x1F'], ['int', '0x7fffffff'], ['int', '017'], ['int', '00'], ['int', '0b101'], ['int', '1_000', GUION_BAJO], ['int', '1__0', GUION_BAJO], ['int', '100_000_000', GUION_BAJO], ['int', '2147483647'], ['int', '-2147483648'],
+      ['int', '0_7', GUION_BAJO], ['int', '0xF_F', GUION_BAJO], ['int', '0b1_0', GUION_BAJO],
+      ['long', '0xFFL'], ['long', '1_000L', GUION_BAJO], ['long', '9223372036854775807L'], ['long', '1l'],
+      ['double', '.5'], ['double', '5.'], ['double', '1e3'], ['double', '1E-3'], ['double', '0x1p3', FLOTANTE_HEXADECIMAL], ['double', '1d'], ['double', '1_0.5_0', GUION_BAJO], ['double', '0.5e1'],
+      ['double', '0x1.8p1', FLOTANTE_HEXADECIMAL], ['double', '0x.8p0', FLOTANTE_HEXADECIMAL], ['double', '0X1P-2', FLOTANTE_HEXADECIMAL], ['double', '0x1p3d', FLOTANTE_HEXADECIMAL],
+      ['double', '0x1p3f', FLOTANTE_HEXADECIMAL], ['double', '1e1_0', GUION_BAJO], ['double', '3_1.4_1e+1_0', GUION_BAJO],
+      ['char', "'\\u0041'"], ['char', "'\\t'"], ['char', "'\\\\'"], ['char', "'\\''"], ['char', "'\\101'"],
+      ['String', '"\\"q\\""'], ['String', '"\\u00e9"'], ['String', '"tab\\t"'], ['String', '"a\\\\b"'],
+    ] as readonly EntradaDeLiteral[]
+  ).map(([tipo, texto, ...rasgos]): LiteralRaro => ({ tipo, texto, valido: true, rasgos })),
+  ...(
+    [
+      ['int', '09'], ['int', '0x'], ['int', '1_', GUION_BAJO], ['int', '1__', GUION_BAJO], ['int', '0b2'], ['int', '3000000000'], ['long', '3000000000'], ['double', '1e'],
+      ['long', '1_L', GUION_BAJO], ['double', '1_.0', GUION_BAJO], ['double', '1._0', GUION_BAJO], ['double', '1_e1', GUION_BAJO],
+      ['double', '1e1_', GUION_BAJO], ['double', '1.0_', GUION_BAJO], ['int', '0x_1', GUION_BAJO], ['int', '0b_1', GUION_BAJO], ['int', '07_', GUION_BAJO],
+      ['char', "'ab'"], ['char', "''"], ['char', "'\\q'"], ['String', '"\\q"'],
+    ] as readonly EntradaDeLiteral[]
+  ).map(([tipo, texto, ...rasgos]): LiteralRaro => ({ tipo, texto, valido: false, rasgos })),
 ];
 
 /** Identificadores válidos poco corrientes: con letras que no son ASCII, con `$` y con `_`. */

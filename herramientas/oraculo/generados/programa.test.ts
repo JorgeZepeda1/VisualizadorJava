@@ -200,6 +200,15 @@ describe('etiquetasDe — los rasgos de construcción que ejerce un programa', (
     expect(etiquetasDe(programa(declaracion({ tipo: 'int', nombre: 'x', inicial: literal('1', 'int') })))).toEqual([]);
   });
 
+  // Tarea 1.33: el `switch` con flecha (`case s -> …`) es un rasgo aparte del `switch` clásico: los falsos rechazos de `case s ->`
+  // (N4) salían como «sin rasgos» porque el generador solo etiquetaba lo que él mismo ponía en un nodo de expresión.
+  it('deduce de la estructura el rasgo switch-flecha (solo con flecha; el switch clásico solo trae switch)', () => {
+    const conFlecha = programa(seleccion({ selector: literal('1', 'int'), casos: [], flecha: true }));
+    const clasico = programa(seleccion({ selector: literal('1', 'int'), casos: [], flecha: false }));
+    expect(etiquetasDe(conFlecha)).toEqual(['switch', 'switch-flecha']);
+    expect(etiquetasDe(clasico)).toEqual(['switch']);
+  });
+
   it('un programa sin ningún rasgo tiene una lista vacía', () => {
     expect(etiquetasDe(programa(declaracion({ tipo: 'int', nombre: 'x', inicial: literal('1', 'int') })))).toEqual([]);
   });

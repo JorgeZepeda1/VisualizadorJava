@@ -1280,10 +1280,12 @@ describe('atribuir — un método sin valor de retorno (void) usado como VALOR (
     expect(new TablaDeLineas(fuente).ubicar(problema.rango.inicio).linea).toBe(3);
   });
 
-  it('control: un método void como SENTENCIA es correcto, también en la actualización de un `for` y con `printf` (que devuelve un PrintStream) como argumento', () => {
+  it('control: un método void como SENTENCIA es correcto, también en la actualización de un `for`; y `printf` (que devuelve un PrintStream) como argumento ya no pasa en silencio (tarea 1.33)', () => {
     expect(atribuirCuerpo('System.out.println("a"); System.out.print(1); System.out.println();')).toEqual([]);
     expect(atribuirCuerpo('for (int i = 0; i < 3; System.out.print(i), i++) { }')).toEqual([]);
-    expect(atribuirCuerpo('System.out.println(System.out.printf("%d", 1));')).toEqual([]);
+    // Tarea 1.33: antes de esta tarea este control esperaba `[]`. javac compila `println(System.out.printf(...))` (println(Object) recibe el PrintStream), pero el
+    // subconjunto no modela ese tipo: dejarlo pasar era un resultado sin comprobar. Ahora es el aviso de «valor de un tipo que no manejo» (bloque de printf, más abajo).
+    expect(atribuirCuerpo('System.out.println(System.out.printf("%d", 1));')).toMatchObject([{ codigo: 'valor-de-tipo-no-soportado', categoria: 'no-disponible' }]);
     expect(atribuirPrograma('import java.util.Scanner; class C { public static void main(String[] a) { Scanner sc = new Scanner(System.in); sc.close(); } }')).toEqual([]);
   });
 
@@ -1696,3 +1698,132 @@ describe('atribuir — un import de java.lang solo vale para una clase de java.l
     expect(conImport('import java.util.Scanner;')).toEqual([]);
   });
 });
+
+describe('atribuir — `return` con valor en `main` (WARNING-2, tarea 1.33): «incompatible types: unexpected return value»', () => {
+  it.each(['return 0;', 'return "a";', 'return true;', 'return 1 + 2;', 'return (1);', 'return -1;', 'return 1.5;', "return 'a';"])('«%s» es retorno-con-valor', (cuerpo) => {
+    const problemas = atribuirCuerpo(cuerpo);
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toMatchObject({ codigo: 'retorno-con-valor', datos: {} });
+  });
+
+  it('con una variable declarada: el error es del `return`, no de la variable', () => {
+    const problemas = atribuirCuerpo('int x = 5; return x;');
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toMatchObject({ codigo: 'retorno-con-valor' });
+  });
+
+  it('con un nombre que ni existe: el PRIMER error es el del `return` (javac lo da antes de mirar la expresión) y después el del nombre', () => {
+    const problemas = atribuirCuerpo('return sinDeclarar;');
+    expect(problemas.map((p) => p.codigo)).toEqual(['retorno-con-valor', 'variable-no-declarada']);
+  });
+
+  it('el error señala el VALOR (la expresión), como javac: `return 42;` → el rango de `42`', () => {
+    const cuerpo = 'return 42;';
+    const fuente = `class C { public static void main(String[] a) { ${cuerpo} } }`;
+    const [problema] = atribuir(analizarPrograma(tokenizar(fuente)));
+    expect(fuente.slice(problema!.rango.inicio, problema!.rango.fin)).toBe('42');
+  });
+
+  it('dentro de un ciclo, de un if o de un switch también es un error', () => {
+    for (const cuerpo of ['int i = 0; while (i < 3) { i++; return i; }', 'if (true) { return 0; }', 'switch (1) { case 1: return 2; }']) {
+      expect(atribuirCuerpo(cuerpo).map((p) => p.codigo), cuerpo).toContain('retorno-con-valor');
+    }
+  });
+
+  it('un error de tipos ANTERIOR gana (javac reporta el primero en el texto de la pasada): `int x = "a"; return 0;` → primero el de la asignación', () => {
+    const problemas = atribuirCuerpo('int x = "a"; return 0;');
+    expect(problemas.map((p) => p.codigo)).toEqual(['tipos-incompatibles-en-asignacion', 'retorno-con-valor']);
+  });
+
+  it('control: `return;` sin valor no da ningún problema', () => {
+    expect(atribuirCuerpo('return;')).toEqual([]);
+  });
+});
+
+describe('atribuir — `println`/`print` con un número de argumentos que no existe (WARNING-2, tarea 1.33): no suitable method found', () => {
+  it.each([
+    ['System.out.println("a", 5);', 'println', ['String', 'int']],
+    ['System.out.print("a", 5);', 'print', ['String', 'int']],
+    ['System.out.println("Suma: ", 1 + 2);', 'println', ['String', 'int']],
+    ['System.out.println(1, 2, 3);', 'println', ['int', 'int', 'int']],
+    ['System.out.print();', 'print', []],
+  ])('«%s» → sin-sobrecarga-aplicable de PrintStream.%s', (cuerpo, nombre, argumentos) => {
+    const problemas = atribuirCuerpo(cuerpo);
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toMatchObject({ codigo: 'sin-sobrecarga-aplicable', datos: { clase: 'PrintStream', nombre, argumentos } });
+  });
+
+  it('con una variable como argumento: `int suma = 3; System.out.println("Suma: ", suma);`', () => {
+    const problemas = atribuirCuerpo('int suma = 3; System.out.println("Suma: ", suma);');
+    expect(problemas[0]).toMatchObject({ codigo: 'sin-sobrecarga-aplicable', datos: { nombre: 'println', argumentos: ['String', 'int'] } });
+  });
+
+  it('control: println() y println(x) y print(x) siguen sin problemas', () => {
+    expect(atribuirCuerpo('int x = 1; System.out.println(); System.out.println(x); System.out.print(x);')).toEqual([]);
+  });
+});
+
+describe('atribuir — el resultado de `printf` (un `PrintStream`) usado como VALOR es un aviso (tarea 1.33): el subconjunto no modela ese tipo', () => {
+  it.each([
+    'int b = System.out.printf("a");',
+    'String s = System.out.printf("a");',
+    'if (System.out.printf("x")) { }',
+    'while (System.out.printf("x")) { }',
+    'int b = System.out.printf("%d", 5) + 1;',
+    'boolean t = !System.out.printf("a");',
+    'int x = 1; x = System.out.printf("a");',
+    'int y = (int) System.out.printf("a");',
+    'Math.abs(System.out.printf("a"));',
+    'System.out.println(System.out.printf("a"));',
+    'System.out.printf("a").println("b");',
+    'System.out.printf("a").printf("b");',
+    'String u = "a" + System.out.printf("a");',
+  ])('«%s» → aviso valor-de-tipo-no-soportado', (cuerpo) => {
+    const problemas = atribuirCuerpo(cuerpo);
+    expect(problemas.length, cuerpo).toBeGreaterThanOrEqual(1);
+    expect(problemas[0], cuerpo).toMatchObject({ codigo: 'valor-de-tipo-no-soportado', categoria: 'no-disponible', datos: { llamada: 'System.out.printf' } });
+  });
+
+  it('el aviso señala la llamada completa (desde `System`)', () => {
+    const cuerpo = 'int b = System.out.printf("a");';
+    const fuente = `class C { public static void main(String[] a) { ${cuerpo} } }`;
+    const [problema] = atribuir(analizarPrograma(tokenizar(fuente)));
+    expect(fuente.slice(problema!.rango.inicio, problema!.rango.fin)).toBe('System.out.printf("a")');
+  });
+
+  it('control: `printf` como SENTENCIA (y en la actualización de un for) NO es un uso como valor: sin problemas', () => {
+    expect(atribuirCuerpo('System.out.printf("a%n"); System.out.printf("%d%n", 5);')).toEqual([]);
+    expect(atribuirCuerpo('for (int i = 0; i < 2; System.out.printf("x")) { }')).toEqual([]);
+  });
+
+  it('control: un método soportado que devuelve un tipo del subconjunto (String.valueOf, Math.abs, s.length()) sigue siendo un valor normal', () => {
+    expect(atribuirCuerpo('String t = String.valueOf(5); int v = Math.abs(-3); String s = "hola"; int n = s.length();')).toEqual([]);
+  });
+
+  it('control: un método fuera del subconjunto sigue avisando por SU propio código (`Integer.valueOf` → método de biblioteca), no por el del valor', () => {
+    const problemas = atribuirCuerpo('int i = Integer.valueOf(5);');
+    expect(problemas[0]).toMatchObject({ codigo: 'metodo-de-biblioteca-no-soportado' });
+  });
+});
+
+describe('atribuir — `var` y `yield` como nombres de variable no dan ningún problema (V, tarea 1.33)', () => {
+  it.each([
+    'int var = 5; var = var + 1; System.out.println(var);',
+    'double yield = 2.5; yield = yield * 2; yield++; yield += 1.5;',
+    'String var = "hola"; String yield = "mundo"; int n = var.length() + yield.length();',
+    'for (int var = 0; var < 3; var++) { System.out.println(var); }',
+    'boolean yield = true; while (yield) { yield = false; } if (yield) { }',
+    'int record = 1; int sealed = 2; int permits = 3; int non = 4; int module = 5; int open = 6; int with = 7;',
+  ])('«%s»', (cuerpo) => {
+    expect(atribuirCuerpo(cuerpo)).toEqual([]);
+  });
+
+  it('una variable llamada `var` sigue teniendo su tipo: `int var = 5; String s = var;` es un error de tipos, como con cualquier nombre', () => {
+    expect(atribuirCuerpo('int var = 5; String s = var;').map((p) => p.codigo)).toEqual(['tipos-incompatibles-en-asignacion']);
+  });
+
+  it('`yield();` es una llamada a un método que no existe (javac: invalid.yield)', () => {
+    expect(atribuirCuerpo('yield();')[0]).toMatchObject({ codigo: 'metodo-no-declarado', datos: { nombre: 'yield' } });
+  });
+});
+

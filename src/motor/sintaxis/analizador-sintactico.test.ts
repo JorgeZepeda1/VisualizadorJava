@@ -350,10 +350,15 @@ describe('analizarImpresion — generalización a print/println con cualquier ex
     expect(() => analizar(fuente)).not.toThrow();
   });
 
-  it('control: "System.out.print()" (sin la "l") SIGUE sin aceptar paréntesis vacíos: verificado contra javac 17 real que print() sin argumentos no existe ("no suitable method found for print(no arguments)") — a diferencia de println()', () => {
-    expect(() => analizar('class C { public static void main(String[] a) { System.out.print(); } }')).toThrow(
-      ErrorDeCompilacion,
-    );
+  // Tarea 1.33 (WARNING-2): este control decía que `print()` era un error de SINTAXIS. No lo es: javac lo lee sin problema y lo rechaza al resolver
+  // el método («no suitable method found for print(no arguments)», verificado con javac 17 real). El analizador sintáctico ya no inventa un error de
+  // puntuación (el alumno recibía «falta un paréntesis», que no era el problema): lo lee como la llamada de cero argumentos que es, y la atribución
+  // la rechaza con `sin-sobrecarga-aplicable` (`atribucion.test.ts`, `palabras-y-nombres.test.ts` y el corpus `w2-print-sin-argumentos`).
+  it('"System.out.print()" (sin la "l") ya NO es un error de sintaxis: es la llamada de cero argumentos que la atribución rechaza (print() no existe en la API real, a diferencia de println())', () => {
+    expect(primeraSentenciaDe('System.out.print();')[0]).toMatchObject({
+      tipo: 'sentencia-expresion',
+      expresion: { tipo: 'llamada', argumentos: [] },
+    });
   });
 });
 

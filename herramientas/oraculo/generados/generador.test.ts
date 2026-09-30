@@ -4,8 +4,16 @@
 // programas, su sintaxis y la proporción de aceptados/rechazados se miden en `generador-javac.test.ts`).
 // Como todo sale de una semilla fija, un fallo de cobertura es reproducible: se sube el peso de la
 // plantilla que falta, no se «reintenta».
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { generarPrograma, generarProgramas } from './generador.ts';
+import { IDENTIFICADORES_CONTEXTUALES } from '../../../pruebas/compilacion/tablas-lexicas.ts';
+import { NOMBRES_CONTEXTUALES, PALABRAS_RESERVADAS } from './vocabulario.ts';
+import { crearAzar } from './azar.ts';
+import { cargarCatalogoApi } from './catalogo-api.ts';
+import { crearEntorno, elegirNombreNuevo } from './entorno.ts';
 import {
   etiquetasDe,
   renderizarExpr,
@@ -414,5 +422,143 @@ describe('cobertura — literales, identificadores y tipos envoltorio al usarse'
     const empaqueta = declaraciones.filter((d) => ['Integer', 'Double', 'Character', 'Long', 'Boolean'].includes(d.tipo) && d.inicial !== null && d.inicial.hijos.length === 0 && ['int', 'double', 'char', 'long', 'boolean'].includes(d.inicial.tipo) && /^[a-z$_]\w*$/i.test(renderizarExpr(d.inicial)));
     expect(desempaqueta.length).toBeGreaterThan(3);
     expect(empaqueta.length).toBeGreaterThan(3);
+  });
+});
+
+// ---- Tarea 1.33: las formas que el generador de la 1.31 NO sorteaba y que las campañas de la 1.32 sí encontraron sueltas ----
+//
+// La campaña de 35 000 programas de la 1.32 midió que de N3/N4 solo salían `1_`, `1__`, `0x1p3` y, UNA vez, `case s ->`; las demás
+// formas (`1_L`, `1_.0`, `1._0`, `1_e1`, `0x1.8p1`, `0x.8p0`, `0X1P-2`, `0x1p3d`) salieron de un sondeo directo con javac. Si el
+// generador no las sortea, la próxima regresión en esas formas solo la verá el corpus. De ahí estas pruebas, y las plantillas de
+// `switch` con flecha y etiqueta de variable constante y de `printf` usado como valor.
+describe('cobertura — 1.33: literales con guion bajo mal puesto y flotantes hexadecimales', () => {
+  const declaracionesConInicial = (): { readonly tipo: string; readonly inicial: Expr }[] =>
+    todasLasDeclaraciones().flatMap((d) => (d.inicial === null ? [] : [{ tipo: d.tipo, inicial: d.inicial }]));
+
+  it.each([
+    ['1_L', 'long'],
+    ['1_.0', 'double'],
+    ['1._0', 'double'],
+    ['1_e1', 'double'],
+  ])('sortea el literal inválido %s, con el tipo que pide (con otro, un error de conversión taparía el del guion bajo) y marcado como error de sintaxis', (texto, tipo) => {
+    const usos = declaracionesConInicial().filter((d) => renderizarExpr(d.inicial) === texto);
+    expect(usos.length, texto).toBeGreaterThan(0);
+    expect(usos.every((d) => d.tipo === tipo && d.inicial.sintaxisInvalida === true), texto).toBe(true);
+  });
+
+  it.each(['0x1.8p1', '0x.8p0', '0X1P-2', '0x1p3d'])('sortea el flotante hexadecimal válido %s como un double', (texto) => {
+    const usos = declaracionesConInicial().filter((d) => renderizarExpr(d.inicial) === texto);
+    expect(usos.length, texto).toBeGreaterThan(0);
+    expect(usos.every((d) => d.tipo === 'double' && d.inicial.sintaxisInvalida !== true), texto).toBe(true);
+  });
+
+  it('etiqueta esos literales con su rasgo, para que sus familias no salgan «sin rasgos»', () => {
+    const rasgosDe = (texto: string) => etiquetasDe({ imports: [], sentencias: todasLasDeclaraciones().filter((d) => d.inicial !== null && renderizarExpr(d.inicial) === texto).slice(0, 1) });
+    for (const texto of ['1_', '1__', '1_L', '1_.0', '1._0', '1_e1']) expect(rasgosDe(texto), texto).toContain('guion-bajo-en-literal');
+    for (const texto of ['0x1p3', '0x1.8p1', '0x.8p0', '0X1P-2', '0x1p3d']) expect(rasgosDe(texto), texto).toContain('flotante-hexadecimal');
+    // Un literal válido de otra clase (un octal) no lleva ninguno de los dos.
+    expect(rasgosDe('017')).toEqual([]);
+  });
+});
+
+describe('cobertura — 1.33: switch con flecha y etiqueta que es una variable constante', () => {
+  // `final int s = 3; switch (s) { case s -> { } }`: la etiqueta es el NOMBRE de una variable `final` declarada antes.
+  function switchesConEtiquetaDeVariable(): { readonly flecha: boolean; readonly etiquetas: readonly Expr[]; readonly finalesDeclaradasAntes: readonly string[] }[] {
+    return muestra.flatMap((programa) => {
+      const finales: string[] = [];
+      const salida: { flecha: boolean; etiquetas: readonly Expr[]; finalesDeclaradasAntes: readonly string[] }[] = [];
+      for (const sentencia of sentenciasDe(programa.sentencias)) {
+        if (sentencia.k === 'declaracion' && sentencia.esFinal) finales.push(sentencia.nombre);
+        if (sentencia.k !== 'seleccion') continue;
+        const deVariable = sentencia.casos.flatMap((c) => (c.etiquetas === 'default' ? [] : c.etiquetas)).filter((e) => e.etiquetas?.includes('etiqueta-de-variable') === true);
+        if (deVariable.length > 0) salida.push({ flecha: sentencia.flecha, etiquetas: deVariable, finalesDeclaradasAntes: [...finales] });
+      }
+      return salida;
+    });
+  }
+
+  it('hay switch con flecha (`case K -> { … }`) y switch clásico (`case K:`) cuya etiqueta es una variable `final` declarada antes, en al menos 25 programas de cada forma', () => {
+    const usos = switchesConEtiquetaDeVariable();
+    const conNombreDeFinal = (flecha: boolean) => usos.filter((u) => u.flecha === flecha && u.etiquetas.every((e) => u.finalesDeclaradasAntes.includes(renderizarExpr(e)))).length;
+    expect(conNombreDeFinal(true)).toBeGreaterThanOrEqual(25);
+    expect(conNombreDeFinal(false)).toBeGreaterThanOrEqual(25);
+  });
+
+  it('a veces la etiqueta NO es constante (una variable sin final) o repite el valor de otra: el error que javac da con `case s ->` también', () => {
+    const usos = switchesConEtiquetaDeVariable();
+    expect(usos.some((u) => u.etiquetas.some((e) => !u.finalesDeclaradasAntes.includes(renderizarExpr(e))))).toBe(true);
+  });
+
+  it('el switch con flecha lleva el rasgo switch-flecha, y la etiqueta de variable, etiqueta-de-variable', () => {
+    const conFlecha = muestra.find((p) => [...sentenciasDe(p.sentencias)].some((s) => s.k === 'seleccion' && s.flecha));
+    expect(conFlecha).toBeDefined();
+    expect(etiquetasDe(conFlecha!)).toContain('switch-flecha');
+    expect(muestra.some((p) => etiquetasDe(p).includes('etiqueta-de-variable' as never))).toBe(true);
+  });
+});
+
+describe('cobertura — 1.33: printf usado como VALOR (devuelve un PrintStream)', () => {
+  const conPrintfComoValor = (): Expr[] => conEtiqueta('printf-como-valor');
+  const esPrintf = (e: Expr): boolean => e.etiquetas?.includes('printf-como-valor') === true;
+
+  it('usa el resultado de printf como inicializador de una declaración (int, String, boolean, double…)', () => {
+    const tipos = new Set(todasLasDeclaraciones().filter((d) => d.inicial !== null && esPrintf(d.inicial)).map((d) => d.tipo));
+    expect(tipos.size).toBeGreaterThanOrEqual(3);
+  });
+
+  it('lo usa como condición de un if/while, como operando, como operando de un cast, como asignación, como argumento de println y como receptor encadenado', () => {
+    const comoCondicion = muestra.some((p) => [...sentenciasDe(p.sentencias)].some((s) => (s.k === 'si' || s.k === 'mientras') && esPrintf(s.condicion)));
+    const comoOperando = todasLasExpresiones().some((e) => e.etiquetas?.includes('operador') === true && e.hijos.some(esPrintf));
+    const comoCast = todasLasExpresiones().some((e) => e.etiquetas?.includes('cast') === true && e.hijos.some(esPrintf));
+    const comoAsignacion = todasLasExpresiones().some((e) => e.etiquetas?.includes('asignacion') === true && e.hijos.some(esPrintf));
+    const comoArgumento = todasLasExpresiones().some((e) => e.partes[0] === 'System.out.println(' && e.hijos.some(esPrintf));
+    const comoReceptor = todasLasExpresiones().some((e) => e.partes[0] === '' && (e.partes[1] ?? '').startsWith('.println(') && esPrintf(e.hijos[0]!));
+    expect({ comoCondicion, comoOperando, comoCast, comoAsignacion, comoArgumento, comoReceptor }).toEqual({
+      comoCondicion: true,
+      comoOperando: true,
+      comoCast: true,
+      comoAsignacion: true,
+      comoArgumento: true,
+      comoReceptor: true,
+    });
+  });
+
+  it('aparece en al menos 60 programas de la muestra, y el printf como sentencia sigue existiendo (no todos son valores)', () => {
+    expect(new Set(conPrintfComoValor().map(renderizarExpr)).size).toBeGreaterThanOrEqual(30);
+    const comoSentencia = muestra.some((p) => p.sentencias.some((s) => s.k === 'expresion' && s.expr.partes[0]!.startsWith('System.out.printf(') && !esPrintf(s.expr)));
+    expect(comoSentencia).toBe(true);
+  });
+});
+
+
+// ---- Tarea 1.33: el vocabulario de nombres del generador es el que el oráculo leyó de javac ----
+
+describe('cobertura — 1.33: las palabras reservadas y los identificadores contextuales del generador son los de javac', () => {
+  it('PALABRAS_RESERVADAS del vocabulario es exactamente la lista del oráculo (`Tokens.TokenKind` de javac 17, corpus/datos/lexico/palabras-reservadas.json)', () => {
+    const raiz = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+    const delOraculo = (JSON.parse(readFileSync(resolve(raiz, 'corpus', 'datos', 'lexico', 'palabras-reservadas.json'), 'utf-8')) as { reservadas: string[] }).reservadas;
+    expect([...PALABRAS_RESERVADAS].sort()).toEqual([...delOraculo].sort());
+    expect(PALABRAS_RESERVADAS).toHaveLength(54);
+  });
+
+  it('los nombres contextuales del vocabulario están en la tabla de javac y ninguno es una palabra reservada', () => {
+    expect(NOMBRES_CONTEXTUALES.filter((nombre) => !IDENTIFICADORES_CONTEXTUALES.includes(nombre))).toEqual([]);
+    expect(NOMBRES_CONTEXTUALES.filter((nombre) => PALABRAS_RESERVADAS.includes(nombre))).toEqual([]);
+  });
+
+  it('al pedir un nombre reservado, el generador puede sortear CADA una de las 54 palabras (en particular las 15 que el motor aceptaba como nombre antes de la 1.33)', () => {
+    // Una muestra de 4 000 programas no alcanza para ver las 54 (solo ~1 de cada 100 nombres es reservado); por eso se sortea el nombre directamente.
+    const entorno = crearEntorno(crearAzar(SEMILLA), cargarCatalogoApi());
+    const sorteadas = new Set<string>();
+    for (let i = 0; i < 4000; i += 1) {
+      const elegido = elegirNombreNuevo(entorno, 'reservada');
+      if (elegido.etiquetas.includes('palabra-reservada-como-nombre')) sorteadas.add(elegido.nombre);
+    }
+    expect(PALABRAS_RESERVADAS.filter((palabra) => !sorteadas.has(palabra))).toEqual([]);
+  });
+
+  it('y la muestra de 4 000 programas ya usa varias de ellas como nombre de una declaración marcada como error de sintaxis', () => {
+    const usadas = new Set(todasLasDeclaraciones().filter((d) => d.sintaxisInvalida === true && PALABRAS_RESERVADAS.includes(d.nombre)).map((d) => d.nombre));
+    expect(usadas.size).toBeGreaterThanOrEqual(10);
   });
 });

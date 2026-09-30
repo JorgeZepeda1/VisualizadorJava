@@ -1,0 +1,4 @@
+N4SwitchFlechaNoConstante.java:6: error: constant expression required
+            case s -> { }
+                 ^
+1 error

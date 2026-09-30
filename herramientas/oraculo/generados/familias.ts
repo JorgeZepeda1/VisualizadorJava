@@ -105,7 +105,7 @@ export function agruparEnFamilias(discrepancias: readonly DiscrepanciaReducida[]
     .sort((a, b) => b.cantidad - a.cantidad || (a.clave < b.clave ? -1 : 1));
 }
 
-// ---- Las familias conocidas de la re-verificación del lote 1 ----
+// ---- Las familias conocidas: las de la re-verificación del lote 1 (F1–F6, V) y las que la 1.32 dejó abiertas (N2, N3, N4, P) ----
 
 export interface FamiliaConocida {
   readonly id: string;
@@ -134,10 +134,19 @@ const RECONOCEDORES: readonly Reconocedor[] = [
   { id: 'F6', nombre: 'método de instancia llamado por el nombre de la clase', reconoce: (f) => f.tipo === 'falso-acepto' && f.codigoJavac === 'compiler.err.non-static.cant.be.ref' },
   { id: 'F4', nombre: '`switch` con etiqueta de otro tipo o `default` repetido', reconoce: (f) => f.tipo === 'falso-acepto' && f.etiquetas.includes('switch') && CLAVES_DE_SWITCH.has(f.codigoJavac) },
   { id: 'F1', nombre: 'cast inválido (JLS 5.5)', reconoce: (f) => f.tipo === 'falso-acepto' && f.codigoJavac === 'compiler.err.prob.found.req' && f.etiquetas.includes('cast') },
+  // Tarea 1.33: N4 va ANTES de V — un `double with = 0x1p3;` falla por el flotante hexadecimal, no por el nombre.
+  {
+    id: 'N4',
+    nombre: 'flotante hexadecimal, o `case` con una variable constante y flecha (javac compila y se rechaza: falsos rechazos)',
+    reconoce: (f) => f.tipo === 'falso-rechazo' && (f.etiquetas.includes('flotante-hexadecimal') || f.etiquetas.includes('switch-flecha')),
+  },
   { id: 'V', nombre: '`var`/`yield` (y otras palabras clave contextuales) como nombre de variable', reconoce: (f) => f.tipo === 'falso-rechazo' && f.etiquetas.includes('nombre-contextual') },
+  { id: 'N2', nombre: 'palabra reservada como nombre de variable (`native`, `enum`, `goto`, `_`…)', reconoce: (f) => f.tipo === 'falso-acepto' && f.etiquetas.includes('palabra-reservada-como-nombre') },
+  { id: 'N3', nombre: 'guion bajo mal puesto en un literal (`1_`, `1_L`, `1_.0`, `1_e1`…)', reconoce: (f) => f.tipo === 'falso-acepto' && f.etiquetas.includes('guion-bajo-en-literal') },
+  { id: 'P', nombre: 'el resultado de `printf` (un `PrintStream`) usado como valor', reconoce: (f) => f.tipo === 'falso-acepto' && f.etiquetas.includes('printf-como-valor') },
 ];
 
-/** La familia conocida (F1–F6, V) a la que pertenece esta familia, o `null` si es NUEVA. */
+/** La familia conocida (F1–F6, V y las de la tarea 1.33: N2, N3, N4, P) a la que pertenece esta familia, o `null` si es NUEVA. */
 export function identificarFamiliaConocida(familia: Pick<Familia, 'tipo' | 'codigoJavac' | 'mensajeJavac' | 'etiquetas'>): FamiliaConocida | null {
   const reconocedor = RECONOCEDORES.find((r) => r.reconoce(familia));
   return reconocedor === undefined ? null : { id: reconocedor.id, nombre: reconocedor.nombre };

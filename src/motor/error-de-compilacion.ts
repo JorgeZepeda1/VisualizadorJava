@@ -2,7 +2,7 @@
 // fuente ocurrió un problema. `compilador.ts` lo atrapa y lo traduce a un `Problema` real
 // (design.md §2.2).
 import type { Rango } from './fuente/rango.ts';
-import type { CodigoDeSintaxis } from './problemas.ts';
+import type { CodigoDeSintaxis, ProblemaDeSintaxisConDatos } from './problemas.ts';
 
 export class ErrorDeCompilacion extends Error {
   readonly rango: Rango;
@@ -18,12 +18,16 @@ export class ErrorDeCompilacion extends Error {
    * gramática ("package" fuera de lugar vs. cualquier otro token inesperado ahí), a diferencia de
    * ";"/")" que sí. Cuando está presente, GANA sobre `esperado` (`compilador.ts`). */
   readonly codigo?: CodigoDeSintaxis;
+  /** Tarea 1.33: para los errores que traen sus propios datos (la palabra reservada usada como nombre, el número con el guion bajo mal
+   * puesto): el código y los datos exactos de ese código. Cuando está presente GANA sobre `codigo` y `esperado` (`compilador.ts`). */
+  readonly conDatos?: ProblemaDeSintaxisConDatos;
 
-  constructor(mensaje: string, rango: Rango, esperado?: string, codigo?: CodigoDeSintaxis) {
+  constructor(mensaje: string, rango: Rango, esperado?: string, codigo?: CodigoDeSintaxis, conDatos?: ProblemaDeSintaxisConDatos) {
     super(mensaje);
     this.name = 'ErrorDeCompilacion';
     this.rango = rango;
     this.esperado = esperado;
     this.codigo = codigo;
+    this.conDatos = conDatos;
   }
 }

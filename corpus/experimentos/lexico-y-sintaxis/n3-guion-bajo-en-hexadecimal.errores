@@ -1,0 +1,4 @@
+N3GuionBajoEnHexadecimal.java:4: error: illegal underscore
+        int t = 0x_1;
+                  ^
+1 error

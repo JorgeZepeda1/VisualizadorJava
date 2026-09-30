@@ -1,0 +1,5 @@
+var.java:2: error: 'var' not allowed here
+public class var {
+             ^
+  as of release 10, 'var' is a restricted type name and cannot be used for type declarations
+1 error

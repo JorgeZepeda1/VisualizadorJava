@@ -331,3 +331,62 @@ describe('tokenizar — reconocimiento NO-DISP léxico (tarea 1.1, ADR 003, desi
     expect(tokens.some((t) => t.tipo === 'no-soportado')).toBe(false);
   });
 });
+
+// ---- Tarea 1.33 (V y N2): qué es una palabra reservada y qué no ----
+//
+// JLS 3.9: `var` (tipo reservado, Java 10) y `yield` (identificador restringido, Java 14) NO son palabras clave del léxico: son
+// identificadores que el PARSER trata de forma especial según el lugar (`var x = 5;`, `yield 5;`). Como nombre de variable valen:
+// `int var;` y `double yield;` compilan con javac 17 (V, falsos rechazos antes de esta tarea). Al revés, 15 de las 54 palabras
+// reservadas (las palabras clave, `_` y los literales `true`/`false`/`null`) se lexeaban como identificadores (`abstract`, `const`,
+// `enum`, `extends`, `goto`, `implements`, `interface`, `native`, `private`, `protected`, `strictfp`, `synchronized`, `transient`,
+// `volatile` y `_`), así que `int native;` se aceptaba (N2, falsos aceptos). La lista completa NO se escribe de memoria: sale de
+// `Tokens.TokenKind` de javac, generada por el oráculo (`palabras-reservadas-java.generado.ts`); estas pruebas usan la tabla de
+// `pruebas/compilacion/tablas-lexicas.ts`, que `herramientas/oraculo/tablas-lexicas.test.ts` cruza con el JDK real.
+describe('tokenizar — var, yield y las demás palabras contextuales son identificadores (V)', () => {
+  it.each(['var', 'yield', 'record', 'sealed', 'permits', 'non', 'module', 'open', 'opens', 'requires', 'transitive', 'exports', 'to', 'uses', 'provides', 'with'])(
+    '«%s» es un identificador (vale como nombre de variable)',
+    (palabra) => {
+      expect(tokenizar(palabra)[0]).toMatchObject({ tipo: 'identificador', texto: palabra });
+    },
+  );
+});
+
+describe('tokenizar — las 15 palabras reservadas que se lexeaban como identificador (N2)', () => {
+  it.each(['abstract', 'const', 'enum', 'extends', 'goto', 'implements', 'interface', 'native', 'private', 'protected', 'strictfp', 'synchronized', 'transient', 'volatile', '_'])(
+    '«%s» es una palabra-clave',
+    (palabra) => {
+      expect(tokenizar(palabra)[0]).toMatchObject({ tipo: 'palabra-clave', texto: palabra });
+    },
+  );
+
+  it('`_` SOLA es reservada (Java 9), pero `__`, `_x`, `x_` y `$_` son identificadores', () => {
+    for (const nombre of ['__', '_x', 'x_', '$_', '_1']) expect(tokenizar(nombre)[0], nombre).toMatchObject({ tipo: 'identificador', texto: nombre });
+  });
+
+  it('nombres que CONTIENEN una palabra reservada son identificadores (nativo, enumerado, extendsAlgo, Native, goto1, $goto)', () => {
+    for (const nombre of ['nativo', 'enumerado', 'extendsAlgo', 'Native', 'Enum', 'goto1', '$goto', 'privateX', 'xprivate']) {
+      expect(tokenizar(nombre)[0], nombre).toMatchObject({ tipo: 'identificador' });
+    }
+  });
+});
+
+describe('tokenizar — un literal con un guion bajo mal puesto es un error del léxico (N3)', () => {
+  it('`int t = 1_;` lanza el error de guion bajo, con el rango del literal', () => {
+    const fuente = 'int t = 1_;';
+    try {
+      tokenizar(fuente);
+      expect.unreachable('debía lanzar');
+    } catch (error) {
+      expect(error).toBeInstanceOf(ErrorDeCompilacion);
+      expect((error as ErrorDeCompilacion).conDatos).toEqual({ codigo: 'guion-bajo-mal-puesto', datos: { numero: '1_' } });
+      expect((error as ErrorDeCompilacion).rango).toEqual({ inicio: 8, fin: 10 });
+    }
+  });
+
+  it('un flotante hexadecimal es UN token no-soportado (no `0x1`, `p3`…)', () => {
+    const tokens = tokenizar('double a = 0x1p3;');
+    expect(tokens.map((t) => t.texto)).toEqual(['double', 'a', '=', '0x1p3', ';', '']);
+    expect(tokens[3]).toMatchObject({ tipo: 'no-soportado', codigo: 'literal-hexadecimal-no-soportado' });
+  });
+});
+

@@ -74,18 +74,24 @@ const MAGNITUD_MAXIMA_INT_UNARIA = 2147483648n; // 2^31: solo válido tras "-" u
 const MAGNITUD_MAXIMA_LARGO_POSITIVO = 9223372036854775807n;
 const MAGNITUD_MAXIMA_LARGO_UNARIA = 9223372036854775808n; // 2^63: solo válido tras "-" unario
 
-/** Punto de entrada: una expresión completa (nivel 1, asignación — design.md §2.4). */
-export function analizarExpresion(cursor: CursorDeTokens): NodoExpresion {
-  return analizarAsignacion(cursor);
+/** Punto de entrada: una expresión completa (nivel 1, asignación — design.md §2.4).
+ *
+ * Tarea 1.33 (N4): `sinLambda` es el `NOLAMBDA` de javac (`term(EXPR | NOLAMBDA)`), el modo en que se lee la expresión de una etiqueta `case`:
+ * ahí `s ->` y `(1) ->` NO son lambdas, la flecha es la del `switch` (`case s -> …`). Baja por todo lo que forma PARTE de la expresión (operandos,
+ * ramas del ternario, lado derecho de una asignación, paréntesis, cast) y se corta donde javac lo corta: los argumentos de una llamada se leen de
+ * nuevo con lambdas permitidas (`arguments()` vuelve a `term(EXPR)`). El índice de un acceso a arreglo también las admite aquí, aunque javac ahí
+ * conserva `NOLAMBDA`: una lambda dentro de un índice de una etiqueta `case` no existe en la práctica y la etiqueta no se interpreta. */
+export function analizarExpresion(cursor: CursorDeTokens, sinLambda = false): NodoExpresion {
+  return analizarAsignacion(cursor, sinLambda);
 }
 
-function analizarAsignacion(cursor: CursorDeTokens): NodoExpresion {
-  const izquierda = analizarTernario(cursor);
+function analizarAsignacion(cursor: CursorDeTokens, sinLambda = false): NodoExpresion {
+  const izquierda = analizarTernario(cursor, sinLambda);
   const token = cursor.actual();
 
   if (OPERADORES_ASIGNACION_SOPORTADOS.has(token.texto)) {
     cursor.avanzar();
-    const valor = analizarAsignacion(cursor);
+    const valor = analizarAsignacion(cursor, sinLambda);
     return {
       tipo: 'asignacion',
       operador: token.texto as '=' | '+=' | '-=' | '*=' | '/=' | '%=',
@@ -96,7 +102,7 @@ function analizarAsignacion(cursor: CursorDeTokens): NodoExpresion {
   }
   if (OPERADORES_ASIGNACION_NO_SOPORTADOS.has(token.texto)) {
     cursor.avanzar();
-    const valor = analizarAsignacion(cursor);
+    const valor = analizarAsignacion(cursor, sinLambda);
     return {
       tipo: 'expresion-no-soportada',
       codigo: CODIGOS_NO_SOPORTADO.asignacionDeBits,
@@ -109,14 +115,14 @@ function analizarAsignacion(cursor: CursorDeTokens): NodoExpresion {
 
 // Nivel 2 (design.md §2.4): "? :" — SIEMPRE NO-DISP en este subconjunto; "->" (lambda) no se
 // intenta parsear en absoluto (requeriría reconocer listas de parámetros, fuera de alcance).
-function analizarTernario(cursor: CursorDeTokens): NodoExpresion {
-  const condicion = analizarBinaria(cursor, 3);
+function analizarTernario(cursor: CursorDeTokens, sinLambda = false): NodoExpresion {
+  const condicion = analizarBinaria(cursor, 3, sinLambda);
   if (!cursor.coincideTexto('?')) return condicion;
 
   cursor.avanzar();
-  analizarAsignacion(cursor); // rama "si verdadero" — se descarta, nunca se va a evaluar (NO-DISP)
+  analizarAsignacion(cursor, sinLambda); // rama "si verdadero" — se descarta, nunca se va a evaluar (NO-DISP)
   cursor.esperarTexto(':');
-  const siFalso = analizarTernario(cursor);
+  const siFalso = analizarTernario(cursor, sinLambda);
   return {
     tipo: 'expresion-no-soportada',
     codigo: CODIGOS_NO_SOPORTADO.operadorTernario,
@@ -127,8 +133,8 @@ function analizarTernario(cursor: CursorDeTokens): NodoExpresion {
 
 // Niveles 3-12: climbing por precedencia, izquierda-asociativo (design.md §2.4). `instanceof` se
 // resuelve aparte porque su lado derecho es un TIPO, no una expresión.
-function analizarBinaria(cursor: CursorDeTokens, precedenciaMinima: number): NodoExpresion {
-  let izquierda = analizarUnaria(cursor);
+function analizarBinaria(cursor: CursorDeTokens, precedenciaMinima: number, sinLambda = false): NodoExpresion {
+  let izquierda = analizarUnaria(cursor, sinLambda);
 
   for (;;) {
     const operador = cursor.actual().texto;
@@ -147,7 +153,7 @@ function analizarBinaria(cursor: CursorDeTokens, precedenciaMinima: number): Nod
       continue;
     }
 
-    const derecha = analizarBinaria(cursor, precedencia + 1);
+    const derecha = analizarBinaria(cursor, precedencia + 1, sinLambda);
     const rango = { inicio: izquierda.rango.inicio, fin: derecha.rango.fin };
     izquierda = OPERADORES_NO_SOPORTADOS_BINARIOS.has(operador)
       ? { tipo: 'expresion-no-soportada', codigo: CODIGOS_OPERADOR_NO_SOPORTADO[operador], datos: {}, rango }
@@ -160,15 +166,15 @@ function analizarBinaria(cursor: CursorDeTokens, precedenciaMinima: number): Nod
 // Nivel 13: prefijos (design.md §2.4, §2.5.1 cast-vs-paréntesis). Corrección obligatoria (sub-lote
 // 1-B, tarea 1.6): "->" (lambdas) no se analizaba en absoluto — hoy produce su aviso NO-DISP en vez
 // de dejar que el resto del análisis se confunda con lo que sigue (C8).
-function analizarUnaria(cursor: CursorDeTokens): NodoExpresion {
-  const lambda = intentarAnalizarLambda(cursor);
+function analizarUnaria(cursor: CursorDeTokens, sinLambda = false): NodoExpresion {
+  const lambda = sinLambda ? null : intentarAnalizarLambda(cursor);
   if (lambda) return lambda;
 
   const token = cursor.actual();
 
   if (token.texto === '~') {
     cursor.avanzar();
-    const operando = analizarUnaria(cursor);
+    const operando = analizarUnaria(cursor, sinLambda);
     return {
       tipo: 'expresion-no-soportada',
       codigo: CODIGOS_NO_SOPORTADO.operadorComplementoBits,
@@ -179,7 +185,7 @@ function analizarUnaria(cursor: CursorDeTokens): NodoExpresion {
 
   if (token.texto === '++' || token.texto === '--') {
     cursor.avanzar();
-    const operando = analizarUnaria(cursor);
+    const operando = analizarUnaria(cursor, sinLambda);
     return {
       tipo: 'incremento-decremento',
       operador: token.texto,
@@ -195,7 +201,7 @@ function analizarUnaria(cursor: CursorDeTokens): NodoExpresion {
 
   if (token.texto === '+' || token.texto === '-' || token.texto === '!') {
     cursor.avanzar();
-    const operando = analizarUnaria(cursor);
+    const operando = analizarUnaria(cursor, sinLambda);
     return {
       tipo: 'unaria',
       operador: token.texto,
@@ -204,10 +210,10 @@ function analizarUnaria(cursor: CursorDeTokens): NodoExpresion {
     };
   }
 
-  const cast = intentarAnalizarCast(cursor);
+  const cast = intentarAnalizarCast(cursor, sinLambda);
   if (cast) return cast;
 
-  return analizarPostfija(cursor);
+  return analizarPostfija(cursor, sinLambda);
 }
 
 function esLiteralEnteroOLargo(token: Token): boolean {
@@ -309,7 +315,7 @@ function errorLiteralDemasiadoGrande(rango: { inicio: number; fin: number }): Er
 // de apertura al final del operando; antes no abría un cast y daba «se esperaba una expresión y se
 // encontró "byte"» para un programa que javac compila. El operando se analiza igual (un cast sin
 // operando sigue siendo un error de sintaxis real).
-function intentarAnalizarCast(cursor: CursorDeTokens): NodoConversion | NodoExpresionNoSoportada | null {
+function intentarAnalizarCast(cursor: CursorDeTokens, sinLambda = false): NodoConversion | NodoExpresionNoSoportada | null {
   if (cursor.actual().texto !== '(') return null;
 
   const posibleTipo = cursor.mirar(1);
@@ -331,7 +337,7 @@ function intentarAnalizarCast(cursor: CursorDeTokens): NodoConversion | NodoExpr
   cursor.avanzar(); // "("
   const tipo = cursor.avanzar(); // el nombre del tipo
   cursor.avanzar(); // ")"
-  const operando = analizarUnaria(cursor);
+  const operando = analizarUnaria(cursor, sinLambda);
   const rango = { inicio, fin: operando.rango.fin };
   if (tipoNoSoportado !== null) {
     return {
@@ -372,8 +378,8 @@ function abreExpresionUnariaSinSigno(token: Token): boolean {
 // Nivel 14: posfijos (design.md §2.4) — "." miembro y "(...)" llamada soportados; "[...]" (acceso
 // a arreglo) y "::" (referencia a método) son NO-DISP, pero se consumen enteros para que el
 // análisis siga en la posición correcta después (ADR 003).
-function analizarPostfija(cursor: CursorDeTokens): NodoExpresion {
-  let expresion = analizarPrimaria(cursor);
+function analizarPostfija(cursor: CursorDeTokens, sinLambda = false): NodoExpresion {
+  let expresion = analizarPrimaria(cursor, sinLambda);
 
   for (;;) {
     const token = cursor.actual();
@@ -468,7 +474,7 @@ function analizarArgumentos(cursor: CursorDeTokens): NodoExpresion[] {
   return argumentos;
 }
 
-function analizarPrimaria(cursor: CursorDeTokens): NodoExpresion {
+function analizarPrimaria(cursor: CursorDeTokens, sinLambda = false): NodoExpresion {
   const token = cursor.actual();
 
   // Tarea NUEVA (sub-lote 1-D5, ADR 003 "deja seguir", cierre de C7 -- mutante real
@@ -549,7 +555,7 @@ function analizarPrimaria(cursor: CursorDeTokens): NodoExpresion {
   }
   if (token.texto === '(') {
     cursor.avanzar();
-    const interior = analizarExpresion(cursor);
+    const interior = analizarExpresion(cursor, sinLambda);
     cursor.esperarTexto(')');
     return interior;
   }

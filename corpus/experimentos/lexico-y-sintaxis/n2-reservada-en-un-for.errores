@@ -1,0 +1,25 @@
+N2ReservadaEnUnFor.java:4: error: not a statement
+        for (int volatile = 0; volatile < 3; volatile++) {
+             ^
+N2ReservadaEnUnFor.java:4: error: ';' expected
+        for (int volatile = 0; volatile < 3; volatile++) {
+                ^
+N2ReservadaEnUnFor.java:4: error: illegal start of expression
+        for (int volatile = 0; volatile < 3; volatile++) {
+                 ^
+N2ReservadaEnUnFor.java:4: error: illegal start of type
+        for (int volatile = 0; volatile < 3; volatile++) {
+                          ^
+N2ReservadaEnUnFor.java:4: error: <identifier> expected
+        for (int volatile = 0; volatile < 3; volatile++) {
+                                         ^
+N2ReservadaEnUnFor.java:4: error: illegal start of type
+        for (int volatile = 0; volatile < 3; volatile++) {
+                                          ^
+N2ReservadaEnUnFor.java:4: error: illegal start of type
+        for (int volatile = 0; volatile < 3; volatile++) {
+                                                     ^
+N2ReservadaEnUnFor.java:7: error: class, interface, enum, or record expected
+}
+^
+8 errors

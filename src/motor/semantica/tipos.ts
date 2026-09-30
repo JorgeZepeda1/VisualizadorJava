@@ -10,7 +10,7 @@
 import type { NodoExpresion } from '../sintaxis/ast.ts';
 import { FIRMAS_JDK, type FirmaMiembro } from '../biblioteca/datos/firmas-jdk.generado.ts';
 import type { Alcance } from './alcance.ts';
-import { buscarFirmas } from './catalogo-api.ts';
+import { buscarFirmas, clasificarMetodo } from './catalogo-api.ts';
 import { resolverSobrecarga } from './sobrecargas.ts';
 
 // El tipo 'desconocido' (design.md §2.1/§2.7) es el sumidero de cascada: nunca se agrega aquí un
@@ -212,6 +212,21 @@ function tipoDeLlamada(expresion: Extract<NodoExpresion, { tipo: 'llamada' }>, a
  */
 export function esLlamadaSinValor(expresion: NodoExpresion, alcance: Alcance): boolean {
   return expresion.tipo === 'llamada' && firmaDeLlamada(expresion, alcance)?.retorno === 'void';
+}
+
+/**
+ * Tarea 1.33 (resto de la 1.32, el `printf` usado como valor): ¿`expresion` es una llamada a un miembro SOPORTADO que devuelve un valor de un
+ * tipo que el subconjunto no modela? Hoy es exactamente `System.out.printf(...)`, que devuelve el propio `PrintStream` para encadenar
+ * (`System.out.printf("a").println("b");`, `int b = System.out.printf("a");`): javac lo compila o lo rechaza según el uso, y el `Tipo` del
+ * subconjunto no tiene `PrintStream`. Como sentencia (el uso de siempre) no se pregunta. La respuesta sale de la firma REAL del oráculo
+ * (`retorno`), nunca de una lista a mano; un miembro que existe pero el subconjunto no soporta ya avisa por SU propio código
+ * (`metodo-de-biblioteca-no-soportado`), así que no se repite aquí. Pura, nunca lanza.
+ */
+export function esLlamadaDeTipoNoModelado(expresion: NodoExpresion, alcance: Alcance): boolean {
+  if (expresion.tipo !== 'llamada') return false;
+  const firma = firmaDeLlamada(expresion, alcance);
+  if (firma === null || firma.retorno === 'void' || tipoDeNombreReflejado(firma.retorno) !== 'desconocido') return false;
+  return clasificarMetodo(firma.clase, firma.nombre) === 'soportado';
 }
 
 // Sub-lote 1-D4 (gap documentado en engram "Gap: System.in/System.out/System.err..."): "System.in"

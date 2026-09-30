@@ -191,14 +191,14 @@ Main         = { "public" | "static" | "final" } "void" "main" "(" ParamMain ")"
 ParamMain    = [ "final" ] "String" ( "[" "]" Id | Id "[" "]" | "..." Id ) ;
 Bloque       = "{" { DeclLocal ";" | Sentencia } "}" ;
 DeclLocal    = [ "final" ] Tipo Declarador { "," Declarador } ;             (* final sin inicializador → NO-DISP *)
-Declarador   = Id [ "=" Expr ] ;
+Declarador   = Id [ "=" Expr ] ;                                (* Id NO es una de las 54 palabras reservadas de javac (`Tokens.TokenKind`, generadas por el oráculo, tarea 1.33): `int native;` da `palabra-reservada-como-nombre`; `var`, `yield`, `record`, `sealed`… no lo son y valen como nombre (JLS 3.9) *)
 Tipo         = "int" | "long" | "double" | "boolean" | "char" | NombreDeTipo ; (* String, Scanner, Random, calificados o no *)
 Sentencia    = Bloque | ";" | ExprSentencia ";" | If | Switch | While | DoWhile | For
-             | "break" ";" | "continue" ";" | "return" ";" ;
+             | "break" ";" | "continue" ";" | "return" [ Expr ] ";" ;   (* `return Expr;` se conserva en el árbol y la atribución lo rechaza en `main` (es `void`): «unexpected return value», tarea 1.33 *)
 ExprSentencia= Asignacion | IncDec | Llamada | "new" NombreDeTipo Argumentos ;  (* otra expresión → error «not a statement» *)
 If           = "if" "(" Expr ")" Sentencia [ "else" Sentencia ] ;
 Switch       = "switch" "(" Expr ")" "{" { Etiqueta { Etiqueta } { DeclLocal ";" | Sentencia } } "}" ;
-Etiqueta     = "case" Expr ":" | "default" ":" ;                             (* "case X ->", yield → NO-DISP *)
+Etiqueta     = "case" Expr ":" | "default" ":" ;                             (* "case X ->", yield → NO-DISP; la Expr de una etiqueta se lee SIN lambdas (`NOLAMBDA` de javac): en `case s ->` la flecha es la del switch *)
 While        = "while" "(" Expr ")" Sentencia ;
 DoWhile      = "do" Sentencia "while" "(" Expr ")" ";" ;
 For          = "for" "(" [ DeclLocal | ExprSentencia { "," ExprSentencia } ] ";" [ Expr ] ";"
@@ -226,7 +226,7 @@ Una declaración en posición de `Sentencia` (`if (c) int x = 5;`) da el error d
 ### 2.5 Ambigüedades
 
 1. **Cast o paréntesis** (regla de JLS 15.16, igual que javac): `(` tipo primitivo `)` es cast siempre; `(` Nombre `)` es cast solo si sigue algo que abre una expresión unaria sin `+`/`-` (identificador, literal, `(`, `!`, `~`, `new`); si no, es paréntesis. Un cast a tipo de referencia pasa a atribución: NO-DISP si el tipo existe, error «cannot find symbol» si no.
-2. **Declaración o expresión** al inicio de sentencia: primitivo o `final` ⇒ declaración; `Nombre[.Nombre]* Id` ⇒ declaración (el tipo se resuelve en atribución: `string nombre` da «cannot find symbol: class string», como err18); `Nombre [ ]` ⇒ arreglo (NO-DISP); `Nombre < … > Id` con `<>` balanceados ⇒ genérico (NO-DISP); `var Id` ⇒ NO-DISP; `Id :` ⇒ etiqueta (NO-DISP); lo demás, expresión. No hace falta retroceso: el conjunto de tipos es cerrado.
+2. **Declaración o expresión** al inicio de sentencia: primitivo o `final` ⇒ declaración; `Nombre[.Nombre]* Id` ⇒ declaración (el tipo se resuelve en atribución: `string nombre` da «cannot find symbol: class string», como err18); `Nombre [ ]` ⇒ arreglo (NO-DISP); `Nombre < … > Id` con `<>` balanceados ⇒ genérico (NO-DISP); `var Id` ⇒ NO-DISP (`var` solo es el tipo si un nombre lo sigue; NO es palabra reservada, así que `int var;` y `var++;` son una variable llamada `var`); `Nombre palabraReservada ;|=|,` ⇒ declaración con un nombre inválido (`palabra-reservada-como-nombre`; `instanceof` es la excepción: `x instanceof T;` es una expresión); `Id :` ⇒ etiqueta (NO-DISP); lo demás, expresión. No hace falta retroceso: el conjunto de tipos es cerrado. **`yield`** (tarea 1.33) es la sentencia NO-DISP solo cuando lo decide la regla de `JavacParser.blockStatement` del JDK 17 (un literal, un nombre, `+ - ! ~`, `null true false new switch this super`, `;`, `++`/`--` si el tercer token no es `;`, o un paréntesis sin comas de primer nivel ni vacío o seguido de flecha); `yield = 5;`, `yield++;`, `yield.length();` y `yield();` son una variable o una llamada.
 3. **`-2147483648` y `-9223372036854775808L`:** el léxico conserva el texto del literal; el analizador valida el rango sabiendo si lo precede un `-` unario (JLS 3.10.1) y si no, «integer number too large» (error de sintaxis, como javac).
 
 ### 2.6 Reconocimiento de lo no soportado (sin reinterpretar)
@@ -235,9 +235,9 @@ Cada construcción se reconoce con una subgramática permisiva que delimita su e
 
 | Detector | Construcciones |
 |---|---|
-| Léxico | `\uXXXX` en cualquier lugar (javac lo procesa incluso en comentarios); literales hexadecimales, octales (incl. `010`, explicando que Java lo lee como 8) y binarios; `float` (`1.5f`); bloques de texto `"""`; escapes válidos en Java fuera de `\n \t \" \' \\` (`\r \b \f \s \0–\377`) |
+| Léxico | `\uXXXX` en cualquier lugar (javac lo procesa incluso en comentarios); literales hexadecimales, octales (incl. `010`, explicando que Java lo lee como 8) y binarios; `float` (`1.5f`); bloques de texto `"""`; flotantes hexadecimales (`0x1p3`, `0x1.8p1`); escapes válidos en Java fuera de `\n \t \" \' \\` (`\r \b \f \s \0–\377`). **Son ERROR, como en javac** (tarea 1.33): un guion bajo mal puesto en un literal (`1_`, `1_L`, `1_.0`, `0x_1`: solo puede ir entre dos dígitos, JLS 3.10.1) y un literal mal formado (`0x`, `0b2`, `0x1.8` sin exponente, `1e`) |
 | Sintaxis | varias clases, interfaces, enums, records; campos, métodos propios, clases internas, inicializadores, anotaciones; `throws`; arreglos (tipo, `new`, acceso, inicializador) salvo el parámetro de `main`; `for` mejorado; etiquetas; `switch` con flecha, como expresión o con `yield`; `try/catch/finally/throw`; `var`; genéricos; lambdas; `::`; `?:`; `& \| ^ ~ << >> >>>` y sus asignaciones; `instanceof`; `this`/`super`; `null`; `float`/`byte`/`short`; `final` sin inicializador; `import static` |
-| Atribución | clases de `java.lang`/`java.util` existentes pero no soportadas y sus miembros; miembros existentes no soportados de clases soportadas (`s.split`, `Math.sin`, `sc.hasNextInt`, `sc.nextLong`, `Long.parseLong`, `System.exit`…); un segundo `Scanner` o `new Scanner` dentro de un ciclo; `Scanner` sobre algo distinto de `System.in`; `useLocale`; `printf`/`String.format` con conversión o bandera no soportada en formato literal |
+| Atribución | clases de `java.lang`/`java.util` existentes pero no soportadas y sus miembros; miembros existentes no soportados de clases soportadas (`s.split`, `Math.sin`, `sc.hasNextInt`, `sc.nextLong`, `Long.parseLong`, `System.exit`…); un segundo `Scanner` o `new Scanner` dentro de un ciclo; `Scanner` sobre algo distinto de `System.in`; `useLocale`; `printf`/`String.format` con conversión o bandera no soportada en formato literal; el resultado de `System.out.printf(...)` (un `PrintStream`, tipo que el subconjunto no modela) usado como valor (tarea 1.33) |
 | Ejecución | formato no literal con conversión no soportada (detiene en ese paso; la traza previa sigue navegable); subnormales (§4.2) si el lote 2 no caracteriza su regla |
 
 Posiciones calibradas con javac: los errores «X expected» se ubican al **final del token anterior** (línea del token anterior); una cadena sin cerrar, en su inicio. Cada regla de posición tiene su caso en el catálogo o en los mutantes.

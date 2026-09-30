@@ -50,6 +50,7 @@ import {
   seleccion,
   si,
   type Caso,
+  type Etiqueta,
   type Expr,
   type Sentencia,
 } from './programa.ts';
@@ -492,7 +493,7 @@ function envolturaYUso(entorno: Entorno): Sentencia[] {
 function literalRaro(entorno: Entorno): Sentencia[] {
   const { azar } = entorno;
   const elegido = azar.elegir(azar.probabilidad(0.72) ? LITERALES_RAROS.filter((l) => l.valido) : LITERALES_RAROS.filter((l) => !l.valido));
-  const valor = literal(elegido.texto, elegido.tipo, elegido.valido ? {} : { sintaxisInvalida: true });
+  const valor = literal(elegido.texto, elegido.tipo, { ...(elegido.valido ? {} : { sintaxisInvalida: true }), ...(elegido.rasgos.length === 0 ? {} : { etiquetas: elegido.rasgos }) });
   return [declararConNombre(entorno, elegido.tipo, valor)];
 }
 
@@ -670,6 +671,89 @@ function switchAlAzar(entorno: Entorno): Sentencia[] {
   return [...previas, seleccion({ selector, casos: casosDeSwitch(entorno, tipo, falla), flecha })];
 }
 
+// ---- switch con etiquetas que son variables constantes (tarea 1.33) ----
+
+type FallaDeSwitchConConstante = 'variable-sin-final' | 'valor-repetido' | 'de-otro-tipo';
+
+/**
+ * `final int s = 3; switch (s) { case s -> { } }`: la etiqueta de un `case` es el NOMBRE de una variable `final` con valor
+ * constante (JLS 15.29). La campaña de la 1.32 encontró el falso rechazo de `case s ->` (el analizador leía `s ->` como una lambda)
+ * UNA vez en 35 000 programas, porque una `final` casi nunca coincidía con un `switch` del mismo programa. Esta plantilla las
+ * declara ANTES y las usa de etiqueta, con flecha o con dos puntos; a veces la variable no es `final` (javac: «constant expression
+ * required»), repite el valor de otra (etiqueta duplicada) o es de otro tipo que el selector.
+ */
+function switchConConstante(entorno: Entorno): Sentencia[] {
+  const { azar } = entorno;
+  const falla: FallaDeSwitchConConstante | null =
+    debeViolar(entorno) || azar.probabilidad(0.12)
+      ? azar.ponderado<FallaDeSwitchConConstante>([[45, 'variable-sin-final'], [30, 'valor-repetido'], [25, 'de-otro-tipo']])
+      : null;
+  const tipo = azar.ponderado<string>([[62, 'int'], [20, 'char'], [18, 'String']]);
+  const previas: Sentencia[] = [];
+  const usados = new Set<string>();
+  const etiquetas: Expr[] = [];
+  const cantidad = 1 + azar.entero(3);
+  for (let i = 0; i < cantidad; i += 1) {
+    const nuevoNombre = elegirNombreCorriente(entorno);
+    const tipoDeLaConstante = falla === 'de-otro-tipo' && i === 0 ? azar.elegir(['long', 'double', 'boolean', tipo === 'int' ? 'String' : 'int']) : tipo;
+    let valor = literalDe(entorno, tipoDeLaConstante);
+    if (falla === 'valor-repetido' && i > 0) valor = literal([...usados][0]!, tipoDeLaConstante);
+    else for (let intento = 0; intento < 12 && usados.has(textoDe(valor)); intento += 1) valor = literalDe(entorno, tipoDeLaConstante);
+    usados.add(textoDe(valor));
+    const esFinal = !(falla === 'variable-sin-final' && i === 0);
+    registrarVariable(entorno, { nombre: nuevoNombre, tipo: tipoDeLaConstante, esFinal, etiquetas: [] });
+    previas.push(declaracion({ tipo: tipoDeLaConstante, nombre: nuevoNombre, inicial: valor, esFinal }));
+    etiquetas.push(nombre(nuevoNombre, tipoDeLaConstante, { primaria: true, etiquetas: ['etiqueta-de-variable'] }));
+  }
+  const selector = referenciaAVariable(asegurarVariable(entorno, tipo, previas));
+  const casos: Caso[] = etiquetas.map((etiqueta) => ({ etiquetas: [etiqueta], cuerpo: cuerpoDeCaso(entorno) }));
+  if (azar.probabilidad(0.55)) casos.splice(azar.entero(casos.length + 1), 0, { etiquetas: 'default', cuerpo: cuerpoDeCaso(entorno) });
+  return [...previas, seleccion({ selector, casos, flecha: azar.probabilidad(0.7) })];
+}
+
+// ---- El resultado de printf usado como valor (tarea 1.33) ----
+
+/**
+ * `int b = System.out.printf("a");`, `if (System.out.printf("x")) { }`, `(int) System.out.printf("a")`, `System.out.printf("a").println("b")`:
+ * `printf` devuelve un `PrintStream` (el mismo `System.out`), un tipo que el subconjunto no modela. La 1.32 dejó como residual que
+ * javac rechaza casi todos esos usos (`PrintStream cannot be converted to int`) y el compilador los daba por buenos; el generador
+ * solo usaba `printf` como sentencia y no los veía. Algunos usos SÍ son válidos (argumento de `println`, receptor encadenado,
+ * concatenación con un `String`, un `Object`): ahí el compilador debe avisar o aceptar, nunca rechazar.
+ */
+function printfComoValor(entorno: Entorno): Sentencia[] {
+  const { azar } = entorno;
+  const previas: Sentencia[] = [];
+  const printf = llamadaAPrintf(entorno, ['impresion', 'printf-como-valor']);
+  const forma = azar.ponderado<'declaracion' | 'condicion' | 'operando' | 'cast' | 'asignacion' | 'argumento-de-println' | 'receptor' | 'argumento-de-biblioteca'>([
+    [26, 'declaracion'], [14, 'condicion'], [12, 'operando'], [8, 'cast'], [10, 'asignacion'], [12, 'argumento-de-println'], [10, 'receptor'], [8, 'argumento-de-biblioteca'],
+  ]);
+  switch (forma) {
+    case 'declaracion':
+      return [declararConNombre(entorno, azar.ponderado<string>([[30, 'int'], [20, 'String'], [15, 'boolean'], [10, 'double'], [8, 'Object'], [10, 'var'], [4, 'char'], [3, 'long']]), printf)];
+    case 'condicion':
+      return [azar.probabilidad(0.6) ? si(printf, [], null) : mientras(printf, [])];
+    case 'operando': {
+      const otro = azar.elegir<readonly [string, string, string]>([['+', 'int', 'int'], ['+', 'String', 'String'], ['*', 'int', 'int'], ['==', 'int', 'boolean'], ['&&', 'boolean', 'boolean'], ['<', 'int', 'boolean']]);
+      const operacion = operadorBinario(otro[0], printf, expresion(entorno, otro[1], 0), otro[2]);
+      return [declararConNombre(entorno, otro[2], operacion)];
+    }
+    case 'cast': {
+      const destino = azar.elegir(['int', 'String', 'double', 'Object', 'boolean']);
+      return [declararConNombre(entorno, destino, castHacia(destino, printf))];
+    }
+    case 'asignacion': {
+      const objetivo = referenciaAVariable(asegurarVariable(entorno, azar.elegir(['int', 'String', 'boolean']), previas));
+      return [...previas, sentenciaExpr(plantilla(['', ' = ', ''], [objetivo, printf], objetivo.tipo, { etiquetas: ['asignacion'] }))];
+    }
+    case 'argumento-de-println':
+      return [sentenciaExpr(imprimir(printf, azar.probabilidad(0.75) ? 'println' : 'print'))];
+    case 'receptor':
+      return [sentenciaExpr(llamada(printf, azar.elegir(['println', 'print']), [literalDe(entorno, 'String')], 'void', { etiquetas: ['impresion'] }))];
+    default:
+      return comoSentencia(entorno, llamada(null, azar.elegir(['Math.abs', 'Integer.parseInt', 'String.valueOf', 'Character.isDigit']), [printf], 'int', { etiquetas: ['llamada-de-biblioteca'] }));
+  }
+}
+
 // ---- Condicionales, ciclos, break y continue ----
 
 function cuerpoSimple(entorno: Entorno, dentroDeCiclo: boolean): Sentencia[] {
@@ -758,9 +842,17 @@ function impresionAlAzar(entorno: Entorno): Sentencia[] {
   if (forma === 'println') return [sentenciaExpr(imprimir(expresionDeCualquierTipo(entorno, 1)))];
   if (forma === 'print') return [sentenciaExpr(imprimir(expresionDeCualquierTipo(entorno, 1), 'print'))];
   if (forma === 'println-vacio') return [sentenciaExpr(llamada(null, 'System.out.println', [], 'void', { etiquetas: ['impresion'] }))];
-  const formato = azar.elegir(['"%d%n"', '"%s%n"', '"%.2f%n"', '"%d"', '"hola%n"']);
+  return [sentenciaExpr(llamadaAPrintf(entorno, ['impresion']))];
+}
+
+const FORMATOS_DE_PRINTF = ['"%d%n"', '"%s%n"', '"%.2f%n"', '"%d"', '"hola%n"'] as const;
+
+/** `System.out.printf(formato, valor)`: devuelve un `PrintStream` (por eso su tipo es `PrintStream`, no `void`). */
+function llamadaAPrintf(entorno: Entorno, etiquetas: readonly Etiqueta[]): Expr {
+  const { azar } = entorno;
+  const formato = azar.elegir(FORMATOS_DE_PRINTF);
   const args = azar.probabilidad(0.85) ? [expresionDeCualquierTipo(entorno, 0)] : [];
-  return [sentenciaExpr(llamada(null, 'System.out.printf', [literal(formato, 'String'), ...args], 'PrintStream', { etiquetas: ['impresion'] }))];
+  return llamada(null, 'System.out.printf', [literal(formato, 'String'), ...args], 'PrintStream', { etiquetas });
 }
 
 // ---- Alcance, flujo y misceláneas (casi siempre errores: pesan poco) ----
@@ -830,6 +922,8 @@ export const PLANTILLAS: readonly PlantillaDeSentencia[] = [
   { nombre: 'llamada-de-biblioteca', peso: 16, generar: llamadaDeBiblioteca },
   { nombre: 'void-como-valor', peso: 2, generar: voidEnPosicionDeValor },
   { nombre: 'switch', peso: 5, generar: switchAlAzar },
+  { nombre: 'switch-con-constante', peso: 2.5, generar: switchConConstante },
+  { nombre: 'printf-como-valor', peso: 2.5, generar: printfComoValor },
   { nombre: 'condicional-o-ciclo', peso: 12, generar: condicionalOCiclo },
   { nombre: 'salto-suelto', peso: 0.6, generar: saltoSuelto },
   { nombre: 'impresion', peso: 15, generar: impresionAlAzar },

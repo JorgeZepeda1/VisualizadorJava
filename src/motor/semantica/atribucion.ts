@@ -45,6 +45,7 @@ import {
   argumentoDeSobrecarga,
   claseDelObjeto,
   esCastPermitido,
+  esLlamadaDeTipoNoModelado,
   esLlamadaSinValor,
   esTipoPrimitivo,
   NOMBRES_DE_CLASE_RECONOCIDOS,
@@ -232,6 +233,14 @@ function visitarSentencia(
       if (sentencia.argumento !== null) visitarValor(sentencia.argumento, alcance, ambito, problemas);
       return;
     case 'retorno':
+      // Tarea 1.33 (WARNING-2, `Attr.visitReturn`): `main` es `void`, así que un `return` con valor es «incompatible types: unexpected return value»,
+      // señalado en la EXPRESIÓN. javac lo reporta primero y luego atribuye la expresión (sus propios errores vienen después, y en la misma posición
+      // javac ya no repite ninguno): `return sinDeclarar;` da UN error, el del `return`.
+      if (sentencia.valor !== null) {
+        problemas.push({ codigo: 'retorno-con-valor', rango: sentencia.valor.rango, datos: {} });
+        visitarValor(sentencia.valor, alcance, ambito, problemas);
+      }
+      return;
     case 'sentencia-vacia':
     case 'no-soportado':
       return;
@@ -514,11 +523,21 @@ function visitarValor(expresion: NodoExpresion, alcance: Alcance, ambito: Ambito
  * (`System.out.print`, `sc.close`) o, si el receptor no es una cadena de nombres, solo el del método.
  */
 function verificarQueTengaValor(expresion: NodoExpresion, alcance: Alcance, problemas: ProblemaAtribucion[]): boolean {
-  if (expresion.tipo !== 'llamada' || !esLlamadaSinValor(expresion, alcance)) return false;
+  if (expresion.tipo !== 'llamada') return false;
   const nombreDelMetodo = expresion.callee.tipo === 'acceso-miembro' ? expresion.callee.miembro : '';
   const llamada = nombreCalificadoDeLaCadena(expresion.callee) ?? nombreDelMetodo;
-  problemas.push({ codigo: 'llamada-sin-valor', rango: expresion.rango, datos: { llamada } });
-  return true;
+  if (esLlamadaSinValor(expresion, alcance)) {
+    problemas.push({ codigo: 'llamada-sin-valor', rango: expresion.rango, datos: { llamada } });
+    return true;
+  }
+  // Tarea 1.33: `System.out.printf(...)` SÍ devuelve un valor (el `PrintStream`), pero el subconjunto no modela ese tipo: usarlo como valor no es un
+  // error de javac que aquí se pueda afirmar ni negar, es una construcción de Java que el visualizador todavía no maneja (aviso, nunca un
+  // resultado inventado, D2). Sin cascada: quien lo llama omite sus comprobaciones de tipo, igual que con una llamada `void`.
+  if (esLlamadaDeTipoNoModelado(expresion, alcance)) {
+    problemas.push({ codigo: CODIGOS_NO_SOPORTADO.valorDeTipoNoSoportado, categoria: 'no-disponible', rango: expresion.rango, datos: { llamada } });
+    return true;
+  }
+  return false;
 }
 
 /**

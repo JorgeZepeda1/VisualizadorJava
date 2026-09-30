@@ -6,6 +6,8 @@
 import type { Rango } from '../fuente/rango.ts';
 // Tarea 1.24: unión CERRADA de códigos "no soportado" (única fuente de verdad, `motor/no-soportado.ts`).
 import type { CodigoNoSoportado } from '../no-soportado.ts';
+// Tarea 1.33: las 54 palabras reservadas, generadas por el oráculo desde `Tokens.TokenKind` de javac 17 (mismo patrón que `identificadores-java.generado.ts`).
+import { PALABRAS_RESERVADAS_JAVA } from '../biblioteca/datos/palabras-reservadas-java.generado.ts';
 
 export type TipoToken =
   | 'identificador'
@@ -43,61 +45,17 @@ export interface Token {
   readonly rango: Rango;
 }
 
-// Palabras reservadas de Java reconocidas por el subconjunto hasta la tarea 1.4 (léxico + núcleo
-// del programa + expresiones + ambigüedades). El resto del catálogo de Java (if/while/for/switch/
-// try/catch/var/…) llega con las tareas que las necesitan (1.5, 1.6). `main`, `String`, `System`,
-// `out`, `println`, `Scanner`, `Random` NO son palabras reservadas de Java (son identificadores
-// comunes) — el analizador sintáctico exige su texto exacto donde corresponde.
-export const PALABRAS_CLAVE: ReadonlySet<string> = new Set([
-  'public',
-  'class',
-  'static',
-  'final',
-  'void',
-  'import',
-  'package',
-  'return',
-  'int',
-  'long',
-  'double',
-  'boolean',
-  'char',
-  'true',
-  'false',
-  'instanceof',
-  'new',
-  // Tarea 1.5 (Sentencia completa) — control de flujo. Deben ser 'palabra-clave', no
-  // 'identificador': de lo contrario "break externo" (etiqueta, tarea 1.6) o cualquier
-  // "palabra-reservada identificador" pasaría el chequeo "identificador identificador" de
-  // `pareceDeclaracionLocal` y se malinterpretaría como el inicio de una declaración.
-  'if',
-  'else',
-  'while',
-  'do',
-  'for',
-  'switch',
-  'case',
-  'default',
-  'break',
-  'continue',
-  // Tarea 1.6 (catálogo NO-DISP) — reservadas por la misma razón (no son identificadores válidos
-  // en Java real, aunque este subconjunto no interprete lo que introducen).
-  'try',
-  'catch',
-  'finally',
-  'throw',
-  'throws',
-  'var',
-  'yield',
-  'this',
-  'super',
-  'null',
-  'float',
-  'byte',
-  'short',
-  // Tarea 1.29: `assert` es palabra reservada desde Java 1.4 (`assert x > 0;` es una sentencia, nunca «identificador identificador»).
-  'assert',
-]);
+// Palabras reservadas de Java (tarea 1.33): las 54 que javac 17 no deja usar como nombre, en su forma EXACTA. La lista no se escribe a
+// mano ni de memoria: la genera el oráculo leyendo `Tokens.TokenKind` del JDK real (`herramientas/oraculo/java/GenerarPalabrasReservadas.java`,
+// `npm run oraculo:datos`) y `herramientas/oraculo/generar-datos.test.ts` comprueba con javac que cada una se rechaza como nombre de variable.
+// Antes de la 1.33 aquí solo estaban las que el subconjunto U3–U7 usa, y 15 de las 54 (`_`, `abstract`, `const`, `enum`, `extends`, `goto`,
+// `implements`, `interface`, `native`, `private`, `protected`, `strictfp`, `synchronized`, `transient`, `volatile`) se aceptaban como el nombre
+// de una variable: falsos aceptos contra javac. `var`, `yield`, `record`, `sealed`, `permits`, `non-sealed` y `when` NO son palabras reservadas
+// (JLS 3.9: son identificadores «contextuales» o restringidos): `int var;` y `double yield;` compilan, así que el léxico los entrega como
+// `identificador` y es el analizador sintáctico quien decide qué significan en cada lugar (`var` como tipo, `yield` como sentencia).
+// `main`, `String`, `System`, `out`, `println`, `Scanner`, `Random` tampoco son palabras reservadas de Java (son identificadores comunes) —
+// el analizador sintáctico exige su texto exacto donde corresponde.
+export const PALABRAS_CLAVE: ReadonlySet<string> = new Set(PALABRAS_RESERVADAS_JAVA);
 
 // Tipos primitivos válidos al inicio de una DeclLocal (design.md §2.3 "Tipo"); `String` no está
 // aquí porque no es palabra clave — se reconoce como identificador con ese texto exacto.

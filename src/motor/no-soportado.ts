@@ -130,6 +130,12 @@ export const CODIGOS_NO_SOPORTADO = {
   operadorBitsAnd: 'operador-bits-and',
   operadorDesplazamiento: 'operador-desplazamiento',
 
+  // Tarea 1.33 (residual de la 1.32): un método SOPORTADO cuyo tipo de retorno el subconjunto no modela — hoy solo `System.out.printf`, que
+  // devuelve un `PrintStream` — usado donde se espera un valor (`int b = System.out.printf("a");`, `if (System.out.printf("x"))`): javac lo
+  // rechaza casi siempre («PrintStream cannot be converted to int»), pero algunos usos son válidos (`println(printf(...))`, el receptor
+  // `printf(...).println(...)`), y decidirlo pide modelar un tipo de referencia más. Lo emite `semantica/atribucion.ts`.
+  valorDeTipoNoSoportado: 'valor-de-tipo-no-soportado',
+
   // Tarea 1.27 (agregada por el orquestador, D2/regla 5 de CLAUDE.md): a diferencia de TODO lo
   // demás en esta tabla (construcciones FUERA del subconjunto U3-U7 por diseño), este código cubre
   // un programa QUE SÍ está en el subconjunto y que las 5 pasadas de `compilador.ts` YA ACEPTARON,
@@ -226,6 +232,9 @@ export interface DatosPorCodigoNoSoportado {
   /** Tarea 1.29: el nombre TAL COMO lo escribió el alumno — el completo en un `import`
    * (`java.util.Locale`), el simple en el resto (`StringBuilder`, `Locale`, el de su propia clase). */
   'clase-no-soportada': { readonly nombre: string };
+  /** Tarea 1.33: la llamada tal como el alumno la escribió, sin argumentos (`System.out.printf`, `flujo.printf`); si el receptor no es una
+   * cadena de nombres, solo el nombre del método. El texto la muestra como `llamada(...)`. */
+  'valor-de-tipo-no-soportado': { readonly llamada: string };
   /** Tarea 1.29: la cláusula `extends`/`implements` de la cabecera de la clase; el texto no necesita más datos. */
   'herencia-no-soportada': Record<never, never>;
   /** Tarea 1.29: `assert cond;` o `assert cond : mensaje;`. */

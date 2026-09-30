@@ -116,6 +116,10 @@ export interface NodoImpresion {
 
 export interface NodoRetorno {
   readonly tipo: 'retorno';
+  /** Tarea 1.33 (WARNING-2 de la re-verificación del lote 1): la expresión de `return expr;`, o `null` para `return;`. `main` es `void`, así que
+   * un `return` con valor es un error de javac («unexpected return value»): el analizador sintáctico lo conserva en el árbol y la atribución
+   * lo rechaza (antes se leía como si faltara el «;» y el alumno recibía un texto que no era el problema). */
+  readonly valor: NodoExpresion | null;
   readonly rango: Rango;
 }
 

@@ -1,0 +1,4 @@
+PPrintfComoCondicion.java:4: error: incompatible types: PrintStream cannot be converted to boolean
+        if (System.out.printf("x")) {
+                             ^
+1 error

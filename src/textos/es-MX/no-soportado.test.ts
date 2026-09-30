@@ -63,6 +63,8 @@ const DATOS_DE_EJEMPLO: Record<CodigoNoSoportado, Record<string, unknown>> = {
   'literal-float-no-soportado': { linea: 1 },
   'literal-octal-no-soportado': { linea: 1, textoOriginal: '010', valorDecimal: 8 },
   'literal-hexadecimal-no-soportado': { linea: 1 },
+  // Tarea 1.33: el resultado de `printf` (un `PrintStream`) usado como valor.
+  'valor-de-tipo-no-soportado': { linea: 1, llamada: 'System.out.printf' },
   'literal-binario-no-soportado': { linea: 1 },
   'asignacion-de-bits': { linea: 1 },
   'operador-ternario': { linea: 1 },
@@ -342,3 +344,23 @@ describe('textosNoSoportado — tarea 1.30: un aviso afirma algo de la construcc
     expect(texto('ejecucion-no-disponible')).toContain('Java sí acepta tu programa');
   });
 });
+
+// Tarea 1.33: `printf` devuelve un `PrintStream` (el mismo `System.out`), un tipo que el subconjunto no modela. Usar ese resultado como
+// valor (`int b = System.out.printf("a");`) es Java válido o no según el uso, y no se puede revisar: aviso, con la salida que SÍ existe.
+describe('textosNoSoportado — el resultado de `printf` usado como valor (tarea 1.33)', () => {
+  it('nombra la llamada y la línea, usa el marco aprobado (sin afirmar que el programa compila) y ofrece la alternativa', () => {
+    const texto = textosNoSoportado['valor-de-tipo-no-soportado']({ linea: 6, llamada: 'System.out.printf' });
+    expect(texto).toBe(
+      'Tu programa usa el resultado de `System.out.printf(...)` como un valor en la línea 6. Es parte de Java, pero este visualizador ' +
+        'cubre las unidades 3 a 7 y todavía no maneja el tipo de ese resultado, así que no puedo revisar si esa parte está bien escrita. ' +
+        'Escribe `System.out.printf(...)` como una sentencia aparte, sin usar lo que devuelve. ' +
+        'No lo ejecuto para no enseñarte un resultado que podría no ser el de Java.',
+    );
+    expect(texto).not.toMatch(/Java sí (lo |la )?(acepta|tiene)/);
+  });
+
+  it('triangulación: con otra llamada la frase cambia con ella', () => {
+    expect(textosNoSoportado['valor-de-tipo-no-soportado']({ linea: 2, llamada: 'flujo.printf' })).toContain('`flujo.printf(...)`');
+  });
+});
+

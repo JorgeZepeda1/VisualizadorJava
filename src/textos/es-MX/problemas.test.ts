@@ -53,6 +53,9 @@ const DATOS_DE_EJEMPLO: Record<CodigoProblema, Record<string, unknown>> = {
   'etiqueta-de-case-de-otro-tipo': { etiqueta: 'String', selector: 'int' },
   'etiqueta-default-duplicada': {},
   'metodo-de-instancia-sin-objeto': { clase: 'String', nombre: 'trim' },
+  'palabra-reservada-como-nombre': { palabra: 'native' },
+  'guion-bajo-mal-puesto': { numero: '1_L' },
+  'retorno-con-valor': {},
 };
 
 describe('textosProblemas — catálogo completo (ADR 015): cada código produce una frase real', () => {
@@ -245,3 +248,73 @@ describe('textosProblemas — un método de instancia llamado con el nombre de l
     expect(texto).toContain('variable de tipo `Scanner`');
   });
 });
+
+// Tarea 1.33 (N2): una palabra reservada como nombre de variable. La frase nombra la palabra tal como la escribió el alumno, dice qué
+// es (una palabra reservada, con significado propio en Java) y qué hacer (elegir otro nombre); nunca «se esperaba un token de tipo
+// identificador», que es lo que decía antes el genérico.
+describe('textosProblemas — una palabra reservada como nombre de variable (N2, tarea 1.33)', () => {
+  it('nombra la palabra, dice que es reservada y pide otro nombre', () => {
+    const texto = textosProblemas['palabra-reservada-como-nombre']({ palabra: 'native' });
+    expect(texto).toBe('`native` es una palabra reservada de Java: tiene un significado propio y no se puede usar como nombre de una variable. Elige otro nombre.');
+  });
+
+  it('triangulación: con otra palabra (`_`, `enum`, `true`) la frase cambia con ella y sigue sin jerga', () => {
+    for (const palabra of ['_', 'enum', 'true', 'goto']) {
+      const texto = textosProblemas['palabra-reservada-como-nombre']({ palabra });
+      expect(texto).toContain(`\`${palabra}\``);
+      expect(texto).not.toMatch(/token|identificador|sintaxis/);
+    }
+  });
+});
+
+// Tarea 1.33 (N3): un guion bajo mal puesto en un literal. La frase nombra el número tal como se escribió y explica la regla.
+describe('textosProblemas — un guion bajo mal puesto en un número (N3, tarea 1.33)', () => {
+  it('nombra el número y explica que el guion bajo solo va entre dos dígitos', () => {
+    const texto = textosProblemas['guion-bajo-mal-puesto']({ numero: '1_L' });
+    expect(texto).toBe('El número `1_L` tiene un guion bajo (`_`) mal puesto: en un número solo puede ir entre dos dígitos, como en `1_000`.');
+  });
+
+  it('triangulación: con otro número la frase cambia con él', () => {
+    expect(textosProblemas['guion-bajo-mal-puesto']({ numero: '0x_1' })).toContain('`0x_1`');
+    expect(textosProblemas['guion-bajo-mal-puesto']({ numero: '1_.0' })).toContain('`1_.0`');
+  });
+});
+
+// Tarea 1.33 (WARNING-2): `return 0;` en `main` decía «Te falta un punto y coma». javac: «incompatible types: unexpected return value».
+describe('textosProblemas — `return` con valor en `main` (WARNING-2, tarea 1.33)', () => {
+  it('explica que main no devuelve ningún valor y qué escribir en su lugar, sin hablar de puntuación', () => {
+    const texto = textosProblemas['retorno-con-valor']({});
+    expect(texto).toBe('`main` no devuelve ningún valor (es `void`), así que `return` va solo, sin nada detrás: escribe `return;`.');
+    expect(texto).not.toMatch(/punto y coma|paréntesis/);
+  });
+});
+
+// Tarea 1.33 (WARNING-2): `println("a", x)` decía «Te falta cerrar un paréntesis». javac: «no suitable method found for println(String,int)».
+describe('textosProblemas — `println`/`print` con un número de argumentos que no existe (WARNING-2, tarea 1.33)', () => {
+  it('println con dos argumentos: el texto genérico MÁS la pista de que recibe un solo valor y de cómo juntar varios con `+`', () => {
+    const texto = textosProblemas['sin-sobrecarga-aplicable']({ clase: 'PrintStream', nombre: 'println', argumentos: ['String', 'int'] });
+    expect(texto).toBe(
+      'Ningún "println(...)" de "PrintStream" acepta los argumentos que le diste (String, int). Revisa el tipo de cada uno. ' +
+        '`println` recibe un solo valor: para mostrar varios, júntalos con `+`, por ejemplo `println("Suma: " + suma)`.',
+    );
+    expect(texto).not.toMatch(/punto y coma|paréntesis/);
+  });
+
+  it('triangulación: `print` con tres argumentos lleva la misma pista con su propio nombre', () => {
+    const texto = textosProblemas['sin-sobrecarga-aplicable']({ clase: 'PrintStream', nombre: 'print', argumentos: ['int', 'int', 'int'] });
+    expect(texto).toContain('`print` recibe un solo valor');
+    expect(texto).toContain('`print("Suma: " + suma)`');
+  });
+
+  it('sin argumentos (`System.out.print()`): dice que no se puede llamar sin argumentos, en vez de «los argumentos que le diste ()»', () => {
+    const texto = textosProblemas['sin-sobrecarga-aplicable']({ clase: 'PrintStream', nombre: 'print', argumentos: [] });
+    expect(texto).toBe('Ningún "print(...)" de "PrintStream" se puede llamar sin argumentos: falta darle un valor. Revisa la llamada.');
+    expect(texto).not.toContain('()');
+  });
+
+  it('control: el texto de otro método (`Math.max("a", 1)`) NO lleva la pista de println, y con UN argumento de println tampoco', () => {
+    expect(textosProblemas['sin-sobrecarga-aplicable']({ clase: 'Math', nombre: 'max', argumentos: ['String', 'int'] })).not.toContain('júntalos');
+    expect(textosProblemas['sin-sobrecarga-aplicable']({ clase: 'PrintStream', nombre: 'println', argumentos: ['Scanner'] })).not.toContain('júntalos');
+  });
+});
+

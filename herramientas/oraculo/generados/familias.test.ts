@@ -165,9 +165,77 @@ describe('identificarFamiliaConocida — las siete de la re-verificación del lo
     expect(identificarFamiliaConocida(familiaDe(JAVAC_COMPILA, programa, rechazo, 'falso-rechazo'))?.id).toBe('V');
   });
 
-  it('una discrepancia que no es ninguna de las siete es una familia NUEVA (null)', () => {
-    const javac = javacRechaza('compiler.err.underscore.as.identifier', "as of release 9, '_' is a keyword");
-    const programa: Programa = { imports: [], sentencias: [declaracion({ tipo: 'int', nombre: '_', inicial: literal('1', 'int'), etiquetas: ['palabra-reservada-como-nombre'], sintaxisInvalida: true })] };
+  it('una discrepancia que no es ninguna de las conocidas es una familia NUEVA (null)', () => {
+    // Un `Integer x = 5L;` (tipo envoltorio) no es F1–F6, V ni de la 1.33: sigue siendo NUEVA.
+    const javac = javacRechaza('compiler.err.prob.found.req', 'incompatible types: long cannot be converted to java.lang.Integer');
+    const programa: Programa = { imports: [], sentencias: [declaracion({ tipo: 'Integer', nombre: 'x', inicial: literal('5L', 'long') })] };
     expect(identificarFamiliaConocida(familiaDe(javac, programa))).toBeNull();
+  });
+});
+
+// Tarea 1.33: las familias que la 1.32 dejó abiertas (N2, N3, N4) y el residual de `printf` como valor dejan de salir como NUEVA
+// y, sobre todo, como «sin rasgos»: cada una lleva el rasgo de construcción que la identifica.
+describe('identificarFamiliaConocida — las de la tarea 1.33 (N2, N3, N4 y printf como valor)', () => {
+  const familiaDe = (javac: VeredictoJavac, programa: Programa, nuestro: VeredictoNuestro = ACEPTA_SIN_EJECUTAR, tipo: DiscrepanciaReducida['tipo'] = 'falso-acepto') =>
+    agruparEnFamilias([discrepancia(1, javac, programa, nuestro, tipo)])[0]!;
+  const RECHAZO_DE_SINTAXIS: VeredictoNuestro = { tipo: 'error-compilacion', codigo: 'error-no-clasificado', linea: 3 };
+
+  it('N2 una palabra reservada como nombre de variable (los 15 falsos aceptos: native, enum, goto, _…)', () => {
+    const javac = javacRechaza('compiler.err.not.stmt', 'not a statement');
+    const programa: Programa = { imports: [], sentencias: [declaracion({ tipo: 'int', nombre: 'native', inicial: null, etiquetas: ['palabra-reservada-como-nombre'], sintaxisInvalida: true })] };
+    const familia = familiaDe(javac, programa);
+    expect(familia.etiquetas).toEqual(['palabra-reservada-como-nombre']);
+    expect(identificarFamiliaConocida(familia)?.id).toBe('N2');
+  });
+
+  it('N3 un guion bajo mal puesto en un literal: lleva el rasgo guion-bajo-en-literal y no sale «sin rasgos»', () => {
+    const javac = javacRechaza('compiler.err.illegal.underscore', 'illegal underscore');
+    const programa: Programa = {
+      imports: [],
+      sentencias: [declaracion({ tipo: 'long', nombre: 't', inicial: literal('1_L', 'long', { etiquetas: ['guion-bajo-en-literal'], sintaxisInvalida: true }) })],
+    };
+    const familia = familiaDe(javac, programa);
+    expect(familia.etiquetas).toEqual(['guion-bajo-en-literal']);
+    expect(familia.clave).not.toContain('sin-rasgos');
+    expect(identificarFamiliaConocida(familia)?.id).toBe('N3');
+  });
+
+  it('N4 un flotante hexadecimal que javac compila y nosotros rechazamos', () => {
+    const programa: Programa = {
+      imports: [],
+      sentencias: [declaracion({ tipo: 'double', nombre: 'a', inicial: literal('0x1p3', 'double', { etiquetas: ['flotante-hexadecimal'] }) })],
+    };
+    const familia = familiaDe(JAVAC_COMPILA, programa, { tipo: 'error-compilacion', codigo: 'falta-punto-y-coma', linea: 3 }, 'falso-rechazo');
+    expect(familia.etiquetas).toEqual(['flotante-hexadecimal']);
+    expect(identificarFamiliaConocida(familia)?.id).toBe('N4');
+  });
+
+  it('N4 un `case s ->` con una variable constante que javac compila y nosotros rechazamos: lleva switch y switch-flecha', () => {
+    const conFlecha: Programa = {
+      imports: [],
+      sentencias: [seleccion({ selector: nombre('s', 'int'), casos: [{ etiquetas: [nombre('k', 'int', { etiquetas: ['etiqueta-de-variable'] })], cuerpo: [] }], flecha: true })],
+    };
+    const familia = familiaDe(JAVAC_COMPILA, conFlecha, RECHAZO_DE_SINTAXIS, 'falso-rechazo');
+    expect(familia.etiquetas).toEqual(['etiqueta-de-variable', 'switch', 'switch-flecha']);
+    expect(identificarFamiliaConocida(familia)?.id).toBe('N4');
+  });
+
+  it('un falso rechazo de un switch CLÁSICO (sin flecha) no es N4', () => {
+    const clasico: Programa = { imports: [], sentencias: [seleccion({ selector: nombre('s', 'int'), casos: [], flecha: false })] };
+    expect(identificarFamiliaConocida(familiaDe(JAVAC_COMPILA, clasico, RECHAZO_DE_SINTAXIS, 'falso-rechazo'))).toBeNull();
+  });
+
+  it('P el resultado de printf usado como valor: un falso acepto con el rasgo printf-como-valor', () => {
+    const javac = javacRechaza('compiler.err.prob.found.req', 'incompatible types: java.io.PrintStream cannot be converted to int');
+    const printf = plantilla(['System.out.printf(', ')'], [literal('"a"', 'String')], 'PrintStream', { etiquetas: ['impresion', 'printf-como-valor'] });
+    const programa: Programa = { imports: [], sentencias: [declaracion({ tipo: 'int', nombre: 'b', inicial: printf })] };
+    const familia = familiaDe(javac, programa);
+    expect(familia.etiquetas).toEqual(['printf-como-valor']);
+    expect(identificarFamiliaConocida(familia)?.id).toBe('P');
+  });
+
+  it('el mismo error de javac con un cast SIGUE siendo F1 (el orden de los reconocedores no pisa a las anteriores)', () => {
+    const javac = javacRechaza('compiler.err.prob.found.req', 'incompatible types: java.lang.String cannot be converted to int');
+    expect(identificarFamiliaConocida(familiaDe(javac, programaConCast('"5"')))?.id).toBe('F1');
   });
 });

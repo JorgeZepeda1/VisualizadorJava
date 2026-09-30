@@ -26,6 +26,11 @@ export type Etiqueta =
   | 'nombre-invalido'
   | 'condicion'
   | 'impresion'
+  // Tarea 1.33: rasgos de las formas que las campañas de la 1.32 encontraron sueltas y que salían «sin rasgos».
+  | 'guion-bajo-en-literal' // un literal con un guion bajo (bien o mal puesto): `1_L`, `1_.0`, `1_e1`…
+  | 'flotante-hexadecimal' // `0x1p3`, `0x1.8p1`, `0x.8p0`, `0X1P-2`, `0x1p3d`
+  | 'etiqueta-de-variable' // la etiqueta de un `case` es el NOMBRE de una variable (`case s ->`), no un literal
+  | 'printf-como-valor' // `System.out.printf(...)` usado donde se espera un valor: devuelve un `PrintStream`
   // Rasgos de las declaraciones que pone el generador.
   | 'var'
   | 'tipo-envoltorio'
@@ -36,6 +41,7 @@ export type Etiqueta =
   | 'do-while'
   | 'for'
   | 'switch'
+  | 'switch-flecha' // Tarea 1.33: `case X -> { … }` en vez de `case X:` (rasgo del `switch` con flecha)
   | 'break'
   | 'continue'
   | 'bloque';
@@ -404,6 +410,7 @@ export function etiquetasDe(programa: Programa): readonly Etiqueta[] {
     const estructural = ETIQUETA_POR_CLASE_DE_SENTENCIA[sentencia.k];
     if (estructural !== undefined) etiquetas.add(estructural);
     if (sentencia.k === 'salto') etiquetas.add(sentencia.palabra);
+    if (sentencia.k === 'seleccion' && sentencia.flecha) etiquetas.add('switch-flecha');
     if (sentencia.k === 'declaracion') {
       if (sentencia.esFinal) etiquetas.add('final');
       if (sentencia.tipo === 'var') etiquetas.add('var');

@@ -1,0 +1,6 @@
+PPrintfComoOperando.java:4: error: bad operand types for binary operator '+'
+        int b = System.out.printf("%d", 5) + 1;
+                                           ^
+  first type:  PrintStream
+  second type: int
+1 error

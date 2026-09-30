@@ -17,7 +17,9 @@
 // errores de asignación definitiva, `final` reasignada, `switch` mal armado, `break`/`continue`
 // fuera de contexto, etc.) y, desde la tarea 1.32, `corpus/experimentos/atribucion/*.java` (el
 // programa mínimo de cada familia de atribución que encontró el generador: cast inválido, miembro de
-// un primitivo, `void` como valor, etiquetas de `switch`, método de instancia por el nombre de la clase…).
+// un primitivo, `void` como valor, etiquetas de `switch`, método de instancia por el nombre de la clase…) y, desde la tarea 1.33,
+// `corpus/experimentos/lexico-y-sintaxis/*.java` (el programa mínimo de cada familia de léxico y sintaxis: `var`/`yield` como nombre, una palabra
+// reservada como nombre, el guion bajo mal puesto, los flotantes hexadecimales, `case s ->`, `printf` como valor, `return 0;` y `println("a", x)`).
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -49,6 +51,7 @@ function fuentesDelCorpus(): FuenteDeCorpus[] {
     ...archivosJava(resolve(RAIZ, 'corpus/curso')),
     ...archivosJava(resolve(RAIZ, 'corpus/experimentos/texto')),
     ...archivosJava(resolve(RAIZ, 'corpus/experimentos/atribucion')),
+    ...archivosJava(resolve(RAIZ, 'corpus/experimentos/lexico-y-sintaxis')),
   ].map((ruta) => ({ id: relative(RAIZ, ruta), fuente: readFileSync(ruta, 'utf-8') }));
   const mutantes = readFileSync(resolve(RAIZ, 'corpus/mutantes/veredictos.jsonl'), 'utf-8')
     .split('\n')

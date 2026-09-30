@@ -57,6 +57,18 @@ function textoDeUnCastInvalido(origen: Tipo, destino: Tipo): string {
   return sugerencia === null ? `${principio}: Java no considera compatibles esos dos tipos.` : `${principio}. ${sugerencia}`;
 }
 
+// Tarea 1.33 (WARNING-2): `System.out.println("a", x)` (una costumbre de Python) decía «Te falta cerrar un paréntesis» y `System.out.print()`
+// «se esperaba una expresión»; javac dice «no suitable method found for println(String,int)». El texto genérico se completa donde hay una
+// pista real: `println` y `print` reciben UN solo valor (para mostrar varios se juntan con `+`), y sin argumentos se dice eso, en vez de
+// «los argumentos que le diste ()».
+function textoDeSinSobrecargaAplicable(clase: string, nombre: string, argumentos: readonly string[]): string {
+  if (argumentos.length === 0) return `Ningún "${nombre}(...)" de "${clase}" se puede llamar sin argumentos: falta darle un valor. Revisa la llamada.`;
+  const generico = `Ningún "${nombre}(...)" de "${clase}" acepta los argumentos que le diste (${argumentos.join(', ')}). Revisa el tipo de cada uno.`;
+  const esImpresion = clase === 'PrintStream' && (nombre === 'print' || nombre === 'println');
+  if (!esImpresion || argumentos.length < 2) return generico;
+  return `${generico} \`${nombre}\` recibe un solo valor: para mostrar varios, júntalos con \`+\`, por ejemplo \`${nombre}("Suma: " + suma)\`.`;
+}
+
 export const textosProblemas: { readonly [K in CodigoProblema]: (datos: DatosPorCodigoProblema[K]) => string } = {
   'falta-punto-y-coma': () => 'Te falta un punto y coma ";" al final de esta línea.',
   'falta-parentesis-cierre': () => 'Te falta cerrar un paréntesis ")".',
@@ -73,8 +85,7 @@ export const textosProblemas: { readonly [K in CodigoProblema]: (datos: DatosPor
     `"${clase}" no tiene ningún valor llamado "${nombre}". Revisa que esté bien escrito y que no le falten los paréntesis "()" si en realidad es un método.`,
   'miembro-no-declarado': ({ clase, nombre }) =>
     `"${clase}" no tiene ningún método llamado "${nombre}()". Revisa que esté bien escrito.`,
-  'sin-sobrecarga-aplicable': ({ clase, nombre, argumentos }) =>
-    `Ningún "${nombre}(...)" de "${clase}" acepta los argumentos que le diste (${argumentos.join(', ')}). Revisa el tipo de cada uno.`,
+  'sin-sobrecarga-aplicable': ({ clase, nombre, argumentos }) => textoDeSinSobrecargaAplicable(clase, nombre, argumentos),
   'sin-constructor-aplicable': ({ clase, argumentos }) =>
     `Ningún constructor de "${clase}" acepta los argumentos que le diste (${argumentos.join(', ')}). Revisa el tipo y la cantidad de cada uno.`,
   'conversion-con-perdida': ({ origen, destino }) =>
@@ -130,6 +141,14 @@ export const textosProblemas: { readonly [K in CodigoProblema]: (datos: DatosPor
   // Tarea 1.32 (F6): `String.trim()` — el método existe, pero se llama sobre una VARIABLE del tipo, no sobre el nombre de la clase.
   'metodo-de-instancia-sin-objeto': ({ clase, nombre }) =>
     `\`${clase}.${nombre}(...)\` no funciona: \`${nombre}()\` se llama sobre una variable de tipo \`${clase}\` (por ejemplo, \`variable.${nombre}(...)\`), no sobre el nombre de la clase.`,
+  // Tarea 1.33 (N2): la palabra tal como la escribió el alumno; dice qué es y qué hacer, sin «token» ni «identificador».
+  'palabra-reservada-como-nombre': ({ palabra }) =>
+    `\`${palabra}\` es una palabra reservada de Java: tiene un significado propio y no se puede usar como nombre de una variable. Elige otro nombre.`,
+  // Tarea 1.33 (N3): el número tal como se escribió y la regla (JLS 3.10.1): el guion bajo solo va entre dos dígitos.
+  'guion-bajo-mal-puesto': ({ numero }) =>
+    `El número \`${numero}\` tiene un guion bajo (\`_\`) mal puesto: en un número solo puede ir entre dos dígitos, como en \`1_000\`.`,
+  // Tarea 1.33 (WARNING-2): `return 0;` en `main` (javac: «incompatible types: unexpected return value»). Antes: «Te falta un punto y coma».
+  'retorno-con-valor': () => '`main` no devuelve ningún valor (es `void`), así que `return` va solo, sin nada detrás: escribe `return;`.',
   'miembro-de-primitivo': ({ tipo, nombre, receptor }) =>
     receptor === undefined
       ? `Un valor de tipo \`${tipo}\` es primitivo: no tiene métodos ni campos, así que no puedes escribir \`.${nombre}\` después de él. Solo los objetos, como un \`String\`, los tienen.`
