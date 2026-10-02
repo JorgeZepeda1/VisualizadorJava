@@ -573,3 +573,246 @@ Mi recomendación: A. Si el PO prefiere avanzar, B con la renuncia escrita, y C 
 - No modifiqué código, pruebas, `tasks.md`, `state.yaml` ni `config.yaml`. Solo agregué esta sección. No hice commit ni push.
 
 **Veredicto final de la re-verificación del lote 1: FAIL por 1 CRITICAL.** Todo lo demás cumple, y el CRITICAL se puede cerrar con una tarea acotada (1.31) o renunciar por escrito. La decisión es del PO.
+
+
+---
+
+## Re-verificación del lote 1 (1.1–1.33)
+
+**Fecha:** 2026-10-02. **Modo:** Strict TDD (inyectado por el orquestador; autoritativo). **Alcance:** las 32 tareas numeradas 1.1–1.33 (la 1.18 no existe, `tasks.md:240`). **Rama:** `feat/lote-1b-sentencias` @ `a1d8580`, árbol limpio al empezar y al terminar (solo cambia este archivo). 24 commits sobre `main` (828 archivos, +37 038/−438); desde la re-verificación anterior (`52adfdd`) hay 5 commits más (`bcab4f7` 1.31, `2e3c60a` 1.32, `bd5e736` 1.33, `abfeb40` y `a1d8580` de plan; 571 archivos, +11 803/−437). Los seis últimos (`52adfdd`…`a1d8580`) NO están subidos: el PR #2 sigue en `1c8cf5b`, `MERGEABLE`/`CLEAN`, con `ci` y `oraculo` verdes sobre ese SHA. Todo lo que ensucia (copias del repositorio, árboles temporales para reproducir el RED, programas, mutantes, scripts) vivió en el *scratchpad*.
+
+### Veredicto: **FAIL** (1 CRITICAL reabierto, hallado con instrumentos independientes; todo lo que mide el plan está en verde)
+
+Lo bueno, medido: las seis familias de atribución del CRITICAL-1 anterior (F1–F6) y todo lo nuevo de la 1.32 y la 1.33 (N1–N6, `var`/`yield`, palabras reservadas, guion bajo, flotantes hexadecimales, `printf` como valor, `return` con valor, `println` con dos argumentos) **están cerrados**: en 1 335 programas escritos a mano por mí, de los que javac rechaza 935, `compilar()` no deja pasar ninguno (0 falsos aceptos; la primera vez eran 32 de 193). El generador de la 1.31 sale con código 0 y 0 discrepancias en la semilla del CI y en una nocturna de 40 000 programas. `npm test` 2 692/2 692, mutantes 100,00 % / 98,84 % / 87,52 %, lint, tipos, E2E y regeneración de datos del JDK en verde.
+
+Lo que cambia el veredicto: **cuatro familias de falsos aceptos siguen vivas**, y las ve cualquier instrumento que no sea la gramática del generador. Con 105 800 programas independientes comparados con javac 17.0.18 real, javac rechaza decenas de miles y `compilar()` deja pasar como válidos programas que javac rechaza, con el texto «Java sí acepta tu programa, pero este visualizador todavía no sabe ejecutar lo que escribiste en la línea N» (falso). Dos de las familias son errores que un alumno de bachillerato sí comete: **una sentencia dentro del `switch` antes del primer `case`** y **usar `args` o `System.in` donde no van** (`args.length()`, `int x = System.in;`, `System.in.nextInt()`, `System.in.read()`). Incumple REQ-COMP-006 («ni más permisivo»), las reglas 4 y 5 de CLAUDE.md y la premisa de la excepción de la 1.30, igual que el CRITICAL anterior. La barrera «0 discrepancias en 218 000 programas» es verdadera y mide lo que su gramática puede producir: no usa `args`, no usa `System.in` como valor, no escribe nada dentro de un `switch` fuera de un `case`, no nombra una clase como una del JDK ni pone una expresión entre paréntesis como sentencia.
+
+---
+
+### Resumen de ejecución (cifras reales, ejecutadas por mí)
+
+| Comando | Resultado |
+|---|---|
+| `npm test` | **2 692 pasan (2 692)**, 60 archivos, 8,3 s, salida 0 (motor 2 658 en 53 archivos; interfaz jsdom 34 en 7) |
+| `npm run test:oraculo` (Temurin 17.0.18+8) | **1.ª corrida: salida 1**, 1 suite de 23 falló (`herramientas/oraculo/generar-datos.test.ts`, integración con el JDK: «La salida de GenerarClasesJdk.java está truncada o incompleta: se leyeron 0 clases…»; 460 pasan + 19 omitidas). El mismo archivo aislado: 55/55 (48 s) y otra vez con la CPU saturada (12 procesos `yes`): 55/55 (158 s). Corrida completa de nuevo: **478 pasan + 1 omitida (479)**, 23 archivos, 91,7 s, salida 0. Es un *flake*; ver WARNING-1 |
+| `npm run lint` / `npm run tipos` (4 `tsc`) | salida 0 / salida 0, sin mensajes |
+| `npm run e2e` (construye por su cuenta; 3 motores) | **17 pasan + 1 omitida**, 18,9 s (la omitida es «sin red» en WebKit, límite conocido de Playwright desde el lote 0) |
+| `npm run oraculo:verificar` | **295 programas, goldens idénticos** a una regeneración real (178 compilan + 117 no), 113 s |
+| Mutantes dentro de `npm test` (C7) | veredicto **2 625/2 625 = 100,00 %** (pide 100 %), línea **2 383/2 411 = 98,84 %** (pide ≥ 95 %), código **2 110/2 411 = 87,52 %** (umbral propio 0,87, intacto) |
+| `oraculo:generados`, semilla del CI (`--semilla 20260929 --cantidad 3000 --max-reducir 100`) | **salida 0, 0 discrepancias**; javac compila 1 470 y rechaza 1 530; línea coincide 938/938 (100,00 %); 10,1 s |
+| `oraculo:generados`, tamaño nocturno (`--semilla 20261002 --cantidad 40000`) | **salida 0, 0 discrepancias**; compila 19 230, rechaza 20 770; línea 12 715/12 720 (99,96 %); 75,7 s |
+| `oraculo:datos` y `oraculo:mutantes` (en copia limpia de `HEAD`, sin tocar el repo) | **bytes idénticos** a lo versionado: 755 firmas, 25 supertipos, 4 477 clases en 226 paquetes, 54 palabras reservadas; 2 625 mutantes (214 compilan, 2 411 no) |
+| Cobertura (informativa, v8, a un directorio del scratchpad) | global: líneas 96,90 %, ramas 93,44 %, funciones 96,45 %, sentencias 95,56 %. Los 17 de 18 archivos de producción cambiados desde `52adfdd` que reporta promedian **99,32 %** de líneas (el menor, `sintaxis/no-soportado.ts` 96,79 %) |
+| Peso (`dist/` del E2E, `gzip -9`) | `index-*.js` 244 379 B + `trabajador-*.js` 57 661 B = **302 040 B** (295,0 KiB; 60,4 % de 500 KB). `npm run presupuesto` sigue sin existir (`herramientas/presupuesto-tamano.ts`, tarea 5.9) |
+| `npm run licencias`; dependencias | 9 de 9 permisivas; `package.json`, `package-lock.json` y `.nvmrc` sin cambios respecto a `main` |
+
+Distribución por capa de `npm test` (2 692): unitarias en `src/motor` 1 596 (26 archivos), `src/textos` 272 (4), `src/presentacion` 29 (2), `src/trabajador` 11 (2), `herramientas` 6 (1); transversales de punta a punta sin DOM en `pruebas/compilacion` 724 (13) y `pruebas/diferencial` 1; arquitectura 19 (4); integración jsdom 34 (7). Aparte: proyecto `oraculo` con JDK real 478 + 1 omitida (23 archivos) y E2E Playwright 17 + 1. Todas las capas usadas figuran en `openspec/config.yaml` → `testing`. Las cifras de `npm test`, mutantes, `test:oraculo` (segunda corrida), E2E y peso coinciden exactamente con `apply-progress` (engram #568).
+
+---
+
+### Criterio de salida del lote 1, C7 y C8
+
+Criterio de salida de `tasks.md` («`motor/{lexico,sintaxis,semantica,compilador}` + `pruebas/compilacion/**` verdes; C7 y C8 cumplidos»): **CUMPLE en lo que mide**, con las cifras de arriba, y las 32 tareas del lote tienen `✅ hecha` (`tasks.md`, 32/32). Pero el requisito que el lote existe para cumplir, REQ-COMP-006 («el veredicto MUST coincidir con javac en el 100 % de los casos: ni más estricto ni más permisivo»), **no se cumple** (CRITICAL-1).
+
+- **C7, primera parte** (37/37 casos del catálogo, primer error de la primera pasada): **CUMPLE** (`catalogo-semantico.test.ts`, `catalogo.test.ts`, `arranque.test.ts`; todo en verde).
+- **C7, segunda parte** (≥ 2 000 mutantes, veredicto 100 %, línea ≥ 95 %): **CUMPLE** (100,00 % / 98,84 %), y regeneré los 2 625 veredictos con javac real: idénticos. La baja del código de 88,47 % a 87,52 % la explica la 1.33 y la **juzgo correcta**: según su registro, 41 mutantes cambian de código y ninguno de veredicto ni de línea (31 son `int int x = 5;`/`area double = 5;`, que javac reporta como `not.stmt` y la métrica mapea a `error-no-clasificado`, y que ahora dan `palabra-reservada-como-nombre`; 9 ganan coincidencia; la aritmética cuadra: 2 133 − 31 − 1 + 9 = 2 110, y el veredicto y la línea quedan idénticos, 100,00 % y 98,84 %). Recalculé el efecto corriendo `compilar()` sobre los 2 625 mutantes: `error-no-clasificado` baja de 1 186 a 1 145 (49,2 % → 47,5 % de los errores) y la jerga «token de tipo» de 373 a 354 (15,5 % → 14,7 %). El umbral 0,87 sigue siendo un mínimo contra retroceso, no un valor inflado.
+- **C8** (una muestra por construcción → su aviso, 0 pasos, 0 errores de sintaxis engañosos): **CUMPLE en lo medido** (59/59 muestras de `corpus/compilacion/avisos/` dan `no-disponible`, 9 controles en `corpus/compilacion/catalogo/`, y el JDK real confirma que las 59 son Java válido). Brecha vigente (WARNING-7): de las construcciones de REQ-SUB-007 que probé una por una (35 programas válidos, más los escapes Unicode aparte), solo 9 siguen dando `ejecucion-no-disponible` en vez de su aviso propio: el segundo `Scanner`, `printf` con `%e`, `%x`, `%1$d` y las banderas `+`, `(`, `#` y espacio (7 variantes), y un patrón de `printf` que no es literal; las otras 26 construcciones, y la de escapes Unicode, dan su aviso.
+
+---
+
+### CRITICAL-1 reabierto: prueba diferencial independiente contra javac 17.0.18 real
+
+**Método.** Nada de lo de abajo usa el generador del repositorio ni su `CompiladorEnLote.java`. Escribí mis propios programas y mis propios instrumentos: (1) un corpus a mano; (2) un mutador propio de 17 operadores semánticos y estructurales; (3) un fuzzer propio de tokens; (4) una matriz propia valor × contexto; (5) focos dirigidos. Para compilar en lote usé la API `JavaCompiler` del JDK en una sola JVM (`-encoding UTF-8 -Xlint:none`, igual que la CLI); la validé contra la CLI `javac` sobre mis 1 335 programas: **0 diferencias** en veredicto y en línea del primer error. Un falso acepto es: javac rechaza y `compilar()` da `ok` o `ejecucion-no-disponible` (único código cuyo texto dice «Java sí acepta tu programa»); un aviso de otro código ante un rechazo de javac es honesto y no cuenta.
+
+| Instrumento (todo escrito por mí) | Programas | javac compila / rechaza | **Falsos aceptos** | Falsos rechazos | Línea igual si ambos rechazan |
+|---|---|---|---|---|---|
+| 1. Corpus a mano: U3–U7 completos (48 válidos, 50 con un error típico), F1–F6, N1–N6, `var`/`yield`, 77 casos de palabras reservadas y nombres, guion bajo, flotantes hex, `printf`, `return`, `println`, léxico, 110 de sintaxis, tipos, `Scanner`, cadenas, `Math`, constantes, flujo, Java 17 y clases | 1 335 | 400 / 935 | **0** | 7 | 803/813 (98,77 %) |
+| 2. Mutador de 17 operadores sobre los 399 programas que javac compila (7 campañas, semillas 1001 y 2001–2006) | 76 416 | 18 143 / 58 273 | **50** (0,086 %) | 233 | 42 368/42 839 (98,90 %) |
+| 3. Fuzzer de tokens (insertar, borrar, intercambiar, reemplazar, duplicar; semilla 3001) | 23 880 | 1 350 / 22 530 | **15** | 21 | 20 656/21 162 (97,61 %) |
+| 4. Matriz valor × contexto: 40 valores (variables de cada tipo, literales, `args`, `System.in/out/err`, llamadas void, clases como valor…) × 81 contextos (declaración, asignación, operadores, comparaciones, condiciones, `switch`, llamadas, casts, miembros) | 3 240 | 982 / 2 258 | **368** | 0 | 100 % |
+| 5. Focos dirigidos (8): sentencias raras dentro de `switch`, operadores sobre referencias, `args`, campos de biblioteca, `main` y nombres de clase raros, constantes, expresiones como sentencias, nombres que chocan con propiedades de JavaScript | 912 | — | **64** | 9 | — |
+
+Cero falsos aceptos en el instrumento 1 es la mejor noticia del lote (la verificación anterior, con 330 programas del mismo estilo, daba 32). De los 40 valores de la matriz, 32 dan **0 falsos aceptos en los 81 contextos** (enteros, `long`, `double`, `char`, `boolean`, `String`, `Scanner`, `Random`, `args[0]`, literales, `null`, llamadas con y sin valor, `Math`, `System` y `String` como clase, `new Object()`, `Math.PI`, `Integer.MAX_VALUE`…): el verificador de tipos es sólido en lo que modela. Los otros 8 son `args`, `args.length`, `args.length()`, `System.in`, `System.out`, `System.err`, `System.in.read()` (367 de los 368 falsos aceptos) y `(i = 3)` como sentencia (el 368.º: familia D).
+
+**Las cuatro familias que sobreviven** (programas mínimos, cada uno dentro de `public class P { public static void main(String[] args) { … } }`; las cuatro las confirmé con la CLI `javac` y con `compilar()` directo):
+
+| Familia | Programa mínimo | javac 17 dice | `compilar()` | Instrumentos que la ven |
+|---|---|---|---|---|
+| **A. Sentencia o declaración en el `switch` antes del primer `case`/`default`** | `int x = 1; switch (x) { break; case 1: break; }` · `int op = 2;` ⏎ `switch (op) {` ⏎ `System.out.println("Elige:");` ⏎ `case 1: … }` · `switch (x) { int y = 2; case 1: break; }` · `switch (x) { x++; }` · `switch (x) { ; }` | `case, default, or '}' expected` (en la línea de la sentencia) | `ejecucion-no-disponible` | focos 24 de 35; mutador 38 de los 50 |
+| **B. `args` y `System.in`/`System.out`/`System.err` como valores sin tipo y sin aviso** | `int n = args.length();` (confusión clásica con `String`) · `int n = args;` · `String t = args.length;` · `args = 5;` · `args++;` · `if (args == 5) { }` · `int x = System.in;` · `String s = System.out;` · `Scanner sc = new Scanner(+System.in);` (también `-`) · `boolean b = System.in == System.out;` · `int n = System.in.nextInt();` · `int c = System.in.read();` | `cannot find symbol` · `String[] cannot be converted to int` · `incompatible types` · `bad operand type InputStream for unary operator '+'` · `unreported exception IOException; must be caught or declared to be thrown` | `ejecucion-no-disponible` | matriz 367 (los 7 valores); mutador 12; fuzzer 14; focos 29 |
+| **C. Clase del alumno con nombre de clase del JDK** | `public class Math { … System.out.println(Math.abs(-1)); … }` · `public class Integer { … Integer.parseInt("5") … }` · `public class System { … System.out.println("x"); … }` | `cannot find symbol` (el `Math`/`System` del alumno no tiene `abs`/`out`) | `ejecucion-no-disponible` y, con `System`, **`ok`** (lo ejecutaría) | focos 3; fuzzer 1 |
+| **D. Expresión entre paréntesis como sentencia** | `int x = 1; (x = 2);` · `(x++);` · `(++x);` · `(sc.nextInt());` · `(System.out.println("a"));` · `(Math.abs(-1));` · `String s = "a"; (s.length());` | `not a statement` | `ejecucion-no-disponible` | focos 8; matriz 1 |
+
+Causa raíz (verificada en el código en A y B; probable en C y D):
+- **A:** `src/motor/sintaxis/analizador-sintactico.ts:783-793` (`analizarSwitch`): el `while` acepta cualquier elemento de bloque (`analizarElementoDeBloque`) también ANTES de la primera etiqueta; javac exige una etiqueta primero.
+- **B:** `src/motor/semantica/tipos.ts:249-276`: `System.in/out/err` solo existen como «argumento reflejado» para resolver una sobrecarga (`new Scanner(System.in)`); como valor en cualquier otra posición (asignación, operador, condición, receptor de un miembro) su tipo es «desconocido» y nada avisa; `args` (un arreglo, fuera del subconjunto salvo como parámetro) no tiene ni tipo ni aviso. Por el principio de la 1.32 («dentro de U3–U7 se modela la regla; fuera, aviso») la respuesta correcta es un error o, como mínimo, un aviso, nunca `ejecucion-no-disponible`.
+- **C:** el nombre de la clase pública no se cruza con el catálogo de clases del JDK (probable). El inverso también falla: `public class Random { Random r = new Random(); }` y `public class Scanner { Scanner s = new Scanner(); }` los compila javac y `compilar()` los rechaza con `tipo-requiere-import`.
+- **D:** `src/motor/sintaxis/ast.ts` no tiene nodo de paréntesis, así que `analizarSentenciaExpresion`/`envolverComoSentenciaExpresion` (`analizador-sintactico.ts:1061-1073`) no distinguen `(x = 2)` de `x = 2` (probable).
+
+Por qué importa más adelante: cuando el lote 2 ejecute, estos programas dejan de ser «una frase falsa» y pasan a ejecutarse con una semántica inventada (el `public class System` ya da `ok` hoy).
+
+**Falsos rechazos** (javac compila; `compilar()` da error de compilación), todos de baja plausibilidad para el curso pero con texto engañoso; ninguno afecta al corpus ni a los mutantes:
+- Java 17 fuera de U3–U7 dado como error en vez de aviso: `if (o instanceof String s)` («Te falta cerrar un paréntesis»), `sealed interface … permits …` (ya declarado en la 1.29), clase anónima `new Runnable() { … };` («Te falta un punto y coma»), y los archivos sin ninguna clase (vacío, solo un comentario, solo `package`, solo `import`: `error-no-clasificado`).
+- Dentro del subconjunto: `final int A = 'a'; char c = A;` (constante derivada de un literal `char`: `conversion-con-perdida`), `final String S = (String) "a"; … case S:` (`etiqueta-de-case-no-constante`; un cast a `String` o a un primitivo sigue siendo constante, JLS 15.29), `int x; if ((boolean) true) { x = 1; } System.out.println(x);` (`variable-posiblemente-no-asignada`), `(Integer) 017` o `(String) "…\0…"` (un cast seguido de un literal con aviso da «Te falta un punto y coma»), `main(String[] args, int x)` y `main(String args)` (error de paréntesis o genérico), la llamada `main(args);`, y escapes Unicode con significado sintáctico (el de la comilla o el de `&&`).
+
+**Fallos internos** (`compilar()` LANZA; la interfaz los muestra como `error-interno`, honesto, pero ese tramo de `tipos.ts` se documenta como «Pura, nunca lanza», `tipos.ts:278`): `new Scanner(System.toString)`, `Math.abs(System.valueOf)`, `s.equals(System.constructor)`… cualquier `System.<propiedad de Object.prototype de JavaScript>` (`toString`, `valueOf`, `constructor`, `hasOwnProperty`, `__proto__`…) como argumento da `TypeError: campo.lastIndexOf is not a function`. Causa: `CAMPOS_DE_SYSTEM_REFLEJADOS` (`tipos.ts:249`) es un objeto literal y `CAMPOS_DE_SYSTEM_REFLEJADOS[expresion.miembro] ?? null` (`tipos.ts:269`) devuelve la función heredada, no `undefined`, así que el `?? null` no actúa; `nombreDeArgumentoParaMostrar` (`tipos.ts:299`) la usa como texto y revienta. 56 de las 120 variantes que probé lanzan (8 nombres de `Object.prototype` × 7 posiciones de argumento); 3 de los 76 416 mutantes también. Aparte, con anidamientos patológicos `compilar()` lanza `RangeError: Maximum call stack size exceeded` (a partir de ≈ 1 000 paréntesis anidados, 2 000 casts seguidos, 1 600 `if` anidados o 10 000 términos de una suma); la CLI de javac también se rinde con `StackOverflowError` desde ≈ 4 000 términos de una suma, 4 000 casts, 5 000 paréntesis, 1 600 `if` anidados o 4 000 `else if`, así que el orden de magnitud es el mismo (solo el de paréntesis es entre 4 y 8 veces menor) y no lo cuento como hallazgo: ningún programa de alumno se acerca.
+
+**Líneas distintas** (ambos rechazan, distinta línea): casi todas son la precedencia léxico/sintaxis que la 1.33 dejó abierta (un error léxico posterior —cadena sin cerrar, comilla tipográfica, guion bajo mal puesto, literal mal formado— gana a un `';' expected` anterior, porque `tokenizar` lee todo antes de la sintaxis y javac lee token a token). Medido: 10 de 813 en mi corpus (1,2 %), 471 de 42 839 en los mutantes (1,1 %), 506 de 21 162 en el fuzzer (2,4 %), 5 de 12 720 en la nocturna del generador (0,04 %). No es de veredicto (las dos partes rechazan, y las dos fallas son reales); el criterio de línea de C7 (≥ 95 %) no se ve afectado. Sale además `import java.sqrt.*;` (javac señala el `import`, nosotros el primer uso del tipo, 3 líneas después) y un campo sin `;` (`int x = 5` en el cuerpo de la clase, línea 2 contra 3).
+
+---
+
+### TDD estricto: reconstrucción de la tabla de evidencia (tareas 1.31–1.33) y juicio
+
+`apply-progress` (engram #568) no trae la tabla de 8 columnas de `strict-tdd.md`; trae narrativa por tarea, y `tasks.md` trae el **RED escrito ciclo por ciclo con la línea literal de cada fallo** (1.31: 18 ciclos; 1.32: 12; 1.33: 7), más detallada que una tabla. La tabla la reconstruí yo, y **el RED lo reproduje contra el código de producción del commit padre** (árbol temporal: pruebas y corpus del commit de la tarea, producción del padre; `gitattributes.test.ts` falla siempre en esos árboles porque no tienen `.git`, así que lo descarto):
+
+| Tarea | Pruebas (capa) | Safety net | RED reproducido contra la producción previa | GREEN hoy | Triangulación | Refactor |
+|---|---|---|---|---|---|---|
+| 1.31 (`bcab4f7`) | 10 archivos en `herramientas/oraculo/generados/` + `programas-generados.test.ts` + `compilar-en-lote.test.ts` (oráculo, JDK real; transversales) | `npm test` 1 713 sin cambio | **12 archivos fallan**: 11 no cargan (`Cannot find module './clasificador.ts'` y los demás módulos del generador) y 1 aserción (`--solo-sintaxis`: `expected false to be true`), tal como declara `tasks.md`; RED «módulo inexistente», que `strict-tdd.md` admite, compensado con 2 sabotajes de sensibilidad (RED 18) y el generador de juguete (RED 6) | `test:oraculo` 478 + 1 | clasificador, reductor y campaña con compiladores falsos (acepta todo / rechaza todo / espejo / lanza) | sí (gramática de «una violación por sentencia», retiro de código muerto) |
+| 1.32 (`2e3c60a`) | `atribucion.test.ts`, `problemas.test.ts`, `asignacion-definitiva.test.ts`, `compilador.test.ts`, 3 guardas de corpus y tablas de verdad (unitaria y transversal) | 1 713 | **315 fallos en 9 archivos, 311 sin los 4 de `gitattributes` (descartados)**: `atribucion.test.ts` 124, `atribucion-del-corpus` 79, `tablas-de-atribucion` 67, textos 26, `asignacion-definitiva` 10, `compilador` 2, `programas-invalidos` 2, `programas-validos` 1; 1 785 pasan | 2 100 | tablas de 64 pares de cast y de 39 celdas de `switch` con los datos de javac, 41 programas que javac rechaza y 10 controles | sí (`problemaDeNombreDeTipo`, `verificarReasignacionDeFinal` retirado, tablas compartidas) |
+| 1.33 (`bd5e736`) | 13 archivos: `palabras-y-nombres` (nuevo), `literales`, `analizador-lexico`, `atribucion`, textos, corpus nuevo, tablas léxicas (y 2 en el proyecto `oraculo`) | 2 100 | **312 fallos (308 sin los 4 de `gitattributes`) en 13 archivos, con los conteos por archivo EXACTOS de `tasks.md`**: `palabras-y-nombres` 103, `lexico-y-sintaxis-del-corpus` 62, `literales` 61, `atribucion` 41, `analizador-lexico` 19, textos 17 (11 + 6), `programas-invalidos` 2, más 1 por archivo en `analizador-sintactico`, `programas-validos`, `atribucion-del-corpus` y `tablas-lexicas` (no carga: falta el módulo generado) | 2 692 | 48 programas del corpus (31 que javac rechaza, 17 que compila), 87 + 57 literales, 54 palabras × 5 contextos, 44 formas de `yield` | sí |
+
+**Juicio.** Cumple. El RED de las tres tareas existe, está escrito con su línea literal y lo reproduje con los mismos conteos (los de 1.33 por archivo, exactos). Dos desviaciones de orden, declaradas por el propio registro y que no juzgo CRITICAL: (a) 1.32 ciclo 9 y 1.33 ciclo 6, las tablas de verdad compartidas, «pasaron en verde a la primera» o se escribieron DESPUÉS del GREEN, como prueba independiente de las reglas (son datos de javac, no derivados del código); la sensibilidad de las del 1.33 la prueban el RED contra `2e3c60a` (125 fallos de 221) y 11 sabotajes sobre copia del árbol; (b) el RED de los módulos puros nuevos de la 1.31 es el de «módulo inexistente», débil pero válido y compensado. La tabla de 8 columnas sigue ausente en `apply-progress` (heredado del lote 0; WARNING-6).
+
+Compliance TDD: evidencia reportada (narrativa con líneas literales), 3/3 tareas con pruebas, RED confirmado por reproducción 3/3, GREEN confirmado (2 692 + 478 + 17), triangulación adecuada (≥ 2 casos por comportamiento), safety net en cada línea «Verif».
+
+### Calidad de aserciones (31 archivos de prueba cambiados desde `52adfdd`)
+
+Sin tautologías, sin dobles (`vi.mock`, `vi.fn`, `vi.spyOn`: 0), sin lazos fantasma: las guardas de corpus y las tablas aseveran su tamaño (`≥ 48`, `≥ 51`, `≥ 117`, `≥ 178`, `toHaveLength(64)`, `(39)`, `(54)`, `(17)`, `(87 + 57 + …)`), y los `toBeDefined()` y `not.toBeNull()` que hay van seguidos de aserciones de valor en la misma prueba o acompañados de su prueba negativa. **Calidad: 0 CRITICAL, 0 WARNING, 2 SUGGESTION heredadas** (ver abajo).
+
+---
+
+### Requisitos del lote 1: al menos un escenario con prueba que pasa (evidencia `archivo:línea`, todo en verde)
+
+| Requisito / escenario | Prueba que lo respalda | Resultado |
+|---|---|---|
+| REQ-SUB-001 «clase con nombre propio» / «`package` se ignora» | `pruebas/diferencial/u3-hola-mundo.test.ts:11`; `compilador.test.ts:603`; `analizador-sintactico.test.ts:77`; `compilador.test.ts:373` | CUMPLE |
+| REQ-SUB-002 «long sin `L`» | `sintaxis/ambiguedades.test.ts:112` | CUMPLE |
+| REQ-SUB-003 «`cx += 1.7`» | `semantica/atribucion.test.ts:688` (no se rechaza). Que `cx` quede en 6 exige ejecutar | PARCIAL por diseño (lote 2) |
+| REQ-SUB-004 «redeclarar en bloque anidado» | `atribucion.test.ts:70-72` | CUMPLE |
+| REQ-SUB-005 «`Character.isDigit('5')`» | `semantica/catalogo-api.test.ts:30` | CUMPLE |
+| REQ-SUB-006 «arreglo fuera de alcance» / «octal `010`» | `textos/es-MX/no-soportado.test.ts:111` y `:121`; `lexico/analizador-lexico.test.ts:150` | CUMPLE |
+| REQ-SUB-006 cláusula «y N más» | motor: `adicionales`; ninguna prueba con N > 0 ni UI; asignada a la 4.5 (`tasks.md:651`) | PARCIAL (WARNING-8) |
+| REQ-SUB-007 «método propio» | `sintaxis/no-soportado.test.ts:97` | CUMPLE |
+| REQ-COMP-001 «`Math.round` a `int`» / «condición no booleana» | `atribucion.test.ts:271` / `:370` | CUMPLE |
+| REQ-COMP-002 «variable de `for` tras cerrarlo» | `atribucion.test.ts:44`; `alcance.test.ts:60` | CUMPLE |
+| REQ-COMP-003 «sombreado en `if`» | `atribucion.test.ts:72` | CUMPLE |
+| REQ-COMP-004 «`while` variable» / «`while(true)` con `break`» | `asignacion-definitiva.test.ts:30` / `:163` | CUMPLE |
+| REQ-COMP-005 «falta `;`» | `problemas.test.ts:36` (`err01`); E2E `problemas-en-pantalla.spec.ts` | CUMPLE |
+| REQ-COMP-006 los 3 escenarios (`{` faltante, atribución oculta DA, alcanzabilidad antes de DA) | `compilador.test.ts:518` y siguientes | CUMPLE |
+| **REQ-COMP-006 «ni más estricto ni más permisivo» (cláusula general)** | mis 105 800 programas contra javac real | **❌ FALLA** (CRITICAL-1: familias A–D permisivas; falsos rechazos del apartado de arriba) |
+| REQ-COMP-007 «`public void main`» / REQ-COMP-008 «sin `main`» | `arranque.test.ts:38` / `:23`; `compilador.test.ts:562` | CUMPLE |
+| REQ-COMP-009 «clase pública con cualquier nombre» | `compilador.test.ts:603` | CUMPLE (pero ver familia C) |
+| REQ-COMP-010 «tras `return`» / «`while (1 < 2)`» | `alcanzabilidad.test.ts:40` / `:86` | CUMPLE |
+| REQ-DIFF-004 (parte C8) / REQ-DIFF-006 (C7) | `pruebas/compilacion/catalogo.test.ts:27`; `mutantes.test.ts:196-221` | CUMPLE |
+| REQ-VIS-002 (texto y línea, 1.28) | `pruebas/compilacion/problemas-en-pantalla.test.ts:90` (recorre el corpus y los mutantes); E2E ×3 motores | CUMPLE; ícono, título y subrayado son de la 4.5 |
+
+Requisitos sin respaldo: ninguno. Los de 1.31–1.33 (`REQ-DIFF-004`, `REQ-DIFF-006`, `REQ-COMP-006`) tienen su guarda; lo que falta no es una prueba sino cobertura de las familias A–D.
+
+---
+
+### Estado de los hallazgos de la verificación anterior (1.1–1.30), uno por uno
+
+| Hallazgo anterior | Estado hoy | Evidencia |
+|---|---|---|
+| **CRITICAL-1** falsos aceptos de atribución (32/193) | **Reducido y REABIERTO** en 4 familias nuevas | F1–F6 y lo de 1.32/1.33: 0 en 935 rechazos míos; sobreviven A–D (sección anterior) |
+| WARNING-1 falsos rechazos `var`/`yield`, `sealed`/`permits`, `0x1p3` | **Parcialmente cerrado** | `var`/`yield` y `0x1p3` coinciden con javac (corpus V y N4); `sealed`/`permits` sigue dando error (50 de los 233 falsos rechazos de mutantes) |
+| WARNING-2 textos equivocados (`return 0;`, `println("a", x)`, `int x = x + 1;`) | **Cerrado** | «`main` no devuelve ningún valor (es `void`)… escribe `return;`»; «Ningún "println(...)" acepta los argumentos… júntalos con `+`»; «La variable "x" podría no tener un valor asignado» |
+| WARNING-3 jerga de `error-no-clasificado` | **Abierto** (mejora leve) | 1 145 de 2 411 errores de mutantes (47,5 %; antes 49,2 %); «token de tipo "identificador"» en 354 (14,7 %; antes 15,5 %); 0 restos de interpolación o de JavaScript. En mi corpus: 117 de 820 (14,3 %). Pendiente de la revisión del PO (5.11) |
+| WARNING-4 evidencia TDD sin tabla; RED de la 1.29 perdido | **Abierto, mejorado** | 1.31–1.33 traen RED literal por ciclo y lo reproduje; la tabla de 8 columnas sigue ausente en `apply-progress`; lo perdido en la 1.29 no se recupera |
+| WARNING-5 «y N más» sin prueba, sin UI y sin tarea | **Reubicado, no implementado** | `tasks.md:651` (la 4.5 lo muestra y lo prueba con N > 0) |
+| WARNING-6 C8, brechas | **Abierto** | segundo `Scanner`, `printf` con `%e %x %1$d` y banderas, patrón no literal: `ejecucion-no-disponible` (9 de 35 construcciones probadas); plan 2.15 |
+| WARNING-7 peso sin puerta | **Abierto** | 302 040 B, `presupuesto` inexistente (5.9), motor duplicado (3.6, `tasks.md:603`, ya con cifras de la 1.33) |
+| SUGGESTION-1 `proposal.md:78` «(Java sí)» | **Cerrada** | sin coincidencias de «Java sí» en `proposal.md`; §2.3 dice «Java tampoco lo acepta» |
+| SUGGESTION-2 conteos desactualizados | **Casi cerrada** | `tasks.md` 19/32/22/8/16/14/8 = 119 (ok), `CLAUDE.md` 119/73/96 (ok), `state.yaml` (`phases.tasks` ok); sigue `openspec/config.yaml` (`context`: «lote 0 en cierre») y `CLAUDE.md` menciona marcas `[x]`/`[ ]` cuando `tasks.md` usa `✅ hecha` |
+| SUGGESTION-3 numeración 1.18 y fechas de 1.16/1.22 | **Cerrada** | `tasks.md:240` explica la 1.18; 1.16 y 1.22 dicen 2026-09-28, como sus commits |
+| SUGGESTION-4 nota que apunta a la 3.5 | **Cerrada** | el seguimiento vive en la 3.6 (`tasks.md:603`) |
+| SUGGESTION-5 aserciones débiles | **Abierta** | `pruebas/compilacion/catalogo.test.ts:52` (`adicionales ≥ 0`) y `sobrecargas.test.ts:95` sin cambios |
+| SUGGESTION-6 editor sin nombre accesible | **Abierta** | `src/interfaz` sin cambios desde `52adfdd`; sin `aria-label` en `EditorJava.tsx`; planeada en la 5.10 |
+| SUGGESTION-7 `REQ-BIB-003` nombra `%e` | **Abierta** | `specs/biblioteca-java/spec.md:56` sin cambios |
+| SUGGESTION-8 cobertura baja en `trabajador.ts` y `alcance.ts` | **Sin cambios de fondo** | cobertura global 96,90 %; los archivos tocados por 1.31–1.33 promedian 99,32 % |
+| Lote 0: WARNING-3 (workflows nunca corrieron) | **Cerrado** | `ci` y `oraculo` verdes en el PR #2 sobre `1c8cf5b`; falta correr `oraculo.yml` sobre `1.31–1.33` (WARNING-10) |
+| Lote 0: WARNING-4 (E2E «sin red» en WebKit omitido) | **Abierto** (1 omitida) | límite de Playwright, seguimiento antes del lote 5 |
+
+---
+
+### Definición de Terminado (`proposal.md` §13) aplicada a lo que agregan 1.31–1.33
+
+1. **Sin TODO, mocks ni demos en producción:** CUMPLE. `grep` sobre `src/` y `herramientas/` (no prueba): solo la palabra española «TODO» en comentarios; ni `fetch`/`XMLHttpRequest`/`WebSocket`/`http(s)://`, ni `console`, `debugger`, `any` ni `@ts-ignore` en `src/`. El generador y el reductor son herramientas del oráculo, no producción del producto.
+2. **TDD estricto real:** CUMPLE (RED reproducido 3/3; desviaciones declaradas; WARNING-6 por el formato).
+3. **`npm test`, lint y tipos en verde con salidas acotadas; CI verde:** CUMPLE local; el CI remoto de las 1.31–1.33 **no se ha corrido** (sin subir), y `test:oraculo` tuvo un *flake* en 1 de 2 corridas completas mías (WARNING-1), que habría tumbado el job `oraculo` del PR.
+4. **Textos es-MX reales, sin jerga:** PARCIAL. Los textos nuevos de 1.32 y 1.33 (cast, `void`, miembro de un primitivo, etiqueta de `switch`, palabra reservada, guion bajo, `return` con valor, `println`) leen bien y sin restos; el genérico `error-no-clasificado` y su «token de tipo» siguen (WARNING-5). El texto de `ejecucion-no-disponible`, verdadero cuando todas las pasadas aceptaron, es falso en las familias A–D.
+5. **Accesible en lo que agrega:** CUMPLE (no hay cambios en `src/interfaz` desde `52adfdd`; el nombre accesible del editor es del lote 0, SUGGESTION-6).
+6. **Cero red; dependencias y peso:** CUMPLE (0 dependencias nuevas, `package*.json` idénticos a `main`, licencias 9/9, 0 llamadas de red en `src/`); peso 302 040 B = 60,4 % del presupuesto, sin puerta automática hasta la 5.9.
+7. **`main` desplegable:** CUMPLE (el `build` del E2E y el de `ci.yml` pasan; Vite avisa de un fragmento de 864 KB sin comprimir).
+8. **Commits convencionales sin atribución de IA:** CUMPLE en los 24 de `git log main..HEAD`: todos `tipo(alcance): descripción` en español, autor Jorge Zepeda, cero trailers, cero coincidencias de «co-authored», «claude», «anthropic», «generated», «copilot» o «gpt». La confirmación del PO por commit no se puede comprobar desde el repositorio.
+
+**CI de `oraculo.yml` coherente con lo que existe:** SÍ. Todos los comandos que invoca existen en `package.json` (`test:oraculo`, `oraculo:verificar`, `oraculo:datos`, `oraculo:mutantes`, `oraculo:generados`); en PR y *push* corre el generador con la semilla 20260929 × 3 000 y `--max-reducir 100` (timeout 15 min; localmente 10 s), de noche y a mano con 40 000 y la semilla del día (timeout 45 min; localmente 76 s), sube el informe JSON si falla, y `src/motor/**` está en los `paths`; `design.md` §9 y `tasks.md` (1.31, 2.21) lo reflejan. No pude ejecutar Actions; ejecuté localmente cada paso del job (todos en verde salvo el *flake* de `test:oraculo`). No hay prueba que valide el YAML mismo.
+
+### Coherencia del plan
+
+- **Conteos:** 73 requisitos y 96 escenarios (`specs/`, contados); `tasks.md` 19 + 32 + 22 + 8 + 16 + 14 + 8 = **119** tareas, igual que su tabla «Resumen por lote» y su encabezado (101 aprobadas + 18); lote 1: 32 tareas, 32 con `✅ hecha`. `CLAUDE.md` (119/73/96) y `state.yaml` (`phases.tasks`) al día. Sigue desactualizado `openspec/config.yaml` (`context`).
+- **`state.yaml`:** refleja 1.31–1.33, «0 discrepancias en 218 000 programas; 2692 pruebas» y «siguiente: re-verificar el lote 1 y pedir al PO subir y mergear»; `verify: pending`; `updated: 2026-09-29`. No lo toqué.
+- **Spec y propuesta:** `specs/subconjunto-java/spec.md` (requisitos y escenarios de la 1.30) y `proposal.md` §2.3 citan la frase de «Es parte de Java… no puedo revisar si esa parte está bien escrita»; la 4.5 lleva ahora la cláusula «y N más».
+- **`design.md`:** §9 documenta `oraculo:generados`; §2.3/§2.5/§2.6 recogen las reglas de 1.33.
+
+### Riesgos abiertos que el PO debe conocer antes de subir y mergear
+
+1. **Falsos aceptos A–D (CRITICAL-1).** Cuantificados arriba. Dos son errores de alumno plausibles. Cuando el lote 2 ejecute, dejarán de ser «una frase falsa» y pasarán a «un resultado inventado» (`public class System` ya da `ok`).
+2. **El generador mide su gramática.** «0 discrepancias» es verdad y no es garantía; cada familia nueva que halla un instrumento distinto es un hueco de gramática. La matriz valor × contexto (3 240 programas, 3 s de javac) y el fuzzer de tokens (24 000 programas, 50 s) encontraron en una tarde lo que 218 000 programas del generador no.
+3. **Precedencia léxico/sintaxis** (abierta desde la 1.33): un error léxico posterior gana a un error de sintaxis anterior. Medido: ≈ 1–2 % de los programas con dos fallas, 0,04 % en la nocturna del generador; no cambia el veredicto, solo cuál de los dos errores se ve primero. Cerrarla pide un token de error diferido y tocar el contrato de `tokenizar`; es candidata a tarea propia.
+4. **`test:oraculo` inestable** (1 de 2 corridas completas): puede tumbar el job `oraculo` del PR sin que haya un defecto del compilador.
+5. **Peso:** 302 040 B (60,4 % del presupuesto; 296 587 B en la verificación anterior), con el motor duplicado por `cliente.ts` (≈ 55 KB de más) y sin puerta automática; quedan ≈ 198 KB para los lotes 2–6.
+6. **Falsos rechazos y fallos internos** de la lista de arriba: bajo costo, pero con textos engañosos («Te falta un punto y coma» para una clase anónima).
+7. **Residuales declarados:** `printf` como valor es aviso (el error pediría modelar `PrintStream`); hex, octal, binario y `float` fuera de rango son avisos; `palabra-reservada-como-nombre` también responde a `int int x = 5;`.
+8. **Estado del producto tras el merge:** solo se ejecuta `System.out.println` de un literal; `main` no sería usable hasta el lote 2.
+9. **Revisión de textos del PO (5.11)** pendiente, ahora también para los textos de 1.32 y 1.33.
+
+### Opciones para el PO (con su costo)
+
+- **A. Corregir antes del merge (tarea 1.34; es lo que se hizo en la 1.29, 1.30 y 1.31–1.33).** Modelar A (la sentencia antes del primer `case` es un error de sintaxis: `case, default, or '}' expected`), B (error o, como mínimo, aviso para `args` y `System.in/out/err` usados como valor, y el `IOException` de `System.in.read()`), C (aviso o resolución correcta cuando la clase del alumno se llama como una del JDK) y D (nodo de paréntesis o regla de sentencia-expresión), arreglar el `TypeError` de `CAMPOS_DE_SYSTEM_REFLEJADOS` (`Object.hasOwn` o un `Map`), y SUMAR a las guardas permanentes: los programas mínimos de A–D con su `.oraculo.json` en `corpus/experimentos/` (los dejo en engram) y, como instrumento, la matriz valor × contexto y un fuzzer de tokens junto al generador (y extender la gramática del generador con `args`, `System.in/out/err`, cuerpos de `switch` y paréntesis como sentencia). Costo: una sesión corta, comparable a la 1.32; el arnés ya existe. **Recomendación.**
+- **B. Fusionar ahora y hacer de la 1.34 prerrequisito duro del lote 2.** Costo: `main` conserva la frase falsa en esos casos (sin usuarios hoy: no hay Pages) y la renuncia debe quedar escrita en `state.yaml`; el riesgo es que la deuda se erosione.
+- **C. Puente:** que `ejecucion-no-disponible` deje de afirmar validez («no sé ejecutar lo que escribiste en la línea N y tampoco puedo confirmar que Java lo acepte»). No arregla el veredicto; solo como puente junto a A o B.
+- En cualquier caso: **no subir ni fusionar hasta que el PO decida**, y re-correr el job `oraculo` en GitHub (hay un *flake* conocido, WARNING-1).
+
+---
+
+## Issues encontrados (re-verificación del lote 1, 1.1–1.33)
+
+### CRITICAL (deben resolverse antes de archivar)
+
+1. **Falsos aceptos en 4 familias** (A–D): javac 17.0.18 rechaza y `compilar()` da `ejecucion-no-disponible` («Java sí acepta tu programa…») o, en un caso, `ok`. Incumple REQ-COMP-006, las reglas 4 y 5 de CLAUDE.md y la premisa de la excepción de la 1.30. Evidencia: tabla de familias arriba; instrumento 4 (368 falsos aceptos: 367 con `args`/`System.in/out/err` y 1 de la familia D), instrumento 2 (50, 38 de la familia A y 12 de la B), instrumento 3 (15), focos (64); reproducible con `compilar()` directo; programas mínimos en engram, topic `sdd/visualizador-java/verificacion-independiente-lote1`. Causa en `analizador-sintactico.ts:783-793` (A) y `tipos.ts:249-276` (B).
+
+### WARNING (deberían resolverse)
+
+1. **`npm run test:oraculo` inestable.** 1 corrida completa de 2 falló en `generar-datos.test.ts` (integración): «se leyeron 0 clases y la línea "#total|N" no aparece»; aislada y bajo carga pasa. Mecanismo demostrado: `ejecutar.ts` da 5 s por omisión (`LIMITE_MS_POR_OMISION`) a cada corrida de `java`, `generarDatos` (`generar-datos.ts:346-374`) no pasa `limiteMs` ni mira `agotoTiempo`/`codigoSalida`, y una sonda matada por el límite deja 0 bytes y produce exactamente ese mensaje (lo comprobé con `limiteMs: 150`); el mensaje además culpa al tope de captura. La sonda tarda ≈ 1,3 s sola; no pude reproducir el fallo ni con 12 procesos saturando la CPU, así que la causa disparadora real (carga, JVM en frío, memoria) no está confirmada. Puede tumbar el job `oraculo` del PR.
+2. **`compilar()` lanza `TypeError`** con `System.<toString|valueOf|constructor|hasOwnProperty|__proto__|…>` como argumento (`tipos.ts:249` y `:269`: objeto literal indexado por un nombre del alumno); el tramo se documenta como «Pura, nunca lanza» (`tipos.ts:278`). La interfaz lo muestra como `error-interno`, honesto, pero el patrón (tabla `Record<string, …>` indexada con texto del alumno) merece una auditoría.
+3. **Falsos rechazos** de la lista de arriba: `instanceof` con patrón, `sealed`, clase anónima, archivos sin clase, `final int A = 'a'; char c = A;`, `(String) "a"` como etiqueta de `case`, `(boolean) true` en asignación definitiva, un cast antes de un literal con aviso, `main` con otra firma, `main(args);`, `public class Random`/`Scanner`, escapes Unicode con significado sintáctico. Violan D2 (la regla de la 1.29) y dos dicen un texto falso («Te falta un punto y coma»).
+4. **Precedencia léxico/sintaxis** (abierta de la 1.33): ≈ 1–2 % de los programas con dos fallas muestran primero el error léxico posterior; más `import java.sqrt.*;` y el campo sin `;`.
+5. **Jerga del genérico `error-no-clasificado`:** 47,5 % de los errores de mutantes y «token de tipo» en 14,7 %; pendiente de la revisión del PO (5.11).
+6. **Evidencia TDD sin tabla de 8 columnas** (heredado) y la 1.29 sin RED literal; en 1.31–1.33 el RED está escrito y reproducido, con dos desviaciones de orden declaradas (tablas de verdad).
+7. **C8, brechas:** segundo `Scanner`, `printf` con `%e %x %1$d` y banderas, y patrón no literal siguen en `ejecucion-no-disponible` (plan 2.15).
+8. **REQ-SUB-006, «y N más»:** reubicado en la 4.5 (`tasks.md:651`); sin implementar ni probar con N > 0.
+9. **Peso:** 302 040 B sin puerta automática (5.9) y con el motor duplicado en `index-*.js` (3.6).
+10. **CI remoto de 1.31–1.33 sin correr:** `oraculo.yml` y `ci.yml` no se han ejecutado sobre los seis commits sin subir; localmente cada paso pasa (salvo el *flake*).
+
+### SUGGESTION (mejoras, no bloqueantes)
+
+1. Sumar a las guardas permanentes los programas mínimos de A–D (engram) y, como instrumento de CI, la matriz valor × contexto (3 240 programas, 3 s) y un fuzzer de tokens; extender la gramática del generador con `args`, `System.in/out/err`, cuerpos de `switch` y paréntesis como sentencia; y que el informe del generador cuente los «avisos ante un rechazo de javac» (en mi corpus 13 %, en los mutantes 26 %): es la parte de javac que el visualizador no verifica.
+2. `generarDatos`: pasar un `limiteMs` explícito a las sondas del JDK y, cuando una salga vacía, informar `agotoTiempo`, `codigoSalida` y el *stderr* en vez de culpar al tope de captura.
+3. `import java.sqrt.*;` y un campo sin `;` dan una línea distinta de la de javac.
+4. `openspec/config.yaml` (`context`: «lote 0 en cierre») y la mención de `[x]`/`[ ]` en `CLAUDE.md` (las marcas reales son `✅ hecha`); `state.yaml` `updated: 2026-09-29`.
+5. Aserciones débiles heredadas: `pruebas/compilacion/catalogo.test.ts:52` (`adicionales ≥ 0`) y `sobrecargas.test.ts:95` (`not.toBeNull()`).
+6. Editor sin nombre accesible (axe, grave, preexistente del lote 0): planearlo en la 5.10 o antes.
+7. `REQ-BIB-003` nombra `%e` en su primera frase mientras `REQ-SUB-007` lo excluye (`specs/biblioteca-java/spec.md:56`); aclararlo antes del lote 2.
+8. El texto de `palabra-reservada-como-nombre` también responde a `int int x = 5;` y `area double = 5;` (el alumno confundió el orden, no el nombre): revisión del PO (5.11).
+
+---
+
+## Verificación final (re-verificación del lote 1, 1.1–1.33)
+
+- Ejecuté, no solo leí: `npm test`, `test:oraculo` (tres veces: completa, aislada, bajo carga y completa de nuevo), `lint`, `tipos`, `e2e`, `oraculo:verificar`, el generador con las dos semillas pedidas, la cobertura, `licencias`, y regeneré en una copia limpia de `HEAD` los datos del JDK y los 2 625 veredictos de mutantes con javac real (idénticos); reproduje el RED de 1.31, 1.32 y 1.33 contra la producción del commit padre; probé con `limiteMs: 150` el mecanismo del *flake*; consulté `gh` para el PR y el CI.
+- Escribí y ejecuté 1 335 programas propios y cuatro instrumentos propios (mutador de 17 operadores, fuzzer de tokens, matriz valor × contexto, ocho focos) contra javac 17.0.18 real: ≈ 105 800 programas, con un compilador por lotes propio validado contra la CLI (0 diferencias en 1 335).
+- Leí la Definición de Terminado, el plan y sus fuentes (`spec`, `proposal`, `design`, `state.yaml`), el `oraculo.yml` y `ci.yml`, y contrasté cada afirmación del registro de la 1.31–1.33 con la ejecución.
+- No modifiqué código, pruebas, corpus, `tasks.md`, `state.yaml` ni `config.yaml`. Solo agregué esta sección. No hice commit ni push. `git status` limpio salvo este archivo.
+
+**Veredicto final de la re-verificación del lote 1 (1.1–1.33): FAIL por 1 CRITICAL reabierto** (cuatro familias de falsos aceptos que ningún instrumento del equipo ve). Todo lo demás cumple o es WARNING, y el CRITICAL se puede cerrar con una tarea acotada (1.34) o renunciar por escrito; la decisión es del PO.
