@@ -11,6 +11,7 @@
 // una expresión se simplifica, se vuelve a intentar con sentencias. Todo candidato es ESTRICTAMENTE más
 // corto que el programa actual, así que el bucle siempre termina.
 import {
+  CLASE_POR_OMISION,
   literal,
   renderizarPrograma,
   type Caso,
@@ -51,6 +52,12 @@ function variantesDeSentencia(sentencia: Sentencia): (readonly Sentencia[])[] {
     }
     case 'seleccion': {
       const variantes: (readonly Sentencia[])[] = sentencia.casos.map((_, i) => [{ ...sentencia, casos: sentencia.casos.filter((__, j) => j !== i) }]);
+      // Tarea 1.34: las sentencias de antes del primer `case`: quitarlas todas, quitar una o entrar a lo que contiene una compuesta.
+      const antes = sentencia.antes ?? [];
+      if (antes.length > 0) {
+        variantes.push([{ ...sentencia, antes: [] }]);
+        for (const lista of variantesDeLista(antes)) variantes.push([{ ...sentencia, antes: lista }]);
+      }
       sentencia.casos.forEach((caso, i) => {
         for (const cuerpo of variantesDeLista(caso.cuerpo)) {
           variantes.push([{ ...sentencia, casos: sentencia.casos.map((c, j): Caso => (j === i ? { ...c, cuerpo } : c)) }]);
@@ -89,11 +96,17 @@ function soloLosMasCortos(original: Programa, candidatos: readonly Programa[]): 
   });
 }
 
-/** Candidatos de un paso que solo tocan la estructura: quitar sentencias, bajar al cuerpo de una compuesta, quitar imports. */
+/**
+ * Candidatos de un paso que solo tocan la estructura: quitar sentencias, bajar al cuerpo de una compuesta, quitar imports y (tarea 1.34)
+ * devolverle a la clase el nombre `P`. Este último va al FINAL: primero se quita todo lo que se pueda y solo entonces se prueba si la
+ * discrepancia depende del nombre de la clase; si no depende, el mínimo sale con `P` y la familia no se atribuye al nombre.
+ */
 export function variantesDeSentencias(programa: Programa): Programa[] {
   const conOtrasSentencias = variantesDeLista(programa.sentencias).map((sentencias): Programa => ({ ...programa, sentencias }));
   const sinUnImport = programa.imports.map((_, i): Programa => ({ ...programa, imports: programa.imports.filter((__, j) => j !== i) }));
-  return soloLosMasCortos(programa, [...conOtrasSentencias, ...sinUnImport]);
+  const conClasePorOmision: Programa[] =
+    programa.clase === undefined || programa.clase === CLASE_POR_OMISION ? [] : [{ imports: programa.imports, sentencias: programa.sentencias }];
+  return soloLosMasCortos(programa, [...conOtrasSentencias, ...sinUnImport, ...conClasePorOmision]);
 }
 
 // ---- Candidatos que simplifican expresiones ----
@@ -166,6 +179,7 @@ function variantesDeExpresionesDeSentencia(sentencia: Sentencia): Sentencia[] {
     }
     case 'seleccion': {
       const variantes: Sentencia[] = variantesDeExpr(sentencia.selector).map((selector) => ({ ...sentencia, selector }));
+      for (const antes of variantesDeExpresionesEnLista(sentencia.antes ?? [])) variantes.push({ ...sentencia, antes });
       sentencia.casos.forEach((caso, i) => {
         const conCaso = (nuevo: Caso): Sentencia => ({ ...sentencia, casos: sentencia.casos.map((c, j) => (j === i ? nuevo : c)) });
         if (caso.etiquetas !== 'default') {

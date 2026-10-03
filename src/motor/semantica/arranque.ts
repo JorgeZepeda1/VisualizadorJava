@@ -31,6 +31,12 @@ import type { ProblemaArranque } from '../problemas.ts';
 const NOMBRE_DE_EJEMPLO_SIN_MAIN = 'SinMain';
 const NOMBRE_DE_EJEMPLO_MAIN_NO_STATIC = 'MainNoStatic';
 
+// Tarea 1.34 (C, JLS 6.4.1): una clase llamada `String` tapa a `java.lang.String`, así que el `String[]` del parámetro de `main` es el tipo de ELLA y el lanzador
+// no encuentra un `main(String[])` (verificado con el JDK 17 real: «Main method not found in class String»); javac, en cambio, la compila. Con `Math`,
+// `Scanner`, `Random` o `Integer` el parámetro sigue siendo `java.lang.String` y el programa se ejecuta con normalidad. El mensaje del lanzador es el MISMO de
+// «sin main», pero el texto amable es otro: no le falta un `main`, le sobra el nombre de la clase.
+const NOMBRE_DE_CLASE_QUE_TAPA_AL_STRING_DEL_PARAMETRO = 'String';
+
 export function verificarArranque(clase: NodoClase): ProblemaArranque | null {
   // Corrección obligatoria (sub-lote 1-D2c, design.md §2.1, task_0b5b6e47): "main sin public"
   // NUNCA tuvo su propio mensaje -- verificado contra el JDK 17 real (3 corridas repetidas, carpeta
@@ -44,6 +50,13 @@ export function verificarArranque(clase: NodoClase): ProblemaArranque | null {
   if (clase.main === null || !clase.main.esPublico) {
     return {
       codigo: 'sin-main',
+      nombreClase: clase.nombre,
+      textoLanzador: MARCOS_ARRANQUE.sinMain.mensaje.replaceAll(NOMBRE_DE_EJEMPLO_SIN_MAIN, clase.nombre),
+    };
+  }
+  if (clase.nombre === NOMBRE_DE_CLASE_QUE_TAPA_AL_STRING_DEL_PARAMETRO) {
+    return {
+      codigo: 'clase-llamada-string',
       nombreClase: clase.nombre,
       textoLanzador: MARCOS_ARRANQUE.sinMain.mensaje.replaceAll(NOMBRE_DE_EJEMPLO_SIN_MAIN, clase.nombre),
     };

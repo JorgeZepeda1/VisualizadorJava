@@ -157,7 +157,7 @@ describe('<Visualizador/> — el texto real de cada problema, con su línea', ()
     await pulsarVisualizar();
 
     const texto = (await screen.findByRole('alert')).textContent ?? '';
-    expect(texto).toContain('Java sí acepta tu programa');
+    expect(texto).toContain('Tu programa pasó todas mis revisiones');
     expect(texto).not.toMatch(/no compila todavía|lote|tarea/i);
   });
 

@@ -16,9 +16,16 @@ interface DatosArranque {
   readonly nombreClase: string;
 }
 
+// Tarea 1.34 (defensa en profundidad, aprobada por el PO el 2026-10-02): estos textos decían «Java compiló tu clase "X" sin problema», una afirmación sobre javac que
+// el visualizador no puede garantizar —solo sabe que la clase pasó SUS revisiones—. Ahora dicen lo que se revisó («pasó todas mis revisiones»). El texto exacto del
+// lanzador, el detalle secundario, no se toca.
 export const textosArranque: { readonly [K in CodigoArranque]: (datos: DatosArranque) => string } = {
   'sin-main': ({ nombreClase }) =>
-    `Java compiló tu clase "${nombreClase}" sin problema, pero no encuentra por dónde EMPEZAR a ejecutarla: le falta un método "main". Agrégalo así: "public static void main(String[] args) { ... }".`,
+    `Tu clase "${nombreClase}" pasó todas mis revisiones, pero Java no encuentra por dónde EMPEZAR a ejecutarla: le falta un método "main". Agrégalo así: "public static void main(String[] args) { ... }".`,
   'main-no-static': ({ nombreClase }) =>
-    `Java compiló tu clase "${nombreClase}" sin problema, pero su método "main" existe sin la palabra "static" — y sin eso, Java no puede arrancarlo. Escríbelo así: "public static void main(String[] args)".`,
+    `Tu clase "${nombreClase}" pasó todas mis revisiones, pero su método "main" existe sin la palabra "static" — y sin eso, Java no puede arrancarlo. Escríbelo así: "public static void main(String[] args)".`,
+  // Tarea 1.34 (C): una clase llamada `String` tapa a la de Java, y el `String[] args` de su `main` deja de ser el de Java.
+  'clase-llamada-string': ({ nombreClase }) =>
+    `Tu clase "${nombreClase}" pasó todas mis revisiones, pero se llama igual que la clase "String" de Java y por eso el "String[] args" de "main" ya no es el de Java: ` +
+    'Java no encuentra por dónde EMPEZAR a ejecutarla. Cámbiale el nombre a tu clase.',
 };

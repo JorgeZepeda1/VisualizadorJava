@@ -193,3 +193,53 @@ describe('reducirEnRondas — el bucle de reducción por lotes', () => {
     expect([...vistos.get(0)!].some((fuente) => fuente.includes('"hola"'))).toBe(true);
   });
 });
+
+// ---- Tarea 1.34: la clase con nombre del JDK y las sentencias antes del primer `case` también se reducen ----
+describe('variantesDeSentencias — el nombre de la clase y las sentencias de `antes` (tarea 1.34)', () => {
+  const conClase = (clase: string, ...sentencias: Sentencia[]): Programa => ({ imports: [], clase, sentencias });
+
+  it('propone devolverle a la clase el nombre P: si la discrepancia no depende del nombre, el mínimo ya no lo lleva', () => {
+    const candidatos = variantesDeSentencias(conClase('Scanner', imprimir('"a"'), imprimir('"b"')));
+    const sinNombre = candidatos.filter((c) => c.clase === undefined || c.clase === 'P');
+    expect(sinNombre.length).toBeGreaterThan(0);
+    expect(sinNombre.map((c) => renderizarPrograma(c).split('\n')[0])).toContain('public class P {');
+    // Y sigue proponiendo quitar sentencias CONSERVANDO el nombre: así se ve cuándo la discrepancia SÍ depende de él.
+    expect(candidatos.some((c) => c.clase === 'Scanner' && c.sentencias.length === 1)).toBe(true);
+  });
+
+  it('un programa que ya se llama P no propone ningún candidato sobre la clase', () => {
+    const candidatos = variantesDeSentencias(programa(imprimir('"a"'), imprimir('"b"')));
+    expect(candidatos.every((c) => c.clase === undefined)).toBe(true);
+  });
+
+  it('propone quitar cada sentencia de `antes`, todas juntas, y entrar a lo que contienen', () => {
+    const p = programa(
+      seleccion({
+        selector: nombre('n', 'int'),
+        antes: [salto('break'), si(nombre('c', 'boolean'), [imprimir('"x"')], null)],
+        casos: [{ etiquetas: [literal('1', 'int')], cuerpo: [salto('break')] }],
+        flecha: false,
+      }),
+    );
+    const cuerpos = variantesDeSentencias(p).map(cuerpoDe);
+    expect(cuerpos).toContain('switch (n) { if (c) { System.out.println("x"); } case 1: break; }');
+    expect(cuerpos).toContain('switch (n) { break; case 1: break; }');
+    expect(cuerpos).toContain('switch (n) { case 1: break; }');
+    expect(cuerpos).toContain('switch (n) { break; if (c) { } case 1: break; }');
+  });
+
+  it('simplifica también las expresiones de las sentencias de `antes`', () => {
+    const p = programa(
+      seleccion({ selector: nombre('n', 'int'), antes: [declaracion({ tipo: 'int', nombre: 'x', inicial: castDeCadena() })], casos: [], flecha: false }),
+    );
+    const cuerpos = variantesDeExpresiones(p).map(cuerpoDe);
+    expect(cuerpos).toContain('switch (n) { int x = 0; }');
+    expect(cuerpos).toContain('switch (n) { int x; }');
+  });
+
+  it('todo candidato sigue siendo estrictamente más chico que el original (la reducción termina)', () => {
+    const p = conClase('System', seleccion({ selector: nombre('n', 'int'), antes: [salto('break')], casos: [{ etiquetas: 'default', cuerpo: [] }], flecha: false }));
+    const largo = renderizarPrograma(p).length;
+    for (const candidato of [...variantesDeSentencias(p), ...variantesDeExpresiones(p)]) expect(renderizarPrograma(candidato).length).toBeLessThan(largo);
+  });
+});

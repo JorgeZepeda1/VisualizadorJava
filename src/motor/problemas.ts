@@ -159,7 +159,17 @@ export type CodigoProblema =
   | 'guion-bajo-mal-puesto'
   // Tarea 1.33 (WARNING-2 de la re-verificación del lote 1, JLS 14.17): `return 0;` en `main`, que es `void` — verificado contra javac 17
   // real: `prob.found.req` («incompatible types: unexpected return value»), señalando el VALOR. Antes decía «Te falta un punto y coma».
-  | 'retorno-con-valor';
+  | 'retorno-con-valor'
+  // Tarea 1.34 (A, JLS 14.11): una sentencia o declaración dentro del `switch` ANTES de su primer `case`/`default` — verificado contra javac 17 real:
+  // `compiler.err.expected3` («case, default, or '}' expected»), en el token de esa sentencia. Lo da el analizador sintáctico.
+  | 'sentencia-antes-del-primer-case'
+  // Tarea 1.34 (D, JLS 14.8): una expresión entre paréntesis usada como sentencia (`(x = 2);`, `(x++);`, `(System.out.println("a"));`) — verificado
+  // contra javac 17 real: `compiler.err.not.stmt` («not a statement»), porque un `ParenthesizedExpression` no es una `StatementExpression`. Lo da el
+  // analizador sintáctico, que desde esta tarea conserva en el árbol si una expresión venía entre paréntesis.
+  | 'sentencia-entre-parentesis'
+  // Tarea 1.34 (C, JLS 7.5.1): `import java.util.Scanner;` junto a `public class Scanner` — verificado contra javac 17 real:
+  // `compiler.err.already.defined.this.unit` («Scanner is already defined in this compilation unit»), en la línea del `import`. Lo da la atribución.
+  | 'clase-repetida-con-import';
 
 // Datos EXTRA que el texto es-MX (`src/textos/es-MX/problemas.ts`) necesita de cada código — la
 // ÚNICA fuente de verdad de su forma. Vive en el MOTOR (no en el catálogo) para que el propio emisor
@@ -274,6 +284,12 @@ interface DatosNumero {
   readonly numero: string;
 }
 
+// Tarea 1.34 (C): el nombre de la clase del alumno y el `import` con el que choca, tal como se escribió (`java.util.Scanner`).
+interface DatosClaseRepetidaConImport {
+  readonly nombre: string;
+  readonly importacion: string;
+}
+
 export interface DatosPorCodigoProblema {
   'falta-punto-y-coma': DatosMensajeCrudo;
   'falta-parentesis-cierre': DatosMensajeCrudo;
@@ -320,6 +336,9 @@ export interface DatosPorCodigoProblema {
   'palabra-reservada-como-nombre': DatosPalabra;
   'guion-bajo-mal-puesto': DatosNumero;
   'retorno-con-valor': Record<never, never>;
+  'sentencia-antes-del-primer-case': DatosMensajeCrudo;
+  'sentencia-entre-parentesis': DatosMensajeCrudo;
+  'clase-repetida-con-import': DatosClaseRepetidaConImport;
 }
 
 // Los códigos que `compilar()` saca de un `ErrorDeCompilacion` (léxico y sintaxis): TODOS llevan
@@ -340,6 +359,8 @@ export type CodigoDeSintaxis = Extract<
   | 'llave-de-clase-faltante'
   | 'paquete-despues-de-import'
   | 'modificador-repetido'
+  | 'sentencia-antes-del-primer-case'
+  | 'sentencia-entre-parentesis'
 >;
 
 /**
@@ -394,7 +415,9 @@ export type CausaFin =
 // `main` (verificado, exploracion/03 §4.2). El problema real solo aparece al EJECUTAR, por eso
 // vive junto a `CausaFin` (que ya tenía `'error-arranque'` reservado desde la rebanada vertical) y
 // no junto a `CodigoProblema`.
-export type CodigoArranque = 'sin-main' | 'main-no-static';
+// Tarea 1.34 (C): `clase-llamada-string` — una clase llamada `String` compila, pero el `String[]` de su `main` es la clase de ELLA y el lanzador no encuentra el punto
+// de entrada: su mensaje es el mismo de «sin main» (verificado con el JDK 17 real), pero el texto amable no puede decir que «le falta un método main» (lo tiene).
+export type CodigoArranque = 'sin-main' | 'main-no-static' | 'clase-llamada-string';
 
 export interface ProblemaArranque {
   readonly codigo: CodigoArranque;

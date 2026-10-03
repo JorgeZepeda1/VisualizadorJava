@@ -102,3 +102,29 @@ describe('verificarArranque — "static void main" SIN "public" (sub-lote 1-D2c,
     expect(verificarArranque(clase)).toBeNull();
   });
 });
+
+// Tarea 1.34 (C): una clase llamada `String` COMPILA (javac) pero no se puede ejecutar: el `String[]` del parámetro de `main` es el tipo de ELLA, no el de
+// `java.lang`, así que el lanzador no encuentra un `main(String[])` (verificado con el JDK 17 real: «Main method not found in class String»). Es el mismo
+// mensaje de «sin main». Con las demás clases del JDK (`Math`, `Scanner`, `Random`, `Integer`) el programa se ejecuta con normalidad.
+describe('verificarArranque — una clase llamada `String` (tarea 1.34)', () => {
+  it('«clase-llamada-string» con el texto del lanzador (el mismo de «sin main») y el nombre de la clase, aunque el `main` esté bien escrito', () => {
+    const resultado = verificarArranque(claseDe('public class String { public static void main(String[] args) { } }'));
+    expect(resultado).not.toBeNull();
+    expect(resultado?.codigo).toBe('clase-llamada-string');
+    expect(resultado?.nombreClase).toBe('String');
+    expect(resultado?.textoLanzador).toBe(verificarArranque(claseDe('public class SinMain { }'))?.textoLanzador.replaceAll('SinMain', 'String'));
+  });
+
+  it('con las otras dos formas de `String...` y `final String[]` es lo mismo; sin ningún `main` o con un `main` que no es público sigue siendo «sin-main»', () => {
+    expect(verificarArranque(claseDe('public class String { public static void main(String... args) { } }'))?.codigo).toBe('clase-llamada-string');
+    expect(verificarArranque(claseDe('public class String { public static void main(final String[] args) { } }'))?.codigo).toBe('clase-llamada-string');
+    expect(verificarArranque(claseDe('public class String { }'))?.codigo).toBe('sin-main');
+    expect(verificarArranque(claseDe('public class String { static void main(String[] args) { } }'))?.codigo).toBe('sin-main');
+  });
+
+  it('control: las clases llamadas `Math`, `Scanner`, `Random` o `Integer` SÍ se ejecutan (el parámetro de `main` sigue siendo `java.lang.String`)', () => {
+    for (const nombre of ['Math', 'Scanner', 'Random', 'Integer', 'Main']) {
+      expect(verificarArranque(claseDe(`public class ${nombre} { public static void main(String[] args) { } }`)), nombre).toBeNull();
+    }
+  });
+});

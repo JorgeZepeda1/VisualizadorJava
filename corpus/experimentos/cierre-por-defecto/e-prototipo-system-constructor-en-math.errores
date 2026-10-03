@@ -1,0 +1,6 @@
+EPrototipoSystemConstructorEnMath.java:4: error: cannot find symbol
+        int a = Math.abs(System.constructor);
+                               ^
+  symbol:   variable constructor
+  location: class System
+1 error

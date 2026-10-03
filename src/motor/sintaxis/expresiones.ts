@@ -18,34 +18,35 @@ import { CursorDeTokens } from './cursor-de-tokens.ts';
 import { CODIGOS_NO_SOPORTADO, esTipoPrimitivoNoSoportado, saltarHastaCerrar } from './no-soportado.ts';
 import type { NodoConversion, NodoExpresion, NodoExpresionNoSoportada, NodoNuevaInstancia } from './ast.ts';
 
-const PRECEDENCIA: Readonly<Record<string, number>> = {
-  '||': 3,
-  '&&': 4,
-  '|': 5,
-  '^': 6,
-  '&': 7,
-  '==': 8,
-  '!=': 8,
-  '<': 9,
-  '>': 9,
-  '<=': 9,
-  '>=': 9,
-  instanceof: 9,
-  '<<': 10,
-  '>>': 10,
-  '>>>': 10,
-  '+': 11,
-  '-': 11,
-  '*': 12,
-  '/': 12,
-  '%': 12,
-};
-
-const OPERADORES_NO_SOPORTADOS_BINARIOS: ReadonlySet<string> = new Set(['|', '^', '&', '<<', '>>', '>>>']);
+// Tarea 1.34: un `Map` y no un objeto plano. Se consulta con el TEXTO del token que sigue a un operando, y ese texto puede ser un identificador del
+// alumno: en un objeto `{ '||': 3 }`, `PRECEDENCIA['constructor']` es la función `Object` heredada de `Object.prototype` y no `undefined`, así que
+// `int a = 1 constructor 2;` se leía como una operación (javac: `';' expected`). Un `Map` solo conoce las claves que se le pusieron.
+const PRECEDENCIA: ReadonlyMap<string, number> = new Map([
+  ['||', 3],
+  ['&&', 4],
+  ['|', 5],
+  ['^', 6],
+  ['&', 7],
+  ['==', 8],
+  ['!=', 8],
+  ['<', 9],
+  ['>', 9],
+  ['<=', 9],
+  ['>=', 9],
+  ['instanceof', 9],
+  ['<<', 10],
+  ['>>', 10],
+  ['>>>', 10],
+  ['+', 11],
+  ['-', 11],
+  ['*', 12],
+  ['/', 12],
+  ['%', 12],
+]);
 
 // Tarea 1.25: tipo ESTRECHO (los 4 códigos reales, no `CodigoNoSoportado` completo) — los 4 solo
 // necesitan `datos: {}` (ninguno nombra el operador en su texto, `textos/es-MX/no-soportado.ts`),
-// así que el sitio de construcción de abajo (`CODIGOS_OPERADOR_NO_SOPORTADO[operador]`) puede
+// así que el sitio de construcción de abajo (`CODIGOS_OPERADOR_NO_SOPORTADO.get(operador)`) puede
 // verificar `datos: {}` de verdad: con el tipo ANCHO anterior, TypeScript no podía distinguir este
 // código de, por ejemplo, `arreglo-no-soportado` (que SÍ exige más datos) y el `{}` de abajo no
 // habría compilado.
@@ -55,14 +56,15 @@ type CodigoOperadorNoSoportado =
   | 'operador-bits-and'
   | 'operador-desplazamiento';
 
-const CODIGOS_OPERADOR_NO_SOPORTADO: Readonly<Record<string, CodigoOperadorNoSoportado>> = {
-  '|': CODIGOS_NO_SOPORTADO.operadorBitsOr,
-  '^': CODIGOS_NO_SOPORTADO.operadorBitsXor,
-  '&': CODIGOS_NO_SOPORTADO.operadorBitsAnd,
-  '<<': CODIGOS_NO_SOPORTADO.operadorDesplazamiento,
-  '>>': CODIGOS_NO_SOPORTADO.operadorDesplazamiento,
-  '>>>': CODIGOS_NO_SOPORTADO.operadorDesplazamiento,
-};
+// Tarea 1.34: un `Map` (ver `PRECEDENCIA`); sus claves son EXACTAMENTE los operadores binarios que el subconjunto no ejecuta.
+const CODIGOS_OPERADOR_NO_SOPORTADO: ReadonlyMap<string, CodigoOperadorNoSoportado> = new Map<string, CodigoOperadorNoSoportado>([
+  ['|', CODIGOS_NO_SOPORTADO.operadorBitsOr],
+  ['^', CODIGOS_NO_SOPORTADO.operadorBitsXor],
+  ['&', CODIGOS_NO_SOPORTADO.operadorBitsAnd],
+  ['<<', CODIGOS_NO_SOPORTADO.operadorDesplazamiento],
+  ['>>', CODIGOS_NO_SOPORTADO.operadorDesplazamiento],
+  ['>>>', CODIGOS_NO_SOPORTADO.operadorDesplazamiento],
+]);
 
 const OPERADORES_ASIGNACION_SOPORTADOS: ReadonlySet<string> = new Set(['=', '+=', '-=', '*=', '/=', '%=']);
 const OPERADORES_ASIGNACION_NO_SOPORTADOS: ReadonlySet<string> = new Set([
@@ -138,7 +140,7 @@ function analizarBinaria(cursor: CursorDeTokens, precedenciaMinima: number, sinL
 
   for (;;) {
     const operador = cursor.actual().texto;
-    const precedencia = PRECEDENCIA[operador];
+    const precedencia = PRECEDENCIA.get(operador);
     if (precedencia === undefined || precedencia < precedenciaMinima) break;
     cursor.avanzar();
 
@@ -155,9 +157,11 @@ function analizarBinaria(cursor: CursorDeTokens, precedenciaMinima: number, sinL
 
     const derecha = analizarBinaria(cursor, precedencia + 1, sinLambda);
     const rango = { inicio: izquierda.rango.inicio, fin: derecha.rango.fin };
-    izquierda = OPERADORES_NO_SOPORTADOS_BINARIOS.has(operador)
-      ? { tipo: 'expresion-no-soportada', codigo: CODIGOS_OPERADOR_NO_SOPORTADO[operador], datos: {}, rango }
-      : { tipo: 'binaria', operador, izquierda, derecha, rango };
+    const codigoNoSoportado = CODIGOS_OPERADOR_NO_SOPORTADO.get(operador);
+    izquierda =
+      codigoNoSoportado === undefined
+        ? { tipo: 'binaria', operador, izquierda, derecha, rango }
+        : { tipo: 'expresion-no-soportada', codigo: codigoNoSoportado, datos: {}, rango };
   }
 
   return izquierda;
@@ -406,7 +410,8 @@ function analizarPostfija(cursor: CursorDeTokens, sinLambda = false): NodoExpres
     // intacto para el contexto que sigue (quien SÍ sabe qué esperaba, p. ej. el ")" de un println
     // envolvente) lo rechace con su propio error real, verificado contra javac 17 real: "')'
     // expected" (el mismo mensaje que da javac para este mutante exacto).
-    if (token.texto === '(' && (expresion.tipo === 'nombre' || expresion.tipo === 'acceso-miembro')) {
+    // Tarea 1.34 (D): ni siquiera un nombre entre paréntesis (`(f)(1)`): la llamada es `Identifier(...)` o `Primary.Identifier(...)` (JLS 15.12), nunca un `( Expression )`.
+    if (token.texto === '(' && expresion.parentesis === undefined && (expresion.tipo === 'nombre' || expresion.tipo === 'acceso-miembro')) {
       const argumentos = analizarArgumentos(cursor);
       const cierre = cursor.esperarTexto(')');
       expresion = {
@@ -554,10 +559,12 @@ function analizarPrimaria(cursor: CursorDeTokens, sinLambda = false): NodoExpres
     return analizarNuevaInstancia(cursor);
   }
   if (token.texto === '(') {
-    cursor.avanzar();
+    const apertura = cursor.avanzar();
     const interior = analizarExpresion(cursor, sinLambda);
-    cursor.esperarTexto(')');
-    return interior;
+    const cierre = cursor.esperarTexto(')');
+    // Tarea 1.34 (D): la expresión es la misma, con la marca de sus paréntesis más externos (los de adentro, si los había, se sustituyen: `((x))` marca los de
+    // afuera, que es lo que javac señala). Ver `ConParentesis` en `ast.ts` para las tres reglas de Java que la leen.
+    return { ...interior, parentesis: { inicio: apertura.rango.inicio, fin: cierre.rango.fin } };
   }
   if (token.tipo === 'identificador') {
     cursor.avanzar();

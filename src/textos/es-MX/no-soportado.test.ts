@@ -65,6 +65,8 @@ const DATOS_DE_EJEMPLO: Record<CodigoNoSoportado, Record<string, unknown>> = {
   'literal-hexadecimal-no-soportado': { linea: 1 },
   // Tarea 1.33: el resultado de `printf` (un `PrintStream`) usado como valor.
   'valor-de-tipo-no-soportado': { linea: 1, llamada: 'System.out.printf' },
+  // Tarea 1.34: un valor cuyo tipo el subconjunto no modela (`System.in` usado como valor).
+  'valor-de-tipo-no-modelado': { linea: 1, valor: 'System.in' },
   'literal-binario-no-soportado': { linea: 1 },
   'asignacion-de-bits': { linea: 1 },
   'operador-ternario': { linea: 1 },
@@ -237,7 +239,9 @@ describe('textosNoSoportado — REQ-SUB-006 (spec subconjunto-java): formato y e
   it('ejecución no disponible: el texto NUNCA dice "unidades 3 a 7" (sí está en el subconjunto) ni usa jerga de desarrollo', () => {
     const texto = textosNoSoportado['ejecucion-no-disponible']({ linea: 3 });
     expect(texto).toContain('línea 3');
-    expect(texto).toMatch(/Java sí/);
+    // Tarea 1.34: dice lo que se revisó, ya no «Java sí acepta tu programa».
+    expect(texto).toContain('pasó todas mis revisiones');
+    expect(texto).not.toMatch(/Java sí/);
     expect(texto).not.toMatch(/unidades 3 a 7/);
     expect(texto).not.toContain('lote');
     expect(texto).not.toContain('tarea');
@@ -311,9 +315,10 @@ describe('textosNoSoportado — REQ-SUB-006 (spec subconjunto-java): formato y e
 // ninguna muestra del corpus alcanza.
 describe('textosNoSoportado — tarea 1.30: un aviso afirma algo de la construcción, nunca que Java acepta el programa', () => {
   const AFIRMA_QUE_JAVA_LO_ACEPTA = /Java sí (?:l[oa]s? )?(?:acepta|tiene)/;
-  // `ejecucion-no-disponible` es la única excepción: solo se emite DESPUÉS de que TODAS las pasadas de
-  // compilación aceptaron el programa, así que ahí «Java sí acepta tu programa» es cierto. `no-soportado` (el
-  // respaldo defensivo) tampoco usa el marco: no sabe qué construcción es.
+  // Tarea 1.34 (defensa en profundidad, aprobada por el PO el 2026-10-02): ya NO hay excepción — tampoco `ejecucion-no-disponible` afirma que Java acepta el
+  // programa. Su texto decía «Java sí acepta tu programa», cierto solo si TODAS las reglas de javac están modeladas, y la re-verificación del lote 1 halló programas
+  // que javac rechaza y que la pasaban (las familias A–D). Ahora dice lo que SÍ se revisó: «pasó todas mis revisiones». `no-soportado` (el respaldo defensivo)
+  // tampoco usa el marco: no sabe qué construcción es.
   const codigos = Object.keys(DATOS_DE_EJEMPLO) as CodigoNoSoportado[];
   const codigosConMarco = codigos.filter((codigo) => codigo !== 'ejecucion-no-disponible' && codigo !== 'no-soportado');
   const texto = (codigo: CodigoNoSoportado): string =>
@@ -325,12 +330,9 @@ describe('textosNoSoportado — tarea 1.30: un aviso afirma algo de la construcc
     expect(codigosConMarco.length).toBe(codigos.length - 2);
   });
 
-  it.each(codigos.filter((codigo) => codigo !== 'ejecucion-no-disponible'))(
-    '"%s" no dice que Java acepta el programa ("Java sí lo acepta", "Java sí acepta", "Java sí tiene")',
-    (codigo) => {
-      expect(texto(codigo)).not.toMatch(AFIRMA_QUE_JAVA_LO_ACEPTA);
-    },
-  );
+  it.each(codigos)('"%s" no dice que Java acepta el programa ("Java sí lo acepta", "Java sí acepta", "Java sí tiene")', (codigo) => {
+    expect(texto(codigo)).not.toMatch(AFIRMA_QUE_JAVA_LO_ACEPTA);
+  });
 
   it.each(codigosConMarco)('"%s" sigue el marco: es parte de Java, cubre U3–U7, admite que no revisa esa parte y no ejecuta', (codigo) => {
     const frase = texto(codigo);
@@ -339,9 +341,17 @@ describe('textosNoSoportado — tarea 1.30: un aviso afirma algo de la construcc
     expect(frase.endsWith('No lo ejecuto para no enseñarte un resultado que podría no ser el de Java.')).toBe(true);
   });
 
-  it('control: el detector SÍ reconoce la frase que `ejecucion-no-disponible` conserva a propósito (no es una expresión que nunca coincide)', () => {
-    expect(texto('ejecucion-no-disponible')).toMatch(AFIRMA_QUE_JAVA_LO_ACEPTA);
-    expect(texto('ejecucion-no-disponible')).toContain('Java sí acepta tu programa');
+  it('control: el detector SÍ reconoce la frase de antes («Java sí acepta tu programa»): no es una expresión que nunca coincide', () => {
+    expect('Java sí acepta tu programa, pero este visualizador todavía no sabe ejecutar lo que escribiste en la línea 6.').toMatch(AFIRMA_QUE_JAVA_LO_ACEPTA);
+    expect('Java sí lo acepta').toMatch(AFIRMA_QUE_JAVA_LO_ACEPTA);
+  });
+
+  it('`ejecucion-no-disponible` dice lo que SÍ se revisó, la línea que todavía no se sabe ejecutar y por qué no se ejecuta (texto aprobado por el PO, 2026-10-02)', () => {
+    expect(texto('ejecucion-no-disponible')).toBe(
+      'Tu programa pasó todas mis revisiones, pero todavía no sé ejecutar lo que escribiste en la línea 1. ' +
+        'No lo ejecuto para no enseñarte un resultado que podría no ser el de Java.',
+    );
+    expect(textosNoSoportado['ejecucion-no-disponible']({ linea: 12 })).toContain('en la línea 12');
   });
 });
 
@@ -364,3 +374,33 @@ describe('textosNoSoportado — el resultado de `printf` usado como valor (tarea
   });
 });
 
+
+// Tarea 1.34: `System.in`, `System.out` y `System.err` usados como VALOR (no como argumento del `Scanner` ni como receptor de `println`) son de un tipo
+// (`InputStream`, `PrintStream`) que el subconjunto no modela, y el motor ya no los deja pasar en silencio. El aviso nombra el valor y, para los tres que un
+// alumno de U3–U7 confunde, da la salida que SÍ existe: leer es con un `Scanner`, mostrar es con `println`.
+describe('textosNoSoportado — un valor cuyo tipo el subconjunto no modela (cierre por defecto, tarea 1.34)', () => {
+  it('`System.in`: nombra el valor y la línea, usa el marco aprobado y manda al `Scanner`', () => {
+    const texto = textosNoSoportado['valor-de-tipo-no-modelado']({ linea: 4, valor: 'System.in' });
+    expect(texto).toBe(
+      'Tu programa usa `System.in` como un valor en la línea 4. Es parte de Java, pero este visualizador cubre las unidades 3 a 7 y todavía no ' +
+        'maneja el tipo de ese valor, así que no puedo revisar si esa parte está bien escrita. ' +
+        'Para leer lo que escribe el usuario, crea un `Scanner` con `new Scanner(System.in)` y usa sus métodos, como `nextInt()`. ' +
+        'No lo ejecuto para no enseñarte un resultado que podría no ser el de Java.',
+    );
+    expect(texto).not.toMatch(/Java sí (lo |la )?(acepta|tiene)/);
+  });
+
+  it('`System.out` y `System.err`: la alternativa es `println` sobre ellos mismos', () => {
+    expect(textosNoSoportado['valor-de-tipo-no-modelado']({ linea: 2, valor: 'System.out' })).toContain('Para mostrar algo en pantalla, usa `System.out.println(...)`.');
+    expect(textosNoSoportado['valor-de-tipo-no-modelado']({ linea: 2, valor: 'System.err' })).toContain('usa `System.err.println(...)`.');
+  });
+
+  it('otro valor (o ninguno que se pueda nombrar): sin inventar una alternativa, y la frase sigue el marco', () => {
+    const otro = textosNoSoportado['valor-de-tipo-no-modelado']({ linea: 7, valor: 'flujo' });
+    expect(otro).toContain('`flujo` como un valor en la línea 7');
+    expect(otro).not.toMatch(/Scanner|println/);
+    const sinNombre = textosNoSoportado['valor-de-tipo-no-modelado']({ linea: 9, valor: null });
+    expect(sinNombre).toContain('un valor de un tipo que este visualizador no simula en la línea 9');
+    expect(sinNombre).not.toMatch(/undefined|null|`null`/);
+  });
+});

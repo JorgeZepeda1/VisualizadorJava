@@ -105,7 +105,8 @@ describe('textoDelProblema — aviso "no disponible": el texto del catálogo tal
       datos: {},
     };
     const texto = textoDelProblema(problema);
-    expect(texto).toContain('Java sí acepta tu programa');
+    expect(texto).toContain('Tu programa pasó todas mis revisiones');
+    expect(texto).not.toContain('Java sí');
     expect(texto).toContain('línea 6');
   });
 });

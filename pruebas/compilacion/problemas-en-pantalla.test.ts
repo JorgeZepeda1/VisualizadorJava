@@ -19,7 +19,10 @@
 // programa mínimo de cada familia de atribución que encontró el generador: cast inválido, miembro de
 // un primitivo, `void` como valor, etiquetas de `switch`, método de instancia por el nombre de la clase…) y, desde la tarea 1.33,
 // `corpus/experimentos/lexico-y-sintaxis/*.java` (el programa mínimo de cada familia de léxico y sintaxis: `var`/`yield` como nombre, una palabra
-// reservada como nombre, el guion bajo mal puesto, los flotantes hexadecimales, `case s ->`, `printf` como valor, `return 0;` y `println("a", x)`).
+// reservada como nombre, el guion bajo mal puesto, los flotantes hexadecimales, `case s ->`, `printf` como valor, `return 0;` y `println("a", x)`) y, desde la
+// tarea 1.34, `corpus/experimentos/cierre-por-defecto/*.java` (el programa mínimo de las familias que cazó la re-verificación: una sentencia antes del primer
+// `case`, `args` y `System.in`/`System.out`/`System.err` como valor, una clase con nombre de una clase del JDK, una expresión entre paréntesis como sentencia
+// y los nombres de `Object.prototype`).
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -52,6 +55,7 @@ function fuentesDelCorpus(): FuenteDeCorpus[] {
     ...archivosJava(resolve(RAIZ, 'corpus/experimentos/texto')),
     ...archivosJava(resolve(RAIZ, 'corpus/experimentos/atribucion')),
     ...archivosJava(resolve(RAIZ, 'corpus/experimentos/lexico-y-sintaxis')),
+    ...archivosJava(resolve(RAIZ, 'corpus/experimentos/cierre-por-defecto')),
   ].map((ruta) => ({ id: relative(RAIZ, ruta), fuente: readFileSync(ruta, 'utf-8') }));
   const mutantes = readFileSync(resolve(RAIZ, 'corpus/mutantes/veredictos.jsonl'), 'utf-8')
     .split('\n')

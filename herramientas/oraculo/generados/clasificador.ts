@@ -23,8 +23,8 @@ export interface VeredictoJavac {
  * una cuenta distinto frente a javac:
  * - `ok`: el compilador lo aceptó y hay algo que ejecutar.
  * - `ejecucion-no-disponible`: TODAS las pasadas lo aceptaron y solo falta ejecutarlo (tarea 1.27);
- *   su texto dice «Java sí acepta tu programa», así que para un programa que javac rechaza es un
- *   falso acepto igual que `ok`.
+ *   su texto dice «Tu programa pasó todas mis revisiones…» (hasta la 1.34, «Java sí acepta tu programa»),
+ *   así que para un programa que javac rechaza es un falso acepto igual que `ok`.
  * - `aviso`: una construcción fuera del subconjunto reconocida; afirma la construcción, no el programa.
  * - `error-compilacion`: lo rechazó, con su línea.
  * - `fallo-interno`: el compilador lanzó una excepción (un fallo del motor, nunca una respuesta).

@@ -136,6 +136,12 @@ export const CODIGOS_NO_SOPORTADO = {
   // `printf(...).println(...)`), y decidirlo pide modelar un tipo de referencia más. Lo emite `semantica/atribucion.ts`.
   valorDeTipoNoSoportado: 'valor-de-tipo-no-soportado',
 
+  // Tarea 1.34 (cierre por defecto, familia B de la re-verificación del lote 1): una expresión cuyo tipo el motor no sabe —`System.in`, `System.out` o
+  // `System.err` usados como VALOR (`int x = System.in;`, `System.in.nextInt()`), de un tipo (`InputStream`, `PrintStream`) que el subconjunto no modela— en
+  // posición de valor NO puede terminar en «Java sí acepta tu programa»: si ninguna regla modelada la rechaza, es este aviso. Lo emite `semantica/atribucion.ts`
+  // (un arreglo, en cambio, usa `arreglo`).
+  valorDeTipoNoModelado: 'valor-de-tipo-no-modelado',
+
   // Tarea 1.27 (agregada por el orquestador, D2/regla 5 de CLAUDE.md): a diferencia de TODO lo
   // demás en esta tabla (construcciones FUERA del subconjunto U3-U7 por diseño), este código cubre
   // un programa QUE SÍ está en el subconjunto y que las 5 pasadas de `compilador.ts` YA ACEPTARON,
@@ -235,6 +241,9 @@ export interface DatosPorCodigoNoSoportado {
   /** Tarea 1.33: la llamada tal como el alumno la escribió, sin argumentos (`System.out.printf`, `flujo.printf`); si el receptor no es una
    * cadena de nombres, solo el nombre del método. El texto la muestra como `llamada(...)`. */
   'valor-de-tipo-no-soportado': { readonly llamada: string };
+  /** Tarea 1.34: el valor tal como el alumno lo escribió (`System.in`, `System.out`, `System.err`); `null` si la expresión no es un nombre ni una cadena de
+   * nombres (no debería ocurrir: es el respaldo de un valor que el motor no sabe describir). */
+  'valor-de-tipo-no-modelado': { readonly valor: string | null };
   /** Tarea 1.29: la cláusula `extends`/`implements` de la cabecera de la clase; el texto no necesita más datos. */
   'herencia-no-soportada': Record<never, never>;
   /** Tarea 1.29: `assert cond;` o `assert cond : mensaje;`. */

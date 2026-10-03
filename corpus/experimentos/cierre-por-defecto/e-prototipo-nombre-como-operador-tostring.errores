@@ -1,0 +1,10 @@
+EPrototipoNombreComoOperadorToString.java:4: error: ';' expected
+        int a = 1 + 2 toString 3;
+                     ^
+EPrototipoNombreComoOperadorToString.java:4: error: not a statement
+        int a = 1 + 2 toString 3;
+                      ^
+EPrototipoNombreComoOperadorToString.java:4: error: ';' expected
+        int a = 1 + 2 toString 3;
+                              ^
+3 errors

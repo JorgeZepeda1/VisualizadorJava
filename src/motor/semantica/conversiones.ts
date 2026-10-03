@@ -24,12 +24,14 @@ import { nombreReflejado, type ArgumentoDeSobrecarga, type Tipo } from './tipos.
 // este subconjunto (sin byte/short, NO-DISP). Los nombres de destino son los que da la reflexión
 // real (`Class#getTypeName()`), nunca traducidos: así comparar contra `FirmaMiembro.parametros`
 // es una comparación de texto directa, sin una segunda tabla de sinónimos que se pueda desincronizar.
-const ENSANCHAMIENTOS_PRIMITIVOS: Readonly<Record<string, readonly string[]>> = {
-  char: ['int', 'long', 'float', 'double'],
-  int: ['long', 'float', 'double'],
-  long: ['float', 'double'],
-  float: ['double'],
-};
+// Tarea 1.34: un `Map` y exportada — `sobrecargas.ts` tenía una copia idéntica (`PRIMITIVOS_REFLEJADOS`, consultada con `in`, que mira también la cadena
+// de prototipos): una sola tabla, y ninguna se consulta como objeto plano.
+export const ENSANCHAMIENTOS_PRIMITIVOS: ReadonlyMap<string, readonly string[]> = new Map<string, readonly string[]>([
+  ['char', ['int', 'long', 'float', 'double']],
+  ['int', ['long', 'float', 'double']],
+  ['long', ['float', 'double']],
+  ['float', ['double']],
+]);
 
 const TIPOS_PRIMITIVOS: ReadonlySet<Tipo> = new Set(['int', 'long', 'double', 'char', 'boolean']);
 
@@ -63,7 +65,7 @@ export function esConvertiblePorEnsanchamiento(origen: ArgumentoDeSobrecarga, de
   const origenReflejado = typeof origen === 'string' ? nombreReflejado(origen) : origen.reflejado;
   if (origenReflejado === destinoReflejado) return true;
   if (typeof origen === 'string' && TIPOS_PRIMITIVOS.has(origen)) {
-    return (ENSANCHAMIENTOS_PRIMITIVOS[origen] ?? []).includes(destinoReflejado);
+    return (ENSANCHAMIENTOS_PRIMITIVOS.get(origen) ?? []).includes(destinoReflejado);
   }
   // Ensanchamiento de referencia (JLS 5.1.5, "widening reference conversion"): a CUALQUIER
   // supertipo real del origen — antes solo `String -> Object`, escrito a mano (tarea 1.29). Nunca
@@ -76,13 +78,13 @@ export function esConvertiblePorEnsanchamiento(origen: ArgumentoDeSobrecarga, de
 // producir como argumento. `String`/`Scanner`/`Random` no aparecen aquí — ya son de referencia
 // (los cubre `esConvertiblePorEnsanchamiento`), y este subconjunto nunca tiene un valor de tipo
 // envuelto que DESEMPAQUETAR (unboxing, la otra mitad de la fase 2 — REQ-SUB-007 lo deja fuera).
-const ENVOLTORIOS: Readonly<Partial<Record<Tipo, string>>> = {
-  int: 'java.lang.Integer',
-  double: 'java.lang.Double',
-  char: 'java.lang.Character',
-  boolean: 'java.lang.Boolean',
-  long: 'java.lang.Long',
-};
+const ENVOLTORIOS: ReadonlyMap<Tipo, string> = new Map<Tipo, string>([
+  ['int', 'java.lang.Integer'],
+  ['double', 'java.lang.Double'],
+  ['char', 'java.lang.Character'],
+  ['boolean', 'java.lang.Boolean'],
+  ['long', 'java.lang.Long'],
+]);
 
 /**
  * ¿Un valor de `origen` es aplicable donde se pide `destinoReflejado` en la fase 2 de JLS
@@ -94,7 +96,7 @@ const ENVOLTORIOS: Readonly<Partial<Record<Tipo, string>>> = {
 export function esConvertiblePorInvocacionLaxa(origen: ArgumentoDeSobrecarga, destinoReflejado: string): boolean {
   if (esConvertiblePorEnsanchamiento(origen, destinoReflejado)) return true;
   if (typeof origen !== 'string') return false;
-  const envoltorio = ENVOLTORIOS[origen];
+  const envoltorio = ENVOLTORIOS.get(origen);
   if (envoltorio === undefined) return false;
   // JLS 5.3: boxing seguido de ensanchamiento de referencia — a cualquier supertipo real del
   // envoltorio (`int -> Integer -> Number/Comparable/Object…`), no solo a `Object` (tarea 1.29).

@@ -425,3 +425,76 @@ describe('expresiones — error real cuando no hay ninguna expresión válida qu
     expect(() => expresionDe(';')).toThrow(ErrorDeCompilacion);
   });
 });
+
+// Tarea 1.34: la tabla de precedencias era un objeto plano (`{ '||': 3, … }`) indexado con el TEXTO del token que sigue a un operando, y ese texto puede
+// ser un identificador del alumno: `PRECEDENCIA['constructor']` no es `undefined` sino la función `Object`, y `Object < 3` es falso (NaN), así que el
+// nombre pasaba por «operador de alta precedencia» y `int a = 1 constructor 2;` se aceptaba (javac: `';' expected`). Un nombre que no es un operador
+// termina la expresión y el resto lo decide quien la llamó.
+describe('expresiones — un nombre de Object.prototype detrás de un operando NO es un operador (tarea 1.34)', () => {
+  const NOMBRES = ['constructor', 'toString', 'valueOf', 'hasOwnProperty', '__proto__', 'isPrototypeOf', 'propertyIsEnumerable', 'toLocaleString'];
+
+  it.each(NOMBRES)('«1 %s 2»: la expresión es solo el «1» y el cursor queda en el nombre', (nombre) => {
+    const cursor = new CursorDeTokens(tokenizar(`1 ${nombre} 2`));
+    const expr = analizarExpresion(cursor);
+    expect(expr).toMatchObject({ tipo: 'literal-entero', valor: 1n });
+    expect(cursor.actual().texto).toBe(nombre);
+  });
+
+  it('triangulación: tras una suma y tras un nombre de variable también', () => {
+    const suma = new CursorDeTokens(tokenizar('a + b valueOf c'));
+    expect(analizarExpresion(suma)).toMatchObject({ tipo: 'binaria', operador: '+', izquierda: { nombre: 'a' }, derecha: { nombre: 'b' } });
+    expect(suma.actual().texto).toBe('valueOf');
+    const nombre = new CursorDeTokens(tokenizar('x __proto__'));
+    expect(analizarExpresion(nombre)).toMatchObject({ tipo: 'nombre', nombre: 'x' });
+    expect(nombre.actual().texto).toBe('__proto__');
+  });
+
+  it('control: los operadores de verdad siguen siendo operadores (la tabla no se rompió)', () => {
+    const cursor = new CursorDeTokens(tokenizar('1 + 2 * 3 == 7 && a'));
+    expect(analizarExpresion(cursor)).toMatchObject({ tipo: 'binaria', operador: '&&' });
+    expect(cursor.actual().tipo).toBe('eof');
+  });
+});
+
+// Tarea 1.34 (D): el árbol conserva si una expresión venía entre paréntesis — `parentesis`, el rango de los más externos — porque hay tres reglas de Java que
+// dependen de eso y no del valor: una expresión entre paréntesis no es una sentencia (JLS 14.8), no puede ser la «función» de una llamada (`(f)(1)`) y el
+// nombre de una clase entre paréntesis ya no es la clase (`(Math).abs(1)`: «illegal parenthesized expression»). El valor y la forma del árbol no cambian.
+describe('expresiones — el árbol recuerda los paréntesis (tarea 1.34)', () => {
+  it('una expresión entre paréntesis lleva `parentesis`; la misma sin ellos, no', () => {
+    expect(expresionDe('(1 + 2)')).toMatchObject({ tipo: 'binaria', operador: '+', parentesis: { inicio: 0, fin: 7 } });
+    expect(expresionDe('1 + 2').parentesis).toBeUndefined();
+  });
+
+  it('solo la subexpresión que va entre paréntesis lleva la marca: en `(1 + 2) * 3` la suma sí y el producto no', () => {
+    const expr = expresionDe('(1 + 2) * 3');
+    expect(expr).toMatchObject({ tipo: 'binaria', operador: '*', izquierda: { operador: '+', parentesis: { inicio: 0, fin: 7 } } });
+    expect(expr.parentesis).toBeUndefined();
+  });
+
+  it('con los paréntesis repetidos la marca es la de los MÁS EXTERNOS (el rango que javac señala)', () => {
+    expect(expresionDe('((x))')).toMatchObject({ tipo: 'nombre', nombre: 'x', parentesis: { inicio: 0, fin: 5 } });
+    expect(expresionDe('( ( x = 1 ) )')).toMatchObject({ tipo: 'asignacion', parentesis: { inicio: 0, fin: 13 } });
+  });
+
+  it('el rango de la propia expresión sigue siendo el de lo de dentro (nada que dependa de él cambia)', () => {
+    expect(expresionDe('(1 + 2)').rango).toEqual({ inicio: 1, fin: 6 });
+  });
+
+  it('una expresión entre paréntesis NO puede ser el nombre de una llamada: `(a.b)(1)` termina en `(a.b)` y deja `(1)` sin leer (`(f)(1)` es otra cosa: un cast, como en javac)', () => {
+    const cursor = new CursorDeTokens(tokenizar('(a.b)(1)'));
+    const expr = analizarExpresion(cursor);
+    expect(expr).toMatchObject({ tipo: 'acceso-miembro', miembro: 'b', parentesis: { inicio: 0, fin: 5 } });
+    expect(cursor.actual().texto).toBe('(');
+    expect(expresionDe('(f)(1)')).toMatchObject({ tipo: 'conversion', nombreTipo: 'f' });
+  });
+
+  it('control: sin paréntesis, `f(1)` sigue siendo una llamada, y `(a.b).c(1)` sigue siendo una llamada sobre `(a.b)`', () => {
+    expect(expresionDe('f(1)')).toMatchObject({ tipo: 'llamada', callee: { nombre: 'f' } });
+    expect(expresionDe('(a.b).c(1)')).toMatchObject({ tipo: 'llamada', callee: { tipo: 'acceso-miembro', miembro: 'c', objeto: { parentesis: { inicio: 0, fin: 5 } } } });
+  });
+
+  it('un cast no es una expresión entre paréntesis: `(int) x` es una conversión sin marca', () => {
+    expect(expresionDe('(int) x').parentesis).toBeUndefined();
+    expect(expresionDe('(int) x')).toMatchObject({ tipo: 'conversion' });
+  });
+});

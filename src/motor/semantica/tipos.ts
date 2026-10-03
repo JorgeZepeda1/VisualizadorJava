@@ -246,11 +246,15 @@ export function esLlamadaDeTipoNoModelado(expresion: NodoExpresion, alcance: Alc
 // suitable constructor found for Scanner(PrintStream)".
 export type ArgumentoDeSobrecarga = Tipo | { readonly reflejado: string };
 
-const CAMPOS_DE_SYSTEM_REFLEJADOS: Readonly<Record<string, string>> = {
-  in: 'java.io.InputStream',
-  out: 'java.io.PrintStream',
-  err: 'java.io.PrintStream',
-};
+// Tarea 1.34: un `Map` y no un objeto plano — se consulta con el nombre del campo que escribió el alumno. En `{ in: …, out: … }`, `System.toString`
+// encontraba la función heredada de `Object.prototype` (el `?? null` de `campoReflejadoDeSystem` no actúa: no es `undefined`) y
+// `nombreDeArgumentoParaMostrar` le pedía `lastIndexOf` (`TypeError: campo.lastIndexOf is not a function`, 56 de 120 variantes de la
+// re-verificación del lote 1).
+const CAMPOS_DE_SYSTEM_REFLEJADOS: ReadonlyMap<string, string> = new Map([
+  ['in', 'java.io.InputStream'],
+  ['out', 'java.io.PrintStream'],
+  ['err', 'java.io.PrintStream'],
+]);
 
 /** `System.in`/`System.out`/`System.err` -- el ÚNICO caso real de este subconjunto donde un campo
  * de biblioteca conocido tiene un tipo de referencia que el `Tipo` cerrado no puede representar.
@@ -259,14 +263,14 @@ const CAMPOS_DE_SYSTEM_REFLEJADOS: Readonly<Record<string, string>> = {
  * ahora reescrito para reusar esta función, nunca una segunda implementación que podría divergir);
  * a diferencia de ahí, aquí "in" SÍ importa (es exactamente el caso real, "in" nunca se navega como
  * receptor pero SÍ se pasa como argumento). */
-function campoReflejadoDeSystem(expresion: NodoExpresion, alcance: Alcance): string | null {
+export function campoReflejadoDeSystem(expresion: NodoExpresion, alcance: Alcance): string | null {
   if (
     expresion.tipo === 'acceso-miembro' &&
     expresion.objeto.tipo === 'nombre' &&
     expresion.objeto.nombre === 'System' &&
-    alcance.buscar('System') === null
+    esNombreDeClaseDelCatalogo(expresion.objeto, alcance)
   ) {
-    return CAMPOS_DE_SYSTEM_REFLEJADOS[expresion.miembro] ?? null;
+    return CAMPOS_DE_SYSTEM_REFLEJADOS.get(expresion.miembro) ?? null;
   }
   return null;
 }
@@ -331,10 +335,7 @@ function tipoDeAccesoMiembro(expresion: Extract<NodoExpresion, { tipo: 'acceso-m
  * resolvía el receptor para calcular el TIPO de la expresión (arriba), nunca una segunda
  * implementación que podría divergir. */
 export function claseDelObjeto(objeto: NodoExpresion, alcance: Alcance): string | null {
-  if (objeto.tipo === 'nombre') {
-    const variable = alcance.buscar(objeto.nombre);
-    if (variable === null && NOMBRES_DE_CLASE_RECONOCIDOS.has(objeto.nombre)) return objeto.nombre;
-  }
+  if (objeto.tipo === 'nombre' && esNombreDeClaseDelCatalogo(objeto, alcance)) return objeto.nombre;
   // Sub-lote 1-D3 (mutante real contra veredicto de javac; "pendiente heredado 2" de 1.8, ver la
   // cabecera de `esInicioDeImpresion`): "System.out"/"System.err" son la ÚNICA clase de biblioteca
   // de este subconjunto cuyos miembros se navegan DOS veces -- pero solo "System.out.println/
@@ -368,3 +369,22 @@ function tipoDeNombreReflejado(nombreReflejado: string): Tipo {
 // Viene del catálogo real generado por el oráculo (tarea 1.9, ADR 010), no de una lista aparte
 // que alguien tendría que mantener sincronizada a mano.
 export const NOMBRES_DE_CLASE_RECONOCIDOS: ReadonlySet<string> = new Set(FIRMAS_JDK.map((f) => f.clase));
+
+/**
+ * Pura. ¿`expresion` es el NOMBRE de una clase del catálogo del JDK (`Math`, `String`, `Scanner`…) usado como referencia estática — el `Math` de `Math.abs(1)`,
+ * el `System` de `System.in`? Una sola respuesta para todos los que lo preguntan (tipos, atribución, verificaciones). No lo es si:
+ *   - una VARIABLE lo tapa (JLS 6.4.2: una variable oculta a un tipo del mismo nombre, y `Math.length()` con `String Math` es una llamada al `String`);
+ *   - (tarea 1.34, D, JLS 15.8.5 y 6.5.2) viene ENTRE PARÉNTESIS: `(Math)` es una expresión —javac: «illegal parenthesized expression»—, no un tipo;
+ *   - (tarea 1.34, C, JLS 6.4.1) la clase del PROPIO programa se llama así: la declaración de un tipo tapa a los de `java.lang` y a los de un `import p.*;`, y
+ *     con `public class Math` el `Math` del programa es SU clase (que no tiene `sqrt`), no `java.lang.Math`.
+ * `nombre` es un nombre simple; cualquier otra forma de expresión nunca es una clase.
+ */
+export function esNombreDeClaseDelCatalogo(expresion: NodoExpresion, alcance: Alcance): boolean {
+  return (
+    expresion.tipo === 'nombre' &&
+    expresion.parentesis === undefined &&
+    alcance.buscar(expresion.nombre) === null &&
+    !alcance.esTipoPropio(expresion.nombre) &&
+    NOMBRES_DE_CLASE_RECONOCIDOS.has(expresion.nombre)
+  );
+}

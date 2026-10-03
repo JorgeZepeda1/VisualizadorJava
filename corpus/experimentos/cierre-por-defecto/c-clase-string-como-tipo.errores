@@ -1,0 +1,4 @@
+String.java:4: error: incompatible types: java.lang.String cannot be converted to String
+        String s = "a";
+                   ^
+1 error

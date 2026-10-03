@@ -24,8 +24,9 @@ describe('corpus real → ningún programa que javac 17 compila se presenta como
     // 131 de `corpus/curso` + `corpus/experimentos/{numeros,texto}`, 20 de `corpus/experimentos/tipicos` (programas típicos de
     // U3–U7 con constructores, arreglos, herencia, enum, genéricos, constantes…) y los 10 controles de `corpus/experimentos/atribucion`
     // (tarea 1.32: lo que javac SÍ acepta junto a cada familia de atribución) y los 17 de `corpus/experimentos/lexico-y-sintaxis` (tarea 1.33: `var`/`yield`
-    // como nombre, guiones bajos entre dígitos, flotantes hexadecimales, `case s ->`, `printf`, `return;`…), todos con el veredicto real de javac 17.
-    expect(validos.length).toBeGreaterThanOrEqual(178);
+    // como nombre, guiones bajos entre dígitos, flotantes hexadecimales, `case s ->`, `printf`, `return;`…) y los 9 controles de `corpus/experimentos/cierre-por-defecto`
+    // (tarea 1.34: `Object o = System.in;`, `args.length`, `(x) = 2;`, una clase llamada `Math` que no usa a `Math`…), todos con el veredicto real de javac 17.
+    expect(validos.length).toBeGreaterThanOrEqual(187);
     // Si el filtro `compilo` no separara nada, la prueba de abajo revisaría también los que javac
     // rechazó (que SÍ deben ser error) y no distinguiría un rechazo legítimo de uno falso.
     expect(programas.length - validos.length).toBeGreaterThanOrEqual(1);

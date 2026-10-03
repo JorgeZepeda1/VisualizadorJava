@@ -1,0 +1,4 @@
+BSystemInComoTexto.java:4: error: incompatible types: PrintStream cannot be converted to String
+        String s = System.out;
+                         ^
+1 error

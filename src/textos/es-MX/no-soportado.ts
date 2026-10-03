@@ -17,8 +17,9 @@
 // parte de Java»), NUNCA del PROGRAMA. Reconocer una construcción fuera del subconjunto no permite
 // revisar la validez de lo que queda dentro de ella, y hay programas que javac rechaza y que llegan
 // aquí (un método propio sin `return`, `byte c = a + b;`, un `break` a una etiqueta que no existe…):
-// decirles «Java sí lo acepta» era FALSO (D2). La única excepción es `ejecucion-no-disponible`, que solo
-// se emite DESPUÉS de que todas las pasadas de compilación aceptaron el programa. Lo fijan
+// decirles «Java sí lo acepta» era FALSO (D2). Tarea 1.34 (decisión del PO, 2026-10-02): ya no hay excepción — ni
+// `ejecucion-no-disponible`, que solo se emite DESPUÉS de que todas las pasadas de compilación aceptaron el programa,
+// lo afirma: dice lo que SE REVISÓ («pasó todas mis revisiones»). Lo fijan
 // `pruebas/compilacion/programas-invalidos.test.ts` (corpus real, veredictos de javac) y `no-soportado.test.ts`.
 //
 // Solo puede importar tipos de `motor/vista` (matriz de capas, herramientas/eslint/matriz-capas.ts).
@@ -62,7 +63,8 @@ const TIPO_DEL_SUBCONJUNTO_EN_SU_LUGAR: Record<DatosPorCodigoNoSoportado['tipo-p
 // CONSTRUCCIÓN (sujeto: QUÉ, que la oración anterior acaba de nombrar), nunca el programa entero, y "no
 // puedo revisar si esa parte está bien escrita" admite lo que el reconocimiento de lo no soportado no
 // ve. Antes decía "Java sí lo acepta", que para un programa que javac rechaza era FALSO (D2). El
-// ejemplo literal del escenario de arreglos vive en no-soportado.test.ts.
+// ejemplo literal del escenario de arreglos vive en no-soportado.test.ts. Tarea 1.34: ya ningún texto de este catálogo afirma que Java acepta el programa (tampoco
+// `ejecucion-no-disponible`, ver abajo).
 function marco(linea: number, que: string, todavia: string, alternativa?: string): string {
   const sufijoAlternativa = alternativa === undefined ? '' : ` ${alternativa}`;
   return (
@@ -70,6 +72,13 @@ function marco(linea: number, que: string, todavia: string, alternativa?: string
     `las unidades 3 a 7 y todavía ${todavia}, así que no puedo revisar si esa parte está bien ` +
     `escrita.${sufijoAlternativa} No lo ejecuto para no enseñarte un resultado que podría no ser el de Java.`
   );
+}
+
+// Tarea 1.34: la salida que SÍ existe para los tres flujos estándar (`undefined`: ninguna, nunca una inventada).
+function alternativaParaUnValorSinTipo(valor: string | null): string | undefined {
+  if (valor === 'System.in') return 'Para leer lo que escribe el usuario, crea un `Scanner` con `new Scanner(System.in)` y usa sus métodos, como `nextInt()`.';
+  if (valor === 'System.out' || valor === 'System.err') return `Para mostrar algo en pantalla, usa \`${valor}.println(...)\`.`;
+  return undefined;
 }
 
 export const textosNoSoportado: { readonly [K in CodigoNoSoportado]: (datos: DatosDe<K>) => string } = {
@@ -199,6 +208,16 @@ export const textosNoSoportado: { readonly [K in CodigoNoSoportado]: (datos: Dat
       `Escribe \`${llamada}(...)\` como una sentencia aparte, sin usar lo que devuelve.`,
     ),
 
+  // Tarea 1.34 (cierre por defecto): `System.in`/`System.out`/`System.err` usados como VALOR. Para los tres que un alumno de U3–U7 confunde se da la salida que sí existe:
+  // leer es con un `Scanner` y mostrar es con `println`; ningún otro valor inventa una alternativa (D2).
+  'valor-de-tipo-no-modelado': ({ linea, valor }) =>
+    marco(
+      linea,
+      valor === null ? 'un valor de un tipo que este visualizador no simula' : `\`${valor}\` como un valor`,
+      'no maneja el tipo de ese valor',
+      alternativaParaUnValorSinTipo(valor),
+    ),
+
   'clase-local-no-soportada': ({ linea }) =>
     marco(linea, 'un tipo declarado dentro de un método (una clase, interfaz, enum o record local)', 'no simula clases propias'),
 
@@ -274,12 +293,12 @@ export const textosNoSoportado: { readonly [K in CodigoNoSoportado]: (datos: Dat
   // deliberadamente genérico, sin nombrar el elemento AST interno: "declaracion-local", "lote" y
   // "tarea" son jerga de desarrollo que un alumno nunca debe leer.
   //
-  // Tarea 1.30: es el ÚNICO texto que afirma «Java sí acepta tu programa», y es cierto porque solo se
-  // emite DESPUÉS de que TODAS las pasadas de compilación (léxico+sintaxis, atribución, alcanzabilidad y
-  // asignación definitiva) aceptaron el programa entero; cualquier otro aviso se emite al RECONOCER una
-  // construcción, sin poder revisar el resto, y por eso ya no lo afirma (ver la cabecera y `marco()`).
+  // Tarea 1.30 lo dejó como el ÚNICO texto que afirmaba «Java sí acepta tu programa», porque solo se emite DESPUÉS de que TODAS las pasadas de compilación (léxico+sintaxis,
+  // atribución, alcanzabilidad y asignación definitiva) aceptaron el programa entero. Tarea 1.34 (decisión del PO, 2026-10-02: defensa en profundidad): eso solo es cierto si TODAS
+  // las reglas de javac están modeladas, y la re-verificación del lote 1 encontró programas que javac rechaza y que llegaban aquí (las familias A–D). Ahora dice lo que SÍ se revisó:
+  // el programa «pasó todas mis revisiones» (no «Java lo acepta»), y lo que no se sabe hacer todavía: ejecutar esa línea.
   'ejecucion-no-disponible': ({ linea }) =>
-    `Java sí acepta tu programa, pero este visualizador todavía no sabe ejecutar lo que escribiste ` +
+    `Tu programa pasó todas mis revisiones, pero todavía no sé ejecutar lo que escribiste ` +
     `en la línea ${linea}. No lo ejecuto para no enseñarte un resultado que podría no ser el de Java.`,
 
   // Respaldo defensivo (`motor/no-soportado.ts` → `sinClasificar`): en la práctica nunca debería

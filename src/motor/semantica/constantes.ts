@@ -51,16 +51,17 @@ export type ValorConstante =
  * necesitan verificarse contra el oráculo. `Math.PI`/`Math.E` reusan los de JS DIRECTAMENTE: ambos
  * son "el `double` más cercano a la constante real", bit-idénticos entre JS y Java por definición
  * de IEEE 754 (nunca un valor aproximado o inventado). */
-const CAMPOS_CONSTANTES: Readonly<Record<string, ValorConstante>> = {
-  'Integer.MAX_VALUE': { tipo: 'int', valor: 2147483647 },
-  'Integer.MIN_VALUE': { tipo: 'int', valor: -2147483648 },
-  'Long.MAX_VALUE': { tipo: 'long', valor: 9223372036854775807n },
-  'Long.MIN_VALUE': { tipo: 'long', valor: -9223372036854775808n },
-  'Double.MAX_VALUE': { tipo: 'double', valor: 1.7976931348623157e308 },
-  'Double.MIN_VALUE': { tipo: 'double', valor: 4.9e-324 },
-  'Math.PI': { tipo: 'double', valor: Math.PI },
-  'Math.E': { tipo: 'double', valor: Math.E },
-};
+// Tarea 1.34: un `Map` (se consulta con `clase.miembro` armado con lo que escribió el alumno; ver `PRECEDENCIA` en `sintaxis/expresiones.ts`).
+const CAMPOS_CONSTANTES: ReadonlyMap<string, ValorConstante> = new Map<string, ValorConstante>([
+  ['Integer.MAX_VALUE', { tipo: 'int', valor: 2147483647 }],
+  ['Integer.MIN_VALUE', { tipo: 'int', valor: -2147483648 }],
+  ['Long.MAX_VALUE', { tipo: 'long', valor: 9223372036854775807n }],
+  ['Long.MIN_VALUE', { tipo: 'long', valor: -9223372036854775808n }],
+  ['Double.MAX_VALUE', { tipo: 'double', valor: 1.7976931348623157e308 }],
+  ['Double.MIN_VALUE', { tipo: 'double', valor: 4.9e-324 }],
+  ['Math.PI', { tipo: 'double', valor: Math.PI }],
+  ['Math.E', { tipo: 'double', valor: Math.E }],
+]);
 
 /** Pura: el valor constante de `expresion` (JLS 15.29), o `null` si NO es una expresión constante
  * — nunca lanza, nunca inventa (D2). Recorre el árbol recursivamente; cualquier sub-expresión no
@@ -113,7 +114,7 @@ function valorDeCampoConstante(
   // igual que ya hace `claseDelObjeto` en `tipos.ts` — nunca lee "Math.PI" como constante si "Math"
   // es, en este programa, el nombre de una variable.
   if (alcance.buscar(nodo.objeto.nombre) !== null) return null;
-  return CAMPOS_CONSTANTES[`${nodo.objeto.nombre}.${nodo.miembro}`] ?? null;
+  return CAMPOS_CONSTANTES.get(`${nodo.objeto.nombre}.${nodo.miembro}`) ?? null;
 }
 
 /** Deuda 3 del commit 999a8ca (JLS 4.12.4, "variable constante"): una local "final" cuyo

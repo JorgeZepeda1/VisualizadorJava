@@ -18,24 +18,25 @@ import { CODIGOS_NO_SOPORTADO, type ConDatosPorCodigo } from '../no-soportado.ts
 /** Una construcción que Java sí acepta pero que este visualizador todavía no soporta (ADR 003). */
 export type NoSoportadoLexico = ConDatosPorCodigo<{ readonly nota: string; readonly rango: Rango }>;
 
-const ESCAPES_VALIDOS: Readonly<Record<string, string>> = {
-  '"': '"',
-  "'": "'",
-  '\\': '\\',
-  n: '\n',
-  t: '\t',
-};
+// Tarea 1.34: `Map`s y no objetos planos (la clave es el carácter que escribió el alumno tras la barra; ver `PRECEDENCIA` en `sintaxis/expresiones.ts`).
+const ESCAPES_VALIDOS: ReadonlyMap<string, string> = new Map([
+  ['"', '"'],
+  ["'", "'"],
+  ['\\', '\\'],
+  ['n', '\n'],
+  ['t', '\t'],
+]);
 
 // Escapes que Java SÍ reconoce (JLS 3.10.7) pero que este visualizador todavía no soporta: no son
 // error, son NoSoportado (design.md §2.6). `\s` es el escape de espacio de los bloques de texto
 // (Java 15+); aquí se acepta igual como escape suelto, aunque en este subconjunto solo puede
 // aparecer si alguien lo escribe a mano (no hay bloques de texto reales).
-const ESCAPES_NO_SOPORTADOS_SIMPLES: Readonly<Record<string, string>> = {
-  r: 'retorno de carro (\\r)',
-  b: 'retroceso (\\b)',
-  f: 'salto de página (\\f)',
-  s: 'espacio (\\s)',
-};
+const ESCAPES_NO_SOPORTADOS_SIMPLES: ReadonlyMap<string, string> = new Map([
+  ['r', 'retorno de carro (\\r)'],
+  ['b', 'retroceso (\\b)'],
+  ['f', 'salto de página (\\f)'],
+  ['s', 'espacio (\\s)'],
+]);
 
 const DIGITO_OCTAL = /[0-7]/;
 const DIGITO_HEX = /[0-9A-Fa-f]/;
@@ -57,16 +58,18 @@ function decodificarUnidad(fuente: string, cursor: number): UnidadDecodificada {
   }
 
   const siguiente = fuente[cursor + 1];
-  if (siguiente !== undefined && ESCAPES_VALIDOS[siguiente] !== undefined) {
-    return { texto: ESCAPES_VALIDOS[siguiente], longitudConsumida: 2 };
+  const escapeValido = siguiente === undefined ? undefined : ESCAPES_VALIDOS.get(siguiente);
+  if (escapeValido !== undefined) {
+    return { texto: escapeValido, longitudConsumida: 2 };
   }
-  if (siguiente !== undefined && ESCAPES_NO_SOPORTADOS_SIMPLES[siguiente] !== undefined) {
+  const descripcionDelEscape = siguiente === undefined ? undefined : ESCAPES_NO_SOPORTADOS_SIMPLES.get(siguiente);
+  if (descripcionDelEscape !== undefined) {
     return {
       texto: fuente.slice(cursor, cursor + 2),
       longitudConsumida: 2,
       noSoportado: {
         codigo: CODIGOS_NO_SOPORTADO.escapeNoSoportado,
-        nota: `Java sí reconoce el escape "\\${siguiente}" (${ESCAPES_NO_SOPORTADOS_SIMPLES[siguiente]}), pero este visualizador todavía no lo soporta.`,
+        nota: `Java sí reconoce el escape "\\${siguiente}" (${descripcionDelEscape}), pero este visualizador todavía no lo soporta.`,
         datos: {},
       },
     };

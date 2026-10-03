@@ -1,0 +1,6 @@
+System.java:4: error: cannot find symbol
+        System.out.println("hola");
+              ^
+  symbol:   variable out
+  location: class System
+1 error

@@ -1,0 +1,6 @@
+BSystemInNextInt.java:4: error: cannot find symbol
+        int n = System.in.nextInt();
+                         ^
+  symbol:   method nextInt()
+  location: variable in of type InputStream
+1 error

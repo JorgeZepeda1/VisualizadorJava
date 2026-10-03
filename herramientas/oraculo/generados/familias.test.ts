@@ -239,3 +239,83 @@ describe('identificarFamiliaConocida — las de la tarea 1.33 (N2, N3, N4 y prin
     expect(identificarFamiliaConocida(familiaDe(javac, programaConCast('"5"')))?.id).toBe('F1');
   });
 });
+
+// Tarea 1.34: las cuatro familias de falsos aceptos de la re-verificación del lote 1 que el generador de la 1.31 no podía producir (A, B, C, D) y el
+// fallo interno por nombres de `Object.prototype` (E) dejan de salir como NUEVA o «sin rasgos»: cada una lleva el rasgo de construcción que la identifica.
+describe('identificarFamiliaConocida — las de la tarea 1.34 (A, B, C, D y E)', () => {
+  const familiaDe = (javac: VeredictoJavac, programa: Programa, nuestro: VeredictoNuestro = ACEPTA_SIN_EJECUTAR, tipo: DiscrepanciaReducida['tipo'] = 'falso-acepto') =>
+    agruparEnFamilias([discrepancia(1, javac, programa, nuestro, tipo)])[0]!;
+  const FALLO_INTERNO: VeredictoNuestro = { tipo: 'fallo-interno', mensaje: 'TypeError: campo.lastIndexOf is not a function' };
+
+  it('A una sentencia antes del primer case: lleva el rasgo sentencia-antes-del-primer-case (y switch) y es la familia A, no F4', () => {
+    const javac = javacRechaza('compiler.err.expected3', "case, default, or '}' expected");
+    const conAntes: Programa = {
+      imports: [],
+      sentencias: [seleccion({ selector: nombre('a', 'int'), antes: [sentenciaExpr(plantilla(['a++'], [], 'int', { etiquetas: ['incremento'] }))], casos: [{ etiquetas: [literal('1', 'int')], cuerpo: [] }], flecha: false })],
+    };
+    const familia = familiaDe(javac, conAntes);
+    expect(familia.etiquetas).toEqual(['incremento', 'sentencia-antes-del-primer-case', 'switch']);
+    expect(identificarFamiliaConocida(familia)?.id).toBe('A');
+    // Con una clave de switch de la F4 (`default` repetido) el programa SIGUE siendo A si lleva una sentencia antes del primer case: lo que lo rompe es eso.
+    expect(identificarFamiliaConocida(familiaDe(javacRechaza('compiler.err.duplicate.default.label', 'duplicate default label'), conAntes))?.id).toBe('A');
+  });
+
+  it('B args o System.in usados como valor: un falso acepto con el rasgo valor-de-tipo-no-modelado', () => {
+    const javac = javacRechaza('compiler.err.prob.found.req', 'incompatible types: java.io.InputStream cannot be converted to int');
+    const programa: Programa = {
+      imports: [],
+      sentencias: [declaracion({ tipo: 'int', nombre: 'x', inicial: nombre('System.in', 'InputStream', { etiquetas: ['valor-de-tipo-no-modelado'] }) })],
+    };
+    const familia = familiaDe(javac, programa);
+    expect(familia.etiquetas).toEqual(['valor-de-tipo-no-modelado']);
+    expect(identificarFamiliaConocida(familia)?.id).toBe('B');
+  });
+
+  it('C la clase con nombre del JDK: sea un falso acepto o un falso rechazo, la causa es el nombre de la clase', () => {
+    const conClase = (clase: string): Programa => ({ imports: [], clase, sentencias: [sentenciaExpr(plantilla(['System.out.println(1)'], [], 'void', { etiquetas: ['impresion'] }))] });
+    const aceptado = familiaDe(javacRechaza('compiler.err.cant.resolve.location', 'cannot find symbol'), conClase('System'));
+    expect(aceptado.etiquetas).toEqual(['clase-con-nombre-del-jdk']);
+    expect(identificarFamiliaConocida(aceptado)?.id).toBe('C');
+    const rechazado = familiaDe(JAVAC_COMPILA, conClase('Math'), { tipo: 'error-compilacion', codigo: 'campo-no-declarado', linea: 3 }, 'falso-rechazo');
+    expect(identificarFamiliaConocida(rechazado)?.id).toBe('C');
+  });
+
+  it('D una expresión entre paréntesis como sentencia: un falso acepto con el rasgo sentencia-entre-parentesis', () => {
+    const javac = javacRechaza('compiler.err.not.stmt', 'not a statement');
+    const asignacion = plantilla(['', ' = ', ''], [nombre('x', 'int'), literal('2', 'int')], 'int', { etiquetas: ['asignacion'] });
+    const programa: Programa = {
+      imports: [],
+      sentencias: [sentenciaExpr(plantilla(['(', ')'], [asignacion], 'int', { primaria: true, etiquetas: ['sentencia-entre-parentesis'], sintaxisInvalida: true }))],
+    };
+    const familia = familiaDe(javac, programa);
+    expect(familia.etiquetas).toEqual(['asignacion', 'sentencia-entre-parentesis']);
+    expect(identificarFamiliaConocida(familia)?.id).toBe('D');
+  });
+
+  it('E un nombre de Object.prototype que hace LANZAR al compilador: un fallo interno con el rasgo nombre-de-javascript', () => {
+    const programa: Programa = {
+      imports: [],
+      sentencias: [declaracion({ tipo: 'int', nombre: 'constructor', inicial: literal('1', 'int'), etiquetas: ['nombre-de-javascript'] })],
+    };
+    const familia = familiaDe(javacRechaza('compiler.err.cant.resolve.location', 'cannot find symbol'), programa, FALLO_INTERNO, 'fallo-interno');
+    expect(familia.etiquetas).toEqual(['nombre-de-javascript']);
+    expect(identificarFamiliaConocida(familia)?.id).toBe('E');
+  });
+
+  it('E también cuando el nombre de Object.prototype es el MIEMBRO de un valor (`int x = System.toString;`): el fallo interno lleva valor-de-tipo-no-modelado Y nombre-de-javascript y es E, no una familia NUEVA', () => {
+    const programa: Programa = {
+      imports: [],
+      sentencias: [declaracion({ tipo: 'int', nombre: 'x', inicial: nombre('System.toString', 'desconocido', { etiquetas: ['valor-de-tipo-no-modelado', 'nombre-de-javascript'] }) })],
+    };
+    const familia = familiaDe(javacRechaza('compiler.err.cant.resolve.location', 'cannot find symbol'), programa, FALLO_INTERNO, 'fallo-interno');
+    expect(familia.etiquetas).toEqual(['nombre-de-javascript', 'valor-de-tipo-no-modelado']);
+    expect(identificarFamiliaConocida(familia)?.id).toBe('E');
+    // Y el MISMO programa como falso acepto (el compilador no lanza pero lo acepta) es B: lo que lo rompe es el valor sin modelar.
+    expect(identificarFamiliaConocida(familiaDe(javacRechaza('compiler.err.cant.resolve.location', 'cannot find symbol'), programa))?.id).toBe('B');
+  });
+
+  it('una discrepancia sin ninguno de esos rasgos NO es A–E (F4 con default repetido sigue siendo F4)', () => {
+    const conSwitch: Programa = { imports: [], sentencias: [seleccion({ selector: nombre('a', 'int'), casos: [], flecha: false })] };
+    expect(identificarFamiliaConocida(familiaDe(javacRechaza('compiler.err.duplicate.default.label', 'duplicate default label'), conSwitch))?.id).toBe('F4');
+  });
+});

@@ -789,6 +789,18 @@ function analizarSwitch(cursor: CursorDeTokens): NodoSwitch {
       elementos.push(analizarEtiquetaDefault(cursor));
       continue;
     }
+    // Tarea 1.34 (JLS 14.11, javac `switchBlockStatementGroups`): todo grupo EMPIEZA con una etiqueta, así que antes de la primera lo único que cabe es
+    // `case`, `default` o `}` — cualquier sentencia, declaración, `;` o bloque ahí es «case, default, or '}' expected», en ESE token. Antes cualquier elemento de
+    // bloque se aceptaba también aquí y `switch (op) { System.out.println("Elige:"); case 1: … }` terminaba en «Java sí acepta tu programa».
+    // (Ante el fin del archivo se sigue por el camino de siempre, que da el error de la llave de cierre que falta.)
+    if (elementos.length === 0 && cursor.actual().tipo !== 'eof') {
+      throw new ErrorDeCompilacion(
+        'antes del primer "case" o "default" de un "switch" solo puede ir una etiqueta',
+        cursor.actual().rango,
+        undefined,
+        'sentencia-antes-del-primer-case',
+      );
+    }
     // Tarea 1.33: `yield` ya no se decide aquí por su texto: `yield = 2;` y `yield.length();` son una variable llamada `yield`. La regla de javac
     // (`esSentenciaYield`) la aplica `analizarElementoDeBloque`, igual dentro de un `switch` que en cualquier bloque.
     elementos.push(analizarElementoDeBloque(cursor));
@@ -1066,6 +1078,16 @@ function analizarSentenciaExpresion(cursor: CursorDeTokens): NodoSentenciaExpres
 }
 
 function envolverComoSentenciaExpresion(expresion: NodoExpresion): NodoSentenciaExpresion {
+  // Tarea 1.34 (D, JLS 14.8): una expresión entre paréntesis NO es una sentencia aunque lo de dentro lo sea (javac `checkExprStat`: «not a statement»), y se
+  // señala el paréntesis de apertura. El error propio le dice al alumno que lo que sobra son los paréntesis (el genérico preguntaba si le faltaba un `=`).
+  if (expresion.parentesis !== undefined) {
+    throw new ErrorDeCompilacion(
+      'una instrucción completa no puede ir entre paréntesis',
+      expresion.parentesis,
+      undefined,
+      'sentencia-entre-parentesis',
+    );
+  }
   if (!TIPOS_EXPRESION_SENTENCIA_VALIDOS.has(expresion.tipo)) {
     throw new ErrorDeCompilacion(
       'esta expresión no es una sentencia válida (¿te faltó "=", "++"/"--", o es una llamada?)',

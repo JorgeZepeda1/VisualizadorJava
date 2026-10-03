@@ -1,0 +1,4 @@
+BSystemInConSignoEnElScanner.java:5: error: bad operand type InputStream for unary operator '+'
+        Scanner sc = new Scanner(+System.in);
+                                 ^
+1 error

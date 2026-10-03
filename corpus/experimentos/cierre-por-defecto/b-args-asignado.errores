@@ -1,0 +1,4 @@
+BArgsAsignado.java:4: error: incompatible types: int cannot be converted to String[]
+        args = 5;
+               ^
+1 error

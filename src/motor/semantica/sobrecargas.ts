@@ -18,7 +18,7 @@
 // `double` (nunca al revés), así que `round(float)` es más específico. Se reusa igual en las 3
 // fases (el "candidato más específico" no depende de CUÁL conversión lo hizo aplicable).
 import { buscarFirmas } from './catalogo-api.ts';
-import { esConvertiblePorEnsanchamiento, esConvertiblePorInvocacionLaxa, esSubtipoDeReferencia } from './conversiones.ts';
+import { ENSANCHAMIENTOS_PRIMITIVOS, esConvertiblePorEnsanchamiento, esConvertiblePorInvocacionLaxa, esSubtipoDeReferencia } from './conversiones.ts';
 import type { ArgumentoDeSobrecarga } from './tipos.ts';
 import type { FirmaMiembro } from '../biblioteca/datos/firmas-jdk.generado.ts';
 
@@ -27,13 +27,8 @@ import type { FirmaMiembro } from '../biblioteca/datos/firmas-jdk.generado.ts';
  * nunca entre un `Tipo` nuestro y un parámetro — por eso vive aparte, no en `conversiones.ts`. */
 function unParametroEnsanchaAOtro(paramA: string, paramB: string): boolean {
   if (paramA === paramB) return true;
-  const PRIMITIVOS_REFLEJADOS: Readonly<Record<string, readonly string[]>> = {
-    char: ['int', 'long', 'float', 'double'],
-    int: ['long', 'float', 'double'],
-    long: ['float', 'double'],
-    float: ['double'],
-  };
-  if (paramA in PRIMITIVOS_REFLEJADOS) return PRIMITIVOS_REFLEJADOS[paramA]!.includes(paramB);
+  const ensanchamientos = ENSANCHAMIENTOS_PRIMITIVOS.get(paramA);
+  if (ensanchamientos !== undefined) return ensanchamientos.includes(paramB);
   // Entre parámetros de REFERENCIA, "más específico" es subtipo (JLS 15.12.2.5) — la misma relación
   // real que el ensanchamiento de `conversiones.ts` (tarea 1.29: antes solo `String -> Object`).
   return esSubtipoDeReferencia(paramA, paramB);

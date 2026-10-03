@@ -1,0 +1,4 @@
+Random.java:2: error: Random is already defined in this compilation unit
+import java.util.Random;
+^
+1 error

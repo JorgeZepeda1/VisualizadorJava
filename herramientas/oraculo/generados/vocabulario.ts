@@ -164,3 +164,55 @@ export const NOMBRES_EXTRANOS_VALIDOS: readonly string[] = ['año', 'día', 'ca�
 
 /** Nombres que no son identificadores (no son palabras reservadas): empiezan con un dígito, llevan un guion, un espacio… */
 export const NOMBRES_INVALIDOS: readonly string[] = ['1a', 'a-b', 'mi variable', 'a+b', '#x'];
+
+
+// ---- Tarea 1.34: el vocabulario de las familias A–E que la re-verificación del lote 1 halló fuera de la gramática del generador ----
+
+/**
+ * C: las clases del JDK cuyo nombre toma, a veces, la clase del programa (`public class Math { … }`). JLS 6.4.1 y 7.5.1: la clase
+ * declarada en el archivo TAPA a la del JDK, con o sin `import`. Son las clases que el generador ya sabe usar (`CLASES_QUE_UNA_VARIABLE_PUEDE_TAPAR`
+ * más `Boolean`); `javac` 17 compila una clase con cualquiera de estos nombres (medido), así que cada programa es comparable.
+ */
+export const NOMBRES_DE_CLASE_DEL_JDK = ['System', 'Math', 'String', 'Integer', 'Scanner', 'Random', 'Object', 'Double', 'Character', 'Long', 'Boolean'] as const;
+
+/**
+ * E: nombres que en JavaScript son propiedades de TODOS los objetos (`Object.prototype`: `constructor`, `toString`, `__proto__`…) o significan
+ * algo (`prototype`, `undefined`, `NaN`, `function`, `delete`, `typeof`, `in`…) y que en Java son identificadores válidos. El motor corre en
+ * un navegador: una tabla suya que fuera un objeto plano devolvería la función heredada al buscar uno de ellos (tarea 1.34). Salen como nombre
+ * de variable (`elegirNombreNuevo`) y como miembro de un valor de B. Los de `Object.prototype` son los mismos de la matriz de pruebas
+ * (`pruebas/compilacion/tablas-de-prototipo.ts`).
+ */
+export const NOMBRES_DE_JAVASCRIPT: readonly string[] = [
+  'constructor', 'toString', 'valueOf', 'hasOwnProperty', '__proto__', 'isPrototypeOf', 'propertyIsEnumerable', 'toLocaleString',
+  '__defineGetter__', '__defineSetter__', '__lookupGetter__', '__lookupSetter__',
+  'prototype', 'length', 'name', 'undefined', 'NaN', 'Infinity', 'function', 'delete', 'typeof', 'in',
+];
+
+/** B: un valor cuyo TIPO el subconjunto no modela (`String[]`, `InputStream`, `PrintStream`) y el tipo que el generador le supone. */
+export interface ValorDeTipoNoModelado {
+  readonly texto: string;
+  readonly tipo: string;
+  /** Rasgos de más (además de `valor-de-tipo-no-modelado`): un nombre de `Object.prototype` como miembro lleva `nombre-de-javascript`. */
+  readonly rasgos?: readonly Etiqueta[];
+}
+
+/**
+ * B: `args` y los campos de `System` (`in`, `out`, `err`) con sus miembros, usados como VALOR. Antes de la 1.34 el compilador los trataba
+ * como un tipo «desconocido» que se tolera en silencio, así que `int x = System.in;` y `int n = args.length();` terminaban en «Java sí
+ * acepta tu programa». Algunos usos SON válidos en Java (`Object o = System.in;`, `new Scanner(System.in)`, `args.length`, `println(System.in)`):
+ * ahí el compilador debe avisar o aceptar, nunca rechazar. Los dos últimos (`System.toString`, `System.constructor`) son un nombre de
+ * `Object.prototype` como miembro de `System` (la familia E del mismo hallazgo).
+ */
+export const VALORES_DE_TIPO_NO_MODELADO: readonly ValorDeTipoNoModelado[] = [
+  { texto: 'args', tipo: 'String[]' },
+  { texto: 'args.length', tipo: 'int' },
+  { texto: 'args.length()', tipo: 'int' },
+  { texto: 'args[0]', tipo: 'String' },
+  { texto: 'System.in', tipo: 'InputStream' },
+  { texto: 'System.out', tipo: 'PrintStream' },
+  { texto: 'System.err', tipo: 'PrintStream' },
+  { texto: 'System.in.read()', tipo: 'int' },
+  { texto: 'System.in.nextInt()', tipo: 'int' },
+  { texto: 'System.toString', tipo: 'desconocido', rasgos: ['nombre-de-javascript'] },
+  { texto: 'System.constructor', tipo: 'desconocido', rasgos: ['nombre-de-javascript'] },
+];

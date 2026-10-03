@@ -247,3 +247,70 @@ describe('renderizarCuerpo — solo las sentencias de main, sin la clase ni la s
     expect(renderizarCuerpo({ imports: ['import java.util.Scanner;'], sentencias: [] })).toEqual([]);
   });
 });
+
+// ---- Tarea 1.34: el nombre de la clase y las sentencias antes del primer `case` ----
+//
+// La re-verificación del lote 1 encontró dos familias que el generador de la 1.31 NO podía producir por construcción: la clase del
+// alumno con el nombre de una clase del JDK (el árbol imprimía SIEMPRE `class P`) y una sentencia dentro del `switch` antes del primer
+// `case` (un `Seleccion` solo sabía de casos). Las dos son ahora parte del árbol, y por eso el reductor y los rasgos las ven.
+describe('renderizarPrograma — el nombre de la clase (tarea 1.34)', () => {
+  it('por omisión la clase se llama P (el programa de siempre no cambia)', () => {
+    expect(renderizarPrograma({ imports: [], sentencias: [] })).toBe(`${CABECERA}${PIE}`);
+  });
+
+  it('con `clase` el programa declara la clase con ese nombre (System, Math, Scanner…)', () => {
+    const texto = renderizarPrograma({ imports: [], sentencias: [], clase: 'System' });
+    expect(texto).toBe('public class System {\n    public static void main(String[] args) {\n    }\n}\n');
+    expect(renderizarPrograma({ imports: ['import java.util.Scanner;'], sentencias: [], clase: 'Scanner' })).toBe(
+      'import java.util.Scanner;\n\npublic class Scanner {\n    public static void main(String[] args) {\n    }\n}\n',
+    );
+  });
+
+  it('el rasgo clase-con-nombre-del-jdk se deduce de la estructura: solo si la clase no se llama P', () => {
+    expect(etiquetasDe({ imports: [], sentencias: [], clase: 'Math' })).toEqual(['clase-con-nombre-del-jdk']);
+    expect(etiquetasDe({ imports: [], sentencias: [], clase: 'P' })).toEqual([]);
+    expect(etiquetasDe({ imports: [], sentencias: [] })).toEqual([]);
+  });
+});
+
+describe('seleccion con sentencias antes del primer case (tarea 1.34)', () => {
+  const conAntes = programa(
+    seleccion({
+      selector: nombre('a', 'int'),
+      antes: [salto('break'), declaracion({ tipo: 'int', nombre: 'k', inicial: literal('1', 'int') })],
+      casos: [{ etiquetas: [literal('1', 'int')], cuerpo: [salto('break')] }],
+      flecha: false,
+    }),
+  );
+
+  it('las sentencias de `antes` se imprimen entre la llave y el primer case, con la sangría de los casos', () => {
+    expect(renderizarPrograma(conAntes)).toBe(
+      `${CABECERA}        switch (a) {\n            break;\n            int k = 1;\n            case 1:\n                break;\n        }\n${PIE}`,
+    );
+  });
+
+  it('un switch sin `antes` (o con la lista vacía) se imprime como siempre', () => {
+    const sin = seleccion({ selector: nombre('a', 'int'), casos: [{ etiquetas: 'default', cuerpo: [] }], flecha: false });
+    const vacio = seleccion({ selector: nombre('a', 'int'), antes: [], casos: [{ etiquetas: 'default', cuerpo: [] }], flecha: false });
+    expect(renderizarPrograma(programa(vacio))).toBe(renderizarPrograma(programa(sin)));
+  });
+
+  it('sentenciasDe recorre las sentencias de `antes` ANTES que las de los casos (el orden en que se imprimen)', () => {
+    expect([...sentenciasDe(conAntes.sentencias)].map((s) => s.k)).toEqual(['seleccion', 'salto', 'declaracion', 'salto']);
+  });
+
+  it('el rasgo sentencia-antes-del-primer-case se deduce de la estructura, y el programa pretende un error de sintaxis (javac: «case, default, or } expected»)', () => {
+    expect(etiquetasDe(conAntes)).toEqual(['break', 'sentencia-antes-del-primer-case', 'switch']);
+    expect(pretendeErrorDeSintaxis(conAntes)).toBe(true);
+    const normal = programa(seleccion({ selector: nombre('a', 'int'), casos: [{ etiquetas: 'default', cuerpo: [] }], flecha: false }));
+    expect(etiquetasDe(normal)).toEqual(['switch']);
+    expect(pretendeErrorDeSintaxis(normal)).toBe(false);
+  });
+
+  it('con flecha, las sentencias de `antes` también van antes del primer `case X -> {`', () => {
+    const conFlecha = programa(
+      seleccion({ selector: nombre('a', 'int'), antes: [salto('break')], casos: [{ etiquetas: [literal('1', 'int')], cuerpo: [] }], flecha: true }),
+    );
+    expect(renderizarPrograma(conFlecha)).toBe(`${CABECERA}        switch (a) {\n            break;\n            case 1 -> {\n            }\n        }\n${PIE}`);
+  });
+});

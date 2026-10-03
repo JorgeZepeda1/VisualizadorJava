@@ -7,7 +7,7 @@
 //   - javac compila  → lo nuestro debe ser `ok`, `ejecucion-no-disponible` o un aviso de construcción;
 //     un `error-compilacion` es un FALSO RECHAZO.
 //   - javac rechaza  → lo nuestro debe ser `error-compilacion` o un aviso de construcción; `ok` o
-//     `ejecucion-no-disponible` (cuyo texto dice «Java sí acepta tu programa») es un FALSO ACEPTO.
+//     `ejecucion-no-disponible` (cuyo texto dice «Tu programa pasó todas mis revisiones…») es un FALSO ACEPTO.
 //   - un fallo interno (el compilador lanza) es una discrepancia con cualquier veredicto de javac.
 import { describe, expect, it } from 'vitest';
 import {
@@ -79,7 +79,7 @@ describe('clasificar — javac RECHAZA el programa', () => {
     expect(clasificar(javacRechaza(3), ACEPTA_TODO).discrepancia).toBe('falso-acepto');
   });
 
-  it('nuestro compilador da ejecucion-no-disponible: es un FALSO ACEPTO (su texto dice «Java sí acepta tu programa»)', () => {
+  it('nuestro compilador da ejecucion-no-disponible: es un FALSO ACEPTO (su texto dice «Tu programa pasó todas mis revisiones…»)', () => {
     expect(clasificar(javacRechaza(3), ACEPTA_SIN_EJECUTAR).discrepancia).toBe('falso-acepto');
   });
 

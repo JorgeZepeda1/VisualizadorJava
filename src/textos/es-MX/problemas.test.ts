@@ -56,6 +56,9 @@ const DATOS_DE_EJEMPLO: Record<CodigoProblema, Record<string, unknown>> = {
   'palabra-reservada-como-nombre': { palabra: 'native' },
   'guion-bajo-mal-puesto': { numero: '1_L' },
   'retorno-con-valor': {},
+  'sentencia-antes-del-primer-case': { mensaje: 'una sentencia antes del primer "case"' },
+  'sentencia-entre-parentesis': { mensaje: 'una sentencia entre paréntesis' },
+  'clase-repetida-con-import': { nombre: 'Scanner', importacion: 'java.util.Scanner' },
 };
 
 describe('textosProblemas — catálogo completo (ADR 015): cada código produce una frase real', () => {
@@ -318,3 +321,56 @@ describe('textosProblemas — `println`/`print` con un número de argumentos que
   });
 });
 
+
+// Tarea 1.34 (A): una sentencia antes del primer `case`. javac: «case, default, or '}' expected». La frase dice dónde va lo que escribió el alumno
+// (debajo de un `case`) y qué otra cosa puede hacer (escribirlo antes del `switch`), sin «token», «etiqueta» ni «sintaxis».
+describe('textosProblemas — una instrucción antes del primer `case` de un `switch` (A, tarea 1.34)', () => {
+  it('explica que lo primero en un `switch` es un `case` o `default` y adónde mover la instrucción', () => {
+    const texto = textosProblemas['sentencia-antes-del-primer-case']({ mensaje: 'una sentencia antes del primer "case"' });
+    expect(texto).toBe(
+      'Dentro de un `switch`, lo primero que va después de la llave `{` es un `case` o un `default`: esta instrucción quedó antes del primer `case`. ' +
+        'Muévela debajo de un `case` (o escríbela antes del `switch`).',
+    );
+    expect(texto).not.toMatch(/token|etiqueta|sintaxis|undefined/);
+  });
+});
+
+// Tarea 1.34 (D): una expresión entre paréntesis como sentencia. javac: «not a statement» (JLS 14.8). El genérico decía «¿te faltó "=", "++"/"--", o es una
+// llamada?», que no sirve cuando la sentencia SÍ tiene el `=` y lo que sobra son los paréntesis.
+describe('textosProblemas — una instrucción completa entre paréntesis (D, tarea 1.34)', () => {
+  it('explica que una instrucción completa va sola, sin paréntesis, con un ejemplo, y que una condición pide su `if`, `while` o `switch`', () => {
+    const texto = textosProblemas['sentencia-entre-parentesis']({ mensaje: 'una sentencia entre paréntesis' });
+    expect(texto).toBe(
+      'Una instrucción completa (una asignación, un `++` o una llamada) se escribe sola, sin paréntesis: Java no acepta `(x = 2);`, solo `x = 2;`. ' +
+        'Si lo que querías era una condición, te falta la palabra `if`, `while` o `switch` antes del paréntesis.',
+    );
+    expect(texto).not.toMatch(/token|sintaxis|undefined/);
+  });
+});
+
+// Los mutantes de un solo token lo mostraron: la causa MÁS PROBABLE de `(numero < 0) {` en el programa de un alumno no es una asignación entre paréntesis sino
+// una condición a la que se le olvidó el `if`/`while`/`switch` (10 de los 11 mutantes cuyo código cambió con la 1.34 son de ese tipo), y la frase tiene que servirle.
+describe('textosProblemas — la frase de una instrucción entre paréntesis también sirve para el `if` olvidado (D, tarea 1.34)', () => {
+  it('nombra las tres palabras que se olvidan antes de una condición', () => {
+    const texto = textosProblemas['sentencia-entre-parentesis']({ mensaje: 'x' });
+    for (const palabra of ['`if`', '`while`', '`switch`']) expect(texto, palabra).toContain(palabra);
+  });
+});
+
+// Tarea 1.34 (C): `import java.util.Scanner;` + `public class Scanner`. javac: «Scanner is already defined in this compilation unit», en la línea del import.
+describe('textosProblemas — una clase con el mismo nombre que algo que se importa (C, tarea 1.34)', () => {
+  it('nombra la clase y el import, y da las dos salidas (otro nombre para la clase o quitar el import)', () => {
+    const texto = textosProblemas['clase-repetida-con-import']({ nombre: 'Scanner', importacion: 'java.util.Scanner' });
+    expect(texto).toBe(
+      'Tu clase se llama `Scanner`, igual que `java.util.Scanner`, que importas en esta línea: Java no permite dos cosas con el mismo nombre. ' +
+        'Cambia el nombre de tu clase o quita el `import`.',
+    );
+  });
+
+  it('triangulación: con otra clase y otro import la frase cambia con ellos', () => {
+    const texto = textosProblemas['clase-repetida-con-import']({ nombre: 'System', importacion: 'java.lang.System' });
+    expect(texto).toContain('`System`');
+    expect(texto).toContain('`java.lang.System`');
+    expect(texto).not.toMatch(/undefined|\{/);
+  });
+});

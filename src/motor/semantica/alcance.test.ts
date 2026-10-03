@@ -130,3 +130,27 @@ describe('Alcance — salirBloque devuelve los nombres del bloque que cierra (ta
     expect(alcance.salirBloque()).toEqual([]);
   });
 });
+
+// Tarea 1.34 (C, JLS 6.4.1/6.4.2): los tipos que declara el propio programa viven aparte de las variables — otro espacio de nombres: una clase `Math` y una
+// variable `Math` pueden coexistir, y `buscar`/`declarar` solo ven las variables.
+describe('Alcance — los tipos propios del programa (tarea 1.34)', () => {
+  it('`esTipoPropio` responde por los nombres que se le dieron al construirlo y por ningún otro', () => {
+    const alcance = new Alcance(new Set(['Math']));
+    expect(alcance.esTipoPropio('Math')).toBe(true);
+    expect(alcance.esTipoPropio('System')).toBe(false);
+    expect(alcance.esTipoPropio('constructor')).toBe(false);
+  });
+
+  it('sin argumentos no hay ningún tipo propio (el caso de las pasadas que solo siguen variables)', () => {
+    expect(new Alcance().esTipoPropio('Math')).toBe(false);
+  });
+
+  it('una variable puede llamarse como el tipo propio: se declara sin conflicto y `buscar` solo ve la variable', () => {
+    const alcance = new Alcance(new Set(['Math']));
+    alcance.entrarBloque();
+    expect(alcance.buscar('Math')).toBeNull();
+    expect(alcance.declarar({ nombre: 'Math', tipo: 'int', esFinal: false, rango: { inicio: 0, fin: 1 } })).toEqual({ ok: true });
+    expect(alcance.buscar('Math')?.tipo).toBe('int');
+    expect(alcance.esTipoPropio('Math')).toBe(true);
+  });
+});

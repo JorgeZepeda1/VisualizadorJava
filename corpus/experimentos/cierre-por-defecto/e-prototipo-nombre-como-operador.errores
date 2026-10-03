@@ -1,0 +1,10 @@
+EPrototipoNombreComoOperador.java:4: error: ';' expected
+        int a = 1 constructor 2;
+                 ^
+EPrototipoNombreComoOperador.java:4: error: not a statement
+        int a = 1 constructor 2;
+                  ^
+EPrototipoNombreComoOperador.java:4: error: ';' expected
+        int a = 1 constructor 2;
+                             ^
+3 errors

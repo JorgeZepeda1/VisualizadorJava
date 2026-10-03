@@ -10,12 +10,15 @@ import { fileURLToPath } from 'node:url';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { generarPrograma, generarProgramas } from './generador.ts';
 import { IDENTIFICADORES_CONTEXTUALES } from '../../../pruebas/compilacion/tablas-lexicas.ts';
+import { NOMBRES_DE_OBJECT_PROTOTYPE } from '../../../pruebas/compilacion/tablas-de-prototipo.ts';
 import { NOMBRES_CONTEXTUALES, PALABRAS_RESERVADAS } from './vocabulario.ts';
 import { crearAzar } from './azar.ts';
 import { cargarCatalogoApi } from './catalogo-api.ts';
 import { crearEntorno, elegirNombreNuevo } from './entorno.ts';
 import {
   etiquetasDe,
+  pretendeErrorDeSintaxis,
+  renderizarCuerpo,
   renderizarExpr,
   renderizarPrograma,
   sentenciasDe,
@@ -560,5 +563,219 @@ describe('cobertura — 1.33: las palabras reservadas y los identificadores cont
   it('y la muestra de 4 000 programas ya usa varias de ellas como nombre de una declaración marcada como error de sintaxis', () => {
     const usadas = new Set(todasLasDeclaraciones().filter((d) => d.sintaxisInvalida === true && PALABRAS_RESERVADAS.includes(d.nombre)).map((d) => d.nombre));
     expect(usadas.size).toBeGreaterThanOrEqual(10);
+  });
+});
+
+
+// ---- Tarea 1.34: las cuatro familias de falsos aceptos que la re-verificación del lote 1 halló FUERA de la gramática del generador ----
+//
+// La re-verificación independiente (≈ 105 800 programas escritos aparte) encontró cuatro familias que las campañas del generador (218 000
+// programas con código 0) no veían, porque la gramática no podía producirlas: A una sentencia dentro del `switch` antes del primer `case`,
+// B `args` y `System.in`/`System.out`/`System.err` usados como VALOR, C la clase del alumno con el nombre de una clase del JDK y D una
+// expresión entre paréntesis como sentencia. Un generador que no las sortea las verá por casualidad o nunca: de ahí estas pruebas, que
+// miden que cada una SALGA, en cada posición, con una semilla fija (un fallo de cobertura es reproducible: se sube el peso, no se «reintenta»).
+const NOMBRES_DE_CLASE_DEL_JDK = ['System', 'Math', 'String', 'Integer', 'Scanner', 'Random', 'Object', 'Double', 'Character', 'Long', 'Boolean'] as const;
+
+describe('cobertura — 1.34 A: una sentencia dentro del switch antes del primer case', () => {
+  const switchesConAntes = () =>
+    muestra.flatMap((p) => [...sentenciasDe(p.sentencias)].flatMap((s) => (s.k === 'seleccion' && (s.antes ?? []).length > 0 ? [s] : [])));
+
+  it('hay al menos 40 `switch` con sentencias antes del primer case, con y sin flecha', () => {
+    const encontrados = switchesConAntes();
+    expect(encontrados.length).toBeGreaterThanOrEqual(40);
+    expect(encontrados.some((s) => s.flecha)).toBe(true);
+    expect(encontrados.some((s) => !s.flecha)).toBe(true);
+  });
+
+  it('las sentencias de antes son de las formas que halló el verificador: break, println, declaración, final, `;`, bloque, ++, return, if, for', () => {
+    const formas = new Set<string>();
+    for (const s of switchesConAntes()) {
+      for (const sentencia of s.antes ?? []) {
+        const texto = renderizarPrograma({ imports: [], sentencias: [sentencia] }).split('\n').slice(2, -3).map((l) => l.trim()).join(' ');
+        if (texto === 'break;') formas.add('break');
+        else if (texto.startsWith('System.out.print')) formas.add('println');
+        else if (texto.startsWith('final ')) formas.add('final');
+        else if (sentencia.k === 'declaracion') formas.add('declaracion');
+        else if (texto === ';') formas.add('vacia');
+        else if (sentencia.k === 'bloque') formas.add('bloque');
+        else if (texto.startsWith('return')) formas.add('return');
+        else if (/^(\+\+|--)?\w+(\+\+|--)?;$/.test(texto)) formas.add('incremento');
+        else if (sentencia.k === 'si') formas.add('if');
+        else if (sentencia.k === 'para') formas.add('for');
+      }
+    }
+    expect([...formas].sort()).toEqual(['bloque', 'break', 'declaracion', 'final', 'for', 'if', 'incremento', 'println', 'return', 'vacia']);
+  });
+
+  it('es un switch por lo demás normal: lleva casos (el error es SOLO la sentencia de antes) y el programa pretende un error de sintaxis', () => {
+    const programas = muestra.filter((p) => [...sentenciasDe(p.sentencias)].some((s) => s.k === 'seleccion' && (s.antes ?? []).length > 0));
+    expect(programas.length).toBeGreaterThanOrEqual(40);
+    expect(programas.every((p) => pretendeErrorDeSintaxis(p))).toBe(true);
+    expect(switchesConAntes().every((s) => s.casos.length > 0)).toBe(true);
+    expect(programas.every((p) => etiquetasDe(p).includes('sentencia-antes-del-primer-case'))).toBe(true);
+  });
+
+  it('y el switch SIN sentencias antes del primer case sigue siendo la gran mayoría (no todo switch es de esta familia)', () => {
+    const todos = muestra.flatMap((p) => [...sentenciasDe(p.sentencias)].filter((s) => s.k === 'seleccion'));
+    expect(switchesConAntes().length / todos.length).toBeLessThan(0.3);
+  });
+});
+
+describe('cobertura — 1.34 B: args y System.in/out/err usados como VALOR (un tipo que el subconjunto no modela)', () => {
+  const esValor = (e: Expr): boolean => e.etiquetas?.includes('valor-de-tipo-no-modelado') === true;
+  const valores = () => conEtiqueta('valor-de-tipo-no-modelado');
+
+  it.each([
+    'args',
+    'args.length',
+    'args.length()',
+    'args[0]',
+    'System.in',
+    'System.out',
+    'System.err',
+    'System.in.read()',
+    'System.in.nextInt()',
+    'System.toString',
+    'System.constructor',
+  ])('usa «%s» como valor (marcado con el rasgo valor-de-tipo-no-modelado)', (texto) => {
+    expect(valores().some((e) => renderizarExpr(e) === texto), texto).toBe(true);
+  });
+
+  it('lo pone en cada posición de valor: inicializador, condición, operando, cast, asignación, argumento de println, argumento de biblioteca, receptor y selector', () => {
+    const comoInicializador = todasLasDeclaraciones().some((d) => d.inicial !== null && esValor(d.inicial));
+    const comoCondicion = muestra.some((p) => [...sentenciasDe(p.sentencias)].some((s) => (s.k === 'si' || s.k === 'mientras') && esValor(s.condicion)));
+    const comoOperando = todasLasExpresiones().some((e) => e.etiquetas?.includes('operador') === true && e.hijos.some(esValor));
+    const comoCast = todasLasExpresiones().some((e) => e.etiquetas?.includes('cast') === true && e.hijos.some(esValor));
+    const comoAsignacion = todasLasExpresiones().some((e) => e.etiquetas?.includes('asignacion') === true && e.hijos.some(esValor));
+    const comoArgumentoDePrintln = todasLasExpresiones().some((e) => e.partes[0] === 'System.out.println(' && e.hijos.some(esValor));
+    const comoArgumentoDeBiblioteca = todasLasExpresiones().some((e) => e.etiquetas?.includes('llamada-de-biblioteca') === true && /^[A-Z]\w*\.\w+\($/.test(e.partes[0]!) && e.hijos.some(esValor));
+    const comoReceptor = todasLasExpresiones().some((e) => e.partes[0] === '' && (e.partes[1] ?? '').startsWith('.') && e.hijos[0] !== undefined && esValor(e.hijos[0]));
+    const comoSelector = muestra.some((p) => [...sentenciasDe(p.sentencias)].some((s) => s.k === 'seleccion' && esValor(s.selector)));
+    expect({ comoInicializador, comoCondicion, comoOperando, comoCast, comoAsignacion, comoArgumentoDePrintln, comoArgumentoDeBiblioteca, comoReceptor, comoSelector }).toEqual({
+      comoInicializador: true,
+      comoCondicion: true,
+      comoOperando: true,
+      comoCast: true,
+      comoAsignacion: true,
+      comoArgumentoDePrintln: true,
+      comoArgumentoDeBiblioteca: true,
+      comoReceptor: true,
+      comoSelector: true,
+    });
+  });
+
+  it('aparece en al menos 100 programas distintos, y también en las formas válidas (Object o = System.in; new Scanner(System.in) no es un error)', () => {
+    expect(new Set(valores().map(renderizarExpr)).size).toBeGreaterThanOrEqual(11);
+    const programasConValor = muestra.filter((p) => etiquetasDe(p).includes('valor-de-tipo-no-modelado'));
+    expect(programasConValor.length).toBeGreaterThanOrEqual(100);
+    expect(todasLasDeclaraciones().some((d) => d.tipo === 'Object' && d.inicial !== null && esValor(d.inicial))).toBe(true);
+  });
+});
+
+describe('cobertura — 1.34 C: la clase del programa se llama como una clase del JDK', () => {
+  const deClase = (clase: string) => muestra.filter((p) => p.clase === clase);
+
+  it('uno de cada veinte programas, ESTRATIFICADO (así cada nombre sale cada 220 programas con cualquier semilla), no por azar', () => {
+    const conNombre = muestra.filter((p) => p.clase !== undefined && p.clase !== 'P');
+    expect(conNombre.length).toBe(CANTIDAD_DE_LA_MUESTRA / 20);
+    expect(muestra.every((p, i) => (i % 20 === 7) === (p.clase !== undefined && p.clase !== 'P'))).toBe(true);
+  });
+
+  it.each(NOMBRES_DE_CLASE_DEL_JDK)('hay programas cuya clase se llama %s (al menos 15)', (clase) => {
+    expect(deClase(clase).length).toBeGreaterThanOrEqual(15);
+  });
+
+  it('el programa de clase con nombre del JDK lleva el rasgo clase-con-nombre-del-jdk; uno de clase P, no', () => {
+    expect(muestra.filter((p) => p.clase === undefined || p.clase === 'P').every((p) => !etiquetasDe(p).includes('clase-con-nombre-del-jdk'))).toBe(true);
+    expect(deClase('System').every((p) => etiquetasDe(p).includes('clase-con-nombre-del-jdk'))).toBe(true);
+  });
+
+  it('el cuerpo USA el nombre de la clase (como receptor, como tipo, como campo): no solo la declara', () => {
+    for (const clase of NOMBRES_DE_CLASE_DEL_JDK) {
+      const programas = deClase(clase);
+      const usan = programas.filter((p) => new RegExp(`\\b${clase}\\b`).test(renderizarCuerpo(p).join('\n')));
+      expect(usan.length / programas.length, clase).toBeGreaterThan(0.8);
+    }
+  });
+
+  it('Scanner y Random: a veces con su import exacto (el error «ya está definida») y a veces sin él (la clase propia sin constructor de ese tipo)', () => {
+    for (const clase of ['Scanner', 'Random']) {
+      const programas = deClase(clase);
+      const conImport = programas.filter((p) => p.imports.includes(`import java.util.${clase};`));
+      expect(conImport.length, `${clase} con import`).toBeGreaterThan(0);
+      expect(conImport.length, `${clase} sin import`).toBeLessThan(programas.length);
+    }
+  });
+
+  it('y la clase de un programa no cambia cuántos programas se piden (determinista por semilla e índice)', () => {
+    expect(generarPrograma(SEMILLA, 7).clase).toBe(generarPrograma(SEMILLA, 7).clase);
+    expect(generarProgramas(SEMILLA, 30).map((p) => p.clase)).toEqual(generarProgramas(SEMILLA, 60).slice(0, 30).map((p) => p.clase));
+  });
+});
+
+describe('cobertura — 1.34 D: una expresión entre paréntesis como sentencia', () => {
+  const sentenciasEntreParentesis = () =>
+    muestra.flatMap((p) =>
+      [...sentenciasDe(p.sentencias)].flatMap((s) => (s.k === 'expresion' && s.expr.etiquetas?.includes('sentencia-entre-parentesis') === true ? [s.expr] : [])),
+    );
+  const textos = () => sentenciasEntreParentesis().map(renderizarExpr);
+
+  it.each([
+    [/^\(\w+ = \S+\)$/, 'una asignación: (x = 2);'],
+    [/^\(\w+\+\+\)$|^\(\+\+\w+\)$|^\(\w+--\)$/, 'un incremento: (x++);'],
+    [/^\(System\.out\.println\(.*\)\)$/, 'una impresión: (System.out.println(1));'],
+    [/^\(\(\w+ = \S+\)\)$/, 'una asignación entre dos pares de paréntesis'],
+    [/^\(new Scanner\(System\.in\)\)$/, 'una creación: (new Scanner(System.in));'],
+  ])('sortea %s (%s) como sentencia, marcada como error de sintaxis a propósito', (patron) => {
+    const encontradas = sentenciasEntreParentesis().filter((e) => patron.test(renderizarExpr(e)));
+    expect(encontradas.length, String(patron)).toBeGreaterThan(0);
+    expect(encontradas.every((e) => e.sintaxisInvalida === true), String(patron)).toBe(true);
+  });
+
+  it('también las formas VÁLIDAS que javac compila: la variable entre paréntesis como destino ((x) = 2; (x)++; (x) += 1;) y como receptor ((s).length(), (System.out).println(1)), sin marcar', () => {
+    const validas = todasLasExpresiones().filter((e) => e.etiquetas?.includes('sentencia-entre-parentesis') === true && e.sintaxisInvalida !== true).map(renderizarExpr);
+    expect(validas.some((t) => /^\(\w+\) = /.test(t)), '(x) = …').toBe(true);
+    expect(validas.some((t) => /^\(\w+\)\+\+$/.test(t)), '(x)++').toBe(true);
+    expect(validas.some((t) => /^\(\w+\) [-+*/%]= /.test(t)), '(x) += …').toBe(true);
+    expect(validas.some((t) => /^\(\w+\)\.\w+\(\)$/.test(t)), '(s).length()').toBe(true);
+    expect(validas.some((t) => t.startsWith('(System.out).println(')), '(System.out).println(…)').toBe(true);
+  });
+
+  it('un nombre de clase entre paréntesis como receptor ((Math).abs(1), (System).out.println(1)) también sale: javac dice «illegal parenthesized expression»', () => {
+    const conClase = todasLasExpresiones().map(renderizarExpr).filter((t) => /^\((Math|System|String|Integer|Character|Double)\)\./.test(t));
+    expect(conClase.length).toBeGreaterThan(0);
+  });
+
+  it('en la cabecera de un for: la parte inicial y el paso entre paréntesis', () => {
+    const fors = muestra.flatMap((p) => [...sentenciasDe(p.sentencias)].flatMap((s) => (s.k === 'para' ? [s] : [])));
+    const conInicial = fors.filter((s) => s.inicial?.k === 'expresion' && s.inicial.expr.etiquetas?.includes('sentencia-entre-parentesis') === true);
+    const conPaso = fors.filter((s) => s.paso?.etiquetas?.includes('sentencia-entre-parentesis') === true);
+    expect(conInicial.length).toBeGreaterThan(0);
+    expect(conPaso.length).toBeGreaterThan(0);
+  });
+
+  it('aparece en al menos 80 programas de la muestra y NO es la mayoría de las sentencias', () => {
+    expect(muestra.filter((p) => etiquetasDe(p).includes('sentencia-entre-parentesis')).length).toBeGreaterThanOrEqual(80);
+    expect(textos().length).toBeLessThan(CANTIDAD_DE_LA_MUESTRA / 4);
+  });
+});
+
+describe('cobertura — 1.34 E: nombres de propiedades de JavaScript como identificadores (válidos en Java)', () => {
+  it.each(NOMBRES_DE_OBJECT_PROTOTYPE)('usa «%s» como nombre de variable (válido en Java), marcado con el rasgo nombre-de-javascript', (nombreDeLaVariable) => {
+    const usos = todasLasDeclaraciones().filter((d) => d.nombre === nombreDeLaVariable);
+    expect(usos.length, nombreDeLaVariable).toBeGreaterThan(0);
+    expect(usos.every((d) => !d.sintaxisInvalida && d.etiquetas.includes('nombre-de-javascript')), nombreDeLaVariable).toBe(true);
+  });
+
+  it('un nombre de Object.prototype como MIEMBRO de un valor (System.toString, System.constructor, args.constructor, System.in.__proto__) también lleva el rasgo nombre-de-javascript', () => {
+    const miembros = todasLasExpresiones().filter((e) => ['System.toString', 'System.constructor'].includes(renderizarExpr(e)) || /^[\w.]+\.(constructor|__proto__)$/.test(renderizarExpr(e)));
+    expect(miembros.length).toBeGreaterThan(10);
+    expect(miembros.filter((e) => e.etiquetas?.includes('nombre-de-javascript') !== true).map(renderizarExpr)).toEqual([]);
+  });
+
+  it('el programa que usa uno lleva el rasgo, para que una discrepancia (o un fallo interno) no salga «sin rasgos»', () => {
+    const conNombre = muestra.filter((p) => declaraciones(p).some((d) => d.nombre === 'constructor'));
+    expect(conNombre.length).toBeGreaterThan(0);
+    expect(conNombre.every((p) => etiquetasDe(p).includes('nombre-de-javascript'))).toBe(true);
   });
 });

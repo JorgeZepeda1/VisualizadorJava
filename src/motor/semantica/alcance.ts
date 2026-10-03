@@ -33,6 +33,21 @@ export type ResultadoDeclarar =
  * gana); `declarar` rechaza si el nombre YA es visible en CUALQUIER bloque abierto. */
 export class Alcance {
   private readonly bloques: Map<string, SimboloVariable>[] = [];
+  private readonly tiposPropios: ReadonlySet<string>;
+
+  /**
+   * `tiposPropios`: los nombres de los tipos que declara el PROPIO programa (en el subconjunto, solo su clase). Tarea 1.34 (C, JLS 6.4.1): la declaración de un
+   * tipo tapa a los tipos de igual nombre que están a la vista, así que con `public class Math` el `Math` del programa NO es `java.lang.Math`. Viven aparte de las
+   * variables (otro espacio de nombres, JLS 6.4.2: un tipo y una variable pueden llamarse igual): `declarar`/`buscar` no los ven.
+   */
+  constructor(tiposPropios: ReadonlySet<string> = new Set()) {
+    this.tiposPropios = tiposPropios;
+  }
+
+  /** ¿`nombre` es el de un tipo que declara el propio programa? (No mira variables: ver `buscar`.) */
+  esTipoPropio(nombre: string): boolean {
+    return this.tiposPropios.has(nombre);
+  }
 
   entrarBloque(): void {
     this.bloques.push(new Map());

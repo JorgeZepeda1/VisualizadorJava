@@ -1,0 +1,4 @@
+ASwitchPuntoYComaAntesDelCase.java:6: error: case, default, or '}' expected
+            ;
+            ^
+1 error

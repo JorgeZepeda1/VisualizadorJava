@@ -149,6 +149,19 @@ export const textosProblemas: { readonly [K in CodigoProblema]: (datos: DatosPor
     `El número \`${numero}\` tiene un guion bajo (\`_\`) mal puesto: en un número solo puede ir entre dos dígitos, como en \`1_000\`.`,
   // Tarea 1.33 (WARNING-2): `return 0;` en `main` (javac: «incompatible types: unexpected return value»). Antes: «Te falta un punto y coma».
   'retorno-con-valor': () => '`main` no devuelve ningún valor (es `void`), así que `return` va solo, sin nada detrás: escribe `return;`.',
+  // Tarea 1.34 (A): una instrucción antes del primer `case` (javac: «case, default, or '}' expected»). Dice dónde va y qué otra salida hay.
+  'sentencia-antes-del-primer-case': () =>
+    'Dentro de un `switch`, lo primero que va después de la llave `{` es un `case` o un `default`: esta instrucción quedó antes del primer `case`. ' +
+    'Muévela debajo de un `case` (o escríbela antes del `switch`).',
+  // Tarea 1.34 (D): una expresión entre paréntesis como instrucción (javac: «not a statement»). El genérico preguntaba «¿te faltó "="…?» cuando lo que sobra son los paréntesis.
+  // La segunda frase es para el caso MÁS probable en el programa de un alumno (`(numero < 0) {`): se le olvidó el `if`/`while`/`switch` de la condición.
+  'sentencia-entre-parentesis': () =>
+    'Una instrucción completa (una asignación, un `++` o una llamada) se escribe sola, sin paréntesis: Java no acepta `(x = 2);`, solo `x = 2;`. ' +
+    'Si lo que querías era una condición, te falta la palabra `if`, `while` o `switch` antes del paréntesis.',
+  // Tarea 1.34 (C): `import java.util.Scanner;` junto a `public class Scanner` (javac: «Scanner is already defined in this compilation unit»). Se señala el `import`.
+  'clase-repetida-con-import': ({ nombre, importacion }) =>
+    `Tu clase se llama \`${nombre}\`, igual que \`${importacion}\`, que importas en esta línea: Java no permite dos cosas con el mismo nombre. ` +
+    'Cambia el nombre de tu clase o quita el `import`.',
   'miembro-de-primitivo': ({ tipo, nombre, receptor }) =>
     receptor === undefined
       ? `Un valor de tipo \`${tipo}\` es primitivo: no tiene métodos ni campos, así que no puedes escribir \`.${nombre}\` después de él. Solo los objetos, como un \`String\`, los tienen.`

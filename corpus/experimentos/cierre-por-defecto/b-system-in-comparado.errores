@@ -1,0 +1,4 @@
+BSystemInComparado.java:4: error: incomparable types: InputStream and PrintStream
+        boolean b = System.in == System.out;
+                              ^
+1 error

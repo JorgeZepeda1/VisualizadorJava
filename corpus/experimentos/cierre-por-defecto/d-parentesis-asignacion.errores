@@ -1,0 +1,4 @@
+DParentesisAsignacion.java:5: error: not a statement
+        (x = 2);
+        ^
+1 error

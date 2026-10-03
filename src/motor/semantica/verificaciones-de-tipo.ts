@@ -6,16 +6,16 @@ import type { Alcance } from './alcance.ts';
 import type { AmbitoDeNombres } from './ambito-de-nombres.ts';
 import { existeClaseDelJdk } from './catalogo-clases.ts';
 import type { ValorConstante } from './constantes.ts';
-import { NOMBRES_DE_CLASE_RECONOCIDOS, type Tipo } from './tipos.ts';
+import { esNombreDeClaseDelCatalogo, NOMBRES_DE_CLASE_RECONOCIDOS, type Tipo } from './tipos.ts';
 
 const TIPOS_NUMERICOS: ReadonlySet<Tipo> = new Set(['int', 'long', 'double', 'char']);
 
 // JLS 5.1.2 (ensanchamiento primitivo), restringido a los tipos que este subconjunto declara.
-const ENSANCHAMIENTO_ASIGNACION: Readonly<Partial<Record<Tipo, readonly Tipo[]>>> = {
-  char: ['int', 'long', 'double'],
-  int: ['long', 'double'],
-  long: ['double'],
-};
+const ENSANCHAMIENTO_ASIGNACION: ReadonlyMap<Tipo, readonly Tipo[]> = new Map<Tipo, readonly Tipo[]>([
+  ['char', ['int', 'long', 'double']],
+  ['int', ['long', 'double']],
+  ['long', ['double']],
+]);
 
 /** ¿Un valor de tipo `origen` es asignable a una variable declarada `destino` (JLS 5.2)? Incluye
  * identidad, ensanchamiento primitivo y el único caso de ESTRECHAMIENTO que JLS 5.2 permite sin
@@ -24,7 +24,7 @@ const ENSANCHAMIENTO_ASIGNACION: Readonly<Partial<Record<Tipo, readonly Tipo[]>>
  * cascada. */
 export function esAsignable(origen: Tipo, destino: Tipo, constanteOrigen: ValorConstante | null): boolean {
   if (origen === destino || origen === 'desconocido' || destino === 'desconocido') return true;
-  if ((ENSANCHAMIENTO_ASIGNACION[origen] ?? []).includes(destino)) return true;
+  if ((ENSANCHAMIENTO_ASIGNACION.get(origen) ?? []).includes(destino)) return true;
   if (origen === 'int' && destino === 'char' && constanteOrigen?.tipo === 'int') {
     return constanteOrigen.valor >= 0 && constanteOrigen.valor <= 65535;
   }
@@ -106,6 +106,9 @@ export type ResultadoNombreDeTipo =
 export function resultadoNombreDeTipo(nombreTipo: string, ambito: AmbitoDeNombres): ResultadoNombreDeTipo {
   if (PRIMITIVOS_DEL_SUBCONJUNTO.has(nombreTipo)) return 'valido';
   if (nombreTipo.includes('.')) return existeClaseDelJdk(nombreTipo) ? 'calificado-existente' : 'no-reconocido';
+  // Tarea 1.34 (C, JLS 6.4.1): el nombre de la clase del PROPIO programa es su clase, aunque se llame como una del catálogo (`Random r = new Random();` en
+  // `public class Random`: javac lo compila y `Random` no necesita `import`). Son «objetos propios» (REQ-SUB-007): un aviso, nunca «falta el import».
+  if (ambito.esClaseDelPrograma(nombreTipo)) return 'existente-no-soportada';
   // Tarea 1.32 (N1, REQ-SUB-002): los ÚNICOS tipos de referencia que una variable del subconjunto puede tener son `String`,
   // `Scanner` y `Random` (`TIPOS_DE_REFERENCIA_DEL_SUBCONJUNTO`). Otras clases del catálogo de firmas —`Integer`, `Long`,
   // `Double`, `Character`, `Math`, `System`, `PrintStream`— están ahí porque el subconjunto usa sus MIEMBROS ESTÁTICOS
@@ -200,5 +203,5 @@ export function operandoNoEsVariableValida(expresion: NodoExpresion, alcance: Al
   // NI declarada NI clase reconocida ("noExiste = 5"): NO es un problema NUEVO -- `visitarNombreComoValor`
   // (mismo nodo, visitado antes en `visitarExpresion`) YA reporta "variable-no-declarada" (D2:
   // nunca un SEGUNDO problema por la MISMA causa real).
-  return alcance.buscar(expresion.nombre) === null && NOMBRES_DE_CLASE_RECONOCIDOS.has(expresion.nombre);
+  return esNombreDeClaseDelCatalogo(expresion, alcance);
 }

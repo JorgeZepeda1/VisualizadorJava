@@ -28,6 +28,7 @@ import {
   expresionMalTipada,
   literalDe,
   llamada,
+  llamadaDeApi,
   llamadaDeBibliotecaAlAzar,
   miembroDeReceptor,
   operadorBinario,
@@ -68,7 +69,10 @@ import {
   OPERADORES_RELACIONALES,
   TIPOS_DE_DECLARACION,
   TIPOS_DE_VALOR,
+  NOMBRES_DE_JAVASCRIPT,
   TIPOS_DEL_SUBCONJUNTO,
+  VALORES_DE_TIPO_NO_MODELADO,
+  type LiteralRaro,
 } from './vocabulario.ts';
 
 export interface PlantillaDeSentencia {
@@ -489,12 +493,25 @@ function envolturaYUso(entorno: Entorno): Sentencia[] {
 
 // ---- Literales raros ----
 
-/** `T x = <literal>;` con una forma de literal poco corriente: válida (`0x1F`, `1_000`, `'\\u0041'`) o no (`1_`, `09`, `'ab'`). */
-function literalRaro(entorno: Entorno): Sentencia[] {
-  const { azar } = entorno;
-  const elegido = azar.elegir(azar.probabilidad(0.72) ? LITERALES_RAROS.filter((l) => l.valido) : LITERALES_RAROS.filter((l) => !l.valido));
+/** `T x = <literal>;` con ESA forma de literal poco corriente (tipo y rasgos incluidos). */
+function declaracionConLiteralRaro(entorno: Entorno, elegido: LiteralRaro): Sentencia[] {
   const valor = literal(elegido.texto, elegido.tipo, { ...(elegido.valido ? {} : { sintaxisInvalida: true }), ...(elegido.rasgos.length === 0 ? {} : { etiquetas: elegido.rasgos }) });
   return [declararConNombre(entorno, elegido.tipo, valor)];
+}
+
+/** `T x = <literal>;` con una forma de literal poco corriente, al azar: válida (`0x1F`, `1_000`, `'\\u0041'`) o no (`1_`, `09`, `'ab'`). */
+function literalRaro(entorno: Entorno): Sentencia[] {
+  const { azar } = entorno;
+  return declaracionConLiteralRaro(entorno, azar.elegir(azar.probabilidad(0.72) ? LITERALES_RAROS.filter((l) => l.valido) : LITERALES_RAROS.filter((l) => !l.valido)));
+}
+
+/**
+ * Tarea 1.34: la forma de literal número `k` de `LITERALES_RAROS` (módulo su cantidad), SIN azar. `generador.ts` la pone en uno de cada dieciséis
+ * programas recorriendo la lista en orden, como hace con los 64 pares de cast: cada forma sale cada 976 programas con cualquier semilla. Antes
+ * dependía del sorteo y una forma (`1_.0`) podía faltar en una muestra de 4 000 programas apenas se tocaba el reparto de las plantillas.
+ */
+export function literalRaroNumero(entorno: Entorno, k: number): Sentencia[] {
+  return declaracionConLiteralRaro(entorno, LITERALES_RAROS[k % LITERALES_RAROS.length]!);
 }
 
 // ---- Miembros y llamadas sobre primitivos ----
@@ -754,6 +771,294 @@ function printfComoValor(entorno: Entorno): Sentencia[] {
   }
 }
 
+// ---- Tarea 1.34 (A): una sentencia dentro del switch antes del primer case ----
+
+type FormaDeSentenciaDeAntes = 'break' | 'impresion' | 'declaracion' | 'final' | 'vacia' | 'bloque' | 'incremento' | 'return' | 'if' | 'for' | 'asignaciones';
+
+/**
+ * Una (o dos) sentencias de las que un alumno pone, por descuido, entre la llave del `switch` y su primer `case`: `break;`, un `println`, una
+ * declaración, `final`, `;`, un bloque, `x++;`, `return;`, un `if`, un `for` o dos asignaciones (las formas que midió el verificador). Java solo
+ * admite ahí una etiqueta: el analizador de javac se detiene con «case, default, or '}' expected», así que el programa es un error de sintaxis
+ * A PROPÓSITO (`pretendeErrorDeSintaxis` lo reconoce por la estructura). Lo que declaran se olvida al salir: javac ni llega a verlo.
+ */
+function sentenciasDeAntes(entorno: Entorno, previas: Sentencia[]): Sentencia[] {
+  const { azar } = entorno;
+  const forma = azar.ponderado<FormaDeSentenciaDeAntes>([
+    [20, 'break'], [16, 'impresion'], [14, 'declaracion'], [6, 'final'], [6, 'vacia'], [6, 'bloque'], [10, 'incremento'], [6, 'return'], [6, 'if'], [4, 'for'], [6, 'asignaciones'],
+  ]);
+  switch (forma) {
+    case 'break':
+      return [salto('break')];
+    case 'impresion':
+      return [sentenciaExpr(imprimir(expresionDeCualquierTipo(entorno, 0), azar.probabilidad(0.75) ? 'println' : 'print'))];
+    case 'declaracion':
+    case 'final': {
+      const tipo = azar.ponderado<string>([[60, 'int'], [20, 'String'], [10, 'double'], [10, 'boolean']]);
+      return conAlcance(entorno, () => [declararConNombre(entorno, tipo, expresion(entorno, tipo, 0), { esFinal: forma === 'final' })]);
+    }
+    case 'vacia':
+      return [sentenciaExpr(plantilla([''], [], 'void'))];
+    case 'bloque':
+      return [bloque(azar.probabilidad(0.5) ? [] : [sentenciaExpr(imprimir(expresionDeCualquierTipo(entorno, 0)))])];
+    case 'incremento': {
+      const objetivo = referenciaAVariable(asegurarVariable(entorno, 'int', previas));
+      return [sentenciaExpr(plantilla(azar.elegir([['', '++'], ['', '--'], ['++', ''], ['--', '']] as const), [objetivo], 'int', { etiquetas: ['incremento'] }))];
+    }
+    case 'return':
+      return [sentenciaExpr(literalDeRetorno(null))];
+    case 'if':
+      return [si(condicion(entorno, 0), [], null)];
+    case 'for':
+      return [para({ inicial: null, condicion: null, paso: null, cuerpo: [salto('break')] })];
+    case 'asignaciones': {
+      const objetivo = referenciaAVariable(asegurarVariable(entorno, 'int', previas));
+      return [
+        sentenciaExpr(plantilla(['', ' = ', ''], [objetivo, literalDe(entorno, 'int')], 'int', { etiquetas: ['asignacion'] })),
+        sentenciaExpr(plantilla(['', ' += ', ''], [objetivo, literalDe(entorno, 'int')], 'int', { etiquetas: ['asignacion-compuesta'] })),
+      ];
+    }
+  }
+}
+
+/**
+ * `switch (x) { <sentencias> case 1: … }`: un `switch` por lo demás NORMAL (selector y etiquetas del mismo tipo, sin repetir) con de una a tres
+ * sentencias antes de su primer `case`/`default`, con dos puntos o con flecha. Antes de la 1.34 el analizador aceptaba cualquier elemento de
+ * bloque en ese lugar y el programa terminaba en «Java sí acepta tu programa» (familia A de la re-verificación del lote 1).
+ */
+function switchConSentenciaAntesDelCase(entorno: Entorno): Sentencia[] {
+  const { azar } = entorno;
+  const previas: Sentencia[] = [];
+  const tipo = azar.ponderado<string>([[50, 'int'], [25, 'char'], [25, 'String']]);
+  const selector = referenciaAVariable(asegurarVariable(entorno, tipo, previas));
+  const antes: Sentencia[] = [];
+  const cantidad = azar.ponderado<number>([[62, 1], [28, 2], [10, 3]]);
+  for (let i = 0; i < cantidad; i += 1) antes.push(...sentenciasDeAntes(entorno, previas));
+  return [...previas, seleccion({ selector, antes, casos: casosDeSwitch(entorno, tipo, null), flecha: azar.probabilidad(0.25) })];
+}
+
+// ---- Tarea 1.34 (B): `args` y `System.in`/`System.out`/`System.err` usados como VALOR ----
+
+/** El valor de tipo no modelado de B, marcado con su rasgo. */
+function valorSinModelar(entorno: Entorno): Expr {
+  const dato = entorno.azar.elegir(VALORES_DE_TIPO_NO_MODELADO);
+  return nombre(dato.texto, dato.tipo, { etiquetas: ['valor-de-tipo-no-modelado', ...(dato.rasgos ?? [])] });
+}
+
+/**
+ * `int x = System.in;`, `int n = args.length();`, `if (args)`, `(int) System.out`, `System.in.nextInt()`, `Math.abs(args)`, `switch (args)`…: un valor
+ * cuyo tipo el subconjunto no modela, puesto en cada posición donde Java espera un VALOR (inicializador, condición, operando, cast, asignación
+ * —de y hacia el valor—, argumento, receptor, selector). javac rechaza casi todos; acepta los que son del tipo (`Object o = System.in;`,
+ * `switch (args.length)`, `new Scanner(System.in)`, `println(System.in)`). Con el compilador anterior los rechazados salían como «Java sí acepta
+ * tu programa» (familia B) y, con un nombre de `Object.prototype` como miembro de `System`, hacían LANZAR a `compilar()` (familia E).
+ */
+function valorDeTipoNoModelado(entorno: Entorno): Sentencia[] {
+  const { azar } = entorno;
+  const previas: Sentencia[] = [];
+  const valor = valorSinModelar(entorno);
+  const forma = azar.ponderado<'declaracion' | 'condicion' | 'operando' | 'unario' | 'cast' | 'asignacion' | 'argumento-de-println' | 'argumento-de-biblioteca' | 'receptor' | 'selector' | 'nueva'>([
+    [26, 'declaracion'], [8, 'condicion'], [12, 'operando'], [6, 'unario'], [6, 'cast'], [8, 'asignacion'], [10, 'argumento-de-println'], [8, 'argumento-de-biblioteca'], [10, 'receptor'], [4, 'selector'], [4, 'nueva'],
+  ]);
+  switch (forma) {
+    case 'declaracion': {
+      const tipo = azar.ponderado<string>([[24, 'int'], [16, 'String'], [8, 'boolean'], [6, 'double'], [12, 'Object'], [10, 'var'], [4, 'char'], [4, 'long'], [4, 'Scanner'], [2, 'Random']]);
+      return [declararConNombre(entorno, tipo, valor)];
+    }
+    case 'condicion':
+      return [azar.probabilidad(0.6) ? si(valor, [], null) : mientras(valor, [])];
+    case 'operando': {
+      const otro = azar.elegir<readonly [string, string, string]>([['+', 'int', 'int'], ['+', 'String', 'String'], ['*', 'int', 'int'], ['-', 'int', 'int'], ['==', 'int', 'boolean'], ['==', 'String', 'boolean'], ['&&', 'boolean', 'boolean'], ['<', 'int', 'boolean']]);
+      const operacion = azar.probabilidad(0.5)
+        ? operadorBinario(otro[0], valor, expresion(entorno, otro[1], 0), otro[2])
+        : operadorBinario(otro[0], expresion(entorno, otro[1], 0), valor, otro[2]);
+      return comoSentencia(entorno, operacion);
+    }
+    case 'unario': {
+      const operador = azar.elegir(['!', '-', '~', '++', '--']);
+      if (operador === '++' || operador === '--') {
+        // `args.length++;`, `--System.in;`: el valor como operando de un incremento (no es una variable, o es final).
+        return [sentenciaExpr(plantilla(azar.probabilidad(0.5) ? [operador, ''] : ['', operador], [valor], 'int', { etiquetas: ['incremento'] }))];
+      }
+      return comoSentencia(entorno, operadorUnario(operador, valor, 'int'));
+    }
+    case 'cast': {
+      const destino = azar.elegir(['int', 'String', 'Object', 'double', 'boolean', 'char', 'long']);
+      return [declararConNombre(entorno, destino, castHacia(destino, valor))];
+    }
+    case 'asignacion': {
+      if (azar.probabilidad(0.35)) {
+        // El valor como DESTINO: `args = null;` (válido), `args.length = 3;` y `System.in = null;` (finales).
+        return [sentenciaExpr(plantilla(['', ' = ', ''], [valor, literal('null', 'null')], valor.tipo, { etiquetas: ['asignacion'] }))];
+      }
+      const objetivo = referenciaAVariable(asegurarVariable(entorno, azar.elegir(['int', 'String', 'boolean']), previas));
+      return [...previas, sentenciaExpr(plantilla(['', ' = ', ''], [objetivo, valor], objetivo.tipo, { etiquetas: ['asignacion'] }))];
+    }
+    case 'argumento-de-println':
+      return [sentenciaExpr(imprimir(valor, azar.probabilidad(0.75) ? 'println' : 'print'))];
+    case 'argumento-de-biblioteca':
+      return comoSentencia(entorno, llamada(null, azar.elegir(['Math.abs', 'Math.max', 'Math.sqrt', 'Integer.parseInt', 'String.valueOf', 'Character.isDigit']), [valor], 'int', { etiquetas: ['llamada-de-biblioteca'] }));
+    case 'receptor': {
+      const miembro = azar.elegir<readonly [texto: string, esLlamada: boolean, tipo: string]>([
+        ['length()', true, 'int'], ['nextInt()', true, 'int'], ['read()', true, 'int'], ['toString()', true, 'String'], ['hashCode()', true, 'int'], ['equals(null)', true, 'boolean'],
+        ['foo()', true, 'int'], ['close()', true, 'void'], ['println("a")', true, 'void'], ['length', false, 'int'], ['constructor', false, 'desconocido'], ['__proto__', false, 'desconocido'],
+      ]);
+      const miembroDeJavascript = NOMBRES_DE_JAVASCRIPT.includes(miembro[0]);
+      const base = miembroDeReceptor(valor, miembro[0], miembro[1], miembro[2]);
+      // Un nombre de `Object.prototype` como miembro (`args.constructor`, `System.in.__proto__`): el rasgo de la familia E va en el acceso, no solo en el valor.
+      const acceso = miembroDeJavascript ? { ...base, etiquetas: [...(base.etiquetas ?? []), 'nombre-de-javascript' as const] } : base;
+      return miembro[2] === 'void' ? [sentenciaExpr(acceso)] : comoSentencia(entorno, acceso);
+    }
+    case 'selector':
+      return [seleccion({ selector: valor, casos: azar.probabilidad(0.5) ? [] : [{ etiquetas: [literal('1', 'int')], cuerpo: [salto('break')] }], flecha: false })];
+    default:
+      return [declararConNombre(entorno, 'Scanner', plantilla(['new Scanner(', ')'], [valor], 'Scanner', { primaria: true }))];
+  }
+}
+
+// ---- Tarea 1.34 (D): una expresión entre paréntesis como sentencia ----
+
+/** `(expr)`: la expresión entre paréntesis. */
+function entreParentesis(expr: Expr, opciones: { readonly etiquetas?: readonly Etiqueta[]; readonly sintaxisInvalida?: boolean } = {}): Expr {
+  return plantilla(['(', ')'], [expr], expr.tipo, { primaria: true, ...opciones });
+}
+
+const SENTENCIA_ENTRE_PARENTESIS: Etiqueta = 'sentencia-entre-parentesis';
+
+/**
+ * `(x = 2);`, `(x++);`, `(System.out.println(1));`, `((x = 2));`, `(new Scanner(System.in));`, `(x);`: javac exige que una SENTENCIA sea una asignación,
+ * un `++`/`--`, una llamada o un `new` SIN paréntesis (JLS 14.8: «not a statement»), así que son errores de sintaxis A PROPÓSITO; también dentro de la
+ * cabecera de un `for`. Pero la variable entre paréntesis sí es válida como destino (`(x) = 2;`, `(x)++;`, `(x) += 1;`, `++(x);`) y como receptor
+ * (`(s).length();`, `(System.out).println(1);`), y el NOMBRE DE UNA CLASE entre paréntesis no (`(Math).abs(1);`: «illegal parenthesized expression»,
+ * un error de tipos). El árbol del motor no guardaba los paréntesis y las aceptaba todas (familia D de la re-verificación del lote 1).
+ */
+function sentenciaEntreParentesis(entorno: Entorno): Sentencia[] {
+  const { azar } = entorno;
+  const previas: Sentencia[] = [];
+  const forma = azar.ponderado<'asignacion' | 'incremento' | 'llamada' | 'doble' | 'nueva' | 'nombre' | 'destino' | 'receptor-valido' | 'receptor-de-clase' | 'en-for'>([
+    [20, 'asignacion'], [12, 'incremento'], [12, 'llamada'], [6, 'doble'], [4, 'nueva'], [4, 'nombre'], [16, 'destino'], [10, 'receptor-valido'], [8, 'receptor-de-clase'], [8, 'en-for'],
+  ]);
+  const variableEntera = (): Expr => referenciaAVariable(asegurarVariable(entorno, 'int', previas));
+  const asignacion = (): Expr => {
+    const objetivo = referenciaAVariable(asegurarVariable(entorno, azar.elegir(['int', 'String', 'double', 'boolean']), previas));
+    return plantilla(['', ' = ', ''], [objetivo, expresion(entorno, objetivo.tipo, 0)], objetivo.tipo, { etiquetas: ['asignacion'] });
+  };
+  const incremento = (objetivo: Expr): Expr => plantilla(azar.elegir([['', '++'], ['', '--'], ['++', ''], ['--', '']] as const), [objetivo], 'int', { etiquetas: ['incremento'] });
+  const invalida = { etiquetas: [SENTENCIA_ENTRE_PARENTESIS], sintaxisInvalida: true } as const;
+
+  switch (forma) {
+    case 'asignacion':
+      return [...previas, sentenciaExpr(entreParentesis(asignacion(), invalida))];
+    case 'incremento':
+      return [...previas, sentenciaExpr(entreParentesis(incremento(variableEntera()), invalida))];
+    case 'llamada': {
+      const call = azar.probabilidad(0.5) ? llamada(null, 'System.out.println', [expresionDeCualquierTipo(entorno, 0)], 'void', { etiquetas: ['impresion'] }) : llamadaDeBibliotecaAlAzar(entorno, 0);
+      return [...previas, sentenciaExpr(entreParentesis(call, invalida))];
+    }
+    case 'doble':
+      return [...previas, sentenciaExpr(entreParentesis(entreParentesis(azar.probabilidad(0.5) ? asignacion() : incremento(variableEntera()), invalida), invalida))];
+    case 'nueva':
+      return [sentenciaExpr(entreParentesis(plantilla([azar.elegir(['new Scanner(System.in)', 'new Random()', 'new Random(5L)'])], [], 'Scanner', { primaria: true }), invalida))];
+    case 'nombre': {
+      const objetivo = azar.probabilidad(0.5) ? variableEntera() : literalDe(entorno, azar.elegir(['int', 'String', 'boolean']));
+      return [...previas, sentenciaExpr(entreParentesis(objetivo, invalida))];
+    }
+    case 'destino': {
+      // VÁLIDAS: la variable entre paréntesis como destino. El rasgo va en la expresión completa (`(x) = 2`), la que se imprime como sentencia.
+      const destino = entreParentesis(variableEntera());
+      const forma2 = azar.ponderado<'simple' | 'compuesta' | 'incremento'>([[40, 'simple'], [25, 'compuesta'], [35, 'incremento']]);
+      if (forma2 === 'simple') return [...previas, sentenciaExpr(plantilla(['', ' = ', ''], [destino, expresion(entorno, 'int', 0)], 'int', { etiquetas: ['asignacion', SENTENCIA_ENTRE_PARENTESIS] }))];
+      if (forma2 === 'compuesta') return [...previas, sentenciaExpr(plantilla(['', ` ${azar.elegir(OPERADORES_ARITMETICOS)}= `, ''], [destino, expresion(entorno, 'int', 0)], 'int', { etiquetas: ['asignacion-compuesta', SENTENCIA_ENTRE_PARENTESIS] }))];
+      return [...previas, sentenciaExpr(plantilla(azar.elegir([['', '++'], ['', '--'], ['++', ''], ['--', '']] as const), [destino], 'int', { etiquetas: ['incremento', SENTENCIA_ENTRE_PARENTESIS] }))];
+    }
+    case 'receptor-valido': {
+      // VÁLIDAS: `(s).length();` y `(System.out).println(1);`.
+      if (azar.probabilidad(0.5)) {
+        const cadena = referenciaAVariable(asegurarVariable(entorno, 'String', previas));
+        return [...previas, sentenciaExpr(llamada(entreParentesis(cadena), azar.elegir(['length', 'trim', 'toUpperCase', 'isEmpty']), [], 'int', { etiquetas: ['llamada-de-biblioteca', SENTENCIA_ENTRE_PARENTESIS] }))];
+      }
+      return [sentenciaExpr(llamada(entreParentesis(nombre('System.out', 'PrintStream', { primaria: true })), azar.elegir(['println', 'print']), [expresionDeCualquierTipo(entorno, 0)], 'void', { etiquetas: ['impresion', SENTENCIA_ENTRE_PARENTESIS] }))];
+    }
+    case 'receptor-de-clase': {
+      // `(Math).abs(1);`, `(System).out.println(1);`: el nombre de una clase entre paréntesis no es un valor (javac: «illegal parenthesized expression»).
+      if (azar.probabilidad(0.5)) {
+        const clase = azar.elegir(['Math', 'String', 'Integer', 'Character', 'Double']);
+        const metodo = azar.elegir(entorno.api.metodos(clase).filter((m) => m.esEstatico));
+        return [sentenciaExpr(llamada(entreParentesis(nombre(clase, clase, { primaria: true })), metodo.nombre, metodo.parametros.map((parametro) => literalDe(entorno, parametro === 'CharSequence' ? 'String' : parametro)), metodo.retorno, { etiquetas: ['llamada-de-biblioteca', SENTENCIA_ENTRE_PARENTESIS] }))];
+      }
+      return [sentenciaExpr(plantilla(['(System).out.println(', ')'], [expresionDeCualquierTipo(entorno, 0)], 'void', { etiquetas: ['impresion', SENTENCIA_ENTRE_PARENTESIS] }))];
+    }
+    default: {
+      // En la cabecera de un `for`: la parte inicial o el paso entre paréntesis.
+      const contador = elegirNombreCorriente(entorno);
+      const referencia = nombre(contador, 'int', { primaria: true });
+      return conAlcance(entorno, () => {
+        registrarVariable(entorno, { nombre: contador, tipo: 'int', esFinal: false, etiquetas: [] });
+        const condicionDelFor = operadorBinario('<', referencia, literal('3', 'int'), 'boolean');
+        const pasoNormal = plantilla(['', '++'], [referencia], 'int', { etiquetas: ['incremento'] });
+        if (azar.probabilidad(0.5)) {
+          const inicial = sentenciaExpr(entreParentesis(plantilla(['', ' = ', ''], [referencia, literal('0', 'int')], 'int', { etiquetas: ['asignacion'] }), invalida));
+          return [declaracion({ tipo: 'int', nombre: contador, inicial: literal('0', 'int') }), para({ inicial, condicion: condicionDelFor, paso: pasoNormal, cuerpo: [] })];
+        }
+        const inicial = declaracion({ tipo: 'int', nombre: contador, inicial: literal('0', 'int') });
+        return [para({ inicial, condicion: condicionDelFor, paso: entreParentesis(pasoNormal, invalida), cuerpo: [] })];
+      });
+    }
+  }
+}
+
+// ---- Tarea 1.34 (C): una sentencia que USA el nombre de la clase del programa (que no se llama P) ----
+
+/** Los argumentos de `new Clase(...)` con que el generador construye un objeto de cada clase del JDK. */
+const ARGUMENTOS_DE_NEW: Readonly<Record<string, string>> = {
+  Scanner: 'System.in', Random: '5L', String: '"hola"', Integer: '5', Double: '1.5', Character: "'a'", Long: '5L', Boolean: 'true',
+};
+
+/**
+ * La clase del programa se llama como una clase del JDK (`public class Math { … }`): JLS 6.4.1 y 7.5.1 dicen que TAPA a la del JDK, con o sin
+ * `import`. Esta sentencia usa ese nombre de las formas que un alumno lo haría: como receptor de un método o de un campo (`Math.abs(1)`,
+ * `Integer.MAX_VALUE`), como tipo (`Scanner sc = new Scanner(System.in);`), la clase llamándose a sí misma (`Math.main(args);`) o, solo cuando la clase es
+ * `System`, `System.out.println(…)` (la forma que más se escribe). `generador.ts` la pone PRIMERA en los programas de nombre del JDK, estratificados: así cada nombre se
+ * ejerce siempre y no por suerte (familia C de la re-verificación del lote 1: antes del 1.34 la clase `System` con `System.out.println` salía `ok`).
+ */
+export function usoDeLaClase(entorno: Entorno): Sentencia[] {
+  const { azar, clase } = entorno;
+  const delCatalogo = entorno.api.clases.includes(clase);
+  const metodos = delCatalogo ? entorno.api.metodos(clase) : [];
+  const campos = delCatalogo ? entorno.api.campos(clase) : [];
+  const forma = azar.ponderado<'metodo' | 'campo' | 'tipo' | 'ella-misma' | 'impresion' | 'nueva'>([
+    [metodos.length > 0 ? 32 : 0, 'metodo'],
+    [campos.length > 0 ? 12 : 0, 'campo'],
+    [22, 'tipo'],
+    [10, 'ella-misma'],
+    [clase === 'System' ? 40 : 0, 'impresion'],
+    [14, 'nueva'],
+  ]);
+  switch (forma) {
+    case 'metodo':
+      // Con receptor `clase` SIEMPRE (`String.length()`, no `"a".length()`): lo que importa es el uso del NOMBRE de la clase.
+      return comoSentencia(entorno, llamadaDeApi(entorno, azar.elegir(metodos), 0, 'clase', 'buenos'));
+    case 'campo': {
+      const campo = azar.elegir(campos);
+      return comoSentencia(entorno, plantilla([`${clase}.${campo.nombre}`], [], campo.tipo, { etiquetas: ['campo-de-biblioteca'], primaria: true }));
+    }
+    case 'tipo': {
+      // `Math m = null;` y `Math m;` son VÁLIDOS (el tipo es la clase del programa); `Scanner sc = new Scanner(System.in);` no (la clase no tiene ese constructor).
+      const forma = azar.ponderado<'nulo' | 'sin-valor' | 'literal'>([[45, 'nulo'], [15, 'sin-valor'], [40, 'literal']]);
+      const inicial = forma === 'nulo' ? literal('null', 'null') : forma === 'sin-valor' ? null : TIPOS_CON_LITERAL.has(clase) ? literalDe(entorno, clase) : literal('null', 'null');
+      return [declararConNombre(entorno, clase, inicial)];
+    }
+    case 'ella-misma':
+      return [sentenciaExpr(plantilla([`${clase}.main(args)`], [], 'void', { primaria: true }))];
+    case 'impresion':
+      return [sentenciaExpr(imprimir(expresionDeCualquierTipo(entorno, 0), azar.probabilidad(0.75) ? 'println' : 'print'))];
+    default: {
+      const argumentos = ARGUMENTOS_DE_NEW[clase] ?? '';
+      return [declararConNombre(entorno, clase, plantilla([`new ${clase}(${azar.probabilidad(0.7) ? argumentos : ''})`], [], clase, { primaria: true }))];
+    }
+  }
+}
+
+const TIPOS_CON_LITERAL: ReadonlySet<string> = new Set(['Scanner', 'Random', 'String', 'Integer', 'Double', 'Character', 'Long', 'Boolean', 'Object']);
+
 // ---- Condicionales, ciclos, break y continue ----
 
 function cuerpoSimple(entorno: Entorno, dentroDeCiclo: boolean): Sentencia[] {
@@ -924,6 +1229,9 @@ export const PLANTILLAS: readonly PlantillaDeSentencia[] = [
   { nombre: 'switch', peso: 5, generar: switchAlAzar },
   { nombre: 'switch-con-constante', peso: 2.5, generar: switchConConstante },
   { nombre: 'printf-como-valor', peso: 2.5, generar: printfComoValor },
+  { nombre: 'switch-con-sentencia-antes-del-case', peso: 1, generar: switchConSentenciaAntesDelCase },
+  { nombre: 'valor-de-tipo-no-modelado', peso: 2.4, generar: valorDeTipoNoModelado },
+  { nombre: 'sentencia-entre-parentesis', peso: 1.8, generar: sentenciaEntreParentesis },
   { nombre: 'condicional-o-ciclo', peso: 12, generar: condicionalOCiclo },
   { nombre: 'salto-suelto', peso: 0.6, generar: saltoSuelto },
   { nombre: 'impresion', peso: 15, generar: impresionAlAzar },

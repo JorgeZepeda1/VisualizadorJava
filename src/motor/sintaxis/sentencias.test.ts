@@ -170,6 +170,76 @@ describe('sentencias — switch clásico con caída (REQ-SUB-004, verificado con
   });
 });
 
+// Tarea 1.34 (familia A de la re-verificación del lote 1): JLS 14.11 — el cuerpo de un `switch` es `{ { SwitchBlockStatementGroup } { SwitchLabel } }`, y todo
+// grupo EMPIEZA con una etiqueta. javac (`JavacParser.switchBlockStatementGroups`): lo primero que no sea `case`, `default` o `}` es «case, default, or '}'
+// expected», en ESE token — también si es una sentencia, una declaración, `;` o un bloque. Antes el analizador aceptaba cualquier elemento de bloque ahí y el
+// programa del alumno que escribió un título del menú antes del primer `case` terminaba en «Java sí acepta tu programa».
+describe('sentencias — antes del primer `case` o `default` de un switch no cabe nada más que una etiqueta (JLS 14.11, tarea 1.34)', () => {
+  const ANTES_DEL_PRIMER_CASE: ReadonlyArray<readonly [descripcion: string, cuerpo: string, primerToken: string]> = [
+    ['break', 'switch (x) { break; case 1: break; }', 'break'],
+    ['println', 'switch (x) { System.out.println("a"); case 1: break; }', 'System'],
+    ['una declaración', 'switch (x) { int y = 2; case 1: break; }', 'int'],
+    ['una declaración final', 'switch (x) { final int k = 1; case 1: break; }', 'final'],
+    ['la sentencia vacía', 'switch (x) { ; case 1: break; }', ';'],
+    ['un bloque', 'switch (x) { { x = 2; } case 1: break; }', '{ x'],
+    ['un incremento y nada más', 'switch (x) { x++; }', 'x++'],
+    ['un return', 'switch (x) { return; }', 'return'],
+    ['un if', 'switch (x) { if (x > 0) { } case 1: break; }', 'if'],
+    ['un for', 'switch (x) { for (;;) { } }', 'for'],
+    ['dos asignaciones sin ningún case', 'switch (x) { x = 2; x = 3; }', 'x = 2'],
+  ];
+
+  it.each(ANTES_DEL_PRIMER_CASE)('%s → ErrorDeCompilacion «sentencia-antes-del-primer-case» en el primer token', (_descripcion, cuerpo, primerToken) => {
+    const fuente = `class C { public static void main(String[] a) { int x = 1; ${cuerpo} } }`;
+    let error: unknown;
+    try {
+      analizar(fuente);
+    } catch (e) {
+      error = e;
+    }
+    expect(error).toBeInstanceOf(ErrorDeCompilacion);
+    const lanzado = error as ErrorDeCompilacion;
+    expect(lanzado.codigo).toBe('sentencia-antes-del-primer-case');
+    // El rango es el del primer token que no es una etiqueta (donde javac lo señala).
+    const inicioEsperado = fuente.indexOf(primerToken, fuente.indexOf('switch'));
+    expect(lanzado.rango.inicio).toBe(inicioEsperado);
+  });
+
+  it('el error de un switch ANIDADO también es el de su propio primer token (no el del switch de afuera)', () => {
+    const fuente = 'class C { public static void main(String[] a) { int x = 1; switch (x) { case 1: switch (x) { x++; } } } }';
+    let error: unknown;
+    try {
+      analizar(fuente);
+    } catch (e) {
+      error = e;
+    }
+    expect((error as ErrorDeCompilacion).codigo).toBe('sentencia-antes-del-primer-case');
+    expect((error as ErrorDeCompilacion).rango.inicio).toBe(fuente.indexOf('x++'));
+  });
+
+  it('control: DESPUÉS de un `case` o de `default` sí caben sentencias, declaraciones, `;` y bloques', () => {
+    const sentencia = primeraSentencia('switch (x) { default: ; int y = 2; { y = 3; } case 1: x++; break; }') as NodoSwitch;
+    expect(sentencia.elementos.map((e) => e.tipo)).toEqual(['etiqueta-default', 'sentencia-vacia', 'declaracion-local', 'bloque', 'etiqueta-case', 'sentencia-expresion', 'break']);
+  });
+
+  it('control: un switch vacío y uno cuya primera etiqueta es `default` (o varios `case` seguidos) no son errores', () => {
+    expect((primeraSentencia('switch (x) { }') as NodoSwitch).elementos).toEqual([]);
+    expect((primeraSentencia('switch (x) { default: }') as NodoSwitch).elementos.map((e) => e.tipo)).toEqual(['etiqueta-default']);
+    expect((primeraSentencia('switch (x) { case 1: case 2: break; }') as NodoSwitch).elementos.map((e) => e.tipo)).toEqual(['etiqueta-case', 'etiqueta-case', 'break']);
+  });
+
+  it('control: sin la llave de cierre sigue siendo el error de fin de archivo de siempre, no el de la etiqueta', () => {
+    let error: unknown;
+    try {
+      analizar('class C { public static void main(String[] a) { int x = 1; switch (x) {');
+    } catch (e) {
+      error = e;
+    }
+    expect(error).toBeInstanceOf(ErrorDeCompilacion);
+    expect((error as ErrorDeCompilacion).codigo).not.toBe('sentencia-antes-del-primer-case');
+  });
+});
+
 describe('sentencias — break / continue sin etiqueta (REQ-SUB-004)', () => {
   it('break dentro de un while', () => {
     const sentencia = primeraSentencia('while (true) { break; }') as NodoWhile;
@@ -212,6 +282,71 @@ describe('sentencias — sentencia de expresión general (REQ-SUB-004: "sentenci
 
   it('una expresión aritmética suelta tampoco es una sentencia válida (verificado: "a + b;")', () => {
     expect(() => primeraSentencia('a + b;')).toThrow(ErrorDeCompilacion);
+  });
+});
+
+// Tarea 1.34 (familia D de la re-verificación del lote 1): JLS 14.8 — las únicas expresiones que son sentencias son la asignación, `++`/`--`, la llamada a un
+// método y `new Clase(...)`; una `ParenthesizedExpression` NO lo es (javac `checkExprStat`: «not a statement»), aunque lo de dentro sí lo sea. El árbol no guardaba
+// los paréntesis, así que `(x = 2);` era indistinguible de `x = 2;`; ahora `analizarPrimaria` deja en el nodo el rango de sus paréntesis más externos (`parentesis`).
+describe('sentencias — una expresión entre paréntesis NO es una sentencia (JLS 14.8, tarea 1.34)', () => {
+  const ENTRE_PARENTESIS: ReadonlyArray<readonly [descripcion: string, sentencia: string]> = [
+    ['una asignación', '(x = 2);'],
+    ['un incremento postfijo', '(x++);'],
+    ['un incremento prefijo', '(++x);'],
+    ['una asignación con los paréntesis repetidos', '((x = 1));'],
+    ['una llamada', '(sc.nextInt());'],
+    ['un println', '(System.out.println("a"));'],
+    ['una llamada estática', '(Math.abs(-1));'],
+    ['un método de un texto', '(s.length());'],
+    ['una creación de objeto', '(new Scanner(System.in));'],
+    ['una asignación compuesta', '(x += 2);'],
+  ];
+
+  it.each(ENTRE_PARENTESIS)('%s → ErrorDeCompilacion «sentencia-entre-parentesis» en el paréntesis de apertura', (_descripcion, sentencia) => {
+    const fuente = `class C { public static void main(String[] a) { int x = 1; ${sentencia} } }`;
+    let error: unknown;
+    try {
+      analizar(fuente);
+    } catch (e) {
+      error = e;
+    }
+    expect(error).toBeInstanceOf(ErrorDeCompilacion);
+    const lanzado = error as ErrorDeCompilacion;
+    expect(lanzado.codigo).toBe('sentencia-entre-parentesis');
+    // javac señala el paréntesis de apertura de los más externos (`JCParens`), no lo que hay dentro.
+    expect(lanzado.rango.inicio).toBe(fuente.indexOf(sentencia));
+  });
+
+  it('también en la inicialización y en la actualización de un `for` (javac usa `checkExprStat` en las dos)', () => {
+    for (const cabecera of ['for ((x = 0); x < 3; x++) { }', 'for (x = 0; x < 3; (x++)) { }']) {
+      const fuente = `class C { public static void main(String[] a) { int x = 1; ${cabecera} } }`;
+      let error: unknown;
+      try {
+        analizar(fuente);
+      } catch (e) {
+        error = e;
+      }
+      expect((error as ErrorDeCompilacion).codigo, cabecera).toBe('sentencia-entre-parentesis');
+    }
+  });
+
+  it('un paréntesis que NO envuelve toda la sentencia sigue siendo una sentencia: `(x) = 2;`, `(x)++;`, `((x)) += 2;`, `(System.out).println("a");`', () => {
+    for (const sentencia of ['(x) = 2;', '(x)++;', '((x)) += 2;', '(System.out).println("a");', 'x = (2);', 'x = (x + 1) * 2;', '((Scanner) s).close();']) {
+      const fuente = `class C { public static void main(String[] a) { int x = 1; ${sentencia} } }`;
+      expect(() => analizar(fuente), sentencia).not.toThrow();
+    }
+  });
+
+  it('la sentencia es la misma con o sin espacios y saltos de línea dentro de los paréntesis; el error se señala en el `(` aunque lo de dentro esté en otra línea', () => {
+    const fuente = 'class C { public static void main(String[] a) { int x = 1;\n (\n x = 2\n );\n } }';
+    let error: unknown;
+    try {
+      analizar(fuente);
+    } catch (e) {
+      error = e;
+    }
+    expect((error as ErrorDeCompilacion).codigo).toBe('sentencia-entre-parentesis');
+    expect((error as ErrorDeCompilacion).rango.inicio).toBe(fuente.indexOf('('.concat('\n')));
   });
 });
 

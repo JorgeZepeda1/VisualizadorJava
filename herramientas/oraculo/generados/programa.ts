@@ -4,8 +4,8 @@
 // el rasgo de construcción que ejerce (las `Etiqueta`s con que se agrupan las familias de fallas).
 //
 // Formato de impresión estable: una sentencia por renglón (la línea de javac señala a la sentencia
-// culpable) y llaves siempre presentes. La clase se llama siempre `P` (el `CompiladorEnLote.java` deduce
-// el nombre del archivo de `class P`).
+// culpable) y llaves siempre presentes. La clase se llama `P` salvo que el programa pida otro nombre
+// (tarea 1.34; el `CompiladorEnLote.java` deduce el nombre del archivo del primer `class X`).
 
 /** Rasgos de construcción que un nodo ejerce: con ellos se agrupan las discrepancias por familia. */
 export type Etiqueta =
@@ -31,10 +31,17 @@ export type Etiqueta =
   | 'flotante-hexadecimal' // `0x1p3`, `0x1.8p1`, `0x.8p0`, `0X1P-2`, `0x1p3d`
   | 'etiqueta-de-variable' // la etiqueta de un `case` es el NOMBRE de una variable (`case s ->`), no un literal
   | 'printf-como-valor' // `System.out.printf(...)` usado donde se espera un valor: devuelve un `PrintStream`
+  // Tarea 1.34: las cuatro familias de falsos aceptos que la re-verificación del lote 1 halló fuera de la gramática del generador (A–D)
+  // y los nombres de propiedades de JavaScript (E).
+  | 'valor-de-tipo-no-modelado' // B: `args`, `args.length()`, `System.in`, `System.out`… usados como VALOR (inicializador, operando, condición…)
+  | 'sentencia-entre-parentesis' // D: `(x = 2);`, `(x++);`, `(System.out.println(1));` — una expresión entre paréntesis puesta como sentencia
+  | 'nombre-de-javascript' // E: `constructor`, `toString`, `__proto__`… como nombre de variable o de miembro (válidos en Java)
   // Rasgos de las declaraciones que pone el generador.
   | 'var'
   | 'tipo-envoltorio'
   // Rasgos que se deducen de la estructura del árbol (`etiquetasDe`).
+  | 'clase-con-nombre-del-jdk' // C: la clase del programa NO se llama P sino como una del JDK (`System`, `Math`, `Scanner`…)
+  | 'sentencia-antes-del-primer-case' // A: una sentencia dentro del `switch` antes del primer `case`/`default`
   | 'final'
   | 'if'
   | 'while'
@@ -145,6 +152,11 @@ export interface Caso {
 export interface Seleccion {
   readonly k: 'seleccion';
   readonly selector: Expr;
+  /**
+   * Tarea 1.34 (familia A): sentencias entre la llave `{` del `switch` y su primer `case`/`default`. Java solo admite ahí una etiqueta
+   * (javac: «case, default, or '}' expected»), así que un `switch` con `antes` no vacío es un error de sintaxis A PROPÓSITO.
+   */
+  readonly antes?: readonly Sentencia[];
   readonly casos: readonly Caso[];
   /** `case X -> { … }` en vez de `case X:` (Java 14+). */
   readonly flecha: boolean;
@@ -174,9 +186,17 @@ export type Sentencia =
 export interface Programa {
   /** Renglones completos (`import java.util.Scanner;`). */
   readonly imports: readonly string[];
+  /**
+   * Tarea 1.34 (familia C): el nombre de la clase. Por omisión `P`; el generador la llama a veces como una clase del JDK (`System`,
+   * `Math`, `Scanner`…): JLS 6.4.1 y 7.5.1 dicen que la clase del alumno TAPA a la del JDK, y es una regla que el motor tuvo que modelar.
+   */
+  readonly clase?: string;
   /** Cuerpo de `main`. */
   readonly sentencias: readonly Sentencia[];
 }
+
+/** El nombre de la clase de un programa que no pidió otro. */
+export const CLASE_POR_OMISION = 'P';
 
 export function declaracion(datos: {
   readonly tipo: string;
@@ -222,7 +242,12 @@ export function para(datos: {
   return { k: 'para', ...datos };
 }
 
-export function seleccion(datos: { readonly selector: Expr; readonly casos: readonly Caso[]; readonly flecha: boolean }): Seleccion {
+export function seleccion(datos: {
+  readonly selector: Expr;
+  readonly antes?: readonly Sentencia[];
+  readonly casos: readonly Caso[];
+  readonly flecha: boolean;
+}): Seleccion {
   return { k: 'seleccion', ...datos };
 }
 
@@ -282,6 +307,7 @@ function renderizarSentencia(sentencia: Sentencia, sangria: string): string[] {
     case 'seleccion':
       return [
         `${sangria}switch (${renderizarExpr(sentencia.selector)}) {`,
+        ...renderizarSentencias(sentencia.antes ?? [], dentro),
         ...sentencia.casos.flatMap((caso) => renderizarCaso(caso, sentencia.flecha, dentro)),
         `${sangria}}`,
       ];
@@ -301,11 +327,12 @@ export function renderizarCuerpo(programa: Programa): string[] {
   return renderizarSentencias(programa.sentencias, '');
 }
 
-/** El programa completo: imports, la clase `P` y el cuerpo de `main` (un renglón por sentencia). */
+/** El programa completo: imports, la clase (`P`, o la que pida `programa.clase`) y el cuerpo de `main` (un renglón por sentencia). */
 export function renderizarPrograma(programa: Programa): string {
   const imports = programa.imports.length === 0 ? [] : [...programa.imports, ''];
   const cuerpo = renderizarSentencias(programa.sentencias, UNA_SANGRIA + UNA_SANGRIA);
-  return [...imports, 'public class P {', `${UNA_SANGRIA}public static void main(String[] args) {`, ...cuerpo, `${UNA_SANGRIA}}`, '}', ''].join('\n');
+  const clase = programa.clase ?? CLASE_POR_OMISION;
+  return [...imports, `public class ${clase} {`, `${UNA_SANGRIA}public static void main(String[] args) {`, ...cuerpo, `${UNA_SANGRIA}}`, '}', ''].join('\n');
 }
 
 // ---- Recorridos y rasgos ----
@@ -355,6 +382,7 @@ function* hijasDeSentencia(sentencia: Sentencia): Generator<Sentencia> {
       yield* sentencia.cuerpo;
       return;
     case 'seleccion':
+      yield* sentencia.antes ?? [];
       for (const caso of sentencia.casos) yield* caso.cuerpo;
       return;
     case 'bloque':
@@ -406,11 +434,13 @@ const ETIQUETA_POR_CLASE_DE_SENTENCIA: Partial<Record<Sentencia['k'], Etiqueta>>
  */
 export function etiquetasDe(programa: Programa): readonly Etiqueta[] {
   const etiquetas = new Set<Etiqueta>();
+  if (programa.clase !== undefined && programa.clase !== CLASE_POR_OMISION) etiquetas.add('clase-con-nombre-del-jdk');
   for (const sentencia of sentenciasDe(programa.sentencias)) {
     const estructural = ETIQUETA_POR_CLASE_DE_SENTENCIA[sentencia.k];
     if (estructural !== undefined) etiquetas.add(estructural);
     if (sentencia.k === 'salto') etiquetas.add(sentencia.palabra);
     if (sentencia.k === 'seleccion' && sentencia.flecha) etiquetas.add('switch-flecha');
+    if (sentencia.k === 'seleccion' && (sentencia.antes ?? []).length > 0) etiquetas.add('sentencia-antes-del-primer-case');
     if (sentencia.k === 'declaracion') {
       if (sentencia.esFinal) etiquetas.add('final');
       if (sentencia.tipo === 'var') etiquetas.add('var');
@@ -426,6 +456,8 @@ export function etiquetasDe(programa: Programa): readonly Etiqueta[] {
 export function pretendeErrorDeSintaxis(programa: Programa): boolean {
   for (const sentencia of sentenciasDe(programa.sentencias)) {
     if (sentencia.k === 'declaracion' && sentencia.sintaxisInvalida) return true;
+    // Tarea 1.34: una sentencia antes del primer `case` es un error del ANÁLISIS SINTÁCTICO de javac, no de tipos.
+    if (sentencia.k === 'seleccion' && (sentencia.antes ?? []).length > 0) return true;
   }
   for (const expr of todasLasExprs(programa)) if (expr.sintaxisInvalida === true) return true;
   return false;

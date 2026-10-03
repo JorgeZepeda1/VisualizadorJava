@@ -224,15 +224,16 @@ function construirProblema(error: ErrorDeCompilacion, fuente: string): Problema 
 // del catálogo, sin tener que tocar cada punto donde el analizador llama `esperarTexto`. Lo que no
 // mapea a un caso conocido (`esperarTipo`, errores léxicos, EOF inesperado…) sigue con el
 // catch-all honesto de siempre — nunca un código inventado para un caso no verificado (D2).
-const CODIGOS_POR_TEXTO_ESPERADO: Readonly<Record<string, CodigoDeSintaxis>> = {
-  ';': 'falta-punto-y-coma',
-  ')': 'falta-parentesis-cierre',
-};
+// Tarea 1.34: un `Map` (todas las tablas del motor que se consultan con texto del alumno lo son; ver `PRECEDENCIA` en `sintaxis/expresiones.ts`).
+const CODIGOS_POR_TEXTO_ESPERADO: ReadonlyMap<string, CodigoDeSintaxis> = new Map<string, CodigoDeSintaxis>([
+  [';', 'falta-punto-y-coma'],
+  [')', 'falta-parentesis-cierre'],
+]);
 
 function codigoDeSintaxis(error: ErrorDeCompilacion): CodigoDeSintaxis {
   // Sub-lote 1-D1: un código DIRECTO (`else-sin-if`, `fin-de-archivo-inesperado`…) gana sobre la
   // tabla indirecta de `esperado` — ver la nota de `ErrorDeCompilacion.codigo`.
   if (error.codigo !== undefined) return error.codigo;
-  if (error.esperado !== undefined) return CODIGOS_POR_TEXTO_ESPERADO[error.esperado] ?? 'error-no-clasificado';
+  if (error.esperado !== undefined) return CODIGOS_POR_TEXTO_ESPERADO.get(error.esperado) ?? 'error-no-clasificado';
   return 'error-no-clasificado';
 }

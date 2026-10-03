@@ -24,8 +24,9 @@ import { programasDelCorpusConVeredicto } from './corpus-con-veredicto.ts';
 const AFIRMA_QUE_JAVA_LO_ACEPTA = /Java sí (?:l[oa]s? )?(?:acepta|tiene)/;
 
 // «El compilador lo dio por bueno»: `ok: true`, o el hueco honesto de EJECUCIÓN (`ejecucion-no-disponible`),
-// que solo se emite DESPUÉS de que las pasadas de compilación aceptaron el programa y cuyo texto dice
-// «Java sí acepta tu programa». Para un programa que javac rechaza, cualquiera de los dos es un falso acepto.
+// que solo se emite DESPUÉS de que todas las pasadas de compilación aceptaron el programa («Tu programa pasó todas
+// mis revisiones…», desde la tarea 1.34; antes decía «Java sí acepta tu programa»). Para un programa que javac
+// rechaza, cualquiera de los dos es un falso acepto.
 function loDaPorBueno(resultado: ResultadoCompilacion): boolean {
   return resultado.ok || resultado.problema.codigo === 'ejecucion-no-disponible';
 }
@@ -40,10 +41,12 @@ describe('corpus real → a un programa que javac 17 rechaza nunca se le dice qu
     // `corpus/experimentos/atribucion` (tarea 1.32: cast inválido, miembro de un primitivo, `final` con `++`, etiquetas de `switch`,
     // `void` como valor, método de instancia por el nombre de la clase, envoltorios, `Scanner` sin `import`, variable que tapa una
     // clase) y los 31 mínimos de `corpus/experimentos/lexico-y-sintaxis` (tarea 1.33: una palabra reservada como nombre, un guion bajo mal puesto,
-    // un literal mal formado, `return 0;` en `main`, `println("a", x)` y `print()`, `printf` como valor, `yield` como sentencia…), con el veredicto real de javac.
-    expect(rechazados.length).toBeGreaterThanOrEqual(117);
+    // un literal mal formado, `return 0;` en `main`, `println("a", x)` y `print()`, `printf` como valor, `yield` como sentencia…) y los 33 mínimos de
+    // `corpus/experimentos/cierre-por-defecto` (tarea 1.34: una sentencia antes del primer `case`, `args` y `System.in` como valor, una clase con nombre de una
+    // clase del JDK, una expresión entre paréntesis como sentencia, los nombres de `Object.prototype`), con el veredicto real de javac.
+    expect(rechazados.length).toBeGreaterThanOrEqual(150);
     // Si el filtro `compilo` no separara nada, la prueba de abajo no distinguiría un rechazo de un programa válido.
-    expect(programas.length - rechazados.length).toBeGreaterThanOrEqual(178);
+    expect(programas.length - rechazados.length).toBeGreaterThanOrEqual(187);
   });
 
   it('cada programa con "compilo": false sale como error o como aviso de una construcción, nunca como aceptado (ni ok, ni "ejecucion-no-disponible")', () => {
@@ -77,7 +80,18 @@ describe('corpus real → a un programa que javac 17 rechaza nunca se le dice qu
     expect(conAfirmacionFalsa).toEqual([]);
   });
 
-  it('control: el detector SÍ reconoce la frase que `ejecucion-no-disponible` conserva a propósito («Java sí acepta tu programa»), no es una expresión que nunca coincide', () => {
-    expect(AFIRMA_QUE_JAVA_LO_ACEPTA.test(textosNoSoportado['ejecucion-no-disponible']({ linea: 1 }))).toBe(true);
+  it('control: el detector SÍ reconoce la frase de antes de la 1.34 («Java sí acepta tu programa»), no es una expresión que nunca coincide', () => {
+    expect(AFIRMA_QUE_JAVA_LO_ACEPTA.test('Java sí acepta tu programa, pero este visualizador todavía no sabe ejecutar lo que escribiste en la línea 1.')).toBe(true);
+  });
+
+  it('tarea 1.34: tampoco `ejecucion-no-disponible` afirma que Java acepta el programa — dice lo que se revisó («pasó todas mis revisiones»), para que un falso acepto no engañe al alumno', () => {
+    expect(AFIRMA_QUE_JAVA_LO_ACEPTA.test(textosNoSoportado['ejecucion-no-disponible']({ linea: 1 }))).toBe(false);
+    // Y de punta a punta: el texto REAL de cada programa válido del corpus que termina en `ejecucion-no-disponible` (el que recibe el alumno).
+    const textos = programas.flatMap(({ fuente }) => {
+      const resultado = compilar(fuente);
+      return !resultado.ok && resultado.problema.codigo === 'ejecucion-no-disponible' ? [textoDelProblema(resultado.problema)] : [];
+    });
+    expect(textos.length).toBeGreaterThanOrEqual(50);
+    for (const texto of textos) expect(texto).toContain('pasó todas mis revisiones');
   });
 });

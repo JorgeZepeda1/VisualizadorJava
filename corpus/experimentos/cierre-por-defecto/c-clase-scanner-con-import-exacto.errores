@@ -1,0 +1,4 @@
+Scanner.java:2: error: Scanner is already defined in this compilation unit
+import java.util.Scanner;
+^
+1 error

@@ -1,0 +1,7 @@
+ASwitchBreakAntesDelCase.java:6: error: case, default, or '}' expected
+            break;
+            ^
+ASwitchBreakAntesDelCase.java:6: error: case, default, or '}' expected
+            break;
+                 ^
+2 errors

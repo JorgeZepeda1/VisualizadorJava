@@ -43,8 +43,10 @@ import { resolverSobrecarga } from './sobrecargas.ts';
 import { verificarEtiquetasDeCase, verificarSelectorDeSwitch } from './switch.ts';
 import {
   argumentoDeSobrecarga,
+  campoReflejadoDeSystem,
   claseDelObjeto,
   esCastPermitido,
+  esNombreDeClaseDelCatalogo,
   esLlamadaDeTipoNoModelado,
   esLlamadaSinValor,
   esTipoPrimitivo,
@@ -81,6 +83,9 @@ interface ContextoFlujo {
 const CONTEXTO_INICIAL: ContextoFlujo = { enCiclo: false, enCicloOSwitch: false };
 const CONTEXTO_DENTRO_DE_CICLO: ContextoFlujo = { enCiclo: true, enCicloOSwitch: true };
 
+/** El tipo del parámetro de `main` (`String[] args`, `String... args`, `String args[]`: los tres son un arreglo de `String`). */
+const TIPO_DEL_PARAMETRO_DE_MAIN = 'String[]';
+
 export function atribuir(programa: NodoPrograma): ProblemaAtribucion[] {
   const problemas: ProblemaAtribucion[] = [];
   // Tarea 1.21 (sub-lote 1-D4, REQ-SUB-001): los imports existen y se validan SIN IMPORTAR si hay
@@ -88,6 +93,13 @@ export function atribuir(programa: NodoPrograma): ProblemaAtribucion[] {
   // verificado contra javac 17 real: un import roto se rechaza aunque la clase no tenga "main".
   // ANTES del corte de "sin main" de abajo, nunca después.
   for (const importacion of programa.importaciones) {
+    // Tarea 1.34 (C, JLS 7.5.1): un `import` de UN solo tipo cuyo nombre simple es el de la clase del archivo es un error («Scanner is already defined in this
+    // compilation unit»), señalado en el `import`. Con comodín no choca: la clase del archivo tapa a las importadas bajo demanda. Solo si el import existe: uno que
+    // no existe ya es `importacion-no-reconocida` (javac reporta ese primero).
+    if (!importacion.comodin && nombreSimpleDeLaImportacion(importacion.nombre) === programa.clase.nombre && existeClaseDelJdk(importacion.nombre)) {
+      problemas.push({ codigo: 'clase-repetida-con-import', rango: importacion.rango, datos: { nombre: programa.clase.nombre, importacion: importacion.nombre } });
+      continue;
+    }
     if (importacion.comodin || nombreDeClaseImportadaEsValido(importacion.nombre)) continue;
     if (existeClaseDelJdk(importacion.nombre)) {
       // Tarea 1.29 (design.md §2.3: «clase existente no soportada → NO-DISP; inexistente → error»):
@@ -106,20 +118,28 @@ export function atribuir(programa: NodoPrograma): ProblemaAtribucion[] {
   // Tarea 1.15 (REQ-COMP-008): sin "main" no hay cuerpo que recorrer -- nada MÁS que reportar aquí
   // (el error real es de ARRANQUE, pasada 5, no de atribución).
   if (programa.clase.main === null) return problemas.slice().sort((a, b) => a.rango.inicio - b.rango.inicio);
-  const alcance = new Alcance();
+  // Tarea 1.34 (C, JLS 6.4.1): la clase del programa es un tipo propio que tapa a los del JDK de igual nombre (`public class Math`).
+  const alcance = new Alcance(new Set([programa.clase.nombre]));
   const ambito = construirAmbito(programa);
   alcance.entrarBloque();
   // El parámetro de main vive en el alcance para que usarlo no dé "variable no declarada";
   // indexarlo ([]) es NO-DISP (arreglos, REQ-SUB-007), ajeno a esta pasada.
+  // Tarea 1.34 (cierre por defecto): su tipo es el de un ARREGLO (`String[]`), fuera del subconjunto — `tipoDeNombreDeTipo` lo sigue dando por «desconocido» (el
+  // sumidero de cascada de siempre), pero ahora se sabe POR QUÉ: usar `args` como valor (`args.length()`, `int n = args;`) es el aviso de arreglo, no un «sí».
   alcance.declarar({
     nombre: programa.clase.main.parametro,
-    tipo: 'desconocido',
+    tipo: TIPO_DEL_PARAMETRO_DE_MAIN,
     esFinal: false,
     rango: programa.clase.main.rango,
   });
   visitarBloque(programa.clase.main.cuerpo, alcance, ambito, CONTEXTO_INICIAL, problemas);
   alcance.salirBloque();
   return problemas.slice().sort((a, b) => a.rango.inicio - b.rango.inicio);
+}
+
+/** `java.util.Map.Entry` → `Entry`: el nombre simple con el que un `import` de un solo tipo deja ver a su clase (JLS 7.5.1). */
+function nombreSimpleDeLaImportacion(nombre: string): string {
+  return nombre.slice(nombre.lastIndexOf('.') + 1);
 }
 
 function visitarBloque(
@@ -199,7 +219,13 @@ function visitarDeclaracionLocal(
       });
     }
     if (declarador.inicializador !== null) {
-      visitarValor(declarador.inicializador, alcance, ambito, problemas);
+      // Tarea 1.34: si el TIPO declarado ya dio su problema (`PrintStream p = System.out;` sin `import`), el valor que se le asigna es de un tipo que no se sabe
+      // y que ya no importa: lo decide ese problema. Se visita como valor (`void`, símbolos…) pero sin el cierre por defecto: sería una cascada.
+      const antes = problemas.length;
+      visitarExpresion(declarador.inicializador, alcance, ambito, problemas);
+      if (!verificarQueTengaValor(declarador.inicializador, alcance, problemas) && problemaDelTipo === null) {
+        cerrarSiNoSeSabeSuTipo(declarador.inicializador, alcance, problemas, antes);
+      }
       // err04/err12 de exploracion/03 (JLS 5.2): solo si el TIPO de destino se reconoce (si no,
       // ya se reportó un problema arriba — nunca dos problemas por la misma causa).
       const destino = tipoDeNombreDeTipo(declaracion.nombreTipo);
@@ -302,6 +328,7 @@ function visitarSentencia(
 function visitarReceptor(
   objeto: NodoExpresion,
   miembro: string,
+  comoLlamada: boolean,
   alcance: Alcance,
   ambito: AmbitoDeNombres,
   problemas: ProblemaAtribucion[],
@@ -316,7 +343,24 @@ function visitarReceptor(
     }
     return true;
   }
-  if (objeto.tipo === 'nombre' && !NOMBRES_DE_CLASE_RECONOCIDOS.has(objeto.nombre) && alcance.buscar(objeto.nombre) === null) {
+  // Tarea 1.34 (C, JLS 6.4.1): la clase del PROPIO programa se llama como una del catálogo (`public class Math`): tapa a la del JDK, así que `Math.sqrt(4)` pide a
+  // SU clase un miembro que no tiene (javac: «cannot find symbol»); solo su `main` existe (la recursión, REQ-SUB-007: aviso). Una clase que no se llama como una
+  // del catálogo sigue por la rama de abajo, sin cambios.
+  if (
+    objeto.tipo === 'nombre' &&
+    objeto.parentesis === undefined &&
+    alcance.buscar(objeto.nombre) === null &&
+    alcance.esTipoPropio(objeto.nombre) &&
+    NOMBRES_DE_CLASE_RECONOCIDOS.has(objeto.nombre)
+  ) {
+    if (miembro === 'main') {
+      problemas.push(avisoDeClaseNoSoportada(objeto.nombre, objeto.rango));
+    } else {
+      problemas.push({ codigo: comoLlamada ? 'miembro-no-declarado' : 'campo-no-declarado', rango: objeto.rango, datos: { clase: objeto.nombre, nombre: miembro } });
+    }
+    return false;
+  }
+  if (objeto.tipo === 'nombre' && objeto.parentesis === undefined && !NOMBRES_DE_CLASE_RECONOCIDOS.has(objeto.nombre) && alcance.buscar(objeto.nombre) === null) {
     const esClaseValidaComoReceptor =
       ambito.esClaseDelJdkVisible(objeto.nombre) || (ambito.esClaseDelPrograma(objeto.nombre) && miembro === 'main');
     if (esClaseValidaComoReceptor) {
@@ -340,12 +384,6 @@ function visitarReceptor(
   }
   visitarExpresion(objeto, alcance, ambito, problemas);
   return true;
-}
-
-/** Tarea 1.32 (F6/N5, JLS 6.5.2): ¿`objeto` es el NOMBRE de una clase del catálogo (`Math`, `String`, `Scanner`…) usado como
- * referencia estática? Solo si ninguna variable en alcance lo tapa: una variable siempre gana (JLS 6.4.2). */
-function esNombreDeClaseDelCatalogo(objeto: NodoExpresion, alcance: Alcance): boolean {
-  return objeto.tipo === 'nombre' && alcance.buscar(objeto.nombre) === null && NOMBRES_DE_CLASE_RECONOCIDOS.has(objeto.nombre);
 }
 
 /**
@@ -501,7 +539,10 @@ function visitarConversion(nodo: NodoConversion, alcance: Alcance, ambito: Ambit
  */
 function visitarDestino(destino: NodoExpresion, alcance: Alcance, ambito: AmbitoDeNombres, problemas: ProblemaAtribucion[]): void {
   if (esNombreDeClaseDelCatalogo(destino, alcance)) return;
+  const antes = problemas.length;
   visitarExpresion(destino, alcance, ambito, problemas);
+  // Tarea 1.34 (cierre por defecto): un destino cuyo tipo no se sabe (`args = 5;`, `args++;`) tampoco pasa en silencio.
+  cerrarSiNoSeSabeSuTipo(destino, alcance, problemas, antes);
 }
 
 /**
@@ -510,8 +551,68 @@ function visitarDestino(destino: NodoExpresion, alcance: Alcance, ambito: Ambito
  * actualización de un `for`): ahí se llama `visitarExpresion` directo.
  */
 function visitarValor(expresion: NodoExpresion, alcance: Alcance, ambito: AmbitoDeNombres, problemas: ProblemaAtribucion[]): void {
+  const antes = problemas.length;
   visitarExpresion(expresion, alcance, ambito, problemas);
-  verificarQueTengaValor(expresion, alcance, problemas);
+  if (verificarQueTengaValor(expresion, alcance, problemas)) return;
+  cerrarSiNoSeSabeSuTipo(expresion, alcance, problemas, antes);
+}
+
+/**
+ * Tarea 1.34: el ARGUMENTO de una llamada o de un `new`. Igual que un valor cualquiera, salvo que `System.in`/`System.out`/`System.err` valen: su tipo SÍ se sabe
+ * (`argumentoDeSobrecarga` los resuelve por su nombre reflejado real) y quien lo juzga es la sobrecarga — `new Scanner(System.in)` es válido, `Math.abs(System.in)` es
+ * `sin-sobrecarga-aplicable`. En cualquier otra posición (`int x = System.in;`, un operando) esos mismos valores son de un tipo que el subconjunto no modela.
+ */
+function visitarArgumento(argumento: NodoExpresion, alcance: Alcance, ambito: AmbitoDeNombres, problemas: ProblemaAtribucion[]): void {
+  const antes = problemas.length;
+  visitarExpresion(argumento, alcance, ambito, problemas);
+  if (verificarQueTengaValor(argumento, alcance, problemas)) return;
+  if (campoReflejadoDeSystem(argumento, alcance) !== null) return;
+  cerrarSiNoSeSabeSuTipo(argumento, alcance, problemas, antes);
+}
+
+/**
+ * Tarea 1.34 — CERRAR POR DEFECTO. Hasta ahora `'desconocido'` era un sumidero de cascada (design.md §2.1: «nunca se informa un error que Java podría no dar») y
+ * también la salida por omisión de lo que el motor no sabía: una expresión de un tipo que el subconjunto no modela, usada como valor, no producía NADA y el programa
+ * terminaba en «Java sí acepta tu programa». «No sé» no es «sí». Esta función se llama sobre cada expresión en posición de VALOR (inicializador, argumento, operando,
+ * condición, selector, destino, receptor…) justo después de visitarla, y cierra el tipo desconocido que NADIE explicó. De dónde sale un tipo desconocido:
+ *   - de una regla que ya produjo su problema dentro de la visita (el nombre no existe, la sobrecarga no aplica, la clase no está soportada…): EXPLICADO, no se agrega otro
+ *     (`problemas.length !== cantidadAntes`: sin cascada, el primero por posición es el que ve el alumno);
+ *   - de lo que una operación, una asignación, un cast o un `new` HEREDAN de lo que contienen: ya se cerró en cada operando, que pasó por este mismo embudo;
+ *   - de una variable cuyo tipo no se sabe: o su declaración ya dio su problema (`Foo x;`), o es un arreglo (`args`) y `visitarNombreComoValor` ya avisó de él;
+ *   - de un campo o una llamada de biblioteca cuyo tipo el subconjunto no modela (`System.in`, `System.out`, `System.err`; el resultado de un método que devuelve
+ *     un objeto que no se simula): el ORIGEN que nadie explicó — es el único caso que cierra esta función, con `valor-de-tipo-no-modelado`.
+ * Cuando una regla de javac del subconjunto sí rechaza el programa, la regla modelada va ANTES (es un problema dentro de la visita) y esto no se ejecuta.
+ */
+function cerrarSiNoSeSabeSuTipo(expresion: NodoExpresion, alcance: Alcance, problemas: ProblemaAtribucion[], cantidadAntes: number): void {
+  if (problemas.length !== cantidadAntes) return;
+  if (!esOrigenDeUnTipoDesconocido(expresion, alcance)) return;
+  problemas.push({
+    codigo: CODIGOS_NO_SOPORTADO.valorDeTipoNoModelado,
+    categoria: 'no-disponible',
+    rango: expresion.rango,
+    datos: { valor: valorTalComoSeEscribio(expresion) },
+  });
+}
+
+/**
+ * ¿`expresion` es el ORIGEN de un tipo desconocido —no lo hereda de un operando—? Un campo (`System.in`) o una llamada de biblioteca cuyo resultado no se modela. Una
+ * llamada solo cuenta si se sabe de qué clase es el receptor y de qué tipo es cada argumento: si no, su resultado desconocido viene de ellos (y ahí se cerró o se explicó).
+ */
+function esOrigenDeUnTipoDesconocido(expresion: NodoExpresion, alcance: Alcance): boolean {
+  if (tipoDeExpresion(expresion, alcance) !== 'desconocido') return false;
+  if (expresion.tipo === 'acceso-miembro') return true;
+  if (expresion.tipo !== 'llamada') return false;
+  if (expresion.callee.tipo !== 'acceso-miembro' || claseDelObjeto(expresion.callee.objeto, alcance) === null) return false;
+  return expresion.argumentos.every((argumento) => argumentoDeSobrecarga(argumento, alcance) !== 'desconocido');
+}
+
+/** El valor tal como lo escribió el alumno para el texto del aviso: `System.in`, `System.out.printf(...)`; `null` si no es un nombre ni una llamada a uno. */
+function valorTalComoSeEscribio(expresion: NodoExpresion): string | null {
+  if (expresion.tipo === 'llamada') {
+    const llamado = nombreCalificadoDeLaCadena(expresion.callee);
+    return llamado === null ? null : `${llamado}(...)`;
+  }
+  return nombreCalificadoDeLaCadena(expresion);
 }
 
 /**
@@ -569,7 +670,11 @@ function verificarQueNoSeaPrimitivo(
  */
 function verificarSystemNoTapada(rango: Rango, alcance: Alcance, problemas: ProblemaAtribucion[]): void {
   const variable = alcance.buscar('System');
-  if (variable === null) return;
+  if (variable === null) {
+    // Tarea 1.34 (C, JLS 6.4.1): la clase del programa se llama `System` (tapa a `java.lang.System`): `System.out` es SU campo `out`, que no tiene.
+    if (alcance.esTipoPropio('System')) problemas.push({ codigo: 'campo-no-declarado', rango, datos: { clase: 'System', nombre: 'out' } });
+    return;
+  }
   const tipo = tipoDeNombreDeTipo(variable.tipo);
   if (esTipoPrimitivo(tipo)) {
     problemas.push({ codigo: 'miembro-de-primitivo', rango, datos: { tipo, nombre: 'out', receptor: 'System' } });
@@ -805,7 +910,16 @@ function visitarNombreComoValor(nodo: NodoNombre, alcance: Alcance, problemas: P
   // Tarea 1.32 (hermano de N5, JLS 6.5.2): el nombre de una clase del catálogo (`Math`, `String`, `Scanner`…) solo es válido como TIPO o
   // como RECEPTOR de un miembro (`visitarReceptor` lo resuelve sin pasar por aquí): como VALOR (`int y = Math;`) javac dice «cannot find
   // symbol: variable Math» aunque la clase exista. Antes se daba por buena («referencia estática»), y era un falso acepto.
-  if (alcance.buscar(nodo.nombre) !== null) return;
+  const variable = alcance.buscar(nodo.nombre);
+  if (variable !== null) {
+    // Tarea 1.34 (cierre por defecto): una variable cuyo tipo es un ARREGLO (`args`, el único que el subconjunto deja nombrar: el parámetro de `main`) usada como valor
+    // —`args.length()`, `int n = args;`, `args = 5;`— es el aviso de arreglos de REQ-SUB-007, nunca «Java sí acepta tu programa». Una variable de un tipo que no se sabe
+    // por otra razón (`Foo x;`) ya dio su problema en la declaración: sin cascada.
+    if (variable.tipo.endsWith('[]')) {
+      problemas.push({ codigo: CODIGOS_NO_SOPORTADO.arreglo, categoria: 'no-disponible', rango: nodo.rango, datos: { tipoArreglo: variable.tipo } });
+    }
+    return;
+  }
   const sugerencia = sugerenciaDeMayuscula(nodo.nombre);
   problemas.push({
     codigo: 'variable-no-declarada',
@@ -836,7 +950,7 @@ function visitarLlamada(
   } else {
     visitarExpresion(nodo.callee, alcance, ambito, problemas);
   }
-  for (const argumento of nodo.argumentos) visitarValor(argumento, alcance, ambito, problemas);
+  for (const argumento of nodo.argumentos) visitarArgumento(argumento, alcance, ambito, problemas);
 }
 
 /**
@@ -865,11 +979,17 @@ function visitarLlamadaDeMiembro(
   ambito: AmbitoDeNombres,
   problemas: ProblemaAtribucion[],
 ): void {
-  if (!visitarReceptor(callee.objeto, callee.miembro, alcance, ambito, problemas)) return;
+  const antes = problemas.length;
+  if (!visitarReceptor(callee.objeto, callee.miembro, true, alcance, ambito, problemas)) return;
   if (verificarQueTengaValor(callee.objeto, alcance, problemas)) return;
   if (verificarQueNoSeaPrimitivo(callee.objeto, callee.miembro, callee.rango, alcance, problemas)) return;
   const clase = claseDelObjeto(callee.objeto, alcance);
-  if (clase === null) return;
+  if (clase === null) {
+    // Tarea 1.34 (cierre por defecto): un receptor sin clase del subconjunto (`args.length()`, `System.in.nextInt()`, `System.in.read()`) no deja pasar la
+    // llamada en silencio: ni se sabe qué miembros tiene ni si javac la acepta.
+    cerrarSiNoSeSabeSuTipo(callee.objeto, alcance, problemas, antes);
+    return;
+  }
   const clasificacion = clasificarMetodo(clase, callee.miembro);
   if (clasificacion === 'no-existe') {
     problemas.push({ codigo: 'miembro-no-declarado', rango: callee.rango, datos: { clase, nombre: callee.miembro } });
@@ -937,11 +1057,15 @@ function visitarAccesoMiembro(
   ambito: AmbitoDeNombres,
   problemas: ProblemaAtribucion[],
 ): void {
-  if (!visitarReceptor(nodo.objeto, nodo.miembro, alcance, ambito, problemas)) return;
+  const antes = problemas.length;
+  if (!visitarReceptor(nodo.objeto, nodo.miembro, false, alcance, ambito, problemas)) return;
   if (verificarQueTengaValor(nodo.objeto, alcance, problemas)) return;
   if (verificarQueNoSeaPrimitivo(nodo.objeto, nodo.miembro, nodo.rango, alcance, problemas)) return;
   const clase = claseDelObjeto(nodo.objeto, alcance);
-  if (clase === null) return;
+  if (clase === null) {
+    cerrarSiNoSeSabeSuTipo(nodo.objeto, alcance, problemas, antes); // tarea 1.34: `args.length` (un campo de algo que no se sabe qué es)
+    return;
+  }
   const clasificacion = clasificarCampo(clase, nodo.miembro);
   if (clasificacion === 'no-existe') {
     problemas.push({ codigo: 'campo-no-declarado', rango: nodo.rango, datos: { clase, nombre: nodo.miembro } });
@@ -996,7 +1120,7 @@ function visitarNuevaInstancia(
   ambito: AmbitoDeNombres,
   problemas: ProblemaAtribucion[],
 ): void {
-  for (const argumento of nodo.argumentos) visitarValor(argumento, alcance, ambito, problemas);
+  for (const argumento of nodo.argumentos) visitarArgumento(argumento, alcance, ambito, problemas);
 
   const problemaDelTipo = problemaDeNombreDeTipo(nodo.nombreTipo, nodo.rango, ambito);
   if (problemaDelTipo !== null) {

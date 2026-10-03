@@ -243,6 +243,17 @@ export interface NodoDeclarador {
 
 // ---- Expresiones (tareas 1.3 Pratt, 1.4 ambigüedades) ----
 
+/**
+ * Tarea 1.34 (familia D, JLS 14.8/15.8.5): lo que TODA expresión recuerda de sus paréntesis. `parentesis` es el rango de los paréntesis MÁS EXTERNOS que la
+ * envuelven (`((x))` → los de afuera: lo que javac señala con `JCParens`) y no existe si no los tiene. No cambia el valor ni la forma del árbol (por eso es una
+ * marca y no un nodo de agrupación, que habría obligado a cada pasada a «mirar a través»): solo lo leen las tres reglas de Java que dependen de los paréntesis y
+ * no del valor — una expresión entre paréntesis no es una sentencia (`(x = 2);`), no puede ser el nombre de una llamada (`(f)(1)`) y el nombre de una clase entre
+ * paréntesis ya no es la clase (`(Math).abs(1)`: «illegal parenthesized expression»). `rango` sigue siendo el de lo de dentro, sin los paréntesis.
+ */
+interface ConParentesis {
+  readonly parentesis?: Rango;
+}
+
 export type NodoExpresion =
   | NodoLiteralEntero
   | NodoLiteralLargo
@@ -261,50 +272,50 @@ export type NodoExpresion =
   | NodoConversion
   | NodoExpresionNoSoportada;
 
-export interface NodoLiteralEntero {
+export interface NodoLiteralEntero extends ConParentesis {
   readonly tipo: 'literal-entero';
   readonly valor: bigint;
   readonly rango: Rango;
 }
 
-export interface NodoLiteralLargo {
+export interface NodoLiteralLargo extends ConParentesis {
   readonly tipo: 'literal-largo';
   readonly valor: bigint;
   readonly rango: Rango;
 }
 
-export interface NodoLiteralDoble {
+export interface NodoLiteralDoble extends ConParentesis {
   readonly tipo: 'literal-doble';
   readonly valor: number;
   readonly rango: Rango;
 }
 
-export interface NodoLiteralCaracter {
+export interface NodoLiteralCaracter extends ConParentesis {
   readonly tipo: 'literal-caracter';
   readonly valor: string;
   readonly rango: Rango;
 }
 
-export interface NodoLiteralCadena {
+export interface NodoLiteralCadena extends ConParentesis {
   readonly tipo: 'literal-cadena';
   readonly valor: string;
   readonly rango: Rango;
 }
 
-export interface NodoLiteralBooleano {
+export interface NodoLiteralBooleano extends ConParentesis {
   readonly tipo: 'literal-booleano';
   readonly valor: boolean;
   readonly rango: Rango;
 }
 
 /** Una referencia por nombre: variable, o el inicio de una cadena `objeto.miembro`. */
-export interface NodoNombre {
+export interface NodoNombre extends ConParentesis {
   readonly tipo: 'nombre';
   readonly nombre: string;
   readonly rango: Rango;
 }
 
-export interface NodoBinaria {
+export interface NodoBinaria extends ConParentesis {
   readonly tipo: 'binaria';
   readonly operador: string;
   readonly izquierda: NodoExpresion;
@@ -312,14 +323,14 @@ export interface NodoBinaria {
   readonly rango: Rango;
 }
 
-export interface NodoUnaria {
+export interface NodoUnaria extends ConParentesis {
   readonly tipo: 'unaria';
   readonly operador: '+' | '-' | '!';
   readonly operando: NodoExpresion;
   readonly rango: Rango;
 }
 
-export interface NodoAsignacion {
+export interface NodoAsignacion extends ConParentesis {
   readonly tipo: 'asignacion';
   readonly operador: '=' | '+=' | '-=' | '*=' | '/=' | '%=';
   readonly objetivo: NodoExpresion;
@@ -327,7 +338,7 @@ export interface NodoAsignacion {
   readonly rango: Rango;
 }
 
-export interface NodoIncrementoDecremento {
+export interface NodoIncrementoDecremento extends ConParentesis {
   readonly tipo: 'incremento-decremento';
   readonly operador: '++' | '--';
   readonly posicion: 'prefijo' | 'postfijo';
@@ -335,21 +346,21 @@ export interface NodoIncrementoDecremento {
   readonly rango: Rango;
 }
 
-export interface NodoLlamada {
+export interface NodoLlamada extends ConParentesis {
   readonly tipo: 'llamada';
   readonly callee: NodoExpresion;
   readonly argumentos: readonly NodoExpresion[];
   readonly rango: Rango;
 }
 
-export interface NodoAccesoMiembro {
+export interface NodoAccesoMiembro extends ConParentesis {
   readonly tipo: 'acceso-miembro';
   readonly objeto: NodoExpresion;
   readonly miembro: string;
   readonly rango: Rango;
 }
 
-export interface NodoNuevaInstancia {
+export interface NodoNuevaInstancia extends ConParentesis {
   readonly tipo: 'nueva-instancia';
   readonly nombreTipo: string;
   readonly argumentos: readonly NodoExpresion[];
@@ -358,7 +369,7 @@ export interface NodoNuevaInstancia {
 
 /** Cast: `(Tipo) operando`. A tipo primitivo (design §2.4 nivel 13) o a tipo por referencia (la
  * validez del tipo referenciado la decide atribución, tarea 1.7+ — aquí solo sintaxis, ADR 003). */
-export interface NodoConversion {
+export interface NodoConversion extends ConParentesis {
   readonly tipo: 'conversion';
   readonly nombreTipo: string;
   readonly operando: NodoExpresion;
@@ -373,4 +384,4 @@ export interface NodoConversion {
 // miembro trae los datos exactos que su texto necesita (p. ej. `arreglo-no-soportado`, sitio "new
 // Tipo[...]", también exige `datos.tipoArreglo` — MISMO valor de código que la declaración, ver
 // motor/no-soportado.ts).
-export type NodoExpresionNoSoportada = ConDatosPorCodigo<{ readonly tipo: 'expresion-no-soportada'; readonly rango: Rango }>;
+export type NodoExpresionNoSoportada = ConDatosPorCodigo<ConParentesis & { readonly tipo: 'expresion-no-soportada'; readonly rango: Rango }>;

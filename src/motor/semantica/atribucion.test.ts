@@ -1063,7 +1063,12 @@ describe('atribuir — nombres SIMPLES de clases reales que el programa ve son a
   });
 
   it('...salvo para su propio "main" (recursión de main, REQ-SUB-007): "C.main(a);" avisa, no es error', () => {
-    expect(atribuirCuerpo('C.main(a);')).toMatchObject([{ codigo: 'clase-no-soportada', datos: { nombre: 'C' } }]);
+    // Tarea 1.34: pasar `a` (el arreglo `args`) como argumento es, además, un uso del arreglo: el segundo aviso (el primero por posición sigue siendo el de la clase).
+    expect(atribuirCuerpo('C.main(a);')).toMatchObject([
+      { codigo: 'clase-no-soportada', datos: { nombre: 'C' } },
+      { codigo: 'arreglo-no-soportado', datos: { tipoArreglo: 'String[]' } },
+    ]);
+    expect(atribuirCuerpo('C.main(null);')[0]).toMatchObject({ codigo: 'clase-no-soportada', datos: { nombre: 'C' } });
   });
 });
 
@@ -1827,3 +1832,270 @@ describe('atribuir — `var` y `yield` como nombres de variable no dan ningún p
   });
 });
 
+
+// Tarea 1.34: `CAMPOS_DE_SYSTEM_REFLEJADOS` era un objeto plano indexado con el nombre del campo que escribió el alumno: `System.toString` devolvía la
+// función heredada de `Object.prototype` (el `?? null` no actúa: no es `undefined`) y `nombreDeArgumentoParaMostrar` le pedía `lastIndexOf` — la
+// re-verificación del lote 1 vio `TypeError: campo.lastIndexOf is not a function` en 56 de 120 variantes. Ningún campo de `System` salvo `in`, `out`
+// y `err` existe: es «cannot find symbol» (`campo-no-declarado`), con cualquier nombre y en cualquier posición de argumento.
+describe('atribuir — un nombre de Object.prototype como campo de System, en cada posición de argumento (tarea 1.34): nunca lanza', () => {
+  const NOMBRES = ['constructor', 'toString', 'valueOf', 'hasOwnProperty', '__proto__', 'isPrototypeOf', 'propertyIsEnumerable', 'toLocaleString'];
+  const POSICIONES: ReadonlyArray<readonly [descripcion: string, cuerpo: (nombre: string) => string]> = [
+    ['new Scanner(...)', (n) => `Scanner sc = new Scanner(System.${n});`],
+    ['Math.abs(...)', (n) => `int r = Math.abs(System.${n});`],
+    ['Integer.parseInt(...)', (n) => `int r = Integer.parseInt(System.${n});`],
+    ['String.equals(...)', (n) => `String s = "a"; boolean b = s.equals(System.${n});`],
+    ['Scanner.nextInt(...)', (n) => `Scanner sc = new Scanner(System.in); int r = sc.nextInt(System.${n});`],
+    ['System.out.printf(...)', (n) => `System.out.printf(System.${n});`],
+    ['String.valueOf(...)', (n) => `String s = String.valueOf(System.${n});`],
+  ];
+
+  it.each(NOMBRES.flatMap((nombre) => POSICIONES.map(([posicion, cuerpo]) => [nombre, posicion, cuerpo] as const)))(
+    'System.%s como argumento de %s: «campo-no-declarado», sin lanzar',
+    (nombre, _posicion, cuerpo) => {
+      const problemas = atribuirPrograma(`import java.util.Scanner; class C { public static void main(String[] a) { ${cuerpo(nombre)} } }`);
+      expect(problemas).toHaveLength(1);
+      expect(problemas[0]).toMatchObject({ codigo: 'campo-no-declarado', datos: { clase: 'System', nombre } });
+    },
+  );
+
+  it('control: `in`, `out` y `err` SIGUEN siendo los campos reflejados que valen como argumento (`new Scanner(System.in)`, `new Scanner(System.out)` da su error de sobrecarga)', () => {
+    expect(atribuirPrograma('import java.util.Scanner; class C { public static void main(String[] a) { Scanner sc = new Scanner(System.in); } }')).toEqual([]);
+    const problemas = atribuirPrograma('import java.util.Scanner; class C { public static void main(String[] a) { Scanner sc = new Scanner(System.err); } }');
+    expect(problemas[0]).toMatchObject({ codigo: 'sin-constructor-aplicable', datos: { clase: 'Scanner', argumentos: ['PrintStream'] } });
+  });
+});
+
+// Tarea 1.34 (D): `(Math).abs(-1.5)` — javac: «illegal parenthesized expression». Un nombre simple entre paréntesis es una EXPRESIÓN (JLS 15.8.5), no puede
+// ser un tipo: ya no es la clase `Math` sino una variable llamada `Math`, que no existe. El árbol recuerda los paréntesis (`parentesis`) y la atribución no
+// toma por clase al nombre que los lleva.
+describe('atribuir — el nombre de una clase entre paréntesis ya no es la clase (D, tarea 1.34)', () => {
+  it.each([
+    ['(Math).abs(-1.5)', 'double r = (Math).abs(-1.5);'],
+    ['(Math).PI', 'double r = (Math).PI;'],
+    ['(Integer).parseInt("5")', 'int r = (Integer).parseInt("5");'],
+    ['(System).out.println(1)', '(System).out.println(1);'],
+    ['(Scanner).nextInt()', 'int r = (Scanner).nextInt();'],
+  ])('%s → «variable-no-declarada» con el nombre de la clase', (_descripcion, cuerpo) => {
+    const problemas = atribuirPrograma(`import java.util.Scanner; class C { public static void main(String[] a) { ${cuerpo} } }`);
+    expect(problemas.length).toBeGreaterThanOrEqual(1);
+    expect(problemas[0]).toMatchObject({ codigo: 'variable-no-declarada' });
+  });
+
+  it('control: sin paréntesis `Math.abs(-1.5)` sigue siendo una llamada estática válida, y `(x).length()` con una variable `x` también', () => {
+    expect(atribuirCuerpo('double r = Math.abs(-1.5);')).toEqual([]);
+    expect(atribuirCuerpo('String x = "a"; int n = (x).length();')).toEqual([]);
+    expect(atribuirCuerpo('int x = 1; (x)++; (x) = 2; ((x)) += 3;')).toEqual([]);
+  });
+
+  it('control: una VARIABLE llamada como una clase y entre paréntesis sigue siendo la variable', () => {
+    expect(atribuirCuerpo('String Math = "a"; int n = (Math).length();')).toEqual([]);
+  });
+});
+
+// Tarea 1.34 (familia C de la re-verificación del lote 1): JLS 6.4.1 — la declaración de un tipo TAPA a los tipos de igual nombre que están a la vista, y la
+// clase de nivel superior tapa a las de `java.lang` (que se importan «bajo demanda») y a las de un `import p.*;`; JLS 7.5.1 — un `import` de UN solo tipo
+// choca con la clase del mismo nombre del archivo. Con `public class System`, `System.out` es el campo `out` de LA CLASE DEL ALUMNO (que no lo tiene); con
+// `public class Math`, `Math.sqrt(4)` también. Antes la clase se llamaba como una del catálogo y el motor seguía creyendo que `Math` era `java.lang.Math`:
+// `public class System { System.out.println("hola"); }` daba `ok` (se EJECUTARÍA) donde javac dice «cannot find symbol».
+describe('atribuir — una clase del alumno con el nombre de una clase del JDK (C, tarea 1.34): la del alumno tapa a la del JDK', () => {
+  function programaConClase(clase: string, cuerpo: string, imports = ''): string {
+    return `${imports}public class ${clase} { public static void main(String[] a) { ${cuerpo} } }`;
+  }
+
+  it.each([
+    ['System', 'System.out.println("hola");', 'campo-no-declarado', { clase: 'System', nombre: 'out' }],
+    ['System', 'System.err.println("hola");', 'campo-no-declarado', { clase: 'System', nombre: 'err' }],
+    ['System', 'int x = System.in;', 'campo-no-declarado', { clase: 'System', nombre: 'in' }],
+    ['Math', 'double r = Math.sqrt(4.0);', 'miembro-no-declarado', { clase: 'Math', nombre: 'sqrt' }],
+    ['Math', 'double r = Math.PI;', 'campo-no-declarado', { clase: 'Math', nombre: 'PI' }],
+    ['Integer', 'int x = Integer.parseInt("5");', 'miembro-no-declarado', { clase: 'Integer', nombre: 'parseInt' }],
+    ['Integer', 'int x = Integer.MAX_VALUE;', 'campo-no-declarado', { clase: 'Integer', nombre: 'MAX_VALUE' }],
+    ['String', 'int x = String.valueOf(1).length();', 'miembro-no-declarado', { clase: 'String', nombre: 'valueOf' }],
+  ])('class %s { %s } → [%s]', (clase, cuerpo, codigo, datos) => {
+    const problemas = atribuirPrograma(programaConClase(clase, cuerpo));
+    expect(problemas.length).toBeGreaterThanOrEqual(1);
+    expect(problemas[0]).toMatchObject({ codigo, datos });
+  });
+
+  it('el nombre de la propia clase como TIPO es «objetos propios» (aviso), con el nombre que escribió el alumno: `Random r = new Random();`, `String s = "a";`, `Scanner s = new Scanner();`', () => {
+    for (const [clase, cuerpo] of [
+      ['Random', 'Random r = new Random();'],
+      ['String', 'String s = "a";'],
+      ['Scanner', 'Scanner s = new Scanner();'],
+      ['Math', 'Math m = new Math();'],
+      ['Integer', 'Integer i = new Integer();'],
+    ] as const) {
+      const problemas = atribuirPrograma(programaConClase(clase, cuerpo));
+      expect(problemas[0], `${clase}: ${cuerpo}`).toMatchObject({ categoria: 'no-disponible', codigo: 'clase-no-soportada', datos: { nombre: clase } });
+    }
+  });
+
+  it('el `main` de la propia clase se llama por su nombre (`Math.main(args);`): aviso, no un error de «no existe `main`»', () => {
+    const problemas = atribuirPrograma(programaConClase('Math', 'Math.main(a);'));
+    expect(problemas[0]).toMatchObject({ categoria: 'no-disponible', codigo: 'clase-no-soportada', datos: { nombre: 'Math' } });
+    // `a` (el arreglo `args`) pasado como argumento es un uso del arreglo: un segundo aviso, después del de la clase por posición.
+    expect(problemas.map((p) => p.codigo)).toEqual(['clase-no-soportada', 'arreglo-no-soportado']);
+  });
+
+  it('una clase que NO se llama como una del JDK (`Main`) no cambia: `Main.main(a);` es aviso, y `Math.sqrt(4.0)` es la `Math` del JDK', () => {
+    expect(atribuirPrograma(programaConClase('Main', 'Main.main(a);'))[0]).toMatchObject({ categoria: 'no-disponible', codigo: 'clase-no-soportada' });
+    expect(atribuirPrograma(programaConClase('Main', 'double r = Math.sqrt(4.0);'))).toEqual([]);
+    expect(atribuirPrograma(programaConClase('Main', 'System.out.println("hola");'))).toEqual([]);
+  });
+
+  it('una VARIABLE con ese nombre sigue tapando a la clase: `String Math = "a";` en `class Math` es una variable', () => {
+    expect(atribuirPrograma(programaConClase('Math', 'String Math = "a"; int n = Math.length();'))).toEqual([]);
+  });
+
+  it('una clase llamada como una del JDK que no se usa no produce problema alguno (javac la compila)', () => {
+    for (const clase of ['System', 'Math', 'String', 'Integer', 'Scanner', 'Random', 'Double', 'Character', 'Long']) {
+      expect(atribuirPrograma(programaConClase(clase, 'int x = 1; x++;')), clase).toEqual([]);
+    }
+  });
+});
+
+describe('atribuir — `import` de un solo tipo con el mismo nombre que la clase del archivo (C, tarea 1.34, JLS 7.5.1): «already defined in this compilation unit»', () => {
+  it.each([
+    ['Scanner', 'import java.util.Scanner;', 'java.util.Scanner'],
+    ['Random', 'import java.util.Random;', 'java.util.Random'],
+    ['System', 'import java.lang.System;', 'java.lang.System'],
+    ['Math', 'import java.lang.Math;', 'java.lang.Math'],
+    ['Locale', 'import java.util.Locale;', 'java.util.Locale'],
+    ['Entry', 'import java.util.Map.Entry;', 'java.util.Map.Entry'],
+  ])('class %s + «%s» → «clase-repetida-con-import», señalado en el import', (clase, importacion, nombreCompleto) => {
+    const fuente = `${importacion}\npublic class ${clase} { public static void main(String[] a) { } }`;
+    const problemas = atribuirPrograma(fuente);
+    expect(problemas[0]).toMatchObject({ codigo: 'clase-repetida-con-import', datos: { nombre: clase, importacion: nombreCompleto } });
+    // El rango es el del `import` (la línea 1), no el de la clase.
+    expect(problemas[0]!.rango.inicio).toBe(0);
+  });
+
+  it('un import con comodín NO choca (la clase del archivo tapa a la importada bajo demanda): `import java.util.*;` + `class Scanner`', () => {
+    expect(atribuirPrograma('import java.util.*;\npublic class Scanner { public static void main(String[] a) { } }')).toEqual([]);
+  });
+
+  it('un import de OTRA clase, o de una clase que no existe, no es este error: `import java.util.Random;` + `class Scanner` → nada; `import java.util.Foo;` + `class Foo` → el import que no existe', () => {
+    expect(atribuirPrograma('import java.util.Random;\npublic class Scanner { public static void main(String[] a) { } }')).toEqual([]);
+    expect(atribuirPrograma('import java.util.Foo;\npublic class Foo { public static void main(String[] a) { } }')[0]).toMatchObject({ codigo: 'importacion-no-reconocida' });
+  });
+
+  it('control: sin ninguna clase repetida, los imports de siempre no dan problema (`import java.util.Scanner;` + `class Main`)', () => {
+    expect(atribuirPrograma('import java.util.Scanner;\npublic class Main { public static void main(String[] a) { Scanner sc = new Scanner(System.in); } }')).toEqual([]);
+  });
+});
+
+// Tarea 1.34 (familia B de la re-verificación del lote 1, y el cambio de fondo detrás de ella): CERRAR POR DEFECTO. Si la atribución no sabía el tipo de una
+// expresión ('desconocido') la suprimía en silencio — era el sumidero de cascada de la 1.7: nunca informar un error que Java podría no dar — y el programa
+// terminaba en «Java sí acepta tu programa». Pero «no sé» no es «sí»: `int x = System.in;`, `args.length()` y `System.in.nextInt()` los rechaza javac y se
+// aceptaban, porque `System.in` solo existía como «argumento reflejado» de una sobrecarga y `args` no tenía tipo ni aviso. La regla nueva: una expresión
+// de tipo desconocido —o de un tipo que el subconjunto no modela— en posición de VALOR (inicializador, asignación y su destino, argumento, operando, condición,
+// receptor, selector, `return`) NUNCA pasa en silencio: si algo dentro de ella ya produjo un problema, ese es el problema (sin cascada); si no, es un AVISO
+// honesto. `args` es un arreglo (`arreglo-no-soportado`, REQ-SUB-007); `System.in`/`System.out`/`System.err` usados como valor, `valor-de-tipo-no-modelado`.
+describe('atribuir — cerrar por defecto (B, tarea 1.34): `args` y `System.in/out/err` como VALOR nunca pasan en silencio', () => {
+  const ARREGLO = { categoria: 'no-disponible', codigo: 'arreglo-no-soportado', datos: { tipoArreglo: 'String[]' } } as const;
+  const flujo = (valor: string) => ({ categoria: 'no-disponible', codigo: 'valor-de-tipo-no-modelado', datos: { valor } }) as const;
+
+  // [descripción de la posición, el cuerpo con el valor V]
+  const POSICIONES: ReadonlyArray<readonly [posicion: string, cuerpo: (valor: string) => string]> = [
+    ['inicializador', (v) => `int x = ${v};`],
+    ['asignación (lado derecho)', (v) => `int x = 0; x = ${v};`],
+    ['asignación compuesta', (v) => `int x = 0; x += ${v};`],
+    ['operando de una suma', (v) => `int x = 1 + ${v};`],
+    ['operando de una comparación', (v) => `boolean b = ${v} == 5;`],
+    ['operando unario', (v) => `int x = -${v};`],
+    ['negación', (v) => `boolean b = !${v};`],
+    ['condición de if', (v) => `if (${v}) { }`],
+    ['condición de while', (v) => `while (${v}) { }`],
+    ['condición de for', (v) => `for (; ${v}; ) { break; }`],
+    ['selector de switch', (v) => `switch (${v}) { default: break; }`],
+    ['argumento de println', (v) => `System.out.println(${v});`],
+    ['operando de un cast', (v) => `int x = (int) ${v};`],
+    ['operando de un operando', (v) => `int x = 1 + (2 * ${v});`],
+  ];
+
+  it.each(POSICIONES)('`args` como %s → aviso de arreglo (`String[]`)', (_posicion, cuerpo) => {
+    const problemas = atribuirCuerpo(cuerpo('a'));
+    expect(problemas.length).toBeGreaterThanOrEqual(1);
+    expect(problemas[0]).toMatchObject(ARREGLO);
+  });
+
+  it.each(POSICIONES)('`System.in` como %s → «valor-de-tipo-no-modelado» con `System.in`', (_posicion, cuerpo) => {
+    const problemas = atribuirCuerpo(cuerpo('System.in'));
+    expect(problemas.length).toBeGreaterThanOrEqual(1);
+    expect(problemas[0]).toMatchObject(flujo('System.in'));
+  });
+
+  it.each(['System.out', 'System.err'])('`%s` como valor (inicializador, operando y condición) → «valor-de-tipo-no-modelado» con su nombre', (valor) => {
+    for (const cuerpo of [`String s = ${valor};`, `boolean b = ${valor} == ${valor};`, `if (${valor}) { }`]) {
+      expect(atribuirCuerpo(cuerpo)[0], cuerpo).toMatchObject(flujo(valor));
+    }
+  });
+
+  it('el destino de una asignación o de `++`/`--` que no se sabe qué es: `args = 5;`, `args++;`, `--args;`', () => {
+    for (const cuerpo of ['a = 5;', 'a++;', '--a;', 'a += 1;']) {
+      expect(atribuirCuerpo(cuerpo)[0], cuerpo).toMatchObject(ARREGLO);
+    }
+  });
+
+  it('un RECEPTOR que no se sabe qué es: `args.length()`, `args.length`, `System.in.nextInt()`, `System.in.read()`, `System.in.available()`', () => {
+    expect(atribuirCuerpo('int n = a.length();')[0]).toMatchObject(ARREGLO);
+    expect(atribuirCuerpo('int n = a.length;')[0]).toMatchObject(ARREGLO);
+    expect(atribuirCuerpo('int n = System.in.nextInt();')[0]).toMatchObject(flujo('System.in'));
+    expect(atribuirCuerpo('int c = System.in.read();')[0]).toMatchObject(flujo('System.in'));
+    expect(atribuirCuerpo('System.out.println(System.in.available());')[0]).toMatchObject(flujo('System.in'));
+    expect(atribuirCuerpo('System.in.read();')[0]).toMatchObject(flujo('System.in'));
+  });
+
+  it('un argumento de una llamada: `Math.abs(args)`, `Integer.parseInt(args)`, `s.equals(args)` (un arreglo no es un tipo que el subconjunto modele)', () => {
+    for (const cuerpo of ['int r = Math.abs(a);', 'int r = Integer.parseInt(a);', 'String s = "x"; boolean b = s.equals(a);', 'Scanner sc = new Scanner(a);']) {
+      const problemas = atribuirPrograma(`import java.util.Scanner; class C { public static void main(String[] a) { ${cuerpo} } }`);
+      expect(problemas[0], cuerpo).toMatchObject(ARREGLO);
+    }
+  });
+
+  it('una etiqueta de `case` que no se sabe qué es: javac la rechaza y aquí es «etiqueta-de-case-no-constante» (un error modelado va antes que el aviso, que queda detrás)', () => {
+    for (const valor of ['a', 'System.in']) {
+      const problemas = atribuirCuerpo(`int x = 1; switch (x) { case ${valor}: break; }`);
+      expect(problemas[0]).toMatchObject({ codigo: 'etiqueta-de-case-no-constante' });
+      expect(problemas.some((p) => p.categoria === 'no-disponible'), valor).toBe(true);
+    }
+  });
+
+  it('un `return` con valor es el error de `main` (sin cascada): la expresión de tipo desconocido no agrega nada ANTES de él', () => {
+    expect(atribuirCuerpo('return a;')[0]).toMatchObject({ codigo: 'retorno-con-valor' });
+  });
+
+  it('sin cascada: si algo DENTRO de la expresión ya es un problema, ese es el primero y no hay un aviso de cierre antes', () => {
+    // `foo` no existe: «variable-no-declarada» en `foo`; la suma que lo contiene no agrega un aviso suyo al principio de la línea.
+    const problemas = atribuirCuerpo('int x = 1 + foo;');
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toMatchObject({ codigo: 'variable-no-declarada', datos: { nombre: 'foo' } });
+    // El mismo `System.in` dentro de una llamada que ya es otro problema: la sobrecarga que no aplica es el problema.
+    expect(atribuirCuerpo('int r = Math.abs(System.in);')[0]).toMatchObject({ codigo: 'sin-sobrecarga-aplicable' });
+  });
+
+  it('controles — lo que SÍ se sabe no es un aviso: `new Scanner(System.in)`, `System.out.println(…)`, `System.err.println(…)`, `s.equals(System.in)` y las variables de siempre', () => {
+    for (const cuerpo of [
+      'Scanner sc = new Scanner(System.in);',
+      'System.out.println(1);',
+      'System.err.println("x");',
+      'System.out.printf("%d", 1);',
+      'String s = "x"; boolean b = s.equals(System.in);',
+      'int x = 5; x = x + 1; if (x > 0) { x++; }',
+      'String t = "a" + 1; int n = t.length();',
+      'Scanner sc = new Scanner(System.in); int n = sc.nextInt(); String l = sc.nextLine();',
+    ]) {
+      expect(atribuirPrograma(`import java.util.Scanner; class C { public static void main(String[] a) { ${cuerpo} } }`), cuerpo).toEqual([]);
+    }
+  });
+
+  it('el parámetro de `main` que NO se usa como valor no es un aviso (declararlo es lo normal): `String[] args` solo declarado, y `String... args`', () => {
+    expect(atribuirCuerpo('int x = 1;')).toEqual([]);
+    const conPuntos = analizarPrograma(tokenizar('class C { public static void main(String... a) { int x = 1; } }'));
+    expect(atribuir(conPuntos)).toEqual([]);
+  });
+
+  it('`args` TAPADO por una variable local de otro tipo vuelve a ser esa variable (el alumno que redeclara el parámetro ya recibe «variable-ya-definida»)', () => {
+    expect(atribuirCuerpo('int a = 5;')[0]).toMatchObject({ codigo: 'variable-ya-definida' });
+  });
+});

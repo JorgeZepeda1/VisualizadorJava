@@ -105,7 +105,7 @@ export function agruparEnFamilias(discrepancias: readonly DiscrepanciaReducida[]
     .sort((a, b) => b.cantidad - a.cantidad || (a.clave < b.clave ? -1 : 1));
 }
 
-// ---- Las familias conocidas: las de la re-verificación del lote 1 (F1–F6, V) y las que la 1.32 dejó abiertas (N2, N3, N4, P) ----
+// ---- Las familias conocidas: las de la re-verificación del lote 1 (F1–F6, V), las que la 1.32 dejó abiertas (N2, N3, N4, P) y las de la 1.34 (A–E) ----
 
 export interface FamiliaConocida {
   readonly id: string;
@@ -128,6 +128,13 @@ const CLAVES_DE_SWITCH = new Set([
 // El orden importa: primero las que se distinguen por su clave de javac o por un rasgo propio, y al final
 // las que comparten clave (`incompatible types`) con otras.
 const RECONOCEDORES: readonly Reconocedor[] = [
+  // Tarea 1.34: A–E van PRIMERO. Su rasgo (la clase con nombre del JDK, la sentencia antes del `case`, el paréntesis, el valor sin modelar, el nombre de
+  // JavaScript) es la CAUSA, y las claves de javac que comparten con F2, F4 o F1 (`incompatible types`, `cant.deref`, `duplicate.default.label`) no la distinguen.
+  { id: 'C', nombre: 'la clase del programa se llama como una clase del JDK (`class System`, `class Scanner` con su import…)', reconoce: (f) => f.etiquetas.includes('clase-con-nombre-del-jdk') },
+  { id: 'A', nombre: 'sentencia dentro del `switch` antes del primer `case` o `default`', reconoce: (f) => f.tipo === 'falso-acepto' && f.etiquetas.includes('sentencia-antes-del-primer-case') },
+  { id: 'D', nombre: 'expresión entre paréntesis usada como sentencia (`(x = 2);`, `(x++);`)', reconoce: (f) => f.tipo === 'falso-acepto' && f.etiquetas.includes('sentencia-entre-parentesis') },
+  { id: 'B', nombre: '`args` o `System.in`/`System.out`/`System.err` usados como valor (un tipo que el subconjunto no modela)', reconoce: (f) => f.tipo === 'falso-acepto' && f.etiquetas.includes('valor-de-tipo-no-modelado') },
+  { id: 'E', nombre: 'un nombre de `Object.prototype` (`constructor`, `toString`, `__proto__`…) hace LANZAR al compilador', reconoce: (f) => f.tipo === 'fallo-interno' && f.etiquetas.includes('nombre-de-javascript') },
   { id: 'F2', nombre: 'miembro de un primitivo (`int cannot be dereferenced`)', reconoce: (f) => f.tipo === 'falso-acepto' && f.codigoJavac === 'compiler.err.cant.deref' },
   { id: 'F3', nombre: '`final` con `++`, `--` o asignación', reconoce: (f) => f.tipo === 'falso-acepto' && f.codigoJavac === 'compiler.err.cant.assign.val.to.final.var' },
   { id: 'F5', nombre: '`void` usado como valor', reconoce: (f) => f.tipo === 'falso-acepto' && f.etiquetas.includes('void-como-valor') },
@@ -146,7 +153,7 @@ const RECONOCEDORES: readonly Reconocedor[] = [
   { id: 'P', nombre: 'el resultado de `printf` (un `PrintStream`) usado como valor', reconoce: (f) => f.tipo === 'falso-acepto' && f.etiquetas.includes('printf-como-valor') },
 ];
 
-/** La familia conocida (F1–F6, V y las de la tarea 1.33: N2, N3, N4, P) a la que pertenece esta familia, o `null` si es NUEVA. */
+/** La familia conocida (F1–F6, V, las de la tarea 1.33: N2, N3, N4, P, y las de la 1.34: A–E) a la que pertenece esta familia, o `null` si es NUEVA. */
 export function identificarFamiliaConocida(familia: Pick<Familia, 'tipo' | 'codigoJavac' | 'mensajeJavac' | 'etiquetas'>): FamiliaConocida | null {
   const reconocedor = RECONOCEDORES.find((r) => r.reconoce(familia));
   return reconocedor === undefined ? null : { id: reconocedor.id, nombre: reconocedor.nombre };
