@@ -68,9 +68,31 @@ describe('analizarPrograma', () => {
     expect(() => analizar(fuente)).toThrow(ErrorDeCompilacion);
   });
 
-  it('lanza ErrorDeCompilacion si el programa está vacío (falta la clase)', () => {
-    expect(() => analizar('')).toThrow(ErrorDeCompilacion);
+  // Tarea 1.35 (WARNING 3 de la re-verificación del lote 1, decisión del PO 2026-10-02): este test afirmaba que un programa VACÍO es un error de sintaxis, pero javac 17.0.18
+  // compila un archivo vacío (o con solo un comentario, un `package`, imports o `;`) sin ningún error: dar «error de compilación» era un falso rechazo (D2). Sin una clase
+  // no hay nada que ejecutar: es un aviso (`archivo-sin-clase`), no un error. Lo que sí sigue siendo error de javac es CÓDIGO suelto sin clase (`int x = 5;`).
+  it.each([
+    ['vacío', ''],
+    ['solo un comentario', '// no hay nada\n/* ni aquí */'],
+    ['solo un `package`', 'package solo.paquete;'],
+    ['solo un `import`', 'import java.util.Scanner;'],
+    ['un `import` con el `;` doblado', 'import java.util.Scanner;;'],
+    ['solo un `;`', ';'],
+    ['`package`, imports y `;` sueltos', 'package a.b;\nimport java.util.*;\nimport java.io.File;\n;'],
+  ])('un programa SIN ninguna clase (%s) no es un error de sintaxis: avisa con `archivo-sin-clase` y no tiene `main`', (_descripcion, fuente) => {
+    const programa = analizar(fuente);
+    expect(programa.clase.main).toBeNull();
+    expect(programa.otrosTiposDeNivelSuperior).toHaveLength(1);
+    expect(programa.otrosTiposDeNivelSuperior[0]).toMatchObject({ codigo: 'archivo-sin-clase', datos: {} });
+    expect(programa.otrosTiposDeNivelSuperior[0]!.rango).toEqual({ inicio: 0, fin: fuente.length });
   });
+
+  it.each(['int x = 5;', 'package a; int x;', 'import java.util.Scanner; }', 'foo'])(
+    'control: código suelto sin ninguna clase («%s») SIGUE siendo un error de sintaxis (javac: class, interface, enum, or record expected)',
+    (fuente) => {
+      expect(() => analizar(fuente)).toThrow(ErrorDeCompilacion);
+    },
+  );
 });
 
 describe('analizarPrograma — núcleo del programa (tarea 1.2, REQ-SUB-001)', () => {
@@ -88,6 +110,22 @@ describe('analizarPrograma — núcleo del programa (tarea 1.2, REQ-SUB-001)', (
     expect(programa.importaciones).toEqual([
       { tipo: 'importacion', nombre: 'java.util.Scanner', comodin: false, rango: { inicio: 0, fin: 25 } },
     ]);
+  });
+
+  // Tarea 1.35 (el fuzzer de tokens duplica un `;`; javac 17.0.18 compila los tres): mientras no haya empezado la primera declaración de un tipo, un `;` suelto no
+  // cierra la zona de los imports (JLS 7.3: las declaraciones de import y los `;` vacíos se pueden alternar antes de los tipos).
+  it.each([
+    ['un `;` antes del primer import', '; import java.util.Scanner;', ['java.util.Scanner']],
+    ['un `;` entre dos imports', 'import java.util.Scanner; ; import java.util.Random;', ['java.util.Scanner', 'java.util.Random']],
+    ['varios `;` entre imports y otro tras el último', 'import java.util.Scanner;;; import java.util.*; ;', ['java.util.Scanner', 'java.util']],
+  ])('%s no impide leer los imports que siguen', (_descripcion, cabecera, nombres) => {
+    const programa = analizar(`${cabecera} class C { public static void main(String[] a) { } }`);
+    expect(programa.importaciones.map((i) => i.nombre)).toEqual(nombres);
+    expect(programa.clase.main).not.toBeNull();
+  });
+
+  it('control: un import DESPUÉS de la clase sigue siendo un error de sintaxis (javac: class, interface, enum, or record expected)', () => {
+    expect(() => analizar('class C { public static void main(String[] a) { } } import java.util.Scanner;')).toThrow(ErrorDeCompilacion);
   });
 
   it('acepta varios imports, incluido uno con comodín (triangulación de import)', () => {
@@ -225,6 +263,43 @@ describe('analizarPrograma — "public static void main()" sin el parámetro Str
   });
 });
 
+// Tarea 1.35 (WARNING 3 de la re-verificación del lote 1, falsos RECHAZOS; javac 17.0.18 compila los cinco): lo que hace que un método sea el `main` del lanzador es
+// SU FIRMA ENTERA —un solo parámetro `String[]`, `String...` o `String x[]`, con `final` si se quiere—, no que empiece por `String`/`final`. Con cualquier otra lista de
+// parámetros bien formada (`main(String[] args, int x)`, `main(String args)`, `main(String[] args[])`, `main(final double[] args)`) es un método propio más (REQ-SUB-007):
+// aviso, igual que `main()` sin parámetros o `main(double[] args)`. Una lista MAL formada sigue en el camino de `main` y da el error de sintaxis de siempre.
+describe('analizarPrograma — «main» con otra firma que la del lanzador es un método propio (tarea 1.35)', () => {
+  it.each([
+    'public static void main(String[] args, int x) { }',
+    'public static void main(String args) { }',
+    'public static void main(String[] args[]) { }',
+    'public static void main(final double[] args) { }',
+    'public static void main(final Character[] args) { }',
+    'public static void main(String[] args, String[] otros) { }',
+    'public static void main(final String args, final String otro) { }',
+  ])('«%s» es un método propio: clase.main sigue null y avisa como miembro', (miembro) => {
+    const programa = analizar(`public class C { ${miembro} }`);
+    expect(programa.clase.main).toBeNull();
+    expect(programa.clase.otrosMiembros).toHaveLength(1);
+    expect(programa.clase.otrosMiembros[0]!.codigo).toBe('miembro-de-clase-no-soportado');
+  });
+
+  it('triangulación: junto a un `main` verdadero, el otro es un miembro más y el verdadero se reconoce', () => {
+    const programa = analizar('public class C { static void main(String[] args, int x) { } public static void main(String[] args) { } }');
+    expect(programa.clase.main).not.toBeNull();
+    expect(programa.clase.otrosMiembros).toHaveLength(1);
+  });
+
+  it('control: las formas del lanzador siguen siendo `main` (con `final`, con `...`, con los corchetes tras el nombre)', () => {
+    expect(analizar('class C { public static void main(final String... args) { } }').clase.main).not.toBeNull();
+    expect(analizar('class C { public static void main(final String args[]) { } }').clase.main).not.toBeNull();
+  });
+
+  it('control: una lista MAL formada sigue siendo un error de sintaxis de `main`, no se esconde como método propio', () => {
+    expect(() => analizar('class C { public static void main(String[ args) { } }')).toThrow(ErrorDeCompilacion);
+    expect(() => analizar('class C { public static void main(String[] args { } }')).toThrow(ErrorDeCompilacion);
+  });
+});
+
 describe('analizarPrograma — declaraciones locales (tarea 1.2, DeclLocal)', () => {
   it('acepta una declaración de tipo primitivo con inicializador literal', () => {
     const fuente = 'class C { public static void main(String[] a) { int x = 5; } }';
@@ -295,6 +370,29 @@ describe('analizarPrograma — declaraciones locales (tarea 1.2, DeclLocal)', ()
       'impresion',
       'declaracion-local',
     ]);
+  });
+});
+
+// Tarea 1.35 (JLS 15.8.2; la familia de los literales de clase): un literal de clase que EMPIEZA una sentencia no es una declaración aunque empiece con un tipo. `int.class.getName();` y
+// `String[].class.getName();` son sentencias de expresión (una llamada sobre el literal; javac 17.0.18 las compila); `int[] a;` y `String[] s = null;` siguen siendo declaraciones.
+describe('analizarPrograma — un literal de clase al principio de una sentencia no es una declaración (tarea 1.35)', () => {
+  const elementosDe = (cuerpo: string) => analizar(`class C { public static void main(String[] a) { ${cuerpo} } }`).clase.main!.cuerpo.elementos;
+
+  it.each([
+    ['un nombre', 'String.class.getName();'],
+    ['un tipo primitivo', 'int.class.getName();'],
+    ['un arreglo de un primitivo', 'int[].class.getName();'],
+    ['un arreglo de un nombre', 'String[].class.getName();'],
+    ['un arreglo con el nombre calificado', 'java.lang.String[].class.getName();'],
+    ['`void`', 'void.class.getName();'],
+  ])('%s: «%s» es una sentencia de expresión (una llamada sobre el literal)', (_descripcion, texto) => {
+    const [sentencia] = elementosDe(texto);
+    expect(sentencia).toMatchObject({ tipo: 'sentencia-expresion', expresion: { tipo: 'llamada' } });
+  });
+
+  it.each(['int[] a;', 'String[] s = null;', 'java.lang.String[] t;', 'double[][] m;'])('control: «%s» sigue siendo una declaración', (texto) => {
+    const [elemento] = elementosDe(texto);
+    expect(elemento!.tipo).not.toBe('sentencia-expresion');
   });
 });
 

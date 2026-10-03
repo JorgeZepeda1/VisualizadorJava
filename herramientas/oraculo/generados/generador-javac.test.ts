@@ -13,7 +13,8 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { compilarEnLote, type RespuestaJava } from '../compilar-en-lote.ts';
 import { localizarJdk, verificarVersionJdk } from '../jdk.ts';
 import { generarProgramas } from './generador.ts';
-import { etiquetasDe, pretendeErrorDeSintaxis, renderizarPrograma, todasLasExprs, type Programa } from './programa.ts';
+import { etiquetasDe, pretendeErrorDeSintaxis, renderizarPrograma, sentenciasDe, todasLasExprs, type Programa } from './programa.ts';
+import { LIMITE_DE_LAS_PRUEBAS_CON_JDK_MS } from '../limites-de-pruebas.ts';
 
 const SEMILLA = 20260929;
 const CANTIDAD = 3000;
@@ -30,7 +31,7 @@ beforeAll(async () => {
   fuentes = programas.map((programa, i) => ({ id: `p${i}`, fuente: renderizarPrograma(programa) }));
   completo = await compilarEnLote(jdk, fuentes);
   soloSintaxis = await compilarEnLote(jdk, fuentes, { soloSintaxis: true });
-}, 120_000);
+}, LIMITE_DE_LAS_PRUEBAS_CON_JDK_MS);
 
 describe('la mezcla de programas que javac acepta y rechaza', () => {
   it('entre el 42 % y el 58 % de los programas compila (cercano a 50/50)', () => {
@@ -123,7 +124,15 @@ describe('las familias A–E de la tarea 1.34: javac responde como en la re-veri
   });
 
   it('D: cada `(…);` marcada como error de sintaxis la rechaza el análisis sintáctico («not a statement»); las formas válidas ((x) = 2;, (s).length();) las compila javac', () => {
-    const invalidas = programas.flatMap((programa, i) => ([...todasLasExprs(programa)].some((e) => e.etiquetas?.includes('sentencia-entre-parentesis') === true && e.sintaxisInvalida === true) ? [i] : []));
+    // Solo los programas cuyo ÚNICO error de sintaxis a propósito es la `(…);`: si antes hay otro (`long #x`, un campo sin su `;`, un `switch` con una sentencia antes del primer case),
+    // javac informa ese primero y la clave ya no es `not.stmt`. La tarea 1.35 cambió el reparto de las plantillas y un programa así apareció en la muestra.
+    const soloPorD = (programa: Programa): boolean =>
+      (programa.miembros ?? []).every((m) => m.sintaxisInvalida !== true) &&
+      [...sentenciasDe(programa.sentencias)].every((s) => !(s.k === 'declaracion' && s.sintaxisInvalida) && !(s.k === 'seleccion' && (s.antes ?? []).length > 0)) &&
+      [...todasLasExprs(programa)].every((e) => e.sintaxisInvalida !== true || e.etiquetas?.includes('sentencia-entre-parentesis') === true);
+    const invalidas = programas.flatMap((programa, i) =>
+      soloPorD(programa) && [...todasLasExprs(programa)].some((e) => e.etiquetas?.includes('sentencia-entre-parentesis') === true && e.sintaxisInvalida === true) ? [i] : [],
+    );
     expect(invalidas.length, 'hay programas de la familia D marcados como inválidos').toBeGreaterThanOrEqual(40);
     expect(invalidas.filter((i) => sintaxisDe(i).compila).map((i) => fuentes[i]!.fuente).slice(0, 2)).toEqual([]);
     expect(new Set(invalidas.map((i) => sintaxisDe(i).codigoJavac).filter((c) => c !== 'compiler.err.illegal.start.of.expr'))).toEqual(new Set(['compiler.err.not.stmt']));

@@ -11,7 +11,7 @@ import { describe, expect, it } from 'vitest';
 import { tokenizar } from '../lexico/analizador-lexico.ts';
 import { analizarPrograma } from '../sintaxis/analizador-sintactico.ts';
 import { Alcance } from './alcance.ts';
-import { valorConstante } from './constantes.ts';
+import { constanteDeVariable, valorConstante } from './constantes.ts';
 import type { NodoDeclaracionLocal, NodoExpresion } from '../sintaxis/ast.ts';
 
 function expresionDe(expr: string): NodoExpresion {
@@ -198,6 +198,69 @@ describe('valorConstante — casts a primitivo (JLS 15.29: "casts a primitivo")'
 
   it('triangulación: "(int)(10000000000L)" trunca a los 32 bits bajos (exploracion/03 §5, verificado): 1410065408', () => {
     expect(constante('(int)(10000000000L)')).toEqual({ tipo: 'int', valor: 1410065408 });
+  });
+});
+
+// Tarea 1.35 (WARNING 3 de la re-verificación del lote 1, falsos RECHAZOS): JLS 15.29 dice «casts a tipos primitivos y a `String`»: `(String) "a"` y
+// `(boolean) true` son expresiones constantes (el cast es la identidad), y por eso `case (String) "a":` es una etiqueta válida y `if ((boolean) true)`
+// es una condición constante para la asignación definitiva. Antes `plegarConversion` solo conocía los cuatro numéricos y daba `null` (javac compila).
+describe('valorConstante — casts a String y a boolean (tarea 1.35, JLS 15.29: «casts a tipos primitivos y a String»)', () => {
+  it('"(String) "a"" es la constante String "a"', () => {
+    expect(constante('(String) "a"')).toEqual({ tipo: 'String', valor: 'a' });
+  });
+
+  it('triangulación: el operando puede ser una concatenación constante: "(String) ("a" + "b")" -> "ab"', () => {
+    expect(constante('(String) ("a" + "b")')).toEqual({ tipo: 'String', valor: 'ab' });
+  });
+
+  it('"(boolean) true" y "(boolean) (1 < 2)" son la constante boolean true; "(boolean) false" es false', () => {
+    expect(constante('(boolean) true')).toEqual({ tipo: 'boolean', valor: true });
+    expect(constante('(boolean) (1 < 2)')).toEqual({ tipo: 'boolean', valor: true });
+    expect(constante('(boolean) false')).toEqual({ tipo: 'boolean', valor: false });
+  });
+
+  it('control: un cast que Java rechaza NO es una constante (el error de cast lo da la atribución): "(int) true", "(boolean) 1", "(String) 5", "(char) "a""', () => {
+    expect(constante('(int) true')).toBeNull();
+    expect(constante('(boolean) 1')).toBeNull();
+    expect(constante('(String) 5')).toBeNull();
+    expect(constante('(char) "a"')).toBeNull();
+  });
+});
+
+// Tarea 1.35 (WARNING 3, `final int A = 'a'; char c = A;`): JLS 4.12.4 + 5.2 — el valor de una VARIABLE CONSTANTE es el del inicializador ya CONVERTIDO al tipo
+// declarado (`final int A = 'a'` guarda el `int` 97, no el `char`), y es ese `int` constante el que cabe en un `char` (estrechamiento de una constante).
+// Antes cada pasada guardaba el valor plegado TAL CUAL salió del inicializador (un `char`), y la regla de estrechamiento no lo reconocía.
+describe('constanteDeVariable — el valor de una variable `final` constante, convertido a su tipo declarado (tarea 1.35, JLS 4.12.4 y 5.2)', () => {
+  it('`final int A = \'a\'`: el `char` 97 se guarda como el `int` 97', () => {
+    expect(constanteDeVariable('int', { tipo: 'char', valor: 97 })).toEqual({ tipo: 'int', valor: 97 });
+  });
+
+  it('`final long L = 5` guarda un `long`, y `final double D = 5` / `final double D = 5L` guardan un `double` (ensanchamiento, JLS 5.1.2)', () => {
+    expect(constanteDeVariable('long', { tipo: 'int', valor: 5 })).toEqual({ tipo: 'long', valor: 5n });
+    expect(constanteDeVariable('double', { tipo: 'int', valor: 5 })).toEqual({ tipo: 'double', valor: 5 });
+    expect(constanteDeVariable('double', { tipo: 'long', valor: 5n })).toEqual({ tipo: 'double', valor: 5 });
+    expect(constanteDeVariable('double', { tipo: 'char', valor: 97 })).toEqual({ tipo: 'double', valor: 97 });
+  });
+
+  it('`final char C = 65`: la constante `int` que cabe en un `char` se guarda como `char`; si no cabe (70000, -1) no es una constante (el error de asignación lo da la atribución)', () => {
+    expect(constanteDeVariable('char', { tipo: 'int', valor: 65 })).toEqual({ tipo: 'char', valor: 65 });
+    expect(constanteDeVariable('char', { tipo: 'int', valor: 70000 })).toBeUndefined();
+    expect(constanteDeVariable('char', { tipo: 'int', valor: -1 })).toBeUndefined();
+  });
+
+  it('identidad para `boolean` y `String`, y para un valor que ya es del tipo declarado', () => {
+    expect(constanteDeVariable('boolean', { tipo: 'boolean', valor: true })).toEqual({ tipo: 'boolean', valor: true });
+    expect(constanteDeVariable('String', { tipo: 'String', valor: 'a' })).toEqual({ tipo: 'String', valor: 'a' });
+    expect(constanteDeVariable('int', { tipo: 'int', valor: 7 })).toEqual({ tipo: 'int', valor: 7 });
+  });
+
+  it('control: una asignación que Java rechaza, o un tipo que no puede ser constante (`Scanner`, `Random`), o ningún valor, no deja ninguna constante', () => {
+    expect(constanteDeVariable('int', { tipo: 'long', valor: 5n })).toBeUndefined();
+    expect(constanteDeVariable('int', { tipo: 'double', valor: 5 })).toBeUndefined();
+    expect(constanteDeVariable('String', { tipo: 'int', valor: 5 })).toBeUndefined();
+    expect(constanteDeVariable('boolean', { tipo: 'int', valor: 1 })).toBeUndefined();
+    expect(constanteDeVariable('Scanner', { tipo: 'String', valor: 'a' })).toBeUndefined();
+    expect(constanteDeVariable('int', null)).toBeUndefined();
   });
 });
 

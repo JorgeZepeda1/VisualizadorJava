@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
 import type { InformeDeCampana } from './generados/campana.ts';
 import { analizarArgumentos, escribirInforme, formatearResumen, SALIDA_POR_OMISION } from './programas-generados.ts';
+import { LIMITE_DE_LAS_PRUEBAS_CON_JDK_MS } from './limites-de-pruebas.ts';
 
 const AQUI = dirname(fileURLToPath(import.meta.url));
 const RAIZ = resolve(AQUI, '..', '..');
@@ -128,7 +129,7 @@ describe('el script completo (con el JDK real y una campaña chica)', () => {
     const resultado = spawnSync(process.execPath, ['herramientas/oraculo/programas-generados.ts', '--semilla', '3', '--cantidad', '60', '--salida', salida, '--max-reducir', '4'], {
       cwd: RAIZ,
       encoding: 'utf-8',
-      timeout: 120_000,
+      timeout: LIMITE_DE_LAS_PRUEBAS_CON_JDK_MS,
     });
     expect(existsSync(salida), resultado.stderr).toBe(true);
     const informe = JSON.parse(readFileSync(salida, 'utf-8')) as InformeDeCampana;

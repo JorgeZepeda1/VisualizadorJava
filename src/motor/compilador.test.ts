@@ -902,3 +902,196 @@ describe('compilar — una variable leída en su propio inicializador (N6, tarea
     expect(resultado.problema).toMatchObject({ categoria: 'no-disponible', codigo: 'ejecucion-no-disponible' });
   });
 });
+
+// Tarea 1.35 (WARNING 3 de la re-verificación del lote 1, decisión del PO 2026-10-02; javac 17.0.18 compila estos cinco archivos sin un solo error): un programa sin ninguna
+// clase no tiene nada que ejecutar. Antes salía «Hay un error de sintaxis aquí» en la línea 2 —un error de compilación que javac no da—; ahora es un aviso honesto.
+describe('compilar — un archivo sin ninguna clase (tarea 1.35)', () => {
+  it.each([
+    ['vacío', ''],
+    ['solo un comentario', '// nada por aquí\n'],
+    ['solo un `package`', 'package solo.paquete;\n'],
+    ['solo un `import`', 'import java.util.Scanner;\n'],
+    ['un `import` con `;;`', 'import java.util.Scanner;;\n'],
+  ])('%s: no-disponible `archivo-sin-clase` en la línea 1, y ningún error de compilación', (_descripcion, fuente) => {
+    const resultado = compilar(fuente);
+    expect(resultado.ok).toBe(false);
+    if (resultado.ok) throw new Error('se esperaba ok:false');
+    expect(resultado.problema).toMatchObject({ categoria: 'no-disponible', codigo: 'archivo-sin-clase', linea: 1, datos: {} });
+  });
+
+  it('control: código suelto sin clase sigue siendo un error de compilación (javac: class, interface, enum, or record expected)', () => {
+    const resultado = compilar('int x = 5;');
+    expect(resultado.ok).toBe(false);
+    if (resultado.ok) throw new Error('se esperaba ok:false');
+    expect(resultado.problema.categoria).toBe('error-compilacion');
+  });
+});
+
+// Tarea 1.35 (WARNING 3 de la re-verificación del lote 1, falsos RECHAZOS, y un falso acepto hallado al revisarlos; JLS 3.3; cada programa verificado con javac 17.0.18 real):
+// javac traduce los escapes Unicode en TODO el archivo ANTES de leerlo, así que un escape puede ser una comilla, un `&`, una llave o un `;` con significado sintáctico. El
+// visualizador no hace esa traducción (ADR 003, D2): cuando un error aparece donde hay un escape, el error puede ser consecuencia de NO haberlo traducido, y lo honesto es el aviso
+// (`escape-unicode-no-soportado`), nunca «Te falta un punto y coma» para un programa que javac compila. Las fuentes se arman con `B` (una barra real).
+describe('compilar — un escape Unicode con significado sintáctico es un aviso, no un error (tarea 1.35, JLS 3.3)', () => {
+  const B = '\\';
+  const programa = (cuerpoDeMain: string): string => `public class P { public static void main(String[] args) { ${cuerpoDeMain} } }`;
+  const problemaDe = (fuente: string) => {
+    const resultado = compilar(fuente);
+    if (resultado.ok) throw new Error('se esperaba ok:false');
+    return resultado.problema;
+  };
+
+  it.each([
+    ['el escape de la comilla doble cierra la cadena', programa(`String s = "a${B}u0022; int x = 1;`)],
+    ['el escape de `&` dos veces forma `&&`', programa(`boolean b = (1 > 0) ${B}u0026${B}u0026 (2 > 1);`)],
+    ['el escape de `{` y el de `}` abren y cierran el cuerpo', `public class P { public static void main(String[] args) ${B}u007b int x = 5; ${B}u007d }`],
+    ['el escape de `;` termina la sentencia', programa(`int x = 5 ${B}u003b`)],
+    ['el escape de `+` entre dos cadenas', programa(`String s = "a" ${B}u002b "b";`)],
+    ['`var` seguido de un nombre escrito con un escape (hallado en una campaña sobre el corpus: el error era «no es una sentencia», anclado en `var`)', programa(`var ${B}u0041 = 5; System.out.println(${B}u0041);`)],
+    ['un tipo conocido y un nombre escrito con un escape', programa(`int ${B}u0061 = 1; System.out.println(a);`)],
+  ])('%s: aviso `escape-unicode-no-soportado` (javac compila el programa)', (_descripcion, fuente) => {
+    expect(problemaDe(fuente)).toMatchObject({ categoria: 'no-disponible', codigo: 'escape-unicode-no-soportado' });
+  });
+
+  // Hallado por la campaña de 100 000 programas del generador (semilla 20261201, programa 54617: `double edad = 0x1.8\u00701;`; javac 17.0.18 lo compila): un escape que EMPIEZA justo donde
+  // termina el error léxico es parte del mismo literal para javac, que traduce los escapes antes de leer —`0x1.8` + `\u0070` es el flotante hexadecimal `0x1.8p1`, `0x` + `\u0031F` es
+  // `0x1F`, `'a` + `\u0027` es el carácter `'a'`—, así que el error léxico puede ser consecuencia de no haberlo traducido: aviso. Antes solo contaban los escapes que empezaban ANTES
+  // del fin del error.
+  it.each([
+    ['la `p` del exponente de un flotante hexadecimal', `double e = 0x1.8${B}u00701;`],
+    ['el primer dígito de un hexadecimal', `int x = 0x${B}u0031F;`],
+    ['el primer dígito de un binario', `int x = 0b${B}u0031;`],
+    ['el dígito que sigue a un guion bajo', `int x = 1_${B}u0030;`],
+    ['la comilla que cierra un carácter', `char c = 'a${B}u0027;`],
+  ])('un escape pegado al final del literal que falla (%s) es un aviso: javac lo junta al literal y compila', (_descripcion, cuerpo) => {
+    expect(problemaDe(programa(cuerpo))).toMatchObject({ categoria: 'no-disponible', codigo: 'escape-unicode-no-soportado' });
+  });
+
+  it('control: un literal mal formado con un escape SEPARADO de él (un espacio, o un comentario más adelante) sigue siendo un error de compilación', () => {
+    expect(problemaDe(programa(`double e = 0x1.8 ${B}u0041;`))).toMatchObject({ categoria: 'error-compilacion', linea: 1 });
+    expect(problemaDe(programa(`double e = 0x1.8; /* ${B}u0041 */`))).toMatchObject({ categoria: 'error-compilacion', linea: 1 });
+  });
+
+  it('el aviso señala el PRIMER escape del archivo, no la posición del error que habría dado', () => {
+    const fuente = programa(`String s = "a${B}u0022; int x = 1;`);
+    const problema = problemaDe(fuente);
+    expect(fuente.slice(problema.rango.inicio, problema.rango.fin)).toBe(`${B}u0022`);
+  });
+
+  it('un escape en un COMENTARIO anterior a un error de sintaxis real sigue ganando (ADR 004, comportamiento de la 1.5): es el aviso', () => {
+    const fuente = ['public class P {', `  // ${B}u0041`, '  public static void main(String[] args) { int x = 5 }', '}'].join('\n');
+    expect(problemaDe(fuente)).toMatchObject({ categoria: 'no-disponible', codigo: 'escape-unicode-no-soportado' });
+  });
+
+  it('control: un error de sintaxis REAL anterior al escape sigue siendo el error (el escape no pudo causarlo)', () => {
+    const fuente = ['public class P {', '  public static void main(String[] args) {', '    int x = 5', '    int y = 6; // ' + B + 'u0041', '  }', '}'].join('\n');
+    expect(problemaDe(fuente)).toMatchObject({ categoria: 'error-compilacion', codigo: 'falta-punto-y-coma', linea: 3 });
+  });
+
+  it('control: un escape en un comentario que viene DESPUÉS del error no lo esconde: la sentencia que falla es otra', () => {
+    const fuente = programa(`int x = 5 int y = 6; /* ${B}u0041 */`);
+    expect(problemaDe(fuente)).toMatchObject({ categoria: 'error-compilacion', codigo: 'falta-punto-y-coma' });
+  });
+
+  it('un escape mal formado en un comentario es un error de compilación (javac: illegal unicode escape), también si antes hay un escape bien formado', () => {
+    expect(problemaDe(programa(`int x = 5; /* ${B}u00 */`))).toMatchObject({ categoria: 'error-compilacion', linea: 1 });
+    expect(problemaDe(programa(`int ${B}u0061 = 1; /* ${B}u00 */`))).toMatchObject({ categoria: 'error-compilacion' });
+    expect(problemaDe(['public class P {', `  // ruta C:${B}users${B}juan`, '}'].join('\n'))).toMatchObject({ categoria: 'error-compilacion', linea: 2 });
+  });
+
+  it('control: un escape bien formado y un programa sin errores siguen dando el aviso de siempre (no «sin errores»)', () => {
+    expect(problemaDe(programa(`System.out.println("${B}u0041");`))).toMatchObject({ categoria: 'no-disponible', codigo: 'escape-unicode-no-soportado' });
+  });
+
+  // Dos escapes tras la zona del error: uno en un comentario (que no cambia ningún token del código) y, después, el de código que SÍ pudo causar el error (el `;` escrito
+  // `${B}u003b`). El primero es el que se muestra (es el primero del archivo, ADR 004), pero el segundo no puede quedar fuera de la cuenta: es otra construcción de las que
+  // el visualizador no traduce. Los tres programas verificados con javac 17.0.18: los dos primeros compilan; el tercero lo rechaza (`';' expected`) y el aviso gana igual.
+  it('un escape en un comentario entre el error y el escape de código que lo causó no lo esconde: se cuentan los dos («y 1 más»)', () => {
+    const conComentarioDeLinea = ['public class P {', '  public static void main(String[] args) {', `    int x = 5 // ${B}u0041`, `    ${B}u003b`, '    System.out.println(x);', '  }', '}'].join('\n');
+    const conComentarioDeBloque = programa(`int x = 5 /* ${B}u0041 */ ${B}u003b`);
+    for (const fuente of [conComentarioDeLinea, conComentarioDeBloque]) {
+      const resultado = compilar(fuente);
+      if (resultado.ok) throw new Error('se esperaba ok:false');
+      expect(resultado.problema, fuente).toMatchObject({ categoria: 'no-disponible', codigo: 'escape-unicode-no-soportado', linea: expect.any(Number) });
+      expect(resultado.adicionales, fuente).toBe(1);
+    }
+  });
+
+  it('control: con un solo escape (en un comentario), aunque el error real venga después, no hay «y N más»', () => {
+    const fuente = ['public class P {', '  public static void main(String[] args) {', `    int x = 5 /* ${B}u0041 */`, '    int y = 6;', '  }', '}'].join('\n');
+    const resultado = compilar(fuente);
+    if (resultado.ok) throw new Error('se esperaba ok:false');
+    expect(resultado.problema).toMatchObject({ categoria: 'no-disponible', codigo: 'escape-unicode-no-soportado', linea: 3 });
+    expect(resultado.adicionales).toBe(0);
+  });
+});
+
+// Tarea 1.35 (hallado con una sonda de Java válido; javac 17.0.18 compila `char c = '<emoji>';` con el valor de la primera unidad UTF-16): un carácter fuera del plano básico dentro de un
+// literal `char` es un aviso, no «el literal char debe tener exactamente un carácter». En una CADENA no pasa nada (ya funcionaba); dos caracteres en un `char` siguen siendo un error.
+describe('compilar — un carácter de dos unidades dentro de un literal char es un aviso (tarea 1.35)', () => {
+  const programa = (cuerpoDeMain: string): string => `public class P { public static void main(String[] args) { ${cuerpoDeMain} } }`;
+  const emoji = String.fromCodePoint(0x1f600);
+
+  it.each([
+    ['una declaración', `char c = '${emoji}';`],
+    ['un entero', `int x = '${emoji}';`],
+    ['una impresión', `System.out.println('${emoji}');`],
+    ['una comparación', `boolean b = 'a' == '${emoji}';`],
+  ])('%s: aviso `caracter-suplementario-no-soportado`', (_descripcion, cuerpo) => {
+    const resultado = compilar(programa(cuerpo));
+    if (resultado.ok) throw new Error('se esperaba ok:false');
+    expect(resultado.problema).toMatchObject({ categoria: 'no-disponible', codigo: 'caracter-suplementario-no-soportado', linea: 1 });
+  });
+
+  it('el aviso nombra el carácter tal como lo escribió el alumno', () => {
+    const resultado = compilar(programa(`char c = '${emoji}';`));
+    if (resultado.ok) throw new Error('se esperaba ok:false');
+    expect(resultado.problema).toMatchObject({ datos: { caracter: emoji } });
+  });
+
+  it('control: el mismo carácter dentro de una CADENA no avisa (ya funcionaba): el programa pasa', () => {
+    const resultado = compilar(programa(`String s = "${emoji}"; System.out.println(s);`));
+    if (!resultado.ok && resultado.problema.categoria === 'no-disponible') expect(resultado.problema.codigo).not.toBe('caracter-suplementario-no-soportado');
+  });
+
+  it('control: dos de esos caracteres en un `char` siguen siendo un error de compilación', () => {
+    const resultado = compilar(programa(`char c = '${emoji}${emoji}';`));
+    if (resultado.ok) throw new Error('se esperaba ok:false');
+    expect(resultado.problema.categoria).toBe('error-compilacion');
+  });
+});
+
+// Tarea 1.35 (SUGGESTION-5: al volver exacta la aserción `adicionales` del catálogo de avisos apareció este defecto, latente desde la 1.17): REQ-SUB-006 pide «y N más», donde N son
+// las OTRAS construcciones fuera del subconjunto. Un literal fuera del subconjunto (`0x1F`) producía dos hallazgos con el MISMO rango —el token del léxico y el nodo que el analizador
+// crea para él—, así que un programa con UNA sola construcción decía «y 1 más».
+describe('compilar — «y N más» cuenta las construcciones distintas, no las veces que se la encontró (tarea 1.35, REQ-SUB-006)', () => {
+  const programa = (cuerpoDeMain: string): string => `public class P { public static void main(String[] args) { ${cuerpoDeMain} } }`;
+  const adicionalesDe = (fuente: string): number => {
+    const resultado = compilar(fuente);
+    if (resultado.ok) throw new Error('se esperaba ok:false');
+    return resultado.adicionales;
+  };
+
+  it.each([
+    ['un literal hexadecimal', 'int x = 0x1F;'],
+    ['un literal octal', 'int x = 010;'],
+    ['un literal binario', 'int x = 0b101;'],
+    ['un literal float', 'double x = 3.5f;'],
+    ['una cadena con un escape fuera del subconjunto', 'String s = "antes\\rdespues";'],
+    ['una cadena con un escape octal', 'String s = "\\101";'],
+    ['un bloque de texto', 'String s = """\n    hola\n    """;'],
+  ])('%s, una sola vez: ningún aviso más', (_descripcion, cuerpo) => {
+    expect(adicionalesDe(programa(cuerpo))).toBe(0);
+  });
+
+  it('triangulación: dos literales DISTINTOS son un aviso más (no se funde de más)', () => {
+    expect(adicionalesDe(programa('int a = 0x1F; int b = 010;'))).toBe(1);
+  });
+
+  it('triangulación: el MISMO literal escrito dos veces, en dos sitios distintos, son dos hallazgos: uno más', () => {
+    expect(adicionalesDe(programa('int a = 0x1F; int b = 0x1F;'))).toBe(1);
+  });
+
+  it('un literal y dos construcciones de otra clase suman tres hallazgos: dos más', () => {
+    expect(adicionalesDe(programa('int a = 0x1F; int c = 1 << 2; int d = 5 & 3;'))).toBe(2);
+  });
+});

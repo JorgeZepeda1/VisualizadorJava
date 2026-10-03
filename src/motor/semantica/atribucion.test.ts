@@ -59,6 +59,32 @@ describe('atribuir — método no declarado (err03 de exploracion/03: ningún m�
   });
 });
 
+// Tarea 1.35 (WARNING 3, falsos RECHAZOS; javac 17.0.18 compila `main(args);` dentro de `main`): el ÚNICO método propio que la atribución ve es el propio `main` (todo
+// otro método declarado ya avisó en su declaración y el programa no llega aquí). Llamarlo por su nombre es una llamada a un método propio: aviso, nunca «el método "main"
+// no existe». Una llamada a un nombre que no es un método de la clase sigue siendo el error de siempre.
+describe('atribuir — la llamada al propio `main` es un aviso, no «método no declarado» (tarea 1.35)', () => {
+  it('"main(5);" es el aviso `llamada-a-metodo-propio-no-soportada` con el nombre del método', () => {
+    const problemas = atribuirCuerpo('main(5);');
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toMatchObject({ categoria: 'no-disponible', codigo: 'llamada-a-metodo-propio-no-soportada', datos: { nombre: 'main' } });
+  });
+
+  it('el caso real, `main(args)`: el primer problema (el que ve el alumno) es la llamada, y `args` como valor es el aviso de arreglo que ya existía', () => {
+    const problemas = atribuirCuerpo('main(a);');
+    expect(problemas[0]).toMatchObject({ categoria: 'no-disponible', codigo: 'llamada-a-metodo-propio-no-soportada' });
+    expect(problemas.map((p) => p.codigo)).toEqual(['llamada-a-metodo-propio-no-soportada', 'arreglo-no-soportado']);
+  });
+
+  it('triangulación: también dentro de un `if` y como argumento de otra llamada', () => {
+    expect(atribuirCuerpo('if (true) { main(5); }')).toMatchObject([{ codigo: 'llamada-a-metodo-propio-no-soportada' }]);
+    expect(atribuirCuerpo('System.out.println(main(5));').map((p) => p.codigo)).toContain('llamada-a-metodo-propio-no-soportada');
+  });
+
+  it('control: un nombre que no es el de ningún método de la clase sigue siendo «metodo-no-declarado»', () => {
+    expect(atribuirCuerpo('principal(5);')).toMatchObject([{ codigo: 'metodo-no-declarado', datos: { nombre: 'principal' } }]);
+  });
+});
+
 describe('atribuir — redeclaración en el mismo bloque (flow13 de exploracion/03)', () => {
   it('declarar "x" dos veces en el cuerpo de main', () => {
     const problemas = atribuirCuerpo('int x = 1; int x = 2;');
@@ -546,6 +572,40 @@ describe('atribuir — deuda 3 del commit 999a8ca (JLS 4.12.4): una variable "fi
   });
 });
 
+// Tarea 1.35 (WARNING 3 de la re-verificación del lote 1, falsos RECHAZOS; cada programa verificado con javac 17.0.18 real): lo que javac COMPILA y aquí daba
+// un error. JLS 4.12.4 + 5.2: el valor de una variable constante es el del inicializador convertido a su tipo declarado, y JLS 15.29 incluye los casts a
+// `String` y a un primitivo entre las expresiones constantes.
+describe('atribuir — constantes derivadas de un `char`, y casts constantes (tarea 1.35, JLS 4.12.4, 5.2 y 15.29)', () => {
+  it('`final int A = \'a\'; char c = A;` compila (A es la constante int 97, que cabe en un char)', () => {
+    expect(atribuirCuerpo("final int A = 'a'; char c = A;")).toEqual([]);
+    expect(atribuirCuerpo("final int K = ' '; char c = K;")).toEqual([]);
+  });
+
+  it('triangulación: la constante se propaga por otras constantes y operaciones: `final int B = A + 1; char c = B;` y `char d = A + 1;`', () => {
+    expect(atribuirCuerpo("final int A = 'a'; final int B = A + 1; char c = B;")).toEqual([]);
+    expect(atribuirCuerpo("final int A = 'a'; char d = A + 1;")).toEqual([]);
+  });
+
+  it('controles negativos (javac los rechaza y aquí también): no cabe en un char, no es `final`, o es `long`', () => {
+    const noCabe = atribuirCuerpo('final int A = 70000; char c = A;');
+    expect(noCabe).toHaveLength(1);
+    expect(noCabe[0]).toMatchObject({ codigo: 'conversion-con-perdida', datos: { origen: 'int', destino: 'char' } });
+    expect(atribuirCuerpo("int A = 'a'; char c = A;")).toMatchObject([{ codigo: 'conversion-con-perdida' }]);
+    expect(atribuirCuerpo('final long L = 65; char c = L;')).toMatchObject([{ codigo: 'conversion-con-perdida', datos: { origen: 'long' } }]);
+  });
+
+  it('`final String S = (String) "a";` es una constante: sirve de etiqueta de `case`, igual que `case (String) "a":`', () => {
+    expect(atribuirCuerpo('final String S = (String) "a"; String s = "a"; switch (s) { case S: break; default: break; }')).toEqual([]);
+    expect(atribuirCuerpo('String s = "a"; switch (s) { case (String) "a": break; default: break; }')).toEqual([]);
+  });
+
+  it('control: sin `final`, o con un cast que no es constante, la etiqueta sigue siendo «etiqueta-de-case-no-constante»', () => {
+    expect(atribuirCuerpo('String t = "a"; String s = "a"; switch (s) { case (String) t: break; default: break; }')).toMatchObject([
+      { codigo: 'etiqueta-de-case-no-constante' },
+    ]);
+  });
+});
+
 // Sub-lote 1-D3 (JLS 15.9, REQ-SUB-005): ANTES de esta tarea, "nueva-instancia" solo recorría sus
 // argumentos como valores sueltos -- "Scanner sc = new Scanner();" (Scanner NO tiene constructor
 // de aridad 0) se aceptaba en silencio, javac lo rechaza de verdad. Los 6 casos verificados contra
@@ -852,6 +912,34 @@ describe('atribuir — nombres de tipo reflejado (InputStream/PrintStream) en lo
     expect(problemas).toHaveLength(1);
     expect(problemas[0]).toMatchObject({ codigo: 'sin-sobrecarga-aplicable', datos: { argumentos: ['boolean'] } });
   });
+});
+
+// Tarea 1.35 (SUGGESTION-3 de la re-verificación del lote 1 y un falso acepto hallado con una campaña de mutantes sobre el corpus; cada nombre verificado con javac 17.0.18): un `import
+// paquete.*;` solo se validaba por su forma y `import java.sqrt.*;` o `import org.junit.*;` terminaban en `ok` (o, con un uso de `Scanner` tres líneas después, en el error del USO
+// y no en la línea del `import`, que es donde javac lo señala: «package java.sqrt does not exist»).
+describe('atribuir — `import p.*;` de un paquete que no existe (tarea 1.35, JLS 7.5.2)', () => {
+  const conImport = (importacion: string, cuerpo = 'System.out.println(1);') =>
+    atribuirPrograma(`${importacion}\nclass C { public static void main(String[] a) { ${cuerpo} } }`);
+
+  it.each(['java.sqrt', 'java.Util', 'foo', 'org.junit', 'java', 'java.lang.Matth'])('"import %s.*;" es «importacion-no-reconocida» en la línea del import, con el nombre tal como se escribió', (paquete) => {
+    const problemas = conImport(`import ${paquete}.*;`);
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toMatchObject({ codigo: 'importacion-no-reconocida', datos: { nombre: `${paquete}.*` } });
+    expect(problemas[0]?.rango.inicio).toBe(0);
+  });
+
+  it('el error del import va PRIMERO aunque el uso posterior de `Scanner` también falle (la línea es la del import, la de javac)', () => {
+    const problemas = conImport('import java.sqrt.*;', 'Scanner sc = new Scanner(System.in);');
+    expect(problemas.length).toBeGreaterThan(1);
+    expect(problemas[0]).toMatchObject({ codigo: 'importacion-no-reconocida', datos: { nombre: 'java.sqrt.*' } });
+  });
+
+  it.each(['java.util', 'java.lang', 'java.util.concurrent', 'javax.swing', 'java.util.Map', 'java.util.Map.Entry', 'java.lang.Math'])(
+    'control: "import %s.*;" (un paquete real, o un tipo del que se importan los miembros) no produce ningún problema',
+    (nombre) => {
+      expect(conImport(`import ${nombre}.*;`)).toEqual([]);
+    },
+  );
 });
 
 // Tarea 1.21 (~7 mutantes de la tarea 1.16, p. ej. "import java.utilScanner;"): el nombre importado
@@ -1342,6 +1430,22 @@ describe('atribuir — un miembro de un valor primitivo (F2, tarea 1.32): "int c
     expect(atribuirPrograma('import java.util.Random; class C { public static void main(String[] a) { Random System = new Random(); System.out.print(1); } }')).toMatchObject([
       { codigo: 'campo-no-declarado', datos: { clase: 'Random', nombre: 'out' } },
     ]);
+  });
+
+  // Tarea 1.35 (hallado por una semilla nueva del fuzzer de tokens, el programa `Bisiesto` con `main(String[] System)`; javac: «cannot find symbol»): el PARÁMETRO de `main` es un
+  // arreglo, y si se llama `System` tapa a la clase igual que cualquier variable. `println` y `print` van por un camino propio que no miraba el tipo de esa variable (un arreglo es
+  // «desconocido» para el subconjunto) y el programa terminaba en «pasó todas mis revisiones». Un arreglo está fuera del subconjunto: aviso, como todo uso de `args`.
+  it('el parámetro de `main` llamado `System` (un arreglo) tapa a la clase: `System.out.println(1);` y `System.out.print(1);` son el aviso de arreglo, nunca «sí»', () => {
+    for (const metodo of ['println', 'print']) {
+      expect(atribuirPrograma(`class C { public static void main(String[] System) { System.out.${metodo}(1); } }`)).toMatchObject([
+        { categoria: 'no-disponible', codigo: 'arreglo-no-soportado', datos: { tipoArreglo: 'String[]' } },
+      ]);
+    }
+  });
+
+  it('control: sin uso de `System.out` el parámetro llamado `System` es válido, y un `System` que no es el parámetro no avisa de arreglos', () => {
+    expect(atribuirPrograma('class C { public static void main(String[] System) { int x = 1; } }')).toEqual([]);
+    expect(atribuirCuerpo('System.out.println(1);')).toEqual([]);
   });
 
   it('el error señala el miembro del valor primitivo (la línea de javac): "int n = 5;\\nint d = n.length();" en la línea 3 del programa', () => {

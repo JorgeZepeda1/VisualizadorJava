@@ -18,6 +18,7 @@ import { compilarEnLote, type RespuestaJava } from './compilar-en-lote.ts';
 import { clasificar } from './generados/clasificador.ts';
 import { veredictoDeNuestroCompilador } from './generados/nuestro-compilador.ts';
 import { localizarJdk, verificarVersionJdk } from './jdk.ts';
+import { LIMITE_DE_LAS_PRUEBAS_CON_JDK_MS } from './limites-de-pruebas.ts';
 
 let respuestas: Map<string, RespuestaJava>;
 
@@ -26,7 +27,7 @@ beforeAll(async () => {
   verificarVersionJdk(jdk);
   const fuentes = VALORES_DE_LA_MATRIZ.flatMap((valor, i) => CONTEXTOS_DE_LA_MATRIZ.map((contexto, j) => ({ id: `${i}-${j}`, fuente: programaDeLaMatriz(valor, contexto) })));
   respuestas = await compilarEnLote(jdk, fuentes);
-}, 120_000);
+}, LIMITE_DE_LAS_PRUEBAS_CON_JDK_MS);
 
 describe('javac 17 real — la matriz valor × contexto', () => {
   it('compila exactamente las celdas de COMPILA_EN_JAVAC_POR_VALOR y rechaza las otras (3 240 programas)', () => {

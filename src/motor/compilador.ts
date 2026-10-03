@@ -11,7 +11,7 @@
 // texto, y la alcanzabilidad se informa antes que la asignación definitiva. Por eso las 3 pasadas
 // son una lista ORDENADA de funciones `(programa) => ProblemaAtribucion[]` (REFACTOR pedido por la
 // tarea): se prueban en orden y la PRIMERA con algo que reportar gana, sin mirar las demás.
-import { tokenizar } from './lexico/analizador-lexico.ts';
+import { empiezaUnEscapeUnicodeMalFormado, primerEscapeUnicodeAntesDe, tokenizar } from './lexico/analizador-lexico.ts';
 import type { Token } from './lexico/tokens.ts';
 import { analizarPrograma } from './sintaxis/analizador-sintactico.ts';
 import type { NodoPrograma } from './sintaxis/ast.ts';
@@ -64,6 +64,13 @@ export function compilar(fuente: string): ResultadoCompilacion {
     tokens = tokenizar(fuente);
   } catch (error) {
     if (!(error instanceof ErrorDeCompilacion)) throw error; // fallo interno (tarea 1.28), ver abajo
+    // Tarea 1.35 (JLS 3.3, falsos RECHAZOS: una cadena que cierra un `\u0022`, un `&&` escrito con dos `\u0026`): el léxico se detuvo con un error, pero si ANTES había un escape
+    // Unicode, el error puede ser consecuencia de no haberlo traducido (javac los traduce en todo el archivo antes de leerlo). Lo honesto es el aviso del escape. La excepción es
+    // un escape MAL formado (`\users` en una ruta): ese error es real, ningún escape lo explica.
+    const escapeAnterior = empiezaUnEscapeUnicodeMalFormado(fuente, error.rango.inicio) ? null : primerEscapeUnicodeAntesDe(fuente, error.rango.fin);
+    if (escapeAnterior !== null) {
+      return construirResultadoNoDisponible([{ codigo: CODIGOS_NO_SOPORTADO.escapeUnicodeNoSoportado, rango: escapeAnterior, datos: {} }], fuente);
+    }
     return { ok: false, problema: construirProblema(error, fuente), adicionales: 0 };
   }
 
@@ -107,7 +114,7 @@ export function compilar(fuente: string): ResultadoCompilacion {
     // JavaScript, un resultado inventado en inglés (medición previa a este cambio: 0 de las 2 713
     // fuentes de `corpus/{mutantes,compilacion,curso}` llegaban aquí con una excepción ajena).
     if (!(error instanceof ErrorDeCompilacion)) throw error;
-    const avisosAntesDelError = noSoportadosLexicos.filter((t) => avisoEnmascaraError(t, error.rango));
+    const avisosAntesDelError = noSoportadosLexicos.filter((t) => avisoEnmascaraError(t, error.rango, tokens));
     if (avisosAntesDelError.length > 0) {
       const noSoportados = avisosAntesDelError
         .map((t) => ({ codigo: t.codigo ?? CODIGOS_NO_SOPORTADO.sinClasificar, rango: t.rango, datos: t.datos ?? {} }))
@@ -145,9 +152,16 @@ export function compilar(fuente: string): ResultadoCompilacion {
  *     de la gramática) -- nunca sobre un problema estructural genuinamente posterior e
  *     independiente.
  */
-function avisoEnmascaraError(aviso: Token, rangoError: Rango): boolean {
+function avisoEnmascaraError(aviso: Token, rangoError: Rango, tokens: readonly Token[]): boolean {
+  if (aviso.codigo === 'escape-unicode-no-soportado') {
+    // Tarea 1.35 (JLS 3.3): el error puede estar ANCLADO antes del token que lo causó (`';' expected` se ancla en el fin del token anterior, y el que de verdad molestó es el escape
+    // que sigue: `(a > b) \u0026\u0026 (c > d)`) o abarcar solo la expresión que ya se leyó (`var \u0041 = 5;` es «no es una sentencia» sobre `var`, y el escape viene justo después).
+    // Se compara con el primer token de CÓDIGO que empieza donde termina la zona del error, o después: el que el analizador tenía delante al fallar. Un escape dentro de un comentario
+    // no cuenta como ese token (no cambia ningún token del código).
+    const siguiente = tokens.find((t) => t.enComentario !== true && t.rango.inicio >= rangoError.fin);
+    return aviso.rango.inicio <= (siguiente?.rango.inicio ?? Number.POSITIVE_INFINITY);
+  }
   if (aviso.rango.inicio > rangoError.inicio) return false;
-  if (aviso.codigo === 'escape-unicode-no-soportado') return true;
   return rangoError.inicio < aviso.rango.fin;
 }
 

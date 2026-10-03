@@ -56,6 +56,11 @@
 // calificado (`consumirNombreDeTipo`, `pareceDeclaracionLocal`) damos ese mismo código, en la misma línea (antes
 // `error-no-clasificado`). Comparados uno por uno contra `HEAD` (los 31 y solo esos). El umbral (0.87) NO se toca: es un mínimo
 // que exige no retroceder, no un valor medido.
+//
+// Tarea 1.35 (el código había quedado a UN mutante del umbral por la 1.33 y la 1.34): veredicto 100,00 % y línea 98,88 % SIN cambios; el CÓDIGO pasa de 87,06 % (2 099/2 411) a 89,17 %
+// (2 150/2 411) porque la tabla de claves de javac manda `not.stmt`, `expected3`, `doesnt.exist`… al genérico `error-no-clasificado` y el motor ya da, en la misma línea, el código preciso.
+// Se aceptan SOLO los 51 mutantes que se auditaron uno por uno (`CODIGOS_MAS_PRECISOS_QUE_EL_DE_JAVAC`: el texto que vería el alumno contra la línea mutada) y se dejan fuera, con su razón, los
+// grupos cuyo texto engaña a veces (`falta-parentesis-cierre`, `llave-de-clase-faltante`, `llave-de-metodo-faltante`…). El umbral SUBE de 0,87 a 0,88: nunca se baja.
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -190,6 +195,86 @@ function codigoEsperadoDeJavac(codigoJavac: string, mensajeJavac: string): strin
   }
 }
 
+/**
+ * Tarea 1.35 (SUGGESTION de la re-verificación del lote 1 y riesgo (1) de la 1.34: el código quedó a UN mutante del umbral): la tabla de claves de javac de arriba da UN solo código
+ * esperado por clave, y para varias claves es el genérico `error-no-clasificado` —`not.stmt`, `expected3`, `doesnt.exist`…— porque nació antes de que el motor distinguiera esos casos.
+ * Desde la 1.29/1.33/1.34 el motor da, en la MISMA línea que javac, un código más preciso. Esta tabla lista, MUTANTE POR MUTANTE, los que se auditaron a mano (el texto que vería el alumno
+ * contra la línea mutada y el mensaje de javac) y en los que ese código describe el error REAL. Un mutante solo cuenta como acierto de más si su código nuestro es EXACTAMENTE el de esta
+ * tabla (una prueba lo comprueba: no se cuela ningún otro código, y la entrada no puede quedar muerta).
+ *
+ * AUDITADOS Y ACEPTADOS (51 de los 312 mutantes cuyo código difiere del de la tabla de javac), con su evidencia en cada grupo de abajo.
+ * AUDITADOS Y RECHAZADOS (el código nuestro NO se acepta; son defectos de texto, no del veredicto, y quedan como están):
+ *  - `expected3` «',', ')', or '[' expected» → `falta-parentesis-cierre` (40): sirve cuando de verdad falta el `)` (`main(String[] args {`, 17 casos) pero engaña cuando el error es otro
+ *    (`main(String[] args args)`, `main(String String[] args)`, `main(String[] args;)`: 23 casos, y ninguno se arregla poniendo un `)`).
+ *  - `expected` «'{' expected» → `llave-de-clase-faltante` (39): acierta si la `{` falta o se movió (`public class X` sin llave), engaña si el error es un nombre repetido o un `)` suelto.
+ *  - `expected` «';' expected» → `llave-de-metodo-faltante` (30): acierta con la `{` borrada o movida, engaña con un `)` repetido (`main(String[] args) ) {`: 5 casos, la `{` está ahí).
+ *  - `missing.meth.body.or.decl.abstract` → `llave-de-metodo-faltante` (4): `main(String[] args); {`: el error es el `;` de más y el texto manda a buscar una `{` que existe.
+ *  - `not.stmt` → `falta-punto-y-coma` (3): un `)` de más cierra la llamada antes de tiempo (`println("a") + b);`) y el texto manda a poner un `;` que no lo arregla.
+ *  - `not.stmt` → `palabra-reservada-como-nombre` en `seEncontroNegativo  true;` (1): falta el `=`; el texto habla de `true` como nombre y no de lo que falta.
+ *  - `illegal.start.of.expr` → `fin-de-archivo-inesperado` (17): ni siquiera la línea coincide (javac señala la cabecera; nosotros el final del archivo).
+ *  - `illegal.start.of.stmt` → `else-sin-if` (2): `else }`: el `else` sí tiene su `if`; lo que sobra es la `}`.
+ *  - el resto (`variable-no-declarada` ↔ `campo-no-declarado`, operador unario ↔ binario…) son diferencias de la heurística de la tabla de javac, ajenas a esta auditoría.
+ */
+const CODIGOS_MAS_PRECISOS_QUE_EL_DE_JAVAC: ReadonlyMap<string, string> = new Map<string, string>([
+  // not.stmt → sentencia-entre-parentesis: 10 mutantes: `(cond) {` con el `if`/`while`/`switch` olvidado, de `else if` o metido dentro del paréntesis. javac: «not a statement» sobre el paréntesis; el texto de `sentencia-entre-parentesis` dice justo eso y su segunda frase nombra la palabra que falta.
+  ['u5-escalera-else-if-correcta.java#66', 'sentencia-entre-parentesis'],
+  ['u5-par-o-impar.java#45', 'sentencia-entre-parentesis'],
+  ['u5-switch-menu-calculadora.java#67', 'sentencia-entre-parentesis'],
+  ['u5-switch-sin-break-fallthrough.java#2', 'sentencia-entre-parentesis'],
+  ['u6-bandera-numero-negativo.java#49', 'sentencia-entre-parentesis'],
+  ['u6-bandera-numero-negativo.java#51', 'sentencia-entre-parentesis'],
+  ['u6-ciclo-infinito-demo.java#36', 'sentencia-entre-parentesis'],
+  ['u6-ciclo-infinito-demo.java#73', 'sentencia-entre-parentesis'],
+  ['u6-prediccion-while-no-ejecuta.java#28', 'sentencia-entre-parentesis'],
+  ['u7-proyecto-cajero-automatico.java#24', 'sentencia-entre-parentesis'],
+  // not.stmt → palabra-reservada-como-nombre: 31 mutantes: un tipo o `final` repetido (`int int x`) o en el lugar del nombre (`base double = 5.0`, `double final IVA`). javac: «not a statement» sobre la primera palabra; el texto dice que la palabra reservada de esa posición no puede ser el nombre: es lo que la gramática ve.
+  ['u3-area-rectangulo-con-scanner.java#1', 'palabra-reservada-como-nombre'],
+  ['u3-area-rectangulo-con-scanner.java#7', 'palabra-reservada-como-nombre'],
+  ['u3-area-rectangulo-valores-fijos.java#29', 'palabra-reservada-como-nombre'],
+  ['u3-area-rectangulo-valores-fijos.java#52', 'palabra-reservada-como-nombre'],
+  ['u3-area-rectangulo-valores-fijos.java#56', 'palabra-reservada-como-nombre'],
+  ['u3-cuadrado-de-un-numero.java#42', 'palabra-reservada-como-nombre'],
+  ['u3-tipos-basicos-y-constantes.java#5', 'palabra-reservada-como-nombre'],
+  ['u4-calculadora-vueltos.java#67', 'palabra-reservada-como-nombre'],
+  ['u4-casting-basico.java#4', 'palabra-reservada-como-nombre'],
+  ['u4-casting-basico.java#26', 'palabra-reservada-como-nombre'],
+  ['u4-casting-basico.java#32', 'palabra-reservada-como-nombre'],
+  ['u4-division-entera-y-modulo.java#31', 'palabra-reservada-como-nombre'],
+  ['u4-division-entera-y-modulo.java#40', 'palabra-reservada-como-nombre'],
+  ['u4-division-entera-y-modulo.java#68', 'palabra-reservada-como-nombre'],
+  ['u4-operador-logico-and.java#4', 'palabra-reservada-como-nombre'],
+  ['u4-operador-logico-and.java#73', 'palabra-reservada-como-nombre'],
+  ['u4-precedencia-de-operadores.java#28', 'palabra-reservada-como-nombre'],
+  ['u4-prediccion-or-logico.java#6', 'palabra-reservada-como-nombre'],
+  ['u4-prediccion-or-logico.java#54', 'palabra-reservada-como-nombre'],
+  ['u4-prediccion-precedencia.java#36', 'palabra-reservada-como-nombre'],
+  ['u4-verificar-acceso.java#73', 'palabra-reservada-como-nombre'],
+  ['u5-escalera-else-if-orden-incorrecto.java#42', 'palabra-reservada-como-nombre'],
+  ['u5-if-else-verificar-voto.java#1', 'palabra-reservada-como-nombre'],
+  ['u5-switch-menu-calculadora.java#24', 'palabra-reservada-como-nombre'],
+  ['u6-acumulador-promedio-calificaciones.java#42', 'palabra-reservada-como-nombre'],
+  ['u6-acumulador-promedio-calificaciones.java#50', 'palabra-reservada-como-nombre'],
+  ['u6-acumulador-promedio-calificaciones.java#55', 'palabra-reservada-como-nombre'],
+  ['u6-contador-de-pares.java#22', 'palabra-reservada-como-nombre'],
+  ['u6-contador-de-pares.java#40', 'palabra-reservada-como-nombre'],
+  ['u6-prediccion-while-no-ejecuta.java#47', 'palabra-reservada-como-nombre'],
+  ['u6-tabla-de-multiplicar.java#28', 'palabra-reservada-como-nombre'],
+  // expected3 → sentencia-antes-del-primer-case: 1 mutante: una `{` justo tras la `{` del `switch` («case, default, or '}' expected»); el texto dice que lo primero tras la llave es un `case`.
+  ['u5-switch-sin-break-fallthrough.java#63', 'sentencia-antes-del-primer-case'],
+  // doesnt.exist → importacion-no-reconocida: 7 mutantes: `import util.util.Scanner;` y `import javautil.Scanner;` («package … does not exist» en la línea del `import`); el texto dice que no reconoce el nombre y pide revisarlo.
+  ['u4-calculadora-vueltos.java#62', 'importacion-no-reconocida'],
+  ['u4-verificar-acceso.java#31', 'importacion-no-reconocida'],
+  ['u5-par-o-impar.java#28', 'importacion-no-reconocida'],
+  ['u5-switch-menu-calculadora.java#8', 'importacion-no-reconocida'],
+  ['u6-pedir-numero-positivo.java#29', 'importacion-no-reconocida'],
+  ['u6-suma-1-a-n.java#27', 'importacion-no-reconocida'],
+  ['u7-proyecto-cajero-automatico.java#61', 'importacion-no-reconocida'],
+  // unreachable.stmt → sentencia-inalcanzable: 1 mutante: un `;` suelto tras `break;`; javac «unreachable statement», el texto «Esta línea nunca se ejecuta».
+  ['u7-proyecto-cajero-automatico.java#33', 'sentencia-inalcanzable'],
+  // preview.feature.disabled.plural → selector-de-switch-invalido: 1 mutante: `switch` sobre un `long` (javac 17 contesta con la queja de los patrones en vista previa); el texto dice que el selector debe ser `int`, `char` o `String`, no `long`.
+  ['u5-switch-menu-calculadora.java#59', 'selector-de-switch-invalido'],
+]);
+
 describe('mutantes contra veredictos de javac (tarea 1.16, REQ-DIFF-006, criterio C7)', () => {
   const veredictos = leerVeredictos();
 
@@ -227,12 +312,47 @@ describe('mutantes contra veredictos de javac (tarea 1.16, REQ-DIFF-006, criteri
       if (esperado === null) continue;
       mapeados++;
       const nuestro = nuestroVeredicto(v.fuente);
-      if (nuestro.compila === false && nuestro.codigo === esperado) aciertos++;
+      // Tarea 1.35: acierta con el código de la tabla de javac O con el código más preciso auditado mutante por mutante (`CODIGOS_MAS_PRECISOS_QUE_EL_DE_JAVAC`).
+      if (nuestro.compila === false && (nuestro.codigo === esperado || CODIGOS_MAS_PRECISOS_QUE_EL_DE_JAVAC.get(v.id) === nuestro.codigo)) aciertos++;
     }
     const proporcion = aciertos / mapeados;
     // eslint-disable-next-line no-console -- ver nota de arriba
     console.log(`[mutantes] código: ${aciertos}/${mapeados} (de ${rechazados.length} rechazados, ${mapeados} mapeados) = ${(proporcion * 100).toFixed(2)}%`);
-    expect(proporcion).toBeGreaterThanOrEqual(0.87);
+    expect(proporcion).toBeGreaterThanOrEqual(0.88);
+  });
+
+  // Tarea 1.35: la tabla de códigos más precisos no puede esconder nada. Cada entrada es un mutante real que javac rechaza, cuyo código nuestro es EXACTAMENTE el de la tabla, en la MISMA
+  // línea que javac, y al que la tabla de claves de javac le daba OTRO código (si no, la entrada sobra). Los totales por código son la evidencia de la auditoría.
+  it('CODIGOS MAS PRECISOS: cada mutante de la tabla existe, javac lo rechaza, nuestro código es exactamente el de la tabla y en la misma línea, y la tabla de javac esperaba otro', () => {
+    const porId = new Map(veredictos.map((v) => [v.id, v]));
+    const problemas: string[] = [];
+    for (const [id, codigo] of CODIGOS_MAS_PRECISOS_QUE_EL_DE_JAVAC) {
+      const v = porId.get(id);
+      if (v === undefined) {
+        problemas.push(`${id}: no está en el corpus`);
+        continue;
+      }
+      const nuestro = nuestroVeredicto(v.fuente);
+      if (v.compila) problemas.push(`${id}: javac lo compila`);
+      else if (nuestro.compila || nuestro.codigo !== codigo) problemas.push(`${id}: nuestro código es ${String(nuestro.codigo)} y la tabla dice ${codigo}`);
+      else if (nuestro.linea !== v.linea) problemas.push(`${id}: la línea es ${String(nuestro.linea)} y javac dice ${v.linea}`);
+      if (codigoEsperadoDeJavac(v.codigoJavac, v.mensajeJavac) === codigo) problemas.push(`${id}: la tabla de javac ya esperaba ${codigo} (la entrada sobra)`);
+    }
+    expect(problemas).toEqual([]);
+  });
+
+  it('CODIGOS MAS PRECISOS: el total y el reparto por código son los auditados (51 mutantes: 31 + 10 + 7 + 1 + 1 + 1)', () => {
+    const reparto = new Map<string, number>();
+    for (const codigo of CODIGOS_MAS_PRECISOS_QUE_EL_DE_JAVAC.values()) reparto.set(codigo, (reparto.get(codigo) ?? 0) + 1);
+    expect(CODIGOS_MAS_PRECISOS_QUE_EL_DE_JAVAC.size).toBe(51);
+    expect(Object.fromEntries(reparto)).toEqual({
+      'sentencia-entre-parentesis': 10,
+      'palabra-reservada-como-nombre': 31,
+      'sentencia-antes-del-primer-case': 1,
+      'importacion-no-reconocida': 7,
+      'sentencia-inalcanzable': 1,
+      'selector-de-switch-invalido': 1,
+    });
   });
 
   it('triangulación: al menos un mutante de CADA uno de los 9 tipos de mutación aparece en el corpus (cobertura real de mutantes.ts)', () => {

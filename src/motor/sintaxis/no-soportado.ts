@@ -129,6 +129,54 @@ export function pareceGenericoDesde(cursor: CursorDeTokens, desplazamientoDeAper
   return cursor.mirar(i).tipo === 'identificador';
 }
 
+// ---- `sealed` y `non-sealed` (tarea 1.35, JLS 8.1.1.2 y 9.1.1.4) ----
+// Son modificadores CONTEXTUALES de una clase o interfaz: `int sealed = 1;` y `permits` como nombre de variable siguen valiendo. javac los reconoce por lo que
+// los sigue (`JavacParser.isSealedClassStart`/`isNonSealedClassStart`, JDK 17): otro modificador, `class`, `interface`, `enum`, una anotación (que no sea `@interface`
+// salvo tras `non-sealed`), o el otro de los dos. `non-sealed` son tres tokens (`non`, `-`, `sealed`) y deben ir PEGADOS: con espacios no es el modificador.
+const PALABRAS_QUE_PUEDEN_SEGUIR_A_SEALED: ReadonlySet<string> = new Set([
+  'public', 'protected', 'private', 'abstract', 'static', 'final', 'strictfp', 'class', 'interface', 'enum',
+]);
+
+function esNonSealedPegado(cursor: CursorDeTokens, desplazamiento: number): boolean {
+  const non = cursor.mirar(desplazamiento);
+  const menos = cursor.mirar(desplazamiento + 1);
+  const sealed = cursor.mirar(desplazamiento + 2);
+  return (
+    non.tipo === 'identificador' &&
+    non.texto === 'non' &&
+    menos.texto === '-' &&
+    sealed.tipo === 'identificador' &&
+    sealed.texto === 'sealed' &&
+    non.rango.fin === menos.rango.inicio &&
+    menos.rango.fin === sealed.rango.inicio
+  );
+}
+
+function puedeSeguirASealed(cursor: CursorDeTokens, desplazamiento: number, trasNonSealed: boolean): boolean {
+  const token = cursor.mirar(desplazamiento);
+  if (PALABRAS_QUE_PUEDEN_SEGUIR_A_SEALED.has(token.texto)) return true;
+  if (token.texto === '@') return cursor.mirar(desplazamiento + 1).texto !== 'interface' || trasNonSealed;
+  return token.tipo === 'identificador' && (token.texto === 'sealed' || esNonSealedPegado(cursor, desplazamiento));
+}
+
+/** Cuántos tokens ocupa el modificador `sealed` (1) o `non-sealed` (3) que empieza en `cursor.mirar(desplazamiento)`; 0 si ahí no hay ninguno. Solo mira. */
+export function longitudDeModificadorSellado(cursor: CursorDeTokens, desplazamiento: number): number {
+  if (esNonSealedPegado(cursor, desplazamiento)) return puedeSeguirASealed(cursor, desplazamiento + 3, true) ? 3 : 0;
+  const token = cursor.mirar(desplazamiento);
+  return token.tipo === 'identificador' && token.texto === 'sealed' && puedeSeguirASealed(cursor, desplazamiento + 1, false) ? 1 : 0;
+}
+
+/** Avanza `desplazamiento` por los modificadores de `permitidos` y los `sealed`/`non-sealed` que empiezan ahí (solo mira). */
+function desplazamientoTrasModificadores(cursor: CursorDeTokens, permitidos: ReadonlySet<string>, desplazamiento: number): number {
+  let i = desplazamiento;
+  for (;;) {
+    const sellado = longitudDeModificadorSellado(cursor, i);
+    if (sellado > 0) i += sellado;
+    else if (permitidos.has(cursor.mirar(i).texto)) i += 1;
+    else return i;
+  }
+}
+
 // ---- Nivel de programa: otra clase/interfaz/enum/record tras la primera (design.md §2.3) ----
 
 const MODIFICADORES_TIPO_NIVEL_SUPERIOR: ReadonlySet<string> = new Set(['public', 'final', 'abstract', 'strictfp']);
@@ -196,7 +244,7 @@ function palabraDeTipoDeNivelSuperior(cursor: CursorDeTokens): { readonly palabr
   let i = saltarAnotacionesMirando(cursor, 0);
   // `@interface Nota { }`: declara un tipo de anotación (tarea 1.29).
   if (cursor.mirar(i).texto === '@' && cursor.mirar(i + 1).texto === 'interface') return { palabra: '@interface', desplazamiento: i };
-  while (MODIFICADORES_TIPO_NIVEL_SUPERIOR.has(cursor.mirar(i).texto)) i += 1;
+  i = desplazamientoTrasModificadores(cursor, MODIFICADORES_TIPO_NIVEL_SUPERIOR, i); // tarea 1.35: también `sealed` y `non-sealed`
   const palabra = cursor.mirar(i).texto;
   return PALABRAS_TIPO_NIVEL_SUPERIOR.has(palabra) ? { palabra, desplazamiento: i } : null;
 }
@@ -291,7 +339,7 @@ function esTokenDeArgumentoDeTipo(token: Token): boolean {
  * (una comparación `a < b`, un «<» sin pareja). El lexer junta los cierres consecutivos en un solo token
  * (`>>`, `>>>`): cada uno cuenta por los «>» que trae. Solo mira, nunca consume.
  */
-function indiceTrasArgumentosDeTipo(cursor: CursorDeTokens, desplazamientoDeApertura: number): number | null {
+export function indiceTrasArgumentosDeTipo(cursor: CursorDeTokens, desplazamientoDeApertura: number): number | null {
   let i = desplazamientoDeApertura;
   let profundidad = 0;
   for (;;) {
@@ -335,14 +383,70 @@ function indiceTrasTipo(cursor: CursorDeTokens, desplazamiento: number, conArreg
   return i;
 }
 
+/**
+ * Tarea 1.35: consume un TIPO completo que empieza en el cursor —el nombre con su paquete (`java.lang.String`), los argumentos de tipo (`List<?>`,
+ * `Map.Entry<K, V>`) y las dimensiones de arreglo (`String[][]`)— y devuelve su último token. El primer token ya debe ser un identificador (quien llama lo
+ * comprueba: aquí no se valida nada, solo se delimita; REQ-SUB-007 acepta cualquier tipo como aviso). Lo usa el lado derecho de `instanceof`.
+ */
+export function consumirTipo(cursor: CursorDeTokens): Token {
+  return consumirTipoDescrito(cursor).ultimo;
+}
+
+/** Lo que se sabe de un tipo ya consumido (`consumirTipoDescrito`). */
+export interface TipoConsumido {
+  /** El tipo tal como se escribió, SIN espacios (`java.util.List<String>[]`). */
+  readonly texto: string;
+  readonly ultimo: Token;
+  /** ¿Trae dimensiones de arreglo (`[]`)? */
+  readonly conDimensiones: boolean;
+  /** ¿Trae argumentos de tipo (`<…>`)? */
+  readonly conArgumentosDeTipo: boolean;
+}
+
+/**
+ * Tarea 1.35: lo mismo que `consumirTipo`, pero devolviendo además el texto del tipo sin espacios y qué trae (dimensiones, argumentos de tipo): el aviso de un cast a `String[]` o a
+ * `List<String>` depende de eso. Lo usan el tipo de un cast y el literal de clase de un tipo con corchetes.
+ */
+export function consumirTipoDescrito(cursor: CursorDeTokens): TipoConsumido {
+  const cantidad = indiceTrasTipo(cursor, 0);
+  let texto = '';
+  let ultimo = cursor.actual();
+  let conDimensiones = false;
+  let conArgumentosDeTipo = false;
+  for (let n = 0; n < cantidad; n += 1) {
+    ultimo = cursor.avanzar();
+    texto += ultimo.texto;
+    if (ultimo.texto === '[') conDimensiones = true;
+    else if (ultimo.texto === '<') conArgumentosDeTipo = true;
+  }
+  return { texto, ultimo, conDimensiones, conArgumentosDeTipo };
+}
+
+/**
+ * Tarea 1.35: si el cursor está en los argumentos de tipo de un genérico (`<String>`, `<K, V>`, el rombo `<>`) que CIERRAN, los consume y devuelve su último
+ * token (el `>` que los cierra); `null` —sin consumir nada— si no hay un «<» ahí o no tiene la forma de una lista de tipos (`a < b`). Lo usa `new Tipo<…>(…)`.
+ */
+export function consumirArgumentosDeTipoOpcionales(cursor: CursorDeTokens): Token | null {
+  if (!cursor.coincideTexto('<')) return null;
+  const cantidad = indiceTrasArgumentosDeTipo(cursor, 0);
+  if (cantidad === null) return null;
+  let ultimo = cursor.actual();
+  for (let n = 0; n < cantidad; n += 1) ultimo = cursor.avanzar();
+  return ultimo;
+}
+
 // Lo que puede seguir al nombre de una clase, interfaz, enum o record ANIDADOS (`static class B<T> extends A {`,
 // `record P(int x) implements I {`): se acepta cualquiera de ellos sin validar la cabecera completa del tipo
 // anidado —es un aviso más, REQ-SUB-007—; lo demás cae al chequeo de siempre y sigue siendo un error.
 const CONTINUACIONES_DE_TIPO_ANIDADO: ReadonlySet<string> = new Set(['{', '<', '(', 'extends', 'implements', 'permits']);
 
 /** Cómo termina un miembro: un CAMPO en el «;» de nivel superior (su inicializador puede traer llaves: `{ 1, 2 }`, una
- * clase anónima, una lambda); todo lo demás —método, constructor, bloque, tipo anidado— en su «;» o en su «{ … }». */
-type FormaDeMiembro = 'campo' | 'otro';
+ * clase anónima, una lambda); todo lo demás —método, constructor, bloque, tipo anidado— en su «;» o en su «{ … }».
+ * Tarea 1.35: de un campo se sabe además cuántos tokens ocupa su CABECERA (modificadores, tipo, nombre y los corchetes
+ * del primer declarador): `consumirCampo` la salta y vigila solo lo que sigue, el inicializador. */
+type FormaDeMiembro = { readonly tipo: 'campo'; readonly tokensDeLaCabecera: number } | { readonly tipo: 'otro' };
+
+const MIEMBRO_QUE_NO_ES_CAMPO: FormaDeMiembro = { tipo: 'otro' };
 
 /**
  * Verifica que lo que sigue a los modificadores tenga al menos la forma MÍNIMA de un miembro real
@@ -368,28 +472,30 @@ type FormaDeMiembro = 'campo' | 'otro';
  * sin nombre de campo detrás, un «<» o un «[» sin cerrar.
  */
 function validarCabeceraDeMiembro(cursor: CursorDeTokens, nombreDeLaClase: string): FormaDeMiembro {
-  let i = 0;
-  while (MODIFICADORES_MIEMBRO.has(cursor.mirar(i).texto)) i += 1;
+  let i = desplazamientoTrasModificadores(cursor, MODIFICADORES_MIEMBRO, 0); // tarea 1.35: también `sealed` y `non-sealed`
 
   // EOF en CUALQUIER posición de la cabecera: nunca es asunto de esta función -- err16
   // (`fin-de-archivo-inesperado`, con su propio código y posición ancladas en
   // `cursor.finDelTokenAnterior()`) sigue siendo el ÚNICO responsable; el bucle original de
   // `consumirMiembroDeClase` (abajo) lo detecta en su primera vuelta tal cual ya hacía.
   let tipo = cursor.mirar(i);
-  if (tipo.tipo === 'eof') return 'otro';
+  if (tipo.tipo === 'eof') return MIEMBRO_QUE_NO_ES_CAMPO;
   // "{" aquí (sin tipo/nombre antes) es un bloque inicializador (JLS 8.6/8.7) -- una forma REAL de
   // miembro que este subconjunto ya trataba como NO-DISP ("bloque", cabecera del módulo) antes de
   // esta corrección; nunca se rechaza como "falta el tipo" -- se difiere al bucle original de
   // `consumirMiembroDeClase`, que YA sabe delimitarlo bien con `saltarHastaCerrar`.
-  if (tipo.texto === '{') return 'otro';
+  if (tipo.texto === '{') return MIEMBRO_QUE_NO_ES_CAMPO;
+  // Tarea 1.35: javac solo lee `Tipo nombre …` como un CAMPO si el miembro no es `void` ni lleva parámetros de tipo propios (`<T> …`); en los otros dos casos exige el «(» de un método.
+  let conParametrosDeTipo = false;
   // Tarea 1.29: los parámetros de tipo de un método o constructor genérico (`<T> void f(T t)`) se saltan y la
   // cabecera sigue desde el tipo de retorno (o el nombre del constructor). Si no cierran, todo sigue como antes.
   if (tipo.texto === '<') {
     const trasLosParametros = indiceTrasArgumentosDeTipo(cursor, i);
     if (trasLosParametros !== null) {
       i = trasLosParametros;
+      conParametrosDeTipo = true;
       tipo = cursor.mirar(i);
-      if (tipo.tipo === 'eof') return 'otro';
+      if (tipo.tipo === 'eof') return MIEMBRO_QUE_NO_ES_CAMPO;
     }
   }
   if (esFinalDeMiembro(tipo)) {
@@ -398,19 +504,19 @@ function validarCabeceraDeMiembro(cursor: CursorDeTokens, nombreDeLaClase: strin
   // Tarea 1.29: una clase, interfaz, enum o record anidados.
   if (PALABRAS_TIPO_NIVEL_SUPERIOR.has(tipo.texto) && cursor.mirar(i + 1).tipo === 'identificador') {
     const trasElNombre = cursor.mirar(i + 2);
-    if (trasElNombre.tipo === 'eof' || CONTINUACIONES_DE_TIPO_ANIDADO.has(trasElNombre.texto)) return 'otro';
+    if (trasElNombre.tipo === 'eof' || CONTINUACIONES_DE_TIPO_ANIDADO.has(trasElNombre.texto)) return MIEMBRO_QUE_NO_ES_CAMPO;
   }
   // Tarea 1.29: el constructor (JLS 8.8: el nombre de la clase, sin tipo de retorno). Con OTRO nombre es un
   // método al que le falta el tipo de retorno y sigue siendo el error de siempre (javac: invalid method
   // declaration; return type required).
   if (tipo.tipo === 'identificador' && tipo.texto === nombreDeLaClase && cursor.mirar(i + 1).texto === '(') {
     validarListaDeParametros(cursor, i + 2);
-    return 'otro';
+    return MIEMBRO_QUE_NO_ES_CAMPO;
   }
 
   const desplazamientoDelNombre = indiceTrasTipo(cursor, i);
   const nombre = cursor.mirar(desplazamientoDelNombre);
-  if (nombre.tipo === 'eof') return 'otro';
+  if (nombre.tipo === 'eof') return MIEMBRO_QUE_NO_ES_CAMPO;
   if (nombre.tipo !== 'identificador') {
     throw new ErrorDeCompilacion(`se esperaba un identificador y se encontró "${nombre.texto}"`, nombre.rango);
   }
@@ -423,10 +529,21 @@ function validarCabeceraDeMiembro(cursor: CursorDeTokens, nombreDeLaClase: strin
   }
   const hayDimensionesTrasElNombre = desplazamientoTrasElNombre > desplazamientoDelNombre + 1;
   const siguiente = cursor.mirar(desplazamientoTrasElNombre);
-  if (siguiente.tipo === 'eof') return 'otro';
+  if (siguiente.tipo === 'eof') return MIEMBRO_QUE_NO_ES_CAMPO;
   const esCampo = siguiente.texto === ';' || siguiente.texto === '=' || siguiente.texto === ',';
-  const esContinuacionValida = esCampo || (!hayDimensionesTrasElNombre && (siguiente.texto === '(' || siguiente.texto === '{'));
+  // Tarea 1.35: ya no se acepta «{» tras `Tipo nombre` (`int x { … }`): javac lo rechaza («';' expected», verificado con javac 17.0.18) y era un falso acepto; los únicos «{» válidos
+  // tras un nombre son los del tipo anidado (`class B {`, resuelto arriba) y el bloque inicializador (sin tipo ni nombre), que no llegan aquí.
+  const esContinuacionValida = esCampo || (!hayDimensionesTrasElNombre && siguiente.texto === '(');
   if (!esContinuacionValida) {
+    // Tarea 1.35 (SUGGESTION-3): `int x` seguido de lo que no es «=», «,», «;» ni «(» —el siguiente miembro, un «}», un «+»— es un campo al que le falta el «;»: javac lo señala en
+    // el FIN de su última palabra (`accept(SEMI)` ancla en el token anterior), no donde está lo que sigue, que casi siempre cae en otra línea. Un «[» que no cierra es otro error
+    // de javac («']' expected»), y un `void` o un miembro con parámetros de tipo exigen «(» en el token mismo: esos conservan el error de siempre.
+    const esVoid = tipo.texto === 'void';
+    // Una anotación pegada al nombre es, para javac, la anotación de TIPO de unos corchetes que no llegan («illegal start of type», en la `@`): ni siquiera «falta el ;».
+    if (!esVoid && !conParametrosDeTipo && siguiente.texto === '@') throw new ErrorDeCompilacion('se esperaba un tipo y se encontró "@"', siguiente.rango);
+    if (!esVoid && !conParametrosDeTipo && siguiente.texto !== '[') {
+      throw errorDeFaltaPuntoYComa(cursor.mirar(desplazamientoTrasElNombre - 1).rango.fin);
+    }
     throw new ErrorDeCompilacion(`se esperaba "(", ";" o "=" y se encontró "${siguiente.texto}"`, siguiente.rango);
   }
   // Tarea 1.21 (sub-lote 1-D4, mutante real contra veredicto de javac, la clase de discrepancia
@@ -437,8 +554,11 @@ function validarCabeceraDeMiembro(cursor: CursorDeTokens, nombreDeLaClase: strin
   // verdad ("illegal start of type"). Solo aplica cuando la continuación es "(" -- un campo (";"/
   // "=") o un bloque inicializador ("{") no tienen lista de parámetros que validar.
   if (siguiente.texto === '(') validarListaDeParametros(cursor, desplazamientoTrasElNombre + 1);
-  if (esCampo) validarDeclaradoresDeCampo(cursor, desplazamientoTrasElNombre);
-  return esCampo ? 'campo' : 'otro';
+  if (esCampo) {
+    validarDeclaradoresDeCampo(cursor, desplazamientoTrasElNombre);
+    return { tipo: 'campo', tokensDeLaCabecera: desplazamientoTrasElNombre };
+  }
+  return MIEMBRO_QUE_NO_ES_CAMPO;
 }
 
 /**
@@ -460,17 +580,27 @@ function validarDeclaradoresDeCampo(cursor: CursorDeTokens, desplazamientoInicia
     else if (profundidad === 0 && token.texto === ',') {
       const siguiente = cursor.mirar(i + 1);
       if (siguiente.tipo !== 'eof' && siguiente.tipo !== 'identificador') {
-        throw new ErrorDeCompilacion(`se esperaba un identificador y se encontró "${siguiente.texto}"`, siguiente.rango);
+        // Tarea 1.35: javac («<identifier> expected») lo señala en el FIN de la coma, no en lo que sigue, que casi siempre está en otro renglón (verificado con javac 17.0.18).
+        throw new ErrorDeCompilacion(`se esperaba un identificador y se encontró "${siguiente.texto}"`, { inicio: token.rango.fin, fin: token.rango.fin });
       }
     }
   }
+}
+
+/**
+ * Tarea 1.35: si en `cursor.mirar(desplazamiento)` empieza un TIPO (un identificador o una palabra de tipo primitivo, soportada o no), el desplazamiento del primer token que
+ * sigue al tipo completo —nombre con paquete, argumentos de tipo y dimensiones de arreglo—; `null` si ahí no puede empezar un tipo. Solo mira. Lo usa el reconocedor del
+ * `for` mejorado (`for (int[] fila : matriz)`).
+ */
+export function desplazamientoTrasTipoOpcional(cursor: CursorDeTokens, desplazamiento: number): number | null {
+  return pareceInicioDeTipo(cursor.mirar(desplazamiento)) ? indiceTrasTipo(cursor, desplazamiento) : null;
 }
 
 /** ¿"Tipo Identificador" plausible? (JLS 8.4.1, sin validar el TIPO en sí -- REQ-SUB-007 acepta
  * cualquiera, real o inventado, como NO-DISP): un identificador (incluye nombres calificados,
  * "java.util.List"), o una palabra de tipo primitivo (soportada o no -- "float"/"byte"/"short"
  * también abren un tipo real de Java, aunque este subconjunto no los soporte, REQ-SUB-007). */
-function pareceInicioDeTipo(token: Token): boolean {
+export function pareceInicioDeTipo(token: Token): boolean {
   return token.tipo === 'identificador' || PALABRAS_CLAVE_TIPO_PRIMITIVO.has(token.texto) || PALABRAS_TIPO_PRIMITIVO_NO_SOPORTADO.has(token.texto);
 }
 
@@ -508,6 +638,12 @@ function indiceDeErrorEnListaDeParametros(cursor: CursorDeTokens, indiceInicial:
   }
 }
 
+/** Tarea 1.35: ¿la lista de parámetros que empieza en `cursor.mirar(desplazamiento)` (el primer token tras el «(») tiene la forma completa de JLS 8.4.1 y CIERRA con su «)»?
+ * Solo mira. Sirve para decidir si un `void main(String…` con otra firma es un método propio más (bien formado) o un `main` mal escrito (error de sintaxis). */
+export function listaDeParametrosEsValida(cursor: CursorDeTokens, desplazamiento: number): boolean {
+  return indiceDeErrorEnListaDeParametros(cursor, desplazamiento) === null;
+}
+
 function validarListaDeParametros(cursor: CursorDeTokens, indiceInicial: number): void {
   const indiceDeError = indiceDeErrorEnListaDeParametros(cursor, indiceInicial);
   if (indiceDeError === null) return;
@@ -526,34 +662,203 @@ function errorDeFinDeArchivoEnLaClase(cursor: CursorDeTokens): ErrorDeCompilacio
   );
 }
 
+/** «falta el ";" al final de la declaración» anclado en `fin`, el FIN de la última palabra de la declaración (`accept(SEMI)` de javac ancla en el token anterior, nunca en el siguiente). */
+function errorDeFaltaPuntoYComa(fin: number): ErrorDeCompilacion {
+  return new ErrorDeCompilacion('falta el ";" al final de la declaración', { inicio: fin, fin }, undefined, 'falta-punto-y-coma');
+}
+
+// ---- Dónde termina el inicializador de un campo al que le falta el «;» (tarea 1.35, SUGGESTION-3 de la re-verificación del lote 1) ----
+//
+// javac lee un campo como `Tipo nombre [= expresión] {, nombre [= expresión]} ;` y la expresión se acaba en la primera palabra que ya no puede continuarla (`term()` solo sigue mientras
+// ve un operador, un `.`, un `[`, un `(`, un `::`, un `?`, un `++`…): ahí falta el «;» y el error se ancla en el FIN de la palabra anterior. Hasta esta tarea `consumirCampo` buscaba a ciegas
+// el siguiente «;» de nivel superior, así que el campo olvidado se tragaba al miembro siguiente entero y el error caía al final de ESE miembro —otra línea—, o ni siquiera era error: `int x = 5`
+// seguido de `int y;` salía como un solo campo y un aviso. La regla de abajo solo mira PARES de palabras de nivel superior y solo se dispara en los que NINGÚN programa válido contiene
+// (verificado con javac 17.0.18): un operando seguido de algo que empieza una construcción nueva. Lo ambiguo no se rechaza (cerrar por defecto, 1.34, no es rechazar lo válido):
+//   - `(Tipo) operando` es una conversión: tras un `)` cuyo interior solo tiene forma de tipo puede venir una palabra (`(int) x`, `(Object) int.class`), así que ahí solo se vigilan los modificadores;
+//   - `o instanceof Tipo nombre` y `new @Anotación Tipo()` traen dos nombres seguidos: en cuanto aparece un `instanceof` o una `@` de nivel superior, el par «nombre nombre» ya no se vigila.
+
+const PALABRAS_QUE_ABREN_UN_MIEMBRO: ReadonlySet<string> = new Set([...MODIFICADORES_MIEMBRO, 'default', 'class', 'interface', 'enum']);
+const PALABRAS_DE_TIPO_PRIMITIVO_Y_VOID: ReadonlySet<string> = new Set(['int', 'long', 'double', 'float', 'char', 'boolean', 'byte', 'short', 'void']);
+const PALABRAS_DE_LITERAL: ReadonlySet<string> = new Set(['true', 'false', 'null']);
+const PUNTUACION_DE_UN_TIPO: ReadonlySet<string> = new Set(['.', ',', '<', '>', '>>', '>>>', '?', '&', '[', ']']);
+
+/**
+ * Tarea 1.35: los operadores tras los cuales la expresión TODAVÍA espera un operando: si en su lugar llega una palabra que abre un miembro (un modificador, `default`, `class`, `interface`
+ * o `enum`: `int x =` y, abajo, `public static void main`), javac dice «illegal start of expression» en esa palabra (verificado con javac 17.0.18 para cada operador y cada palabra), no «falta
+ * el ;»: la expresión aún no podía terminar. Quedan fuera `.` y `new` (javac pide un
+ * identificador, en el fin del token anterior), `<` y `>` (pueden abrir o cerrar argumentos de tipo) y `++`/`--` (el sufijo termina un operando; el prefijo lo pide).
+ */
+const OPERADORES_QUE_PIDEN_UN_OPERANDO: ReadonlySet<string> = new Set([
+  '=', '+', '-', '*', '/', '%', '&&', '||', '&', '|', '^', '==', '!=', '<=', '>=', '+=', '-=', '*=', '/=', '%=', '&=', '|=', '^=', '<<', '<<=', '>>=', '>>>=', '?', ':', '->', '!', '~',
+]);
+
+/** Qué se sabe del último grupo `( … )` de nivel superior que se cerró dentro de un campo. */
+interface GrupoCerrado {
+  /** `( … )` pegado a un nombre: los argumentos de una llamada o de un constructor (`f(1)`, `new Scanner(System.in)`). Su valor es un operando, nunca una conversión. */
+  readonly esLlamada: boolean;
+  /** Los argumentos de un `new Tipo(…)`: tras ellos puede venir el cuerpo de una clase anónima (`new Object() { }`); tras los de una llamada cualquiera no. */
+  readonly esConstructor: boolean;
+  /** El selector de un `switch` (`switch (a + 1)`): tras él viene el cuerpo `{ … }`. */
+  readonly trasSwitch: boolean;
+  /** La expresión TERMINÓ con este grupo, sin que un sufijo (como una anotación) pueda seguirle: la `}` de un arreglo (`= { 1, 2 }`) o la de un `switch`. */
+  readonly terminaLaExpresion: boolean;
+  /** El interior es solo un tipo (`Tipo`, `List<String>`, `int[]`, `A & B`): podría ser el tipo de una conversión, y entonces lo que sigue es su operando. */
+  readonly podriaSerConversion: boolean;
+}
+
+/** El grupo `( … )`, `[ … ]` o `{ … }` de nivel superior que está abierto mientras se recorre el campo. */
+interface GrupoAbierto {
+  readonly esLlamada: boolean;
+  readonly esConstructor: boolean;
+  readonly trasSwitch: boolean;
+  readonly terminaLaExpresion: boolean;
+  tokens: number;
+  soloTipo: boolean;
+  conArroba: boolean;
+}
+
+function esTokenDeUnTipo(token: Token): boolean {
+  if (token.tipo === 'identificador') return true;
+  if (token.tipo === 'palabra-clave') return (PALABRAS_DE_TIPO_PRIMITIVO_Y_VOID.has(token.texto) && token.texto !== 'void') || token.texto === 'extends' || token.texto === 'super';
+  return token.tipo === 'puntuacion' && PUNTUACION_DE_UN_TIPO.has(token.texto);
+}
+
+function esLiteralOCasiLiteral(token: Token): boolean {
+  switch (token.tipo) {
+    case 'entero':
+    case 'largo':
+    case 'doble':
+    case 'caracter':
+    case 'cadena':
+      return true;
+    // Un literal con algo fuera del subconjunto (`1.5f`, `0x1F`, un escape raro) llega como «no soportado»; el escape `\uXXXX` NO es un literal: puede ser cualquier carácter.
+    case 'no-soportado':
+      return token.codigo !== CODIGOS_NO_SOPORTADO.escapeUnicodeNoSoportado;
+    case 'palabra-clave':
+      return PALABRAS_DE_LITERAL.has(token.texto);
+    default:
+      return false;
+  }
+}
+
+/** ¿Termina `previo` un operando (o un nombre) tras el cual ninguna palabra puede seguir dentro de la misma expresión? `'conversion'`: es el `)` de algo que podría ser `(Tipo)` y el operando de la conversión puede venir detrás. */
+function terminaUnOperando(previo: Token, ultimoCierre: GrupoCerrado | null): 'no' | 'si' | 'conversion' {
+  if (previo.tipo === 'identificador' || esLiteralOCasiLiteral(previo)) return 'si';
+  if (previo.tipo === 'palabra-clave' && previo.texto === 'this') return 'si';
+  if (previo.tipo !== 'puntuacion') return 'no';
+  if (previo.texto === ']' || previo.texto === '}') return 'si';
+  if (previo.texto !== ')' || ultimoCierre === null) return 'no';
+  return ultimoCierre.esLlamada || !ultimoCierre.podriaSerConversion ? 'si' : 'conversion';
+}
+
+/** ¿`actual` empieza algo NUEVO (otro miembro, otra declaración, otro literal) que no puede seguir a `previo` dentro del inicializador de un campo? Entonces al campo le falta el «;». */
+function faltaElPuntoYComaAntesDe(actual: Token, previo: Token, ultimoCierre: GrupoCerrado | null, hayDosNombresSeguidosValidos: boolean): boolean {
+  const termina = terminaUnOperando(previo, ultimoCierre);
+  if (termina === 'no') return false;
+  if (actual.tipo === 'palabra-clave' && PALABRAS_QUE_ABREN_UN_MIEMBRO.has(actual.texto)) return true; // ningún operando de una conversión empieza así
+  // Un «{» solo continúa un campo tras `new Tipo(…)` (clase anónima), tras el selector de un `switch`, tras `]` o `->` y tras un `=` (arreglo, lambda): detrás de un nombre, un literal o los
+  // paréntesis de una llamada, un grupo o una conversión («x {», «f(1) {», «(1 + 2) {»), javac ya cerró la expresión y pide el «;».
+  if (actual.texto === '{') {
+    if (previo.tipo !== 'puntuacion') return true;
+    if (previo.texto === ')') return ultimoCierre !== null && !ultimoCierre.esConstructor && !ultimoCierre.trasSwitch;
+    return previo.texto === '}' && ultimoCierre !== null && ultimoCierre.terminaLaExpresion; // tras la `}` de un arreglo o de un `switch` la expresión ya terminó
+  }
+  if (termina === 'conversion') return false;
+  if (actual.tipo === 'palabra-clave') return PALABRAS_DE_TIPO_PRIMITIVO_Y_VOID.has(actual.texto) || PALABRAS_DE_LITERAL.has(actual.texto);
+  if (actual.tipo === 'identificador') return !hayDosNombresSeguidosValidos;
+  return esLiteralOCasiLiteral(actual);
+}
+
 /** Tarea 1.29: consume un CAMPO entero, hasta SU «;» de nivel superior — el inicializador puede traer llaves (`{ 1, 2 }`,
  * una clase anónima, una lambda) que no lo terminan. Si la «}» que cierra la clase llega antes del «;», al campo le
- * falta: el mismo «';' expected» de javac, anclado al final del último token. */
-function consumirCampo(cursor: CursorDeTokens, inicio: number): NodoNoSoportado {
+ * falta: el mismo «';' expected» de javac, anclado al final del último token. Tarea 1.35: lo mismo si, en el nivel superior del campo, aparece algo que ya no puede
+ * continuar el inicializador —el siguiente miembro— (ver arriba); el error se ancla en el fin de la palabra anterior, como en javac. */
+function consumirCampo(cursor: CursorDeTokens, inicio: number, tokensDeLaCabecera: number): NodoNoSoportado {
+  let previo = cursor.actual();
+  for (let n = 0; n < tokensDeLaCabecera; n += 1) previo = cursor.avanzar(); // la cabecera ya está validada: `Tipo nombre[]` no trae ninguno de los pares de abajo
   let profundidad = 0;
+  let grupo: GrupoAbierto | null = null;
+  let ultimoCierre: GrupoCerrado | null = null;
+  let hayDosNombresSeguidosValidos = false;
+  let nombreDeTipoTrasNew = false; // ¿lo último de nivel superior es `new` y el nombre de un tipo (`new java.util.ArrayList<String>`)? Entonces un «(» abre los argumentos de un constructor.
   for (;;) {
     const token = cursor.actual();
     if (token.tipo === 'eof') throw errorDeFinDeArchivoEnLaClase(cursor);
-    if (token.texto === '(' || token.texto === '[' || token.texto === '{') {
-      profundidad += 1;
-    } else if (token.texto === ')' || token.texto === ']' || token.texto === '}') {
-      if (profundidad === 0) {
-        const fin = cursor.finDelTokenAnterior();
-        throw new ErrorDeCompilacion('falta el ";" al final de la declaración', { inicio: fin, fin }, undefined, 'falta-punto-y-coma');
-      }
-      profundidad -= 1;
-    } else if (profundidad === 0 && token.texto === ';') {
+    if (profundidad === 0 && token.tipo === 'palabra-clave' && PALABRAS_QUE_ABREN_UN_MIEMBRO.has(token.texto) && previo.tipo === 'puntuacion' && OPERADORES_QUE_PIDEN_UN_OPERANDO.has(previo.texto)) {
+      throw new ErrorDeCompilacion(`se esperaba una expresión y se encontró "${token.texto}"`, token.rango);
+    }
+    // Una anotación tras un operando (nombre, literal, llamada, grupo, `]`, la `}` de una clase anónima, de una lambda o de un arreglo creado con `new`) no continúa nada: javac la lee como el
+    // inicio de una expresión («illegal start of expression») y la señala a ella. Tras la `}` de un arreglo (`= { 1, 2 }`) o de un `switch` la expresión ya había terminado: «';' expected».
+    if (profundidad === 0 && token.texto === '@' && terminaUnOperando(previo, ultimoCierre) !== 'no') {
+      if (previo.texto === '}' && ultimoCierre !== null && ultimoCierre.terminaLaExpresion) throw errorDeFaltaPuntoYComa(cursor.finDelTokenAnterior());
+      throw new ErrorDeCompilacion('se esperaba una expresión y se encontró "@"', token.rango);
+    }
+    // Tras un `.` o un `new` javac pide un NOMBRE («<identifier> expected») y lo señala en el fin de ese token, no en la palabra que llegó en su lugar. Excepciones: `class` tras un `.`
+    // es un literal de clase (`a.class`) y `enum` se lee como un identificador mal usado (el error cae en la palabra).
+    if (
+      profundidad === 0 &&
+      token.tipo === 'palabra-clave' &&
+      PALABRAS_QUE_ABREN_UN_MIEMBRO.has(token.texto) &&
+      token.texto !== 'enum' &&
+      ((previo.texto === '.' && token.texto !== 'class') || (previo.tipo === 'palabra-clave' && previo.texto === 'new'))
+    ) {
+      throw new ErrorDeCompilacion(`se esperaba un identificador y se encontró "${token.texto}"`, { inicio: previo.rango.fin, fin: previo.rango.fin });
+    }
+    if (profundidad === 0 && faltaElPuntoYComaAntesDe(token, previo, ultimoCierre, hayDosNombresSeguidosValidos)) {
+      throw errorDeFaltaPuntoYComa(cursor.finDelTokenAnterior());
+    }
+    const esApertura = token.texto === '(' || token.texto === '[' || token.texto === '{';
+    const esCierre = token.texto === ')' || token.texto === ']' || token.texto === '}';
+    if (esCierre && profundidad === 0) throw errorDeFaltaPuntoYComa(cursor.finDelTokenAnterior());
+    if (profundidad === 0 && token.texto === ';') {
       const fin = cursor.avanzar().rango.fin;
       return { tipo: 'no-soportado', codigo: CODIGOS_NO_SOPORTADO.miembroDeClase, datos: {}, rango: { inicio, fin } };
     }
-    cursor.avanzar();
+    if (profundidad === 0 && (token.texto === 'instanceof' || token.texto === '@')) hayDosNombresSeguidosValidos = true;
+    if (profundidad > 0 && grupo !== null && !(esCierre && profundidad === 1)) {
+      grupo.tokens += 1;
+      if (!esTokenDeUnTipo(token)) grupo.soloTipo = false;
+      if (token.texto === '@') grupo.conArroba = true;
+    }
+    if (esApertura) {
+      if (profundidad === 0) {
+        const trasUnNombre = previo.tipo === 'identificador' || (previo.tipo === 'palabra-clave' && (previo.texto === 'this' || previo.texto === 'super'));
+        grupo = {
+          esLlamada: token.texto === '(' && trasUnNombre,
+          esConstructor: token.texto === '(' && nombreDeTipoTrasNew,
+          trasSwitch: token.texto === '(' && previo.tipo === 'palabra-clave' && previo.texto === 'switch',
+          terminaLaExpresion: token.texto === '{' && (previo.texto === '=' || (previo.texto === ')' && ultimoCierre !== null && ultimoCierre.trasSwitch)),
+          tokens: 0,
+          soloTipo: true,
+          conArroba: false,
+        };
+      }
+      profundidad += 1;
+    } else if (esCierre) {
+      profundidad -= 1;
+      if (profundidad === 0 && grupo !== null) {
+        ultimoCierre = {
+          esLlamada: grupo.esLlamada,
+          esConstructor: grupo.esConstructor,
+          trasSwitch: grupo.trasSwitch,
+          terminaLaExpresion: grupo.terminaLaExpresion,
+          podriaSerConversion: token.texto === ')' && grupo.tokens > 0 && (grupo.soloTipo || grupo.conArroba),
+        };
+        grupo = null;
+      }
+    }
+    if (profundidad === 0) {
+      if (token.tipo === 'palabra-clave' && token.texto === 'new') nombreDeTipoTrasNew = true;
+      else if (!(token.tipo === 'identificador' || (token.tipo === 'puntuacion' && PUNTUACION_DE_UN_TIPO.has(token.texto) && token.texto !== '[' && token.texto !== ']'))) nombreDeTipoTrasNew = false;
+    }
+    previo = cursor.avanzar();
   }
 }
 
 export function consumirMiembroDeClase(cursor: CursorDeTokens, nombreDeLaClase: string): NodoNoSoportado {
   const inicio = cursor.actual().rango.inicio;
   const forma = validarCabeceraDeMiembro(cursor, nombreDeLaClase);
-  if (forma === 'campo') return consumirCampo(cursor, inicio);
+  if (forma.tipo === 'campo') return consumirCampo(cursor, inicio, forma.tokensDeLaCabecera);
   let profundidadParen = 0;
   for (;;) {
     const token = cursor.actual();
@@ -622,7 +927,10 @@ export function consumirCabeceraDeClase(cursor: CursorDeTokens): NodoNoSoportado
       avisos.push({ tipo: 'no-soportado', codigo: CODIGOS_NO_SOPORTADO.generico, datos: {}, rango: { inicio, fin: ultimo.rango.fin } });
     }
   }
-  if (cursor.coincideTexto('extends') || cursor.coincideTexto('implements')) {
+  // Tarea 1.35: la cláusula `permits A, B` de una clase sellada (JLS 8.1.6) es parte de la misma cabecera de herencia; `permits` es un identificador, así que solo cuenta
+  // si lo sigue otro (`class C foo` sigue siendo un error).
+  const esPermits = (): boolean => cursor.actual().tipo === 'identificador' && cursor.actual().texto === 'permits' && cursor.mirar(1).tipo === 'identificador';
+  if (cursor.coincideTexto('extends') || cursor.coincideTexto('implements') || esPermits()) {
     const inicio = cursor.actual().rango.inicio;
     let ultimo = cursor.actual();
     if (cursor.coincideTexto('extends')) {
@@ -630,6 +938,14 @@ export function consumirCabeceraDeClase(cursor: CursorDeTokens): NodoNoSoportado
       ultimo = consumirTipoDeCabeceraDeClase(cursor);
     }
     if (cursor.coincideTexto('implements')) {
+      cursor.avanzar();
+      ultimo = consumirTipoDeCabeceraDeClase(cursor);
+      while (cursor.coincideTexto(',')) {
+        cursor.avanzar();
+        ultimo = consumirTipoDeCabeceraDeClase(cursor);
+      }
+    }
+    if (esPermits()) {
       cursor.avanzar();
       ultimo = consumirTipoDeCabeceraDeClase(cursor);
       while (cursor.coincideTexto(',')) {
@@ -710,7 +1026,22 @@ export function recolectarNoSoportados(
   }
 
   salida.sort((a, b) => a.rango.inicio - b.rango.inicio);
-  return salida;
+  return sinHallazgosRepetidos(salida);
+}
+
+/**
+ * Tarea 1.35: un literal fuera del subconjunto (`0x1F`, `010`, `0b101`, `3.5f`, un bloque de texto, una cadena con un escape raro) lo señalan DOS emisores —el token del
+ * léxico y el nodo que el analizador crea para ese mismo token— con el mismo código y el MISMO rango: es UNA construcción, y contarla dos veces le habría dicho al alumno
+ * «y 1 más» en un programa con una sola (REQ-SUB-006). Se queda con la primera aparición; dos ocurrencias en sitios distintos tienen rangos distintos y siguen siendo dos.
+ */
+function sinHallazgosRepetidos(hallazgos: readonly NoSoportadoColectado[]): NoSoportadoColectado[] {
+  const vistos = new Set<string>();
+  return hallazgos.filter((hallazgo) => {
+    const clave = `${hallazgo.codigo}:${hallazgo.rango.inicio}:${hallazgo.rango.fin}`;
+    if (vistos.has(clave)) return false;
+    vistos.add(clave);
+    return true;
+  });
 }
 
 function recolectarDeElemento(elemento: NodoElementoBloque, salida: NoSoportadoColectado[]): void {

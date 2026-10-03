@@ -1,0 +1,4 @@
+PCastAUnTipoQueNoExiste.java:4: error: package a does not exist
+        int x = (a.b)(1);
+                  ^
+1 error

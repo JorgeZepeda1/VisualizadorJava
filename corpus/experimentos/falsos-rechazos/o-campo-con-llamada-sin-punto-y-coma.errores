@@ -1,0 +1,4 @@
+OCampoConLlamadaSinPuntoYComa.java:3: error: ';' expected
+    static java.util.Scanner sc = new java.util.Scanner(System.in)
+                                                                  ^
+1 error

@@ -36,6 +36,23 @@ export type Etiqueta =
   | 'valor-de-tipo-no-modelado' // B: `args`, `args.length()`, `System.in`, `System.out`… usados como VALOR (inicializador, operando, condición…)
   | 'sentencia-entre-parentesis' // D: `(x = 2);`, `(x++);`, `(System.out.println(1));` — una expresión entre paréntesis puesta como sentencia
   | 'nombre-de-javascript' // E: `constructor`, `toString`, `__proto__`… como nombre de variable o de miembro (válidos en Java)
+  // Tarea 1.35: las familias de falsos RECHAZOS (y los falsos aceptos hallados al revisarlos) que la re-verificación del lote 1 encontró fuera de la gramática del generador.
+  | 'instanceof-con-patron' // B: `o instanceof String s`, `o instanceof final String s`, `o instanceof java.lang.String`
+  | 'clase-anonima' // D: `new Runnable() { … }`, `new Object() { }`
+  | 'llamada-generica-explicita' // I: `P.<String>id("a")`
+  | 'campo-de-la-clase' // L, O: un campo de la clase (válido o sin su `;`)
+  | 'clase-sellada' // C: `sealed`, `non-sealed`, `permits`
+  | 'main-con-otra-firma' // F: `main(String... args)`, `main(final String[] args)`, `main(String[] args, int n)`, `main()`…
+  | 'archivo-sin-clase' // E: un archivo que no declara ninguna clase (vacío, solo `import`s)
+  | 'import-con-comodin' // M: `import paquete.*;` (de un paquete que existe o no)
+  | 'import-con-punto-y-coma-de-mas' // J: `import a.B;;` (un `;` suelto entre dos `import`)
+  | 'llamada-a-main' // F: `main(args);` — `main` llamado como un método propio
+  | 'escape-unicode' // G: un carácter del programa escrito como escape Unicode (JLS 3.3)
+  // Tarea 1.35 (la mutación por elemento de los conjuntos del reconocedor de casts destapó otra familia de falsos rechazos: un TIPO en posición de expresión) y un emoji en un `char`.
+  | 'literal-de-clase' // `String.class`, `int[].class`, `void.class`, `java.util.List.class`
+  | 'cast-a-tipo-complejo' // `(String[]) args`, `(java.util.List<String>) x`, `(java.lang.Object) x`, `(Object & Serializable) x`
+  | 'referencia-a-metodo-de-tipo' // `String[]::new`, `ArrayList<String>::new`, `int[]::clone`
+  | 'caracter-suplementario' // un emoji (dos unidades UTF-16) dentro de un literal `char`
   // Rasgos de las declaraciones que pone el generador.
   | 'var'
   | 'tipo-envoltorio'
@@ -47,6 +64,7 @@ export type Etiqueta =
   | 'while'
   | 'do-while'
   | 'for'
+  | 'for-mejorado' // Tarea 1.35: `for (Tipo x : coleccion)`
   | 'switch'
   | 'switch-flecha' // Tarea 1.33: `case X -> { … }` en vez de `case X:` (rasgo del `switch` con flecha)
   | 'break'
@@ -143,6 +161,16 @@ export interface CicloPara {
   readonly cuerpo: readonly Sentencia[];
 }
 
+/** Tarea 1.35: el `for` mejorado, `for ([final] Tipo nombre : coleccion) { … }` (JLS 14.14.2). El tipo se imprime tal cual: `int`, `float`, `int[]`, `java.util.Map.Entry<String, Integer>`… */
+export interface CicloParaCada {
+  readonly k: 'para-cada';
+  readonly esFinal: boolean;
+  readonly tipo: string;
+  readonly nombre: string;
+  readonly coleccion: Expr;
+  readonly cuerpo: readonly Sentencia[];
+}
+
 /** Un grupo de etiquetas (`case 1, 2:`) o el `default`, con las sentencias que le siguen. */
 export interface Caso {
   readonly etiquetas: readonly Expr[] | 'default';
@@ -179,13 +207,45 @@ export type Sentencia =
   | CicloMientras
   | CicloHaz
   | CicloPara
+  | CicloParaCada
   | Seleccion
   | Salto
   | BloqueAnonimo;
 
+/**
+ * Tarea 1.35: un miembro de la clase (un campo, un tipo anidado, un método) que va ANTES de `main`. Sus renglones se imprimen tal cual, solo con la sangría de la clase:
+ * un campo sin su `;` es un miembro cuyo último renglón no lo trae (y `sintaxisInvalida` lo dice).
+ */
+export interface MiembroDeClase {
+  readonly lineas: readonly string[];
+  readonly etiquetas: readonly Etiqueta[];
+  /** El generador quiere AQUÍ un error de sintaxis (un campo sin su `;`, `int x { }`…). */
+  readonly sintaxisInvalida?: boolean;
+  /** El miembro va DESPUÉS de `main` (y antes de la `}` de la clase): así se prueba el último miembro de la clase. */
+  readonly despuesDeMain?: boolean;
+}
+
+/**
+ * Tarea 1.35 (JLS 3.3): escribe UNA aparición de `caracter` como escape Unicode (`"` → barra, `u0022`) en el texto ya impreso del programa. `aparicion` se toma módulo el número
+ * de apariciones, así el escape sobrevive a que el reductor quite texto del programa. Un escape se traduce ANTES de leer el programa, así que javac ve el mismo programa
+ * de siempre: el veredicto no cambia, y quien debe seguir de acuerdo es nuestro compilador.
+ */
+export interface EscapeUnicode {
+  readonly caracter: string;
+  readonly aparicion: number;
+}
+
 export interface Programa {
   /** Renglones completos (`import java.util.Scanner;`). */
   readonly imports: readonly string[];
+  /** Tarea 1.35: los miembros de la clase que van antes de `main` (campos, tipos anidados, métodos). */
+  readonly miembros?: readonly MiembroDeClase[];
+  /** Tarea 1.35: la lista de parámetros de `main` si no es la del lanzador (`String[] args`): `String... args`, `final String[] args`, `String[] args, int n`, ``… */
+  readonly parametrosDeMain?: string;
+  /** Tarea 1.35: un archivo SIN ninguna clase (solo los `import`s, o nada): javac lo compila, no hay nada que ejecutar. */
+  readonly sinClase?: boolean;
+  /** Tarea 1.35: un carácter del programa escrito como escape Unicode. */
+  readonly escapeUnicode?: EscapeUnicode;
   /**
    * Tarea 1.34 (familia C): el nombre de la clase. Por omisión `P`; el generador la llama a veces como una clase del JDK (`System`,
    * `Math`, `Scanner`…): JLS 6.4.1 y 7.5.1 dicen que la clase del alumno TAPA a la del JDK, y es una regla que el motor tuvo que modelar.
@@ -240,6 +300,16 @@ export function para(datos: {
   readonly cuerpo: readonly Sentencia[];
 }): CicloPara {
   return { k: 'para', ...datos };
+}
+
+export function paraCada(datos: {
+  readonly tipo: string;
+  readonly nombre: string;
+  readonly coleccion: Expr;
+  readonly cuerpo: readonly Sentencia[];
+  readonly esFinal?: boolean;
+}): CicloParaCada {
+  return { k: 'para-cada', esFinal: datos.esFinal ?? false, tipo: datos.tipo, nombre: datos.nombre, coleccion: datos.coleccion, cuerpo: datos.cuerpo };
 }
 
 export function seleccion(datos: {
@@ -304,6 +374,12 @@ function renderizarSentencia(sentencia: Sentencia, sangria: string): string[] {
       const cabecera = sentencia.inicial === null && sentencia.condicion === null && sentencia.paso === null ? ';;' : `${inicial};${condicion};${paso}`;
       return [`${sangria}for (${cabecera}) {`, ...renderizarSentencias(sentencia.cuerpo, dentro), `${sangria}}`];
     }
+    case 'para-cada':
+      return [
+        `${sangria}for (${sentencia.esFinal ? 'final ' : ''}${sentencia.tipo} ${sentencia.nombre} : ${renderizarExpr(sentencia.coleccion)}) {`,
+        ...renderizarSentencias(sentencia.cuerpo, dentro),
+        `${sangria}}`,
+      ];
     case 'seleccion':
       return [
         `${sangria}switch (${renderizarExpr(sentencia.selector)}) {`,
@@ -327,12 +403,49 @@ export function renderizarCuerpo(programa: Programa): string[] {
   return renderizarSentencias(programa.sentencias, '');
 }
 
-/** El programa completo: imports, la clase (`P`, o la que pida `programa.clase`) y el cuerpo de `main` (un renglón por sentencia). */
+/** La firma de `main` que el lanzador conoce. */
+const PARAMETROS_DE_MAIN_POR_OMISION = 'String[] args';
+
+/** Tarea 1.35: los renglones de los miembros que van antes de `main` (`despues` falso) o después de él (`despues` verdadero), con la sangría de la clase. */
+function lineasDeMiembros(programa: Programa, despues: boolean): string[] {
+  return (programa.miembros ?? []).filter((miembro) => (miembro.despuesDeMain === true) === despues).flatMap((miembro) => miembro.lineas.map((linea) => `${UNA_SANGRIA}${linea}`));
+}
+
+/** Tarea 1.35: el escape Unicode de `caracter` (cuatro dígitos hexadecimales, JLS 3.3). */
+function escapeDe(caracter: string): string {
+  return `${String.fromCharCode(92)}u${(caracter.codePointAt(0) ?? 0).toString(16).padStart(4, '0')}`;
+}
+
+/** Tarea 1.35: reemplaza UNA aparición de `escape.caracter` por su escape Unicode; si el carácter no aparece, el texto queda igual. */
+function aplicarEscapeUnicode(texto: string, escape: EscapeUnicode): string {
+  const posiciones: number[] = [];
+  for (let i = texto.indexOf(escape.caracter); i !== -1; i = texto.indexOf(escape.caracter, i + 1)) posiciones.push(i);
+  if (posiciones.length === 0) return texto;
+  const posicion = posiciones[escape.aparicion % posiciones.length]!;
+  return `${texto.slice(0, posicion)}${escapeDe(escape.caracter)}${texto.slice(posicion + escape.caracter.length)}`;
+}
+
+/**
+ * El programa completo: imports, la clase (`P`, o la que pida `programa.clase`), sus miembros, y `main` con el cuerpo (un renglón por sentencia). Tarea 1.35: un programa
+ * `sinClase` imprime solo los imports; los miembros, la firma de `main` y el escape Unicode son opcionales y, sin ellos, el texto es el de siempre.
+ */
 export function renderizarPrograma(programa: Programa): string {
   const imports = programa.imports.length === 0 ? [] : [...programa.imports, ''];
-  const cuerpo = renderizarSentencias(programa.sentencias, UNA_SANGRIA + UNA_SANGRIA);
-  const clase = programa.clase ?? CLASE_POR_OMISION;
-  return [...imports, `public class ${clase} {`, `${UNA_SANGRIA}public static void main(String[] args) {`, ...cuerpo, `${UNA_SANGRIA}}`, '}', ''].join('\n');
+  const texto =
+    programa.sinClase === true
+      ? programa.imports.map((linea) => `${linea}\n`).join('')
+      : [
+          ...imports,
+          `public class ${programa.clase ?? CLASE_POR_OMISION} {`,
+          ...lineasDeMiembros(programa, false),
+          `${UNA_SANGRIA}public static void main(${programa.parametrosDeMain ?? PARAMETROS_DE_MAIN_POR_OMISION}) {`,
+          ...renderizarSentencias(programa.sentencias, UNA_SANGRIA + UNA_SANGRIA),
+          `${UNA_SANGRIA}}`,
+          ...lineasDeMiembros(programa, true),
+          '}',
+          '',
+        ].join('\n');
+  return programa.escapeUnicode === undefined ? texto : aplicarEscapeUnicode(texto, programa.escapeUnicode);
 }
 
 // ---- Recorridos y rasgos ----
@@ -355,6 +468,9 @@ function* exprsDeSentencia(sentencia: Sentencia): Generator<Expr> {
     case 'para':
       if (sentencia.condicion !== null) yield sentencia.condicion;
       if (sentencia.paso !== null) yield sentencia.paso;
+      return;
+    case 'para-cada':
+      yield sentencia.coleccion;
       return;
     case 'seleccion':
       yield sentencia.selector;
@@ -379,6 +495,9 @@ function* hijasDeSentencia(sentencia: Sentencia): Generator<Sentencia> {
       return;
     case 'para':
       if (sentencia.inicial !== null) yield sentencia.inicial;
+      yield* sentencia.cuerpo;
+      return;
+    case 'para-cada':
       yield* sentencia.cuerpo;
       return;
     case 'seleccion':
@@ -423,6 +542,7 @@ const ETIQUETA_POR_CLASE_DE_SENTENCIA: Partial<Record<Sentencia['k'], Etiqueta>>
   mientras: 'while',
   haz: 'do-while',
   para: 'for',
+  'para-cada': 'for-mejorado',
   seleccion: 'switch',
   bloque: 'bloque',
 };
@@ -435,6 +555,13 @@ const ETIQUETA_POR_CLASE_DE_SENTENCIA: Partial<Record<Sentencia['k'], Etiqueta>>
 export function etiquetasDe(programa: Programa): readonly Etiqueta[] {
   const etiquetas = new Set<Etiqueta>();
   if (programa.clase !== undefined && programa.clase !== CLASE_POR_OMISION) etiquetas.add('clase-con-nombre-del-jdk');
+  // Tarea 1.35: los rasgos de la estructura de la clase.
+  if (programa.sinClase === true) etiquetas.add('archivo-sin-clase');
+  if (programa.parametrosDeMain !== undefined) etiquetas.add('main-con-otra-firma');
+  if (programa.escapeUnicode !== undefined) etiquetas.add('escape-unicode');
+  if (programa.imports.some((linea) => /\.\*;/.test(linea))) etiquetas.add('import-con-comodin');
+  if (programa.imports.some((linea) => /;;/.test(linea))) etiquetas.add('import-con-punto-y-coma-de-mas');
+  for (const miembro of programa.miembros ?? []) for (const etiqueta of miembro.etiquetas) etiquetas.add(etiqueta);
   for (const sentencia of sentenciasDe(programa.sentencias)) {
     const estructural = ETIQUETA_POR_CLASE_DE_SENTENCIA[sentencia.k];
     if (estructural !== undefined) etiquetas.add(estructural);
@@ -454,6 +581,7 @@ export function etiquetasDe(programa: Programa): readonly Etiqueta[] {
 
 /** ¿Alguna parte del programa está marcada como error de sintaxis A PROPÓSITO? */
 export function pretendeErrorDeSintaxis(programa: Programa): boolean {
+  if ((programa.miembros ?? []).some((miembro) => miembro.sintaxisInvalida === true)) return true;
   for (const sentencia of sentenciasDe(programa.sentencias)) {
     if (sentencia.k === 'declaracion' && sentencia.sintaxisInvalida) return true;
     // Tarea 1.34: una sentencia antes del primer `case` es un error del ANÁLISIS SINTÁCTICO de javac, no de tipos.

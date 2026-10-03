@@ -55,6 +55,16 @@ const DATOS_DE_EJEMPLO: Record<CodigoNoSoportado, Record<string, unknown>> = {
   // Tarea 1.29: `assert`, un tipo declarado dentro de un método y un bloque `synchronized`.
   'assert-no-soportado': { linea: 1 },
   'clase-local-no-soportada': { linea: 1 },
+  // Tarea 1.35: `new Tipo() { … }`, una clase anónima.
+  'clase-anonima-no-soportada': { linea: 1 },
+  // Tarea 1.35: una llamada a un método de la propia clase (la única que llega a la atribución es la recursión de `main`).
+  'llamada-a-metodo-propio-no-soportada': { linea: 1, nombre: 'main' },
+  // Tarea 1.35: un archivo sin ninguna clase (vacío, solo `package`/`import`); su texto no habla de una línea.
+  'archivo-sin-clase': { linea: 1 },
+  // Tarea 1.35: un literal de clase (`String.class`, `int[].class`), con el literal tal como lo escribió el alumno.
+  'literal-de-clase-no-soportado': { linea: 1, literal: 'String.class' },
+  // Tarea 1.35: un carácter de dos unidades UTF-16 (un emoji) dentro de un literal `char`.
+  'caracter-suplementario-no-soportado': { linea: 1, caracter: String.fromCodePoint(0x1f600) },
   'sincronizado-no-soportado': { linea: 1 },
   'escape-no-soportado': { linea: 1 },
   'escape-octal-no-soportado': { linea: 1 },
@@ -87,6 +97,9 @@ const DATOS_DE_EJEMPLO: Record<CodigoNoSoportado, Record<string, unknown>> = {
   'no-soportado': { linea: 1 },
 };
 
+// Tarea 1.35: los códigos cuyo texto habla de TODO el archivo y no de una línea.
+const CODIGOS_SIN_LINEA: ReadonlySet<CodigoNoSoportado> = new Set<CodigoNoSoportado>(['archivo-sin-clase']);
+
 describe('textosNoSoportado — catálogo completo (ADR 015, REQ-SUB-006): cada código produce una frase real', () => {
   it.each(Object.keys(DATOS_DE_EJEMPLO) as CodigoNoSoportado[])(
     '"%s" no produce texto vacío ni restos sin resolver, y menciona la línea',
@@ -96,7 +109,8 @@ describe('textosNoSoportado — catálogo completo (ADR 015, REQ-SUB-006): cada 
       expect(typeof texto).toBe('string');
       expect(texto.length).toBeGreaterThan(0);
       expect(texto).not.toMatch(/undefined|\[object Object\]|\{[a-zA-Z]/);
-      expect(texto).toContain('línea 1');
+      // Tarea 1.35: un archivo SIN clase no tiene una línea que señalar (el aviso es del archivo entero).
+      if (!CODIGOS_SIN_LINEA.has(codigo)) expect(texto).toContain('línea 1');
     },
   );
 
@@ -305,6 +319,105 @@ describe('textosNoSoportado — REQ-SUB-006 (spec subconjunto-java): formato y e
   });
 });
 
+// Tarea 1.35 (WARNING 3 de la re-verificación del lote 1, falsos RECHAZOS): `new Runnable() { … }` es una clase anónima, Java válido que el subconjunto no simula
+// (REQ-SUB-007: «clases/objetos propios» → aviso). Antes salía «Te falta un punto y coma», un texto falso para un programa que javac compila.
+describe('textosNoSoportado — una clase anónima (tarea 1.35)', () => {
+  it('usa el marco aprobado, nombra la construcción y la línea, y no afirma que Java acepta el programa', () => {
+    const texto = textosNoSoportado['clase-anonima-no-soportada']({ linea: 4 });
+    expect(texto).toBe(
+      'Tu programa usa una clase anónima (`new Tipo() { … }`) en la línea 4. Es parte de Java, pero este visualizador cubre las unidades 3 a 7 y todavía ' +
+        'no simula clases propias, así que no puedo revisar si esa parte está bien escrita. ' +
+        'No lo ejecuto para no enseñarte un resultado que podría no ser el de Java.',
+    );
+  });
+
+  it('triangulación: la línea sale de los datos, no de un valor fijo', () => {
+    expect(textosNoSoportado['clase-anonima-no-soportada']({ linea: 11 })).toContain('en la línea 11');
+  });
+});
+
+// Tarea 1.35 (WARNING 3, falsos RECHAZOS): `main(args);` dentro de `main` es una llamada a un método de la propia clase; javac lo compila y aquí daba «el método "main" no
+// existe», un texto falso. Los métodos propios que el alumno declara ya avisan en su declaración; la recursión de `main` es el único método propio que la atribución ve.
+describe('textosNoSoportado — una llamada a un método propio (tarea 1.35)', () => {
+  it('nombra el método y la línea, con el marco aprobado y sin afirmar que Java acepta el programa', () => {
+    expect(textosNoSoportado['llamada-a-metodo-propio-no-soportada']({ linea: 3, nombre: 'main' })).toBe(
+      'Tu programa usa una llamada a un método propio (`main(...)`) en la línea 3. Es parte de Java, pero este visualizador cubre las unidades 3 a 7 y todavía ' +
+        'no ejecuta llamadas a métodos de tu propia clase, así que no puedo revisar si esa parte está bien escrita. ' +
+        'No lo ejecuto para no enseñarte un resultado que podría no ser el de Java.',
+    );
+  });
+
+  it('triangulación: el nombre y la línea salen de los datos', () => {
+    const texto = textosNoSoportado['llamada-a-metodo-propio-no-soportada']({ linea: 9, nombre: 'saludar' });
+    expect(texto).toContain('`saludar(...)`');
+    expect(texto).toContain('en la línea 9');
+  });
+});
+
+// Tarea 1.35 (WARNING 3, decisión del PO 2026-10-02): un archivo vacío, o con solo un comentario, un `package` o imports, no declara ninguna clase. javac lo compila sin error, así que
+// no es un error de compilación; tampoco es una construcción fuera del subconjunto (no usa nada). Lo que SÍ se le puede decir es que no hay nada que ejecutar y cómo empezar.
+describe('textosNoSoportado — un archivo sin ninguna clase (tarea 1.35)', () => {
+  it('dice que no hay ninguna clase, que por eso no hay nada que ejecutar, y cómo se empieza; sin afirmar que Java acepta el programa', () => {
+    const texto = textosNoSoportado['archivo-sin-clase']({ linea: 1 });
+    expect(texto).toBe(
+      'Tu programa no tiene ninguna clase, así que no hay nada que ejecutar. Un programa de Java empieza en una clase con un método `main`; por ejemplo: ' +
+        '`public class MiPrograma { public static void main(String[] args) { … } }`.',
+    );
+    expect(texto).not.toMatch(/Java sí (lo |la )?(acepta|tiene)/);
+  });
+});
+
+// Tarea 1.35 (la mutación por elemento de los conjuntos del reconocedor de casts destapó una familia de falsos RECHAZOS): `System.out.println(String.class)` y `Object o = int[].class;`
+// son Java válido —un literal de clase, JLS 15.8.2— y salían como un error de sintaxis. El visualizador no maneja los objetos `Class`: el aviso nombra el literal tal como se escribió.
+describe('textosNoSoportado — un literal de clase (tarea 1.35)', () => {
+  it('nombra el literal y la línea, con el marco aprobado y sin afirmar que Java acepta el programa', () => {
+    expect(textosNoSoportado['literal-de-clase-no-soportado']({ linea: 3, literal: 'String.class' })).toBe(
+      'Tu programa usa un literal de clase (`String.class`) en la línea 3. Es parte de Java, pero este visualizador cubre las unidades 3 a 7 y todavía ' +
+        'no maneja los objetos que representan a una clase (`Class`), así que no puedo revisar si esa parte está bien escrita. ' +
+        'No lo ejecuto para no enseñarte un resultado que podría no ser el de Java.',
+    );
+  });
+
+  it('triangulación: el literal y la línea salen de los datos', () => {
+    const texto = textosNoSoportado['literal-de-clase-no-soportado']({ linea: 12, literal: 'int[].class' });
+    expect(texto).toContain('`int[].class`');
+    expect(texto).toContain('en la línea 12');
+  });
+});
+
+// Tarea 1.35 (hallado con una sonda de Java válido): `char c = '<emoji>';` lo compila javac (el valor es la primera unidad UTF-16 del carácter) y salía un error de sintaxis. El visualizador no
+// simula ese literal: el aviso nombra el carácter tal como se escribió.
+describe('textosNoSoportado — un carácter de dos unidades dentro de un literal char (tarea 1.35)', () => {
+  it('nombra el carácter y la línea, con el marco aprobado y sin afirmar que Java acepta el programa', () => {
+    const emoji = String.fromCodePoint(0x1f600);
+    expect(textosNoSoportado['caracter-suplementario-no-soportado']({ linea: 3, caracter: emoji })).toBe(
+      `Tu programa usa el carácter \`${emoji}\` dentro de un literal \`char\` en la línea 3. Es parte de Java, pero este visualizador cubre las unidades 3 a 7 y todavía ` +
+        'no simula un carácter que Java guarda en dos `char` (como un emoji), así que no puedo revisar si esa parte está bien escrita. ' +
+        'No lo ejecuto para no enseñarte un resultado que podría no ser el de Java.',
+    );
+  });
+
+  it('triangulación: el carácter y la línea salen de los datos', () => {
+    const caracter = String.fromCodePoint(0x10000);
+    const texto = textosNoSoportado['caracter-suplementario-no-soportado']({ linea: 8, caracter });
+    expect(texto).toContain(`\`${caracter}\``);
+    expect(texto).toContain('en la línea 8');
+  });
+});
+
+// Tarea 1.35: `sealed`, `non-sealed` y `permits` de la clase principal avisan con el mismo código de herencia (JLS 8.1.6: restringen quién puede heredar de ella); el texto
+// ya no puede decir solo «`extends` o `implements`», porque `public sealed class C permits D` no tiene ninguna de las dos.
+describe('textosNoSoportado — herencia, ahora también clases selladas (tarea 1.35)', () => {
+  it('nombra `sealed` y `permits` además de `extends` e `implements`, con el marco aprobado', () => {
+    expect(textosNoSoportado['herencia-no-soportada']({ linea: 4 })).toBe(
+      'Tu programa usa una clase con herencia, interfaces o clases selladas (`extends`, `implements`, `sealed` o `permits`) en la línea 4. ' +
+        'Es parte de Java, pero este visualizador cubre las unidades 3 a 7 y todavía no simula herencia, interfaces ni clases selladas, ' +
+        'así que no puedo revisar si esa parte está bien escrita. ' +
+        'No lo ejecuto para no enseñarte un resultado que podría no ser el de Java.',
+    );
+  });
+});
+
 // Tarea 1.30 (decisión explícita del PO, 2026-09-29: «sí, corrige la frase ya»). Un aviso de «No disponible»
 // se emite al RECONOCER una construcción fuera del subconjunto; el reconocimiento no puede revisar la validez
 // de lo que queda dentro de ella, y hay programas que javac rechaza y que llegan aquí (7 en el corpus: un método
@@ -320,14 +433,15 @@ describe('textosNoSoportado — tarea 1.30: un aviso afirma algo de la construcc
   // que javac rechaza y que la pasaban (las familias A–D). Ahora dice lo que SÍ se revisó: «pasó todas mis revisiones». `no-soportado` (el respaldo defensivo)
   // tampoco usa el marco: no sabe qué construcción es.
   const codigos = Object.keys(DATOS_DE_EJEMPLO) as CodigoNoSoportado[];
-  const codigosConMarco = codigos.filter((codigo) => codigo !== 'ejecucion-no-disponible' && codigo !== 'no-soportado');
+  // Tarea 1.35: `archivo-sin-clase` tampoco usa el marco: no hay una construcción que nombrar, el archivo no tiene ninguna clase.
+  const codigosConMarco = codigos.filter((codigo) => codigo !== 'ejecucion-no-disponible' && codigo !== 'no-soportado' && codigo !== 'archivo-sin-clase');
   const texto = (codigo: CodigoNoSoportado): string =>
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- datos varían por código, ver DATOS_DE_EJEMPLO
     (textosNoSoportado[codigo] as (d: any) => string)(DATOS_DE_EJEMPLO[codigo]);
 
   it('el barrido recorre el catálogo entero (guarda contra un filtro que deje la lista vacía)', () => {
     expect(codigos.length).toBeGreaterThanOrEqual(52);
-    expect(codigosConMarco.length).toBe(codigos.length - 2);
+    expect(codigosConMarco.length).toBe(codigos.length - 3);
   });
 
   it.each(codigos)('"%s" no dice que Java acepta el programa ("Java sí lo acepta", "Java sí acepta", "Java sí tiene")', (codigo) => {

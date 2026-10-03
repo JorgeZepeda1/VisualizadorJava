@@ -1,0 +1,4 @@
+MImportComodinConMayusculaDeMas.java:2: error: package java.Util does not exist
+import java.Util.*;
+^
+1 error

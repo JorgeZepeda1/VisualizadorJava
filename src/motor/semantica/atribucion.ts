@@ -36,8 +36,8 @@ import { CODIGOS_NO_SOPORTADO } from '../sintaxis/no-soportado.ts';
 import { Alcance } from './alcance.ts';
 import { construirAmbito, type AmbitoDeNombres } from './ambito-de-nombres.ts';
 import { CONSTRUCTORES_SOPORTADOS, clasificarCampo, clasificarMetodo } from './catalogo-api.ts';
-import { existeClaseDelJdk } from './catalogo-clases.ts';
-import { valorConstante } from './constantes.ts';
+import { existeClaseDelJdk, existePaqueteOTipoDelJdk } from './catalogo-clases.ts';
+import { constanteDeVariable, valorConstante } from './constantes.ts';
 import type { ProblemaAtribucion } from './diagnostico.ts';
 import { resolverSobrecarga } from './sobrecargas.ts';
 import { verificarEtiquetasDeCase, verificarSelectorDeSwitch } from './switch.ts';
@@ -100,7 +100,15 @@ export function atribuir(programa: NodoPrograma): ProblemaAtribucion[] {
       problemas.push({ codigo: 'clase-repetida-con-import', rango: importacion.rango, datos: { nombre: programa.clase.nombre, importacion: importacion.nombre } });
       continue;
     }
-    if (importacion.comodin || nombreDeClaseImportadaEsValido(importacion.nombre)) continue;
+    if (importacion.comodin) {
+      // Tarea 1.35 (JLS 7.5.2, SUGGESTION-3 de la re-verificación): `import paquete.*;` solo vale si el paquete existe (o es un tipo, y se importan sus miembros). Antes nunca se
+      // validaba: `import java.sqrt.*;` terminaba en `ok` y, con un uso de `Scanner` más abajo, en el error del USO y no en la línea del `import` (javac: «package java.sqrt does not exist»).
+      if (!existePaqueteOTipoDelJdk(importacion.nombre)) {
+        problemas.push({ codigo: 'importacion-no-reconocida', rango: importacion.rango, datos: { nombre: `${importacion.nombre}.*` } });
+      }
+      continue;
+    }
+    if (nombreDeClaseImportadaEsValido(importacion.nombre)) continue;
     if (existeClaseDelJdk(importacion.nombre)) {
       // Tarea 1.29 (design.md §2.3: «clase existente no soportada → NO-DISP; inexistente → error»):
       // `java.util.Locale`, `javax.swing.JOptionPane`… existen y javac los compila — un aviso, nunca
@@ -199,7 +207,8 @@ function visitarDeclaracionLocal(
     // una VARIABLE CONSTANTE -- participa en expresiones constantes (etiquetas de "case",
     // alcanzabilidad, internado de String). `undefined` si no aplica (no es "final", o el
     // inicializador no es constante) -- `valorConstante` ya sabe leerlo de vuelta (constantes.ts).
-    const constante = declaracion.esFinal && valorInicializador !== null ? valorInicializador : undefined;
+    // Tarea 1.35 (JLS 4.12.4 y 5.2): el valor se guarda convertido al tipo DECLARADO (`final int A = 'a'` guarda el `int` 97), no tal cual salió del inicializador.
+    const constante = declaracion.esFinal ? constanteDeVariable(declaracion.nombreTipo, valorInicializador) : undefined;
     // Tarea 1.32 (N6, JLS 6.3): «el alcance de una variable local empieza en SU PROPIO inicializador» — se declara ANTES de visitarlo.
     // Así `Scanner System = new Scanner(System.in);` ve la variable `System` (JLS 6.5.2: una variable en alcance se clasifica como
     // expresión antes que como tipo), `int y = (y = 5) + 1;` es válido y `int x = x + 1;` deja de ser «no existe la variable x»
@@ -675,6 +684,12 @@ function verificarSystemNoTapada(rango: Rango, alcance: Alcance, problemas: Prob
     if (alcance.esTipoPropio('System')) problemas.push({ codigo: 'campo-no-declarado', rango, datos: { clase: 'System', nombre: 'out' } });
     return;
   }
+  // Tarea 1.35: el PARÁMETRO de `main` es un arreglo (`String[]`, fuera del subconjunto) y, si se llama `System`, tapa a la clase (javac: «cannot find symbol»). Su tipo es «desconocido»
+  // para `tipoDeNombreDeTipo`, así que sin esta rama `System.out.println(1);` se aceptaba: un arreglo usado como valor es el aviso de siempre.
+  if (variable.tipo.endsWith('[]')) {
+    problemas.push({ codigo: CODIGOS_NO_SOPORTADO.arreglo, categoria: 'no-disponible', rango, datos: { tipoArreglo: variable.tipo } });
+    return;
+  }
   const tipo = tipoDeNombreDeTipo(variable.tipo);
   if (esTipoPrimitivo(tipo)) {
     problemas.push({ codigo: 'miembro-de-primitivo', rango, datos: { tipo, nombre: 'out', receptor: 'System' } });
@@ -928,6 +943,9 @@ function visitarNombreComoValor(nodo: NodoNombre, alcance: Alcance, problemas: P
   });
 }
 
+// Tarea 1.35: el nombre del único método propio que la atribución llega a ver (el que lanza el programa).
+const NOMBRE_DEL_METODO_PRINCIPAL = 'main';
+
 function visitarLlamada(
   nodo: NodoLlamada,
   alcance: Alcance,
@@ -935,13 +953,24 @@ function visitarLlamada(
   problemas: ProblemaAtribucion[],
 ): void {
   if (nodo.callee.tipo === 'nombre') {
-    // Ningún método propio existe en el subconjunto (REQ-SUB-007): una llamada de nombre libre
-    // (sin "objeto.") SIEMPRE es "método no declarado" (err03 de exploracion/03).
-    problemas.push({
-      codigo: 'metodo-no-declarado',
-      rango: nodo.callee.rango,
-      datos: { nombre: nodo.callee.nombre },
-    });
+    if (nodo.callee.nombre === NOMBRE_DEL_METODO_PRINCIPAL) {
+      // Tarea 1.35 (REQ-SUB-007, javac compila `main(args);`): el único método propio que esta pasada ve es `main` (todo método que el alumno declara ya avisó en su
+      // declaración y el programa no llega aquí): llamarlo por su nombre es una llamada a un método propio, un aviso — nunca «el método "main" no existe».
+      problemas.push({
+        codigo: CODIGOS_NO_SOPORTADO.llamadaAMetodoPropio,
+        categoria: 'no-disponible',
+        rango: nodo.callee.rango,
+        datos: { nombre: nodo.callee.nombre },
+      });
+    } else {
+      // Ningún otro método propio existe en el subconjunto (REQ-SUB-007): una llamada de nombre libre
+      // (sin "objeto.") SIEMPRE es "método no declarado" (err03 de exploracion/03).
+      problemas.push({
+        codigo: 'metodo-no-declarado',
+        rango: nodo.callee.rango,
+        datos: { nombre: nodo.callee.nombre },
+      });
+    }
   } else if (nodo.callee.tipo === 'acceso-miembro') {
     // Sub-lote 1-D2c: "objeto.metodo(...)" real -- resuelto contra el catálogo (abajo), en vez de
     // solo recorrer el receptor como valor genérico (lo que hacía que NINGÚN método de biblioteca

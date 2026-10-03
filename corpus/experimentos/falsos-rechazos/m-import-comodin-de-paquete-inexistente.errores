@@ -1,0 +1,4 @@
+MImportComodinDePaqueteInexistente.java:2: error: package java.sqrt does not exist
+import java.sqrt.*;
+^
+1 error

@@ -38,7 +38,7 @@ interface EscapeUnicodeDetectado {
 // ignorarse ni reinterpretarse (no se realiza la traducción real: solo se detecta y se avisa).
 // Admite "u" repetida (JLS 3.3: "\uu0041" también es válido). Devuelve `null` si no hay un escape
 // bien formado en esta posición (4 dígitos hexadecimales exactos tras la(s) "u"); el llamador
-// decide qué hacer con un `\u` malformado (código: error real; comentario: se ignora como texto).
+// decide qué hacer con un `\u` malformado (tarea 1.35: en el código, en una cadena y en un comentario es un error real, como en javac).
 function intentarLeerEscapeUnicode(fuente: string, cursor: number): EscapeUnicodeDetectado | null {
   if (fuente[cursor] !== '\\' || fuente[cursor + 1] !== 'u') return null;
   let inicioHex = cursor + 2;
@@ -46,6 +46,42 @@ function intentarLeerEscapeUnicode(fuente: string, cursor: number): EscapeUnicod
   const hex = fuente.slice(inicioHex, inicioHex + 4);
   if (hex.length !== 4 || ![...hex].every((c) => DIGITO_HEX.test(c))) return null;
   return { longitud: inicioHex + 4 - cursor, hex };
+}
+
+// Tarea 1.35 (JLS 3.3): una barra invertida solo puede empezar un escape Unicode si la preceden un número PAR de barras invertidas seguidas: en `C:\\users` (dos barras)
+// la `u` no empieza nada, y en `C:\users` (una) sí, y le faltan los cuatro dígitos.
+function empiezaUnEscapeUnicode(fuente: string, cursor: number): boolean {
+  if (fuente[cursor] !== '\\' || fuente[cursor + 1] !== 'u') return false;
+  let barrasAntes = 0;
+  for (let i = cursor - 1; i >= 0 && fuente[i] === '\\'; i -= 1) barrasAntes += 1;
+  return barrasAntes % 2 === 0;
+}
+
+// Tarea 1.35: javac rechaza (`illegal unicode escape`) un `\u` que no trae sus cuatro dígitos hexadecimales EN CUALQUIER LUGAR del archivo —código, cadenas y comentarios—.
+function errorDeEscapeUnicodeIncompleto(fuente: string, cursor: number): ErrorDeCompilacion {
+  let inicioHex = cursor + 2;
+  while (fuente[inicioHex] === 'u') inicioHex += 1;
+  return new ErrorDeCompilacion('secuencia unicode incompleta: se esperaban 4 dígitos hexadecimales tras "\\u"', { inicio: cursor, fin: inicioHex });
+}
+
+/**
+ * Tarea 1.35: el primer escape Unicode BIEN FORMADO del archivo que empieza antes de `limite` (un offset) o JUSTO en él, en cualquier lugar —código, cadena o comentario—, con la regla
+ * de la paridad de barras; `null` si no hay ninguno. Lo usa `compilador.ts` cuando el léxico se detiene con un error: si antes había un escape, el error puede ser consecuencia de no
+ * haberlo traducido (un escape que cierra una cadena, que es un `&`…), y lo honesto es el aviso del escape, no el error. Uno que empieza justo donde termina el error es parte del
+ * mismo literal para javac (que traduce los escapes antes de leer): `0x1.8` + `\u0070` es el flotante hexadecimal `0x1.8p1`.
+ */
+export function primerEscapeUnicodeAntesDe(fuente: string, limite: number): Rango | null {
+  for (let i = 0; i <= limite && i < fuente.length; i += 1) {
+    if (!empiezaUnEscapeUnicode(fuente, i)) continue;
+    const escape = intentarLeerEscapeUnicode(fuente, i);
+    if (escape) return { inicio: i, fin: i + escape.longitud };
+  }
+  return null;
+}
+
+/** Tarea 1.35: ¿en `posicion` empieza un escape Unicode MAL formado (una `u` sin sus cuatro dígitos hexadecimales)? Ese error es real y ningún otro escape lo explica. */
+export function empiezaUnEscapeUnicodeMalFormado(fuente: string, posicion: number): boolean {
+  return empiezaUnEscapeUnicode(fuente, posicion) && intentarLeerEscapeUnicode(fuente, posicion) === null;
 }
 
 function tokenNoSoportadoPorEscapeUnicode(
@@ -63,6 +99,8 @@ function tokenNoSoportadoPorEscapeUnicode(
     codigo: CODIGOS_NO_SOPORTADO.escapeUnicodeNoSoportado,
     nota: `Java procesa "\\u${escape.hex}" como el carácter Unicode U+${escape.hex.toUpperCase()}${sufijo} antes de leer el resto del programa; este visualizador todavía no lo soporta.`,
     datos: {},
+    // Tarea 1.35: `compilador.ts` distingue un escape dentro de un comentario (que no puede ser la causa de un error de sintaxis) de uno en el código.
+    ...(dentroDeComentario ? { enComentario: true } : {}),
   };
 }
 
@@ -82,8 +120,9 @@ export function tokenizar(fuente: string): Token[] {
     if (caracter === '/' && fuente[cursor + 1] === '/') {
       cursor += 2;
       while (cursor < fuente.length && fuente[cursor] !== '\n') {
-        const escape = intentarLeerEscapeUnicode(fuente, cursor);
-        if (escape) {
+        if (empiezaUnEscapeUnicode(fuente, cursor)) {
+          const escape = intentarLeerEscapeUnicode(fuente, cursor);
+          if (!escape) throw errorDeEscapeUnicodeIncompleto(fuente, cursor);
           tokens.push(tokenNoSoportadoPorEscapeUnicode(fuente, cursor, escape, true));
           cursor += escape.longitud;
           continue;
@@ -97,8 +136,9 @@ export function tokenizar(fuente: string): Token[] {
       const inicioComentario = cursor;
       cursor += 2;
       while (cursor < fuente.length && !(fuente[cursor] === '*' && fuente[cursor + 1] === '/')) {
-        const escape = intentarLeerEscapeUnicode(fuente, cursor);
-        if (escape) {
+        if (empiezaUnEscapeUnicode(fuente, cursor)) {
+          const escape = intentarLeerEscapeUnicode(fuente, cursor);
+          if (!escape) throw errorDeEscapeUnicodeIncompleto(fuente, cursor);
           tokens.push(tokenNoSoportadoPorEscapeUnicode(fuente, cursor, escape, true));
           cursor += escape.longitud;
           continue;
@@ -161,14 +201,7 @@ export function tokenizar(fuente: string): Token[] {
     // comentarios lo manejan los dos bloques de arriba (misma detección, código 1.5/1.6).
     if (caracter === '\\' && fuente[cursor + 1] === 'u') {
       const escape = intentarLeerEscapeUnicode(fuente, cursor);
-      if (!escape) {
-        let inicioHex = cursor + 2;
-        while (fuente[inicioHex] === 'u') inicioHex += 1;
-        throw new ErrorDeCompilacion(
-          'secuencia unicode incompleta: se esperaban 4 dígitos hexadecimales tras "\\u"',
-          { inicio: cursor, fin: inicioHex },
-        );
-      }
+      if (!escape) throw errorDeEscapeUnicodeIncompleto(fuente, cursor);
       tokens.push(tokenNoSoportadoPorEscapeUnicode(fuente, cursor, escape, false));
       cursor += escape.longitud;
       continue;

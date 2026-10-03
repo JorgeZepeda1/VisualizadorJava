@@ -46,7 +46,7 @@ import type {
   NodoSwitch,
 } from '../sintaxis/ast.ts';
 import { Alcance } from './alcance.ts';
-import { valorConstante } from './constantes.ts';
+import { constanteDeVariable, valorConstante } from './constantes.ts';
 import type { ProblemaAtribucion } from './diagnostico.ts';
 
 export function verificarAlcanzabilidad(programa: NodoPrograma): ProblemaAtribucion[] {
@@ -104,7 +104,7 @@ function visitarElemento(
 function visitarDeclaracionLocal(declaracion: NodoDeclaracionLocal, alcance: Alcance): void {
   for (const declarador of declaracion.declaradores) {
     const valorInicializador = declarador.inicializador !== null ? valorConstante(declarador.inicializador, alcance) : null;
-    const constante = declaracion.esFinal && valorInicializador !== null ? valorInicializador : undefined;
+    const constante = declaracion.esFinal ? constanteDeVariable(declaracion.nombreTipo, valorInicializador) : undefined; // tarea 1.35: convertido al tipo declarado
     alcance.declarar({
       nombre: declarador.nombre,
       tipo: declaracion.nombreTipo,

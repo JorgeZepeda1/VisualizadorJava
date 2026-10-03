@@ -102,12 +102,26 @@ export const CODIGOS_NO_SOPORTADO = {
   claseLocal: 'clase-local-no-soportada',
   // Tarea 1.29: `synchronized (obj) { … }` — el subconjunto no simula hilos ni sincronización.
   sincronizado: 'sincronizado-no-soportado',
+  // Tarea 1.35 (REQ-SUB-007: «clases/objetos propios» → aviso): `new Runnable() { … }` — una clase ANÓNIMA (JLS 15.9.5). Se delimita el cuerpo completo sin interpretarlo.
+  claseAnonima: 'clase-anonima-no-soportada',
+  // Tarea 1.35 (REQ-SUB-007: «métodos propios» → aviso): una llamada a un método de la propia clase. Cada método que el alumno DECLARA ya avisa en su declaración, así que lo único
+  // que la atribución llega a ver es la recursión de `main` (`main(args);`), que javac compila. Lo emite `semantica/atribucion.ts`.
+  llamadaAMetodoPropio: 'llamada-a-metodo-propio-no-soportada',
+  // Tarea 1.35 (WARNING 3, decisión del PO 2026-10-02): un archivo que no declara NINGUNA clase —vacío, solo un comentario, un `package`, imports o `;`— lo compila javac sin
+  // un solo error (no hay nada que generar) y no hay nada que ejecutar. No es una construcción fuera del subconjunto: es el programa entero el que no trae una clase con `main`. Lo
+  // emite `sintaxis/analizador-sintactico.ts`, y su texto no usa el marco ni habla de una línea.
+  archivoSinClase: 'archivo-sin-clase',
+  // Tarea 1.35 (JLS 15.8.2; la mutación por elemento de los conjuntos del reconocedor de casts destapó la familia): `String.class`, `int.class`, `int[].class`, `void.class` — un literal de
+  // clase. javac lo compila y el visualizador no maneja los objetos `Class`. Lo emite `sintaxis/expresiones.ts`.
+  literalDeClase: 'literal-de-clase-no-soportado',
 
   // ---- Léxico (lexico/literales.ts, lexico/analizador-lexico.ts) — tarea 1.24: antes strings
   // inline, nunca reunidos en una tabla. ----
   escapeNoSoportado: 'escape-no-soportado',
   escapeOctalNoSoportado: 'escape-octal-no-soportado',
   escapeUnicodeNoSoportado: 'escape-unicode-no-soportado',
+  // Tarea 1.35: un carácter fuera del plano básico (un emoji) dentro de un literal `char`: ocupa dos unidades UTF-16; javac 17 lo compila y el valor del `char` es la primera unidad.
+  caracterSuplementario: 'caracter-suplementario-no-soportado',
   bloqueDeTexto: 'bloque-de-texto-no-soportado',
   literalFloat: 'literal-float-no-soportado',
   literalOctal: 'literal-octal-no-soportado',
@@ -252,9 +266,19 @@ export interface DatosPorCodigoNoSoportado {
   'clase-local-no-soportada': Record<never, never>;
   /** Tarea 1.29: un bloque `synchronized (obj) { … }`. */
   'sincronizado-no-soportado': Record<never, never>;
+  /** Tarea 1.35: `new Tipo(...) { … }`; el texto no necesita más datos que la línea. */
+  'clase-anonima-no-soportada': Record<never, never>;
+  /** Tarea 1.35: el nombre del método tal como lo escribió el alumno (`main`). */
+  'llamada-a-metodo-propio-no-soportada': { readonly nombre: string };
+  /** Tarea 1.35: un archivo sin ninguna clase; el texto es del archivo entero y no necesita más datos. */
+  'archivo-sin-clase': Record<never, never>;
+  /** Tarea 1.35: el literal tal como lo escribió el alumno, sin espacios (`String.class`, `java.util.List.class`, `int[].class`). */
+  'literal-de-clase-no-soportado': { readonly literal: string };
   'escape-no-soportado': Record<never, never>;
   'escape-octal-no-soportado': Record<never, never>;
   'escape-unicode-no-soportado': Record<never, never>;
+  /** Tarea 1.35: el carácter tal como lo escribió el alumno (un emoji: dos unidades UTF-16). */
+  'caracter-suplementario-no-soportado': { readonly caracter: string };
   'bloque-de-texto-no-soportado': Record<never, never>;
   'literal-float-no-soportado': Record<never, never>;
   /** REQ-SUB-006, escenario "literal octal se explica, no se malinterpreta": el texto EXACTO que

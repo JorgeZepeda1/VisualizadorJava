@@ -15,7 +15,19 @@ import { CursorDeTokens } from './cursor-de-tokens.ts';
 // sus códigos como strings inline, nunca importados de ninguna tabla (engram
 // visualizador-java/patron-codigos-inline-expresiones), lo que dejó pasar una discrepancia real:
 // aquí se emitía 'lambda' mientras la tabla central decía 'lambda-no-soportada'.
-import { CODIGOS_NO_SOPORTADO, esTipoPrimitivoNoSoportado, saltarHastaCerrar } from './no-soportado.ts';
+import {
+  CODIGOS_NO_SOPORTADO,
+  consumirAnotaciones,
+  consumirArgumentosDeTipoOpcionales,
+  consumirTipo,
+  consumirTipoDescrito,
+  esTipoPrimitivoNoSoportado,
+  indiceTrasArgumentosDeTipo,
+  pareceInicioDeTipo,
+  saltarHastaCerrar,
+  type TipoConsumido,
+} from './no-soportado.ts';
+import { leerParentesis } from './parentesis.ts';
 import type { NodoConversion, NodoExpresion, NodoExpresionNoSoportada, NodoNuevaInstancia } from './ast.ts';
 
 // Tarea 1.34: un `Map` y no un objeto plano. Se consulta con el TEXTO del token que sigue a un operando, y ese texto puede ser un identificador del
@@ -145,12 +157,17 @@ function analizarBinaria(cursor: CursorDeTokens, precedenciaMinima: number, sinL
     cursor.avanzar();
 
     if (operador === 'instanceof') {
-      const tipo = cursor.esperarTipo('identificador');
+      // Tarea 1.35 (JLS 15.20.2): el lado derecho es un TIPO completo (`java.lang.String`, `String[]`, `List<?>`) y, desde Java 16, puede terminar en una variable
+      // (el patrón: `o instanceof final String s`). Todo es el mismo aviso; un `instanceof` sin tipo sigue siendo el error de sintaxis de siempre.
+      if (cursor.coincideTexto('final')) cursor.avanzar();
+      if (cursor.actual().tipo !== 'identificador') cursor.esperarTipo('identificador');
+      let ultimo = consumirTipo(cursor);
+      if (cursor.actual().tipo === 'identificador') ultimo = cursor.avanzar();
       izquierda = {
         tipo: 'expresion-no-soportada',
         codigo: CODIGOS_NO_SOPORTADO.instanceofNoSoportado,
         datos: {},
-        rango: { inicio: izquierda.rango.inicio, fin: tipo.rango.fin },
+        rango: { inicio: izquierda.rango.inicio, fin: ultimo.rango.fin },
       };
       continue;
     }
@@ -309,74 +326,52 @@ function errorLiteralDemasiadoGrande(rango: { inicio: number; fin: number }): Er
   return new ErrorDeCompilacion('el número entero es demasiado grande', rango);
 }
 
-// design.md §2.5.1 (JLS 15.16): "(" tipo primitivo ")" es SIEMPRE cast; "(" Nombre ")" es cast
-// solo si lo que sigue puede abrir una expresión unaria sin "+"/"-" — si no, es un paréntesis
-// normal ("lo demás, expresión", §2.5.2) y se deja que analizarPostfija/analizarPrimaria lo trate.
+// design.md §2.5.1 (JLS 15.16): «(» tipo «)» operando es una conversión. Tarea 1.35: la decisión de si un «(» abre el tipo de una conversión —o es una agrupación o una lambda— es la de
+// javac (`JavacParser.analyzeParens`, portada entera en `parentesis.ts`); antes solo se reconocían `(primitivo)` y `(Nombre)`, y javac compila casts a cualquier tipo.
 //
-// Tarea 1.29 (causa 3): "primitivo" incluye `byte`/`short`/`float` — tipos REALES de Java que el
-// subconjunto no soporta (REQ-SUB-007: nunca se reinterpretan como `int`/`double`). Un cast a ellos
-// es el MISMO aviso que su declaración (`tipo-primitivo-no-soportado`), con el rango del paréntesis
-// de apertura al final del operando; antes no abría un cast y daba «se esperaba una expresión y se
-// encontró "byte"» para un programa que javac compila. El operando se analiza igual (un cast sin
+// Tarea 1.29 (causa 3): «primitivo» incluye `byte`/`short`/`float` — tipos REALES de Java que el subconjunto no soporta (REQ-SUB-007: nunca se reinterpretan como `int`/`double`). Un cast a
+// ellos es el MISMO aviso que su declaración (`tipo-primitivo-no-soportado`), con el rango del paréntesis de apertura al final del operando. El operando se analiza igual (un cast sin
 // operando sigue siendo un error de sintaxis real).
+//
+// Tarea 1.35: el tipo se DELIMITA, no se valida (REQ-SUB-007 acepta cualquiera como aviso), y el aviso es el de la forma que tiene: una anotación, una intersección (`A & B`), un arreglo
+// (`String[]`) o un genérico (`List<String>`); un nombre con su paquete (`java.lang.String`) sigue siendo una conversión: la atribución decide si existe. El aviso cubre desde el «(»
+// hasta el final del operando.
 function intentarAnalizarCast(cursor: CursorDeTokens, sinLambda = false): NodoConversion | NodoExpresionNoSoportada | null {
   if (cursor.actual().texto !== '(') return null;
+  if (leerParentesis(cursor) !== 'conversion') return null;
 
-  const posibleTipo = cursor.mirar(1);
-  // Tarea 1.30: el aviso nombra el tipo CONCRETO del cast (`(byte) x` → `byte`), igual que en la declaración.
-  const tipoNoSoportado =
-    posibleTipo.tipo === 'palabra-clave' && esTipoPrimitivoNoSoportado(posibleTipo.texto) ? posibleTipo.texto : null;
-  const esPrimitivo =
-    tipoNoSoportado !== null || (posibleTipo.tipo === 'palabra-clave' && PALABRAS_CLAVE_TIPO_PRIMITIVO.has(posibleTipo.texto));
-  const esIdentificador = posibleTipo.tipo === 'identificador';
-  if (!esPrimitivo && !esIdentificador) return null;
-
-  if (cursor.mirar(2).texto !== ')') return null;
-
-  if (esIdentificador && !abreExpresionUnariaSinSigno(cursor.mirar(3))) {
-    return null;
+  const apertura = cursor.avanzar(); // "("
+  const conAnotacion = consumirAnotaciones(cursor) !== null;
+  const limites: TipoConsumido[] = [consumirTipoDeUnCast(cursor)];
+  while (cursor.coincideTexto('&')) {
+    cursor.avanzar();
+    limites.push(consumirTipoDeUnCast(cursor));
   }
-
-  const inicio = cursor.actual().rango.inicio;
-  cursor.avanzar(); // "("
-  const tipo = cursor.avanzar(); // el nombre del tipo
-  cursor.avanzar(); // ")"
+  cursor.esperarTexto(')');
   const operando = analizarUnaria(cursor, sinLambda);
-  const rango = { inicio, fin: operando.rango.fin };
-  if (tipoNoSoportado !== null) {
-    return {
-      tipo: 'expresion-no-soportada',
-      codigo: CODIGOS_NO_SOPORTADO.tipoPrimitivoNoSoportado,
-      datos: { tipo: tipoNoSoportado },
-      rango,
-    };
+  const rango = { inicio: apertura.rango.inicio, fin: operando.rango.fin };
+
+  if (conAnotacion) return { tipo: 'expresion-no-soportada', codigo: CODIGOS_NO_SOPORTADO.anotacion, datos: {}, rango };
+  if (limites.length > 1) {
+    return { tipo: 'expresion-no-soportada', codigo: CODIGOS_NO_SOPORTADO.claseNoSoportada, datos: { nombre: limites.map((limite) => limite.texto).join(' & ') }, rango };
+  }
+  const tipo = limites[0]!;
+  if (tipo.conDimensiones) return { tipo: 'expresion-no-soportada', codigo: CODIGOS_NO_SOPORTADO.arregloNuevo, datos: { tipoArreglo: tipo.texto }, rango };
+  if (tipo.conArgumentosDeTipo) return { tipo: 'expresion-no-soportada', codigo: CODIGOS_NO_SOPORTADO.generico, datos: {}, rango };
+  // Tarea 1.30: el aviso nombra el tipo CONCRETO del cast (`(byte) x` → `byte`), igual que en la declaración.
+  if (esTipoPrimitivoNoSoportado(tipo.texto)) {
+    return { tipo: 'expresion-no-soportada', codigo: CODIGOS_NO_SOPORTADO.tipoPrimitivoNoSoportado, datos: { tipo: tipo.texto }, rango };
   }
   return { tipo: 'conversion', nombreTipo: tipo.texto, operando, rango };
 }
 
-function abreExpresionUnariaSinSigno(token: Token): boolean {
-  if (
-    token.tipo === 'identificador' ||
-    token.tipo === 'entero' ||
-    token.tipo === 'largo' ||
-    token.tipo === 'doble' ||
-    token.tipo === 'caracter' ||
-    token.tipo === 'cadena'
-  ) {
-    return true;
+/** Un tipo del cast: un nombre (con paquete, argumentos de tipo y corchetes) o una palabra de tipo primitivo (con corchetes). Lo que no empieza un tipo es un error de sintaxis. */
+function consumirTipoDeUnCast(cursor: CursorDeTokens): TipoConsumido {
+  const primero = cursor.actual();
+  if (!pareceInicioDeTipo(primero)) {
+    throw new ErrorDeCompilacion(`se esperaba un tipo y se encontró "${primero.texto || '<fin de archivo>'}"`, primero.rango);
   }
-  if (
-    token.tipo === 'palabra-clave' &&
-    (token.texto === 'true' ||
-      token.texto === 'false' ||
-      token.texto === 'new' ||
-      token.texto === 'this' ||
-      token.texto === 'super' ||
-      token.texto === 'null')
-  ) {
-    return true;
-  }
-  return token.texto === '(' || token.texto === '!' || token.texto === '~';
+  return consumirTipoDescrito(cursor);
 }
 
 // Nivel 14: posfijos (design.md §2.4) — "." miembro y "(...)" llamada soportados; "[...]" (acceso
@@ -390,7 +385,35 @@ function analizarPostfija(cursor: CursorDeTokens, sinLambda = false): NodoExpres
 
     if (token.texto === '.') {
       cursor.avanzar();
+      // Tarea 1.35 (JLS 15.8.2): `Nombre.class` es un literal de clase; solo un nombre (con su paquete) puede ser el receptor (`f().class` sigue siendo «<identifier> expected»).
+      if (cursor.coincideTexto('class')) {
+        const nombre = cadenaDeNombres(expresion);
+        if (nombre !== null) {
+          const clase = cursor.avanzar();
+          expresion = {
+            tipo: 'expresion-no-soportada',
+            codigo: CODIGOS_NO_SOPORTADO.literalDeClase,
+            datos: { literal: `${nombre}.class` },
+            rango: { inicio: expresion.rango.inicio, fin: clase.rango.fin },
+          };
+          continue;
+        }
+      }
+      // Tarea 1.35 (JLS 15.12): una llamada puede llevar argumentos de tipo explícitos entre el punto y el nombre (`P.<String>id("a")`): genéricos, fuera del subconjunto — el
+      // aviso cubre la llamada entera y el análisis sigue tras su `)`.
+      const argumentosDeTipo = consumirArgumentosDeTipoOpcionales(cursor);
       const miembro = cursor.esperarTipo('identificador');
+      if (argumentosDeTipo !== null) {
+        analizarArgumentos(cursor);
+        const cierre = cursor.esperarTexto(')');
+        expresion = {
+          tipo: 'expresion-no-soportada',
+          codigo: CODIGOS_NO_SOPORTADO.generico,
+          datos: {},
+          rango: { inicio: expresion.rango.inicio, fin: cierre.rango.fin },
+        };
+        continue;
+      }
       expresion = {
         tipo: 'acceso-miembro',
         objeto: expresion,
@@ -435,6 +458,47 @@ function analizarPostfija(cursor: CursorDeTokens, sinLambda = false): NodoExpres
       continue;
     }
 
+    // Tarea 1.35 (JLS 15.8.2, 15.13): `Tipo[]` sin índice es un tipo de arreglo, y en una expresión solo puede ser el receptor de `.class` o de `::` (javac: `bracketsSuffix`).
+    if (token.texto === '[' && cursor.mirar(1).texto === ']') {
+      const nombre = cadenaDeNombres(expresion);
+      if (nombre !== null) {
+        let dimensiones = 0;
+        let fin = expresion.rango.fin;
+        while (cursor.coincideTexto('[') && cursor.mirar(1).texto === ']') {
+          cursor.avanzar();
+          fin = cursor.avanzar().rango.fin;
+          dimensiones += 1;
+        }
+        if (cursor.coincideTexto('.') && cursor.mirar(1).texto === 'class') {
+          cursor.avanzar();
+          const clase = cursor.avanzar();
+          expresion = {
+            tipo: 'expresion-no-soportada',
+            codigo: CODIGOS_NO_SOPORTADO.literalDeClase,
+            datos: { literal: `${nombre}${'[]'.repeat(dimensiones)}.class` },
+            rango: { inicio: expresion.rango.inicio, fin: clase.rango.fin },
+          };
+          continue;
+        }
+        if (!cursor.coincideTexto('::')) {
+          throw new ErrorDeCompilacion(`se esperaba ".class" y se encontró "${cursor.actual().texto || '<fin de archivo>'}"`, cursor.actual().rango);
+        }
+        // Un receptor de referencia a método: el turno siguiente del lazo ve el «::» y arma el aviso con el miembro.
+        expresion = { tipo: 'expresion-no-soportada', codigo: CODIGOS_NO_SOPORTADO.referenciaMetodo, datos: {}, rango: { inicio: expresion.rango.inicio, fin } };
+        continue;
+      }
+    }
+
+    // Tarea 1.35 (JLS 15.13; `JavacParser.isUnboundMemberRef`): `Tipo<Args>::miembro` —el receptor es un tipo con argumentos de tipo— es una referencia a método; un «<» que no cierra con un
+    // «>» seguido de «.», «[» o «::» es una comparación, como siempre.
+    if (token.texto === '<' && cadenaDeNombres(expresion) !== null) {
+      const referencia = intentarAnalizarReceptorGenerico(cursor, expresion);
+      if (referencia !== null) {
+        expresion = referencia;
+        continue;
+      }
+    }
+
     if (token.texto === '[') {
       cursor.avanzar();
       analizarExpresion(cursor); // el índice — se descarta, nunca se va a evaluar (NO-DISP)
@@ -464,6 +528,33 @@ function analizarPostfija(cursor: CursorDeTokens, sinLambda = false): NodoExpres
   }
 
   return expresion;
+}
+
+/**
+ * Tarea 1.35: el receptor de una referencia a método que es un tipo con argumentos de tipo (`ArrayList<String>::new`, `List<?>::size`). Con el cursor en el «<» y `receptor` un nombre,
+ * si los argumentos cierran y lo que sigue es un «.», un «[» o un «::» (la regla de `isUnboundMemberRef`), consume los argumentos, los miembros anidados (`.Entry<K, V>`) y las
+ * dimensiones, y exige el «::» (javac: «illegal start of expression» si falta); devuelve un aviso de referencia que el sufijo `::` rehace con el miembro. `null`, sin consumir nada, si
+ * no tiene esa forma (una comparación).
+ */
+function intentarAnalizarReceptorGenerico(cursor: CursorDeTokens, receptor: NodoExpresion): NodoExpresionNoSoportada | null {
+  const trasLosArgumentos = indiceTrasArgumentosDeTipo(cursor, 0);
+  if (trasLosArgumentos === null) return null;
+  const siguiente = cursor.mirar(trasLosArgumentos).texto;
+  if (siguiente !== '.' && siguiente !== '[' && siguiente !== '::') return null;
+  let ultimo = consumirArgumentosDeTipoOpcionales(cursor)!;
+  while (cursor.coincideTexto('.')) {
+    cursor.avanzar();
+    ultimo = cursor.esperarTipo('identificador');
+    ultimo = consumirArgumentosDeTipoOpcionales(cursor) ?? ultimo;
+  }
+  while (cursor.coincideTexto('[') && cursor.mirar(1).texto === ']') {
+    cursor.avanzar();
+    ultimo = cursor.avanzar();
+  }
+  if (!cursor.coincideTexto('::')) {
+    throw new ErrorDeCompilacion(`se esperaba "::" y se encontró "${cursor.actual().texto || '<fin de archivo>'}"`, cursor.actual().rango);
+  }
+  return { tipo: 'expresion-no-soportada', codigo: CODIGOS_NO_SOPORTADO.referenciaMetodo, datos: {}, rango: { inicio: receptor.rango.inicio, fin: ultimo.rango.fin } };
 }
 
 function analizarArgumentos(cursor: CursorDeTokens): NodoExpresion[] {
@@ -570,11 +661,52 @@ function analizarPrimaria(cursor: CursorDeTokens, sinLambda = false): NodoExpres
     cursor.avanzar();
     return { tipo: 'nombre', nombre: token.texto, rango: token.rango };
   }
+  // Tarea 1.35 (JLS 15.8.2, 15.13): una palabra de tipo primitivo (o `void`) en posición de expresión solo puede abrir un literal de clase (`int.class`, `int[].class`, `void.class`) o
+  // una referencia a método (`int[]::new`): javac la lee con `bracketsSuffix`. Cualquier otra cosa (`int` solo, `int x`) sigue siendo «se esperaba una expresión».
+  if (token.tipo === 'palabra-clave') {
+    const tipoPrimitivo = intentarAnalizarTipoPrimitivoComoOperando(cursor);
+    if (tipoPrimitivo !== null) return tipoPrimitivo;
+  }
 
   throw new ErrorDeCompilacion(
     `se esperaba una expresión y se encontró "${token.texto || '<fin de archivo>'}"`,
     token.rango,
   );
+}
+
+/**
+ * Tarea 1.35: `int.class`, `int[][].class`, `void.class` (aviso `literal-de-clase-no-soportado`) o `int[]::new` (el receptor de una referencia a método: se consume el tipo y se
+ * devuelve un aviso de referencia que el sufijo `::` de `analizarPostfija` rehace con el miembro). `null`, sin consumir nada, si lo que sigue a la palabra no es ninguna de las dos.
+ */
+function intentarAnalizarTipoPrimitivoComoOperando(cursor: CursorDeTokens): NodoExpresionNoSoportada | null {
+  const primero = cursor.actual();
+  const esVoid = primero.texto === 'void';
+  if (!esVoid && !PALABRAS_CLAVE_TIPO_PRIMITIVO.has(primero.texto) && !esTipoPrimitivoNoSoportado(primero.texto)) return null;
+  let i = 1;
+  while (!esVoid && cursor.mirar(i).texto === '[' && cursor.mirar(i + 1).texto === ']') i += 2; // `void` no admite dimensiones
+  const esLiteralDeClase = cursor.mirar(i).texto === '.' && cursor.mirar(i + 1).texto === 'class';
+  const esReferencia = !esVoid && cursor.mirar(i).texto === '::';
+  if (!esLiteralDeClase && !esReferencia) return null;
+  let literal = '';
+  let ultimo = primero;
+  for (let n = 0; n < (esLiteralDeClase ? i + 2 : i); n += 1) {
+    ultimo = cursor.avanzar();
+    literal += ultimo.texto;
+  }
+  const rango = { inicio: primero.rango.inicio, fin: ultimo.rango.fin };
+  return esLiteralDeClase
+    ? { tipo: 'expresion-no-soportada', codigo: CODIGOS_NO_SOPORTADO.literalDeClase, datos: { literal }, rango }
+    : { tipo: 'expresion-no-soportada', codigo: CODIGOS_NO_SOPORTADO.referenciaMetodo, datos: {}, rango };
+}
+
+/** `a.b.C` para la cadena `acceso-miembro(acceso-miembro(a, b), C)` de nombres simples, o `null` si la expresión es otra cosa (una llamada, un literal, un paréntesis…): el único
+ * receptor posible de `.class`, de `[]` y de `<…>::` (un tipo escrito con su paquete). */
+function cadenaDeNombres(expresion: NodoExpresion): string | null {
+  if (expresion.parentesis !== undefined) return null;
+  if (expresion.tipo === 'nombre') return expresion.nombre;
+  if (expresion.tipo !== 'acceso-miembro') return null;
+  const receptor = cadenaDeNombres(expresion.objeto);
+  return receptor === null ? null : `${receptor}.${expresion.miembro}`;
 }
 
 // "new Tipo(...)" (soportado, REQ-SUB-005) o "new Tipo[...]" / "new Tipo[]{...}" (arreglo, NO-DISP
@@ -617,8 +749,31 @@ function analizarNuevaInstancia(cursor: CursorDeTokens): NodoNuevaInstancia | No
     };
   }
 
+  // Tarea 1.35: `new ArrayList<String>()` y el rombo `new ArrayList<>()` llevan argumentos de tipo (JLS 15.9): fuera del subconjunto (`generico-no-soportado`,
+  // como la declaración `ArrayList<String> l`), pero Java válido: antes daban «se esperaba "("».
+  const argumentosDeTipo = consumirArgumentosDeTipoOpcionales(cursor);
   const argumentos = analizarArgumentos(cursor);
   const cierre = cursor.esperarTexto(')');
+  // Tarea 1.35 (JLS 15.9.5): `new Tipo(...) { … }` es una clase ANÓNIMA — se delimita el cuerpo entero sin interpretarlo (el análisis sigue tras su «}», ADR 003).
+  // Aunque la clase base sea una soportada, el cuerpo es código propio que no se revisa: el aviso es el de la clase anónima.
+  if (cursor.coincideTexto('{')) {
+    cursor.avanzar();
+    const finDelCuerpo = saltarHastaCerrar(cursor, '{', '}').rango.fin;
+    return {
+      tipo: 'expresion-no-soportada',
+      codigo: CODIGOS_NO_SOPORTADO.claseAnonima,
+      datos: {},
+      rango: { inicio: inicioToken.rango.inicio, fin: finDelCuerpo },
+    };
+  }
+  if (argumentosDeTipo !== null) {
+    return {
+      tipo: 'expresion-no-soportada',
+      codigo: CODIGOS_NO_SOPORTADO.generico,
+      datos: {},
+      rango: { inicio: inicioToken.rango.inicio, fin: cierre.rango.fin },
+    };
+  }
   return {
     tipo: 'nueva-instancia',
     nombreTipo,

@@ -1,0 +1,4 @@
+MImportComodinDeUnPaqueteAjenoAlJdk.java:2: error: package org.junit does not exist
+import org.junit.*;
+^
+1 error

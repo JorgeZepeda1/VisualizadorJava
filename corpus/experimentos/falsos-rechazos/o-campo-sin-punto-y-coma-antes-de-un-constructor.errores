@@ -1,0 +1,4 @@
+OCampoSinPuntoYComaAntesDeUnConstructor.java:3: error: ';' expected
+    private String nombre
+                         ^
+1 error

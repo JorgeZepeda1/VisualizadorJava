@@ -1,0 +1,1 @@
+Error: no se ha encontrado el método principal en la clase FMainSinParametrosValido, defina el método principal del siguiente modo:\n   public static void main(String[] args)\nde lo contrario, se deberá ampliar una clase de aplicación JavaFX javafx.application.Application

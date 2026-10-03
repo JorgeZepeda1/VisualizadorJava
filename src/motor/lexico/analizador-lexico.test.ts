@@ -332,6 +332,55 @@ describe('tokenizar — reconocimiento NO-DISP léxico (tarea 1.1, ADR 003, desi
   });
 });
 
+// ---- Tarea 1.35 (JLS 3.3, WARNING 3 y un falso acepto hallado al revisar los escapes) ----
+//
+// javac traduce los escapes Unicode en TODO el archivo antes de leerlo: comentarios y cadenas incluidos. Dos consecuencias que el léxico no cumplía:
+//  1. Un `\u` que no va seguido de cuatro dígitos hexadecimales es un error (`illegal unicode escape`) también dentro de un comentario: `// ver C:\users\juan` NO compila
+//     (la `\u` de `\users`). Aquí un comentario con un `\u` mal formado se ignoraba en silencio: era un falso ACEPTO.
+//  2. Una barra invertida solo puede empezar un escape si la preceden un número PAR de barras seguidas: `// C:\\users` (dos barras) es un comentario normal y compila.
+// Las fuentes se arman con `B` (una barra real) para que ningún `\u` aparezca en este archivo de prueba.
+describe('tokenizar — un escape Unicode mal formado es un error también dentro de un comentario (tarea 1.35, JLS 3.3)', () => {
+  const B = '\\'; // una barra invertida real
+
+  it.each([
+    ['un comentario de línea con una ruta de Windows', `// ver C:${B}users${B}juan`],
+    ['un comentario de bloque con dos dígitos', `int x = 1; /* ${B}u00 */`],
+    ['un comentario con un dígito que no es hexadecimal', `// ${B}u12G4`],
+    ['una `u` repetida sin dígitos', `// ${B}uu`],
+  ])('%s lanza ErrorDeCompilacion (javac: illegal unicode escape)', (_descripcion, fuente) => {
+    expect(() => tokenizar(fuente)).toThrow(ErrorDeCompilacion);
+  });
+
+  it('el error señala la `\\u` mal formada, no el principio del comentario', () => {
+    const fuente = `int x = 1;\n// ruta C:${B}users`;
+    try {
+      tokenizar(fuente);
+      throw new Error('se esperaba un ErrorDeCompilacion');
+    } catch (error) {
+      expect(error).toBeInstanceOf(ErrorDeCompilacion);
+      const rango = (error as ErrorDeCompilacion).rango;
+      expect(fuente.slice(rango.inicio, rango.inicio + 2)).toBe(`${B}u`);
+    }
+  });
+
+  it('control: con un número PAR de barras la `u` no empieza un escape y el comentario es normal (sin error ni token)', () => {
+    expect(tokenizar(`// C:${B}${B}users${B}${B}juan`).some((t) => t.tipo === 'no-soportado')).toBe(false);
+    expect(tokenizar(`/* ${B}${B}u0041 */ int x;`).some((t) => t.tipo === 'no-soportado')).toBe(false);
+  });
+
+  it('control: con un número IMPAR (tres) de barras la última sí empieza un escape bien formado: aviso, no error', () => {
+    const tokens = tokenizar(`// ${B}${B}${B}u0041`);
+    expect(tokens.filter((t) => t.codigo === 'escape-unicode-no-soportado')).toHaveLength(1);
+  });
+
+  it('control: un escape bien formado en un comentario sigue siendo el aviso de siempre, y el token dice que está en un comentario', () => {
+    const enComentario = tokenizar(`int x; // ${B}u0041`).find((t) => t.codigo === 'escape-unicode-no-soportado');
+    expect(enComentario).toMatchObject({ tipo: 'no-soportado', enComentario: true });
+    const enCodigo = tokenizar(`class ${B}u0041 { }`).find((t) => t.codigo === 'escape-unicode-no-soportado');
+    expect(enCodigo?.enComentario).not.toBe(true);
+  });
+});
+
 // ---- Tarea 1.33 (V y N2): qué es una palabra reservada y qué no ----
 //
 // JLS 3.9: `var` (tipo reservado, Java 10) y `yield` (identificador restringido, Java 14) NO son palabras clave del léxico: son

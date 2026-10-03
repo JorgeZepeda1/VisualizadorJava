@@ -11,6 +11,7 @@ import {
   literal,
   mientras,
   nombre,
+  paraCada,
   plantilla,
   renderizarPrograma,
   salto,
@@ -241,5 +242,52 @@ describe('variantesDeSentencias — el nombre de la clase y las sentencias de `a
     const p = conClase('System', seleccion({ selector: nombre('n', 'int'), antes: [salto('break')], casos: [{ etiquetas: 'default', cuerpo: [] }], flecha: false }));
     const largo = renderizarPrograma(p).length;
     for (const candidato of [...variantesDeSentencias(p), ...variantesDeExpresiones(p)]) expect(renderizarPrograma(candidato).length).toBeLessThan(largo);
+  });
+});
+
+// Tarea 1.35: lo que el reductor puede quitar de la estructura de la clase y del `for` mejorado. Todo candidato sigue siendo ESTRICTAMENTE más corto que el programa actual: devolverle a
+// `main` su firma de siempre solo es un candidato cuando la firma especial era más larga (`final String[] args`), no cuando era más corta (`main()`), donde la firma ES el mínimo.
+describe('variantesDeSentencias — la estructura de la clase y el `for` mejorado (tarea 1.35)', () => {
+  const conMiembros: Programa = {
+    imports: [],
+    miembros: [
+      { lineas: ['static int y = 1;'], etiquetas: ['campo-de-la-clase'] },
+      { lineas: ['interface I { }'], etiquetas: [] },
+    ],
+    sentencias: [imprimir('"a"')],
+  };
+
+  it('propone quitar cada miembro, y todos a la vez', () => {
+    const variantes = variantesDeSentencias(conMiembros);
+    expect(variantes.some((v) => (v.miembros ?? []).length === 1 && v.miembros![0]!.lineas[0] === 'interface I { }')).toBe(true);
+    expect(variantes.some((v) => (v.miembros ?? []).length === 1 && v.miembros![0]!.lineas[0] === 'static int y = 1;')).toBe(true);
+    expect(variantes.some((v) => v.miembros === undefined || v.miembros.length === 0)).toBe(true);
+  });
+
+  it('propone devolverle a `main` su firma de siempre cuando la especial era más larga, y no cuando era más corta', () => {
+    const larga: Programa = { imports: [], parametrosDeMain: 'final String[] args', sentencias: [imprimir('"a"')] };
+    expect(variantesDeSentencias(larga).some((v) => v.parametrosDeMain === undefined)).toBe(true);
+    const corta: Programa = { imports: [], parametrosDeMain: '', sentencias: [imprimir('"a"')] };
+    expect(variantesDeSentencias(corta).every((v) => v.parametrosDeMain === '')).toBe(true);
+  });
+
+  it('propone quitar el escape Unicode (el programa sin él es más corto)', () => {
+    const conEscape: Programa = { imports: [], sentencias: [imprimir('"a"')], escapeUnicode: { caracter: '"', aparicion: 0 } };
+    expect(variantesDeSentencias(conEscape).some((v) => v.escapeUnicode === undefined && v.sentencias.length === 1)).toBe(true);
+  });
+
+  it('un `for` mejorado se sustituye por su cuerpo, y se le puede quitar una sentencia del cuerpo', () => {
+    const p = programa(paraCada({ tipo: 'int', nombre: 'x', coleccion: nombre('datos', 'int[]'), cuerpo: [imprimir('"a"'), imprimir('"b"')] }));
+    const cuerpos = variantesDeSentencias(p).map(cuerpoDe);
+    expect(cuerpos).toContain('System.out.println("a"); System.out.println("b");');
+    expect(cuerpos).toContain('for (int x : datos) { System.out.println("b"); }');
+    expect(cuerpos).toContain('for (int x : datos) { System.out.println("a"); }');
+  });
+
+  it('las expresiones de un `for` mejorado también se simplifican (la colección y las del cuerpo)', () => {
+    const p = programa(paraCada({ tipo: 'int', nombre: 'x', coleccion: plantilla(['f(', ')'], [literal('1', 'int')], 'int[]'), cuerpo: [sentenciaExpr(plantilla(['g(', ')'], [literal('2', 'int')], 'void'))] }));
+    const cuerpos = variantesDeExpresiones(p).map(cuerpoDe);
+    expect(cuerpos).toContain('for (int x : 1) { g(2); }');
+    expect(cuerpos).toContain('for (int x : f(1)) { 2; }');
   });
 });

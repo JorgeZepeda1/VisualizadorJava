@@ -6,6 +6,7 @@
 import { crearAzar, semillaDelPrograma } from './azar.ts';
 import { cargarCatalogoApi, type CatalogoApi } from './catalogo-api.ts';
 import { comenzarSentencia, crearEntorno } from './entorno.ts';
+import { conLaForma, formaDelPrograma, type FormaEstructural } from './estructuras.ts';
 import { PARES_DE_CAST_DEL_SUBCONJUNTO, PLANTILLAS, castConPar, literalRaroNumero, usoDeLaClase } from './plantillas.ts';
 import { CLASE_POR_OMISION, renderizarPrograma, type Programa, type Sentencia } from './programa.ts';
 import { NOMBRES_DE_CLASE_DEL_JDK } from './vocabulario.ts';
@@ -52,11 +53,13 @@ function claseDelPrograma(indice: number): string {
   return NOMBRES_DE_CLASE_DEL_JDK[Math.floor(indice / PERIODO_DE_LAS_CLASES_DEL_JDK) % NOMBRES_DE_CLASE_DEL_JDK.length]!;
 }
 
-function importsDe(cuerpo: readonly Sentencia[], azar: ReturnType<typeof crearAzar>, clase: string): string[] {
+function importsDe(cuerpo: readonly Sentencia[], azar: ReturnType<typeof crearAzar>, clase: string, esControlDeLaClase = false): string[] {
   // El texto incluye la declaración de la clase: una clase `Scanner` «usa» Scanner y casi siempre trae su import (el error «ya está definida»).
   const texto = renderizarPrograma({ imports: [], clase, sentencias: cuerpo });
   const imports: string[] = [];
   for (const usada of ['Scanner', 'Random']) {
+    // Tarea 1.35: en el programa de control válido de una clase con nombre del JDK el import de ESA clase nunca va (con él, javac dice «ya está definida»).
+    if (esControlDeLaClase && usada === clase) continue;
     const olvido = usada === clase ? PROBABILIDAD_DE_OLVIDAR_EL_IMPORT_DE_LA_CLASE : PROBABILIDAD_DE_OLVIDAR_EL_IMPORT;
     if (new RegExp(`\\b${usada}\\b`).test(texto) && !azar.probabilidad(olvido)) imports.push(`import java.util.${usada};`);
   }
@@ -68,7 +71,28 @@ function importsDe(cuerpo: readonly Sentencia[], azar: ReturnType<typeof crearAz
   return imports;
 }
 
+// Tarea 1.35: el cuerpo de `main` de un programa ESTRUCTURAL es corto y VÁLIDO por construcción (probabilidad de violar 0): lo que decide el veredicto de javac es la estructura de la
+// clase, y un error cualquiera en el cuerpo la taparía (javac informa el primero, y el cuerpo viene después de los miembros).
+const TAMANOS_DE_LAS_ESTRUCTURAS: readonly (readonly [peso: number, sentencias: number])[] = [[45, 1], [35, 2], [20, 3]];
+
+/** El programa estructural `indice`: la forma que le toca (`estructuras.ts`) alrededor de un cuerpo corto y válido. */
+function generarProgramaEstructural(semilla: number, indice: number, forma: FormaEstructural): Programa {
+  const azar = crearAzar(semillaDelPrograma(semilla, indice));
+  const entorno = crearEntorno(azar, catalogo(), 0, CLASE_POR_OMISION);
+  const objetivo = azar.ponderado(TAMANOS_DE_LAS_ESTRUCTURAS);
+  const cuerpo: Sentencia[] = [];
+  while (cuerpo.length < objetivo) {
+    const plantilla = azar.ponderado(PLANTILLAS.map((p) => [p.peso, p] as const));
+    comenzarSentencia(entorno);
+    cuerpo.push(...plantilla.generar(entorno));
+  }
+  const recortado = cuerpo.slice(0, objetivo);
+  return conLaForma(forma, azar, recortado, importsDe(recortado, azar, CLASE_POR_OMISION));
+}
+
 export function generarPrograma(semilla: number, indice: number): Programa {
+  const forma = formaDelPrograma(indice);
+  if (forma !== null) return generarProgramaEstructural(semilla, indice, forma);
   const azar = crearAzar(semillaDelPrograma(semilla, indice));
   const clase = claseDelPrograma(indice);
   const entorno = crearEntorno(azar, catalogo(), undefined, clase);
@@ -84,20 +108,25 @@ export function generarPrograma(semilla: number, indice: number): Programa {
     sentencias.push(...literalRaroNumero(entorno, Math.floor(indice / PERIODO_DE_LOS_LITERALES_ESTRATIFICADOS)));
   }
   // La clase con nombre del JDK se ejerce SIEMPRE: la primera sentencia usa ese nombre (y no se recorta aunque `usoDeLaClase` traiga dos).
+  // Tarea 1.35: la PRIMERA vez que sale cada nombre (los 11 primeros programas de la familia) es un CONTROL válido por construcción (`Math m = null;`, sin el import de la clase,
+  // y nada más en el cuerpo): así cada nombre tiene un programa que javac compila con cualquier semilla, en vez de depender de que un sorteo lo produzca.
+  const esControlDeLaClase = clase !== CLASE_POR_OMISION && Math.floor(indice / PERIODO_DE_LAS_CLASES_DEL_JDK) < NOMBRES_DE_CLASE_DEL_JDK.length;
   if (clase !== CLASE_POR_OMISION) {
     comenzarSentencia(entorno);
-    sentencias.push(...usoDeLaClase(entorno));
+    sentencias.push(...usoDeLaClase(entorno, esControlDeLaClase));
   }
   // Las sentencias estratificadas (cast, literal, uso de la clase) nunca se recortan: son la razón de que el programa exista.
   const minimo = sentencias.length;
-  const largo = clase !== CLASE_POR_OMISION && azar.probabilidad(PROBABILIDAD_DE_QUE_LA_CLASE_USE_SOLO_SU_NOMBRE) ? minimo : objetivo;
+  const largo = clase !== CLASE_POR_OMISION && (esControlDeLaClase || azar.probabilidad(PROBABILIDAD_DE_QUE_LA_CLASE_USE_SOLO_SU_NOMBRE)) ? minimo : objetivo;
   while (sentencias.length < largo) {
     const plantilla = azar.ponderado(PLANTILLAS.map((p) => [p.peso, p] as const));
     comenzarSentencia(entorno);
     sentencias.push(...plantilla.generar(entorno));
   }
   const cuerpo = sentencias.slice(0, Math.max(largo, minimo));
-  return clase === CLASE_POR_OMISION ? { imports: importsDe(cuerpo, azar, clase), sentencias: cuerpo } : { imports: importsDe(cuerpo, azar, clase), clase, sentencias: cuerpo };
+  return clase === CLASE_POR_OMISION
+    ? { imports: importsDe(cuerpo, azar, clase), sentencias: cuerpo }
+    : { imports: importsDe(cuerpo, azar, clase, esControlDeLaClase), clase, sentencias: cuerpo };
 }
 
 export function generarProgramas(semilla: number, cantidad: number): Programa[] {

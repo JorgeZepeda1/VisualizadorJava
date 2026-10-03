@@ -18,6 +18,7 @@ import {
 } from '../../pruebas/compilacion/tablas-de-atribucion.ts';
 import { compilarEnLote, type FuenteParaCompilar, type RespuestaJava } from './compilar-en-lote.ts';
 import { localizarJdk, verificarVersionJdk, type InfoJdk } from './jdk.ts';
+import { LIMITE_DE_LAS_PRUEBAS_CON_JDK_MS } from './limites-de-pruebas.ts';
 
 let jdk: InfoJdk;
 beforeAll(() => {
@@ -44,7 +45,7 @@ describe('javac 17 real — la tabla de casts (F1)', () => {
       }
     }
     expect(desacuerdos).toEqual([]);
-  }, 120_000);
+  }, LIMITE_DE_LAS_PRUEBAS_CON_JDK_MS);
 });
 
 describe('javac 17 real — la tabla de etiquetas de `switch` (F4)', () => {
@@ -64,7 +65,7 @@ describe('javac 17 real — la tabla de etiquetas de `switch` (F4)', () => {
       }
     }
     expect(desacuerdos).toEqual([]);
-  }, 120_000);
+  }, LIMITE_DE_LAS_PRUEBAS_CON_JDK_MS);
 
   it('un selector long, double o boolean lo rechaza javac él mismo (`preview.feature.disabled.plural`), con cualquier etiqueta', async () => {
     const fuentes = SELECTORES_INVALIDOS_DE_SWITCH.flatMap(([tipo, valor]) =>
@@ -74,5 +75,5 @@ describe('javac 17 real — la tabla de etiquetas de `switch` (F4)', () => {
     for (const { id } of fuentes) {
       expect(respuestas.get(id), id).toMatchObject({ compila: false, codigoJavac: 'compiler.err.preview.feature.disabled.plural' });
     }
-  }, 120_000);
+  }, LIMITE_DE_LAS_PRUEBAS_CON_JDK_MS);
 });

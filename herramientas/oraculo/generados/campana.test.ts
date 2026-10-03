@@ -25,6 +25,7 @@ import { claveDeNuestroVeredicto, type VeredictoNuestro } from './clasificador.t
 import { generarPrograma, generarProgramas } from './generador.ts';
 import { renderizarPrograma } from './programa.ts';
 import { variantesDeExpresiones, variantesDeSentencias } from './reductor.ts';
+import { LIMITE_DE_LAS_PRUEBAS_CON_JDK_MS } from '../limites-de-pruebas.ts';
 
 const SEMILLA = 20260929;
 const CANTIDAD = 240;
@@ -61,7 +62,7 @@ beforeAll(async () => {
     },
     maximoAReducir: MAXIMO_A_REDUCIR,
   });
-}, 300_000);
+}, LIMITE_DE_LAS_PRUEBAS_CON_JDK_MS);
 
 describe('el informe de la campaña', () => {
   it('describe la campaña: semilla, cantidad, versión exacta del JDK y la mezcla de veredictos de javac', () => {
@@ -79,13 +80,13 @@ describe('el informe de la campaña', () => {
   it('es reproducible: la misma semilla y cantidad producen EXACTAMENTE el mismo informe', async () => {
     const otra = await ejecutarCampana({ semilla: SEMILLA, cantidad: CANTIDAD, jdk, nuestro: ACEPTA_TODO, maximoAReducir: MAXIMO_A_REDUCIR });
     expect(JSON.stringify(otra)).toBe(JSON.stringify(aceptaTodo));
-  }, 120_000);
+  }, LIMITE_DE_LAS_PRUEBAS_CON_JDK_MS);
 
   it('otra semilla produce otra campaña', async () => {
     const otra = await ejecutarCampana({ semilla: SEMILLA + 1, cantidad: 60, jdk, nuestro: ACEPTA_TODO, maximoAReducir: 1 });
     expect(otra.semilla).toBe(SEMILLA + 1);
     expect(otra.cantidad).toBe(60);
-  }, 120_000);
+  }, LIMITE_DE_LAS_PRUEBAS_CON_JDK_MS);
 });
 
 describe('con un compilador falso que ACEPTA todo', () => {
@@ -165,7 +166,7 @@ describe('el reductor, verificado contra javac por fuera de su propio bucle', ()
       const quePreservan = evaluadosDeLosCandidatos.filter((c) => tieneLaIdentidad(identidad, c.javac, c.nuestro)).map((c) => c.fuente);
       expect(quePreservan, `el reducido ${i} es un mínimo local`).toEqual([]);
     }
-  }, 180_000);
+  }, LIMITE_DE_LAS_PRUEBAS_CON_JDK_MS);
 });
 
 describe('con un compilador falso que RECHAZA todo', () => {
@@ -217,5 +218,5 @@ describe('cuando el compilador lanza una excepción', () => {
     expect(informe.discrepancias.fallosInternos).toBeGreaterThan(0);
     expect(Object.keys(informe.respuestasDeNuestroCompilador).some((clave) => clave.startsWith('fallo-interno'))).toBe(true);
     expect(codigoDeSalidaDe(informe)).toBe(1);
-  }, 120_000);
+  }, LIMITE_DE_LAS_PRUEBAS_CON_JDK_MS);
 });

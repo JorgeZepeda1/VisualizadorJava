@@ -6,6 +6,8 @@
 import { describe, expect, it } from 'vitest';
 import { tokenizar } from '../lexico/analizador-lexico.ts';
 import { analizarPrograma } from './analizador-sintactico.ts';
+import { CursorDeTokens } from './cursor-de-tokens.ts';
+import { longitudDeModificadorSellado } from './no-soportado.ts';
 import { ErrorDeCompilacion } from '../error-de-compilacion.ts';
 import type { NodoDeclaracionLocal, NodoIf, NodoNoSoportado, NodoSwitch } from './ast.ts';
 
@@ -25,6 +27,26 @@ describe('no-soportado — otra clase/interfaz/enum/record de nivel superior', (
     );
     expect(programa.otrosTiposDeNivelSuperior).toHaveLength(1);
     expect(programa.otrosTiposDeNivelSuperior[0].codigo).toBe('otro-tipo-de-nivel-superior-no-soportado');
+  });
+
+  // Tarea 1.35 (WARNING 3): una interfaz o clase SELLADA de nivel superior, antes o después de la clase principal, es un tipo más (aviso).
+  it('una interfaz sellada ANTES de la clase principal, con sus clases permitidas, avisa y la clase principal se sigue reconociendo', () => {
+    const programa = analizar(
+      'sealed interface F permits A, B { } final class A implements F { } final class B implements F { } ' +
+        'public class C { public static void main(String[] a) { } }',
+    );
+    // La interfaz es el primer tipo; la «clase» del programa es la primera `class` que sigue (`A`) y la principal (`C`) un tipo más, como con cualquier otra clase anterior.
+    expect(programa.otrosTiposDeNivelSuperior.length).toBeGreaterThanOrEqual(3);
+    expect(programa.otrosTiposDeNivelSuperior.every((t) => t.codigo === 'otro-tipo-de-nivel-superior-no-soportado')).toBe(true);
+    expect(programa.otrosTiposDeNivelSuperior[0]!.rango.inicio).toBe(0);
+  });
+
+  it('una clase sellada y una `non-sealed` DESPUÉS de la clase principal también son tipos de nivel superior (avisos)', () => {
+    const programa = analizar(
+      'class C { public static void main(String[] a) { } } sealed class Base permits Hijo { } non-sealed class Hijo extends Base { }',
+    );
+    expect(programa.otrosTiposDeNivelSuperior).toHaveLength(2);
+    expect(programa.otrosTiposDeNivelSuperior.map((t) => t.codigo)).toEqual(['otro-tipo-de-nivel-superior-no-soportado', 'otro-tipo-de-nivel-superior-no-soportado']);
   });
 
   it('un enum tras la clase principal también se reconoce (triangulación de la misma fila)', () => {
@@ -87,9 +109,14 @@ describe('no-soportado — otra clase/interfaz/enum/record de nivel superior', (
     expect(() => analizar('enum A { X } foo')).toThrow(ErrorDeCompilacion);
   });
 
-  it('regresión: un archivo vacío (sin ningún tipo) sigue siendo un error de sintaxis real', () => {
-    expect(() => analizar('')).toThrow(ErrorDeCompilacion);
-    expect(() => analizar('import java.util.Scanner;')).toThrow(ErrorDeCompilacion);
+  // Tarea 1.35: este test fijaba el falso rechazo (javac compila un archivo vacío y uno con solo imports). Ahora son un aviso; ver `analizador-sintactico.test.ts`.
+  it('un archivo sin ningún tipo (vacío, solo imports) NO es un error de sintaxis: es el aviso de que no tiene ninguna clase', () => {
+    expect(analizar('').otrosTiposDeNivelSuperior).toMatchObject([{ codigo: 'archivo-sin-clase' }]);
+    expect(analizar('import java.util.Scanner;').otrosTiposDeNivelSuperior).toMatchObject([{ codigo: 'archivo-sin-clase' }]);
+  });
+
+  it('control: con un tipo (aunque no sea una clase) el aviso es el de siempre, no el de «sin clase»', () => {
+    expect(analizar('interface I { }').otrosTiposDeNivelSuperior).toMatchObject([{ codigo: 'otro-tipo-de-nivel-superior-no-soportado' }]);
   });
 });
 
@@ -400,6 +427,39 @@ describe('no-soportado — for mejorado (REQ-SUB-007)', () => {
     const elemento = primeraSentencia('for (int i = 0; i < 10; i++) { }');
     expect(elemento.tipo).toBe('for');
   });
+
+  // Tarea 1.35 (hallado por una semilla nueva del mutador, `for (float x : datos)`; javac 17.0.18 compila las diez formas): la variable del `for` mejorado lleva un TIPO completo
+  // (JLS 14.14.2): un primitivo que el subconjunto no ejecuta (`float`, `byte`), un arreglo (`int[] fila`, la forma de recorrer una matriz), un nombre con paquete, genéricos
+  // (`Map.Entry<K, V>`), `var` o `final`. El reconocedor solo veía un tipo de UN token y las demás formas daban «Te falta cerrar un paréntesis»: eran falsos RECHAZOS.
+  it.each([
+    'for (float x : datos) { }',
+    'for (byte b : bytes) { }',
+    'for (final String s : lista) { }',
+    'for (final int x : datos) { }',
+    'for (int[] fila : matriz) { }',
+    'for (String[] fila : tabla) { }',
+    'for (Map.Entry<String, Integer> e : mapa.entrySet()) { }',
+    'for (java.lang.String s : lista) { }',
+    'for (var x : lista) { }',
+    'for (List<String> l : listas) { }',
+  ])('«%s» es el aviso de for mejorado, no un error de sintaxis', (sentencia) => {
+    expect(primeraSentencia(sentencia)).toMatchObject({ tipo: 'no-soportado', codigo: 'for-mejorado-no-soportado' });
+  });
+
+  it('el aviso cubre desde el `for` hasta el final del cuerpo, y lo que sigue se sigue leyendo', () => {
+    const fuente = 'class C { public static void main(String[] a) { for (int[] fila : m) { int t = 0; } int z = 1; } }';
+    const elementos = analizar(fuente).clase.main!.cuerpo.elementos;
+    expect(elementos).toHaveLength(2);
+    expect(fuente.slice(elementos[0]!.rango.inicio, elementos[0]!.rango.fin)).toBe('for (int[] fila : m) { int t = 0; }');
+  });
+
+  it('control: los `for` clásicos con declaraciones o con expresiones NO son el mejorado: se siguen leyendo como `for`', () => {
+    expect(primeraSentencia('for (int i = 0, j = 5; i < j; i++, j--) { }').tipo).toBe('for');
+    expect(primeraSentencia('for (i = 0; i < 3; i++) { }').tipo).toBe('for');
+    expect(primeraSentencia('for (;;) { }').tipo).toBe('for');
+    expect(primeraSentencia('for (int i = a ? b : c; i < 3; i++) { }').tipo).toBe('for');
+    expect(primeraSentencia('for (String s = "a"; s.length() < 3; s += "b") { }').tipo).toBe('for');
+  });
 });
 
 describe('no-soportado — etiquetas y break/continue con etiqueta (REQ-SUB-007, verificado: flow08)', () => {
@@ -703,6 +763,13 @@ describe('consumirMiembroDeClase — cabeceras VÁLIDAS de Java avisan, nunca so
     'enum E implements I { A, B }',
     'record P(int x, int y) implements I { }',
     'static class Nodo<T> { T dato; Nodo<T> sig; Nodo(T d) { dato = d; } }',
+    // Tarea 1.35 (WARNING 3: `sealed interface Forma permits A, B { }` daba «error-no-clasificado»; javac 17 lo compila): `sealed` y `non-sealed` son
+    // modificadores contextuales (JLS 8.1.1.2) y `permits` una cláusula; ninguno cambia que el miembro sea una clase interna: un aviso.
+    'sealed interface F permits A, B { }',
+    'public sealed interface G permits H { }',
+    'static sealed class A permits B { }',
+    'static non-sealed class B extends A { }',
+    'sealed abstract class S permits T { }',
     'static { }',
     '{ }',
   ];
@@ -740,6 +807,512 @@ describe('consumirMiembroDeClase — cabeceras VÁLIDAS de Java avisan, nunca so
 
   it.each(miembrosInvalidos)('sigue siendo un error de sintaxis REAL: %s', (_descripcion, miembro) => {
     expect(() => analizar(`class C { ${miembro} public static void main(String[] a) { } }`)).toThrow(ErrorDeCompilacion);
+  });
+});
+
+// Tarea 1.35 (SUGGESTION-3 de la re-verificación del lote 1: «un campo sin `;` da una línea distinta de la de javac»; cada fuente verificada con javac 17.0.18): un campo sin su `;` se
+// señala donde javac lo hace, en el FIN de su última palabra («';' expected»), no en el final del siguiente miembro. javac lee un campo como `Tipo nombre [= expresión] {, nombre …} ;`: la
+// expresión se acaba donde la siguiente palabra ya no puede continuarla —un modificador, un tipo, `class`, un nombre que sigue a otro nombre o a un literal—, y lo que falta es el `;`.
+describe('consumirMiembroDeClase — un campo sin `;` se señala en el fin de su última palabra, como javac (tarea 1.35, SUGGESTION-3)', () => {
+  const siguienteMiembro = 'public static void main(String[] a) { }';
+  const errorDe = (fuente: string): ErrorDeCompilacion => {
+    try {
+      analizar(fuente);
+    } catch (error) {
+      if (error instanceof ErrorDeCompilacion) return error;
+      throw error;
+    }
+    throw new Error(`se esperaba un ErrorDeCompilacion para: ${fuente}`);
+  };
+  const conMiembroDetras = (campo: string, siguiente: string = siguienteMiembro): string => `class C {\n    ${campo}\n    ${siguiente}\n}`;
+
+  it.each([
+    ['con un literal y un modificador detrás', 'int x = 5'],
+    ['con un literal y un tipo primitivo detrás (el siguiente campo)', 'static final int MAX = 10'],
+    ['con una cadena', 'String s = "a"'],
+    ['con un carácter', "char c = 'a'"],
+    ['con un nombre y un modificador detrás', 'int total = suma'],
+    ['con una llamada y un modificador detrás', 'int n = Math.abs(-1)'],
+    ['con un inicializador de arreglo', 'int[] a = { 1, 2 }'],
+    ['con un arreglo nuevo', 'int[] a = new int[3]'],
+    ['con corchetes tras el nombre', 'int a[] = { 1 }'],
+    ['con una clase anónima', 'Object o = new Object() { }'],
+    ['con una lambda de bloque', 'Runnable r = () -> { }'],
+    ['con una expresión switch', 'int w = switch (k) { default -> 0; }'],
+    ['con un operador ternario', 'int x = c ? 1 : 2'],
+    ['con varios declaradores', 'int a = 1, b = 2'],
+    ['con un tipo genérico', 'java.util.List<String> l = new java.util.ArrayList<String>()'],
+    ['con los argumentos de un constructor', 'static java.util.Scanner sc = new java.util.Scanner(System.in)'],
+    ['con un grupo que no puede ser una conversión', 'int s = (a + 1)'],
+    ['con una conversión y su operando', 'double d = (double) 5'],
+    ['sin inicializador', 'int x'],
+    ['sin inicializador y con modificadores', 'private static String nombre'],
+    ['sin inicializador y con varios nombres', 'int a, b'],
+  ])('%s: «falta-punto-y-coma» en el fin de la última palabra del campo', (_descripcion, campo) => {
+    const fuente = conMiembroDetras(campo);
+    const error = errorDe(fuente);
+    expect(error.codigo).toBe('falta-punto-y-coma');
+    // El error está en la línea del campo (la 2) y exactamente al final de su texto.
+    expect(error.rango.inicio).toBe(fuente.indexOf(campo) + campo.length);
+    expect(error.rango.fin).toBe(error.rango.inicio);
+  });
+
+  // Lo que sigue al campo olvidado no tiene que ser un método: cualquier miembro empieza con algo que no puede continuar una expresión.
+  it.each([
+    ['otro campo con tipo primitivo', 'int x = 5', 'int y;'],
+    ['otro campo con tipo de clase', 'int x = y', 'Scanner sc;'],
+    ['otro campo con modificadores', 'String s = "a"', 'private String t;'],
+    ['un constructor', 'private String nombre', 'C(String n) { }'],
+    ['un método con tipo de retorno', 'static final double PI = 3.14159', 'static double area(double r) { return r; }'],
+    ['una clase anidada', 'int x = 5', 'class Q { }'],
+    ['una interfaz anidada', 'int x = 5', 'interface Q { }'],
+    ['un enum anidado', 'int x = 5', 'enum Q { A }'],
+    ['un bloque inicializador', 'int x = 5', '{ }'],
+    ['un bloque estático', 'int x = 5', 'static { }'],
+    ['un literal (una cadena que sigue a otra sin el +)', 'String s = "a"', '"b";'],
+    ['el mismo renglón', 'int a = 5 int b = 6;', ''],
+  ])('lo que sigue es %s: el error sigue en el campo', (_descripcion, campo, siguiente) => {
+    const fuente = conMiembroDetras(campo, `${siguiente}\n    ${siguienteMiembro}`);
+    const error = errorDe(fuente);
+    expect(error.codigo).toBe('falta-punto-y-coma');
+    const finDelCampo = campo === 'int a = 5 int b = 6;' ? fuente.indexOf('5') + 1 : fuente.indexOf(campo) + campo.length;
+    expect(error.rango.inicio).toBe(finDelCampo);
+  });
+
+  // La cabecera `Tipo nombre` seguida de algo que no es «=», «,», «;» ni «(» también es un campo sin su `;`: javac lo señala en el fin del NOMBRE.
+  it.each([
+    ['un operador', 'int x +', 'int x'],
+    ['un número', 'int x 5;', 'int x'],
+    ['un punto', 'int x.y;', 'int x'],
+    ['una llave', 'int x { }', 'int x'],
+    ['una cadena', 'String s "a";', 'String s'],
+    ['corchetes vacíos tras el nombre', 'int x[] 5;', 'int x[]'],
+  ])('la cabecera de un campo seguida de %s: «falta-punto-y-coma» en el fin del nombre', (_descripcion, campo, hastaElNombre) => {
+    const fuente = conMiembroDetras(campo);
+    const error = errorDe(fuente);
+    expect(error.codigo).toBe('falta-punto-y-coma');
+    expect(error.rango.inicio).toBe(fuente.indexOf(hastaElNombre) + hastaElNombre.length);
+  });
+
+  it('un campo sin inicializador al final de la clase: el error está en el fin de su nombre, no en la «}»', () => {
+    const fuente = 'class C {\n    public static void main(String[] a) { }\n    int x\n}';
+    const error = errorDe(fuente);
+    expect(error.codigo).toBe('falta-punto-y-coma');
+    expect(error.rango.inicio).toBe(fuente.indexOf('int x') + 'int x'.length);
+  });
+
+  // Lo que NO cambia: un `void` o un miembro con parámetros de tipo exige el «(» de un método, y javac lo dice en el token que sigue («'(' expected»), no en el fin del nombre.
+  it.each([
+    ['void x', 'void x'],
+    ['<T> int x', '<T> int x'],
+  ])('«%s» sin paréntesis sigue siendo un error en el token siguiente, no «falta el ;»', (_descripcion, cabecera) => {
+    const fuente = conMiembroDetras(cabecera);
+    const error = errorDe(fuente);
+    expect(error.codigo).not.toBe('falta-punto-y-coma');
+    expect(error.rango.inicio).toBe(fuente.indexOf('public'));
+  });
+
+  // Control: lo que SÍ es un campo válido nunca da «falta el `;`» — la expresión puede ser casi cualquier cosa (arreglos, lambdas, clases anónimas, `instanceof` con patrón, conversiones,
+  // genéricos, referencias a método, el ternario, un `switch`, varios nombres en una declaración). Todas estas líneas las compila javac 17.0.18 sin errores.
+  it.each([
+    'int[] a = { 1, 2 };',
+    'static final String S = "a" + \'b\' + 1;',
+    'Runnable r = () -> { };',
+    'Object o = new Object() { int q; };',
+    'boolean b = o instanceof String s && s.isEmpty();',
+    'boolean c = o instanceof final String t ? true : false;',
+    'boolean arr = o instanceof String[] sa;',
+    'double d = (double) x / 2;',
+    'List<String> l = new ArrayList<String>();',
+    'Map<String, List<Integer>> m = new HashMap<>();',
+    'int a = 1, b = 2;',
+    'Comparator<String> c = String::compareTo;',
+    'int v = cond ? 1 : 2;',
+    'Foo f = (Foo) bar;',
+    'int w = switch (k) { case 1 -> 1; default -> 0; };',
+    'String t = "una" + \'\\n\';',
+    'int x;',
+    'private static int y = z++;',
+    'Class<?> cl = int.class;',
+    'Class<?> cl3 = true ? int.class : void.class;',
+    'Object oc = (Object) int.class;',
+    'IntFunction<int[]> fab = int[]::new;',
+    'int y = x\n        - z;',
+    'String s = "a"\n        + "b";',
+  ])('control: «%s» es un campo válido (aviso de miembro) aunque otro miembro venga detrás', (campo) => {
+    const programa = analizar(conMiembroDetras(campo));
+    expect(programa.clase.main).not.toBeNull();
+    expect(programa.clase.otrosMiembros).toHaveLength(1);
+  });
+
+  // `(a)` seguido de una palabra es, para javac, una conversión de `a` y NO un «falta el ;» (`int s = (a)` + `int t;` → «'.class' expected»): ahí no se afirma nada falso.
+  it('un grupo que podría ser el tipo de una conversión no se señala como «falta el ;» (javac da otro error)', () => {
+    const programa = analizar(conMiembroDetras('int s = (a)', `int t;\n    ${siguienteMiembro}`));
+    expect(programa.clase.main).not.toBeNull();
+  });
+});
+
+// Tarea 1.35 (la campaña del generador, con los campos sin `;` que sumó a su gramática, halló 4 de 7 programas con la línea distinta; cada fuente verificada con javac 17.0.18): un campo
+// cuya expresión se queda ESPERANDO un operando (`int x =`, `int x = 5 +`, `c ?`, `->`…) y cuyo siguiente miembro empieza con un modificador no es un «falta el `;`»: javac dice
+// «illegal start of expression» EN EL MODIFICADOR, porque la expresión todavía no podía terminar. Y una coma sin el nombre del siguiente campo (`int a = 1,`) es
+// «<identifier> expected» en el FIN de la coma, no en lo que viene después.
+describe('consumirMiembroDeClase — un campo que espera un operando y un modificador que le sigue (tarea 1.35)', () => {
+  const errorDe = (fuente: string): ErrorDeCompilacion => {
+    try {
+      analizar(fuente);
+    } catch (error) {
+      if (error instanceof ErrorDeCompilacion) return error;
+      throw error;
+    }
+    throw new Error(`se esperaba un ErrorDeCompilacion para: ${fuente}`);
+  };
+
+  it.each([
+    ['un `=`', 'int x ='],
+    ['un `+`', 'int x = 5 +'],
+    ['un `-`', 'int x = 5 -'],
+    ['un `*`', 'int x = 5 *'],
+    ['un `&&`', 'boolean b = true &&'],
+    ['un `||`', 'boolean b = true ||'],
+    ['un `==`', 'boolean b = 1 =='],
+    ['un `<=`', 'boolean b = 1 <='],
+    ['un `?`', 'int x = c ?'],
+    ['un `:`', 'int x = c ? 1 :'],
+    ['una flecha de lambda', 'Runnable r = () ->'],
+    ['un `!`', 'boolean b = !'],
+    ['un `~`', 'int x = ~'],
+    // El resto del conjunto, uno por uno (cada forma verificada con javac 17.0.18: «illegal start of expression» en el modificador). Una asignación compuesta solo cabe como
+    // expresión dentro del inicializador (`int x = y +=`): tras el nombre del campo, `+=` ya no es válido.
+    ['un `/`', 'int x = 5 /'],
+    ['un `%`', 'int x = 5 %'],
+    ['un `&`', 'boolean b = true &'],
+    ['un `|`', 'boolean b = true |'],
+    ['un `^`', 'boolean b = true ^'],
+    ['un `!=`', 'boolean b = 1 !='],
+    ['un `>=`', 'boolean b = 1 >='],
+    ['un `<<`', 'int x = 1 <<'],
+    ['un `+=`', 'int x = y +='],
+    ['un `-=`', 'int x = y -='],
+    ['un `*=`', 'int x = y *='],
+    ['un `/=`', 'int x = y /='],
+    ['un `%=`', 'int x = y %='],
+    ['un `&=`', 'int x = y &='],
+    ['un `|=`', 'int x = y |='],
+    ['un `^=`', 'int x = y ^='],
+    ['un `<<=`', 'int x = y <<='],
+    ['un `>>=`', 'int x = y >>='],
+    ['un `>>>=`', 'int x = y >>>='],
+  ])('tras %s, un modificador que abre el siguiente miembro: error SIN código de «falta el ;», en el modificador', (_descripcion, campo) => {
+    for (const modificador of ['public static void main(String[] a) { }', 'static int z = 1;', 'private int w = 2;', 'final int k = 3;']) {
+      const fuente = `class C {\n    ${campo}\n    ${modificador}\n}`;
+      const error = errorDe(fuente);
+      expect(error.codigo, `${campo} / ${modificador}`).not.toBe('falta-punto-y-coma');
+      expect(error.rango.inicio, `${campo} / ${modificador}`).toBe(fuente.indexOf(modificador.split(' ')[0]!, fuente.indexOf(campo) + campo.length));
+    }
+  });
+
+  it('una coma sin el nombre del siguiente campo: el error está en el FIN de la coma («<identifier> expected»), aunque lo que sigue esté en otro renglón', () => {
+    for (const siguiente of ['static int z = 1;', 'public static void main(String[] a) { }', 'int otro;']) {
+      const fuente = `class C {\n    int a = 1,\n    ${siguiente}\n}`;
+      const error = errorDe(fuente);
+      expect(error.rango.inicio, siguiente).toBe(fuente.indexOf(',') + 1);
+    }
+  });
+
+  it.each([
+    ['un punto', 'int x = a.', 'a.'],
+    ['`new`', 'Object o = new', 'new'],
+  ])('tras %s, un modificador: «<identifier> expected» en el FIN de ese token (javac lo pide ahí), no en el modificador', (_descripcion, campo, hasta) => {
+    for (const modificador of ['public static void main(String[] a) { }', 'static int z = 1;', 'private int w = 2;']) {
+      const fuente = `class C {\n    ${campo}\n    ${modificador}\n}`;
+      const error = errorDe(fuente);
+      expect(error.codigo, `${campo} / ${modificador}`).not.toBe('falta-punto-y-coma');
+      expect(error.rango.inicio, `${campo} / ${modificador}`).toBe(fuente.indexOf(hasta) + hasta.length);
+    }
+  });
+
+  // Una anotación pegada al fin de un campo (la del miembro siguiente) no continúa nada: tras el NOMBRE (`static double d`) javac la lee como una anotación de TIPO que falta
+  // («illegal start of type») y tras un operando («static final int MAX = 10») como el inicio de una expresión («illegal start of expression»): en los dos casos EN la `@`.
+  it.each([
+    ['el nombre de un campo sin inicializador', 'static double d'],
+    ['el nombre de un campo con corchetes', 'int a[]'],
+    ['un literal', 'static final int MAX = 10'],
+    ['un nombre', 'int x = y'],
+    ['una llamada', 'int n = Math.abs(-1)'],
+    ['una cadena', 'String s = "a"'],
+  ])('una anotación tras %s: error SIN código de «falta el ;», en la `@`', (_descripcion, campo) => {
+    const fuente = `class C {\n    ${campo}\n    @Deprecated int viejo;\n    public static void main(String[] a) { }\n}`;
+    const error = errorDe(fuente);
+    expect(error.codigo, campo).not.toBe('falta-punto-y-coma');
+    expect(error.rango.inicio, campo).toBe(fuente.indexOf('@'));
+  });
+
+  // Tras la `}` de un arreglo (`= { 1, 2 }`) o de un `switch` la expresión YA terminó: javac pide el «;» en el fin de esa `}` y no ve la anotación. Tras la de una clase anónima, una lambda
+  // o un arreglo creado con `new` (`new int[] { 1 }`) la expresión todavía admitía un sufijo, y la `@` es «illegal start of expression».
+  it.each([
+    ['un arreglo', 'int[] arr = { 1, 2 }'],
+    ['un arreglo de arreglos', 'int[][] m = { { 1 }, { 2 } }'],
+    ['dos arreglos', 'int[] a = { 1 }, b = { 2 }'],
+    ['una expresión switch', 'int w = switch (k) { default -> 0; }'],
+  ])('una anotación tras la `}` de %s: «falta-punto-y-coma» en el fin de esa `}`', (_descripcion, campo) => {
+    const fuente = `class C {\n    ${campo}\n    @Deprecated int viejo;\n    public static void main(String[] a) { }\n}`;
+    const error = errorDe(fuente);
+    expect(error.codigo, campo).toBe('falta-punto-y-coma');
+    expect(error.rango.inicio, campo).toBe(fuente.indexOf(campo) + campo.length);
+  });
+
+  it.each([
+    ['una clase anónima', 'Object o = new Object() { int q; }'],
+    ['una clase anónima con tipo genérico', 'java.util.List<String> l = new java.util.ArrayList<String>() { }'],
+    ['una lambda de bloque', 'Runnable r = () -> { int q = 1; }'],
+    ['un arreglo creado con new', 'int[] z = new int[] { 1 }'],
+  ])('una anotación tras la `}` de %s: error SIN código de «falta el ;», en la `@`', (_descripcion, campo) => {
+    const fuente = `class C {\n    ${campo}\n    @Deprecated int viejo;\n    public static void main(String[] a) { }\n}`;
+    const error = errorDe(fuente);
+    expect(error.codigo, campo).not.toBe('falta-punto-y-coma');
+    expect(error.rango.inicio, campo).toBe(fuente.indexOf('@'));
+  });
+
+  // Un bloque `{ … }` tras un `)` que no es una llamada, ni el selector de un `switch`, ni una lambda no puede continuar la expresión: «';' expected» en el fin del `)`.
+  it.each([
+    ['un grupo con operadores', 'int s = (1 + 2)'],
+    ['un grupo de un solo literal', 'int t = (5)'],
+    ['un grupo que podría ser una conversión', 'int u = (x)'],
+    ['los argumentos de una llamada (no de un `new`)', 'int v = f(1)'],
+    ['los argumentos de una llamada con receptor', 'int n = Math.abs(-1)'],
+  ])('un bloque tras %s: «falta-punto-y-coma» en el fin del `)`', (_descripcion, campo) => {
+    const fuente = `class C {\n    ${campo}\n    { }\n    public static void main(String[] a) { }\n}`;
+    const error = errorDe(fuente);
+    expect(error.codigo, campo).toBe('falta-punto-y-coma');
+    expect(error.rango.inicio, campo).toBe(fuente.indexOf(campo) + campo.length);
+  });
+
+  it.each([
+    ['un arreglo', 'int[] arr = { 1, 2 }'],
+    ['un arreglo con corchetes tras el nombre', 'int a[] = { 1 }'],
+    ['una expresión switch', 'int w = switch (k) { default -> 0; }'],
+  ])('un bloque tras la `}` de %s: «falta-punto-y-coma» en el fin de esa `}` (la expresión ya terminó)', (_descripcion, campo) => {
+    const fuente = `class C {\n    ${campo}\n    { }\n    public static void main(String[] a) { }\n}`;
+    const error = errorDe(fuente);
+    expect(error.codigo, campo).toBe('falta-punto-y-coma');
+    expect(error.rango.inicio, campo).toBe(fuente.indexOf(campo) + campo.length);
+  });
+
+  it('control: los `{` que SÍ continúan un campo siguen siendo válidos (clase anónima, lambda de bloque, selector de `switch`, arreglo, `new` con argumentos)', () => {
+    for (const campo of [
+      'Object o = new Object() { };',
+      'Object p = new Object() { int q; };',
+      'Runnable r = () -> { };',
+      'int w = switch (a + 1) { default -> 0; };',
+      'int v = switch (a) { case 1 -> 1; default -> 0; };',
+      'int[] arr = { 1, 2 };',
+      'int[] otro = new int[] { 1, 2 };',
+      'java.util.List<String> l = new java.util.ArrayList<String>() { };',
+    ]) {
+      const programa = analizar(`class C {\n    ${campo}\n    public static void main(String[] a) { }\n}`);
+      expect(programa.clase.main, campo).not.toBeNull();
+    }
+  });
+
+  it('control: el operador y su operando en renglones distintos es un campo válido (la expresión sigue abajo)', () => {
+    for (const campo of ['int x = 5 +\n        3;', 'int y = c ?\n        1 : 2;', 'boolean b = true &&\n        false;', 'Runnable r = () ->\n        System.out.println(1);', 'int a = 1,\n        b = 2;']) {
+      const programa = analizar(`class C {\n    ${campo}\n    public static void main(String[] a) { }\n}`);
+      expect(programa.clase.main, campo).not.toBeNull();
+    }
+  });
+
+  it('control: `instanceof final String s` es válido (el `final` no abre un miembro: lo pide el patrón)', () => {
+    const programa = analizar('class C {\n    boolean b = o instanceof final String s;\n    public static void main(String[] a) { }\n}');
+    expect(programa.clase.main).not.toBeNull();
+  });
+});
+
+// Tarea 1.35 (la mutación por elemento de los conjuntos cerrados del reconocedor de campos mostró que ninguna prueba protegía las 3 palabras de literal, 7 de las 9 de tipo primitivo, 8 de los 11
+// signos de un tipo ni 6 de los 11 modificadores de miembro; y al probarlos uno por uno javac mostró 6 diferencias más: `class`, `interface` y `default` tras un operador, un «.» o un `new`):
+// UNA fila por elemento, cada una verificada con javac 17.0.18 (sondas 24a y 24b: 82 programas completos, misma línea que javac).
+describe('consumirMiembroDeClase — cada elemento de los conjuntos cerrados del reconocedor de campos tiene su fila (tarea 1.35)', () => {
+  const errorDe = (fuente: string): ErrorDeCompilacion => {
+    try {
+      analizar(fuente);
+    } catch (error) {
+      if (error instanceof ErrorDeCompilacion) return error;
+      throw error;
+    }
+    throw new Error(`se esperaba un ErrorDeCompilacion para: ${fuente}`);
+  };
+
+  // Las 15 palabras que abren un miembro (los 11 modificadores, `default`, `class`, `interface` y `enum`), cada una con un miembro completo que empieza con ella.
+  const MIEMBROS_POR_PALABRA: ReadonlyArray<readonly [string, string]> = [
+    ['public', 'public int a;'],
+    ['protected', 'protected int a;'],
+    ['private', 'private int a;'],
+    ['static', 'static int a;'],
+    ['final', 'final int a;'],
+    ['abstract', 'abstract void a();'],
+    ['synchronized', 'synchronized void a() { }'],
+    ['transient', 'transient int a;'],
+    ['volatile', 'volatile int a;'],
+    ['native', 'native void a();'],
+    ['strictfp', 'strictfp void a() { }'],
+    ['default', 'default int a;'],
+    ['class', 'class Q { }'],
+    ['interface', 'interface Q { }'],
+    ['enum', 'enum Q { A }'],
+  ];
+
+  it.each(MIEMBROS_POR_PALABRA)('tras un operando, un miembro que empieza con `%s`: «falta-punto-y-coma» en el fin del operando', (_palabra, miembro) => {
+    const fuente = `class C {\n    int x = 5\n    ${miembro}\n}`;
+    const error = errorDe(fuente);
+    expect(error.codigo).toBe('falta-punto-y-coma');
+    expect(error.rango.inicio).toBe(fuente.indexOf('5') + 1);
+  });
+
+  it.each(MIEMBROS_POR_PALABRA)('tras un operador (`int x =`), un miembro que empieza con `%s`: «illegal start of expression» EN la palabra, no «falta el ;»', (palabra, miembro) => {
+    const fuente = `class C {\n    int x =\n    ${miembro}\n}`;
+    const error = errorDe(fuente);
+    expect(error.codigo).not.toBe('falta-punto-y-coma');
+    expect(error.rango.inicio).toBe(fuente.indexOf(palabra, fuente.indexOf('=')));
+  });
+
+  // Tras un «.» o un `new` javac pide un NOMBRE y lo señala en el fin de ese token. Excepciones: `class` tras un «.» es un literal de clase (`a.class`) y `enum` se lee como un
+  // identificador mal usado (el error cae en la palabra, como con cualquier nombre reservado).
+  it.each(MIEMBROS_POR_PALABRA.filter(([palabra]) => palabra !== 'class' && palabra !== 'enum'))('tras un «.», un miembro que empieza con `%s`: «<identifier> expected» en el fin del punto', (_palabra, miembro) => {
+    const fuente = `class C {\n    int x = a.\n    ${miembro}\n}`;
+    const error = errorDe(fuente);
+    expect(error.codigo).not.toBe('falta-punto-y-coma');
+    expect(error.rango.inicio).toBe(fuente.indexOf('a.') + 2);
+  });
+
+  it.each(MIEMBROS_POR_PALABRA.filter(([palabra]) => palabra !== 'enum'))('tras un `new`, un miembro que empieza con `%s`: «<identifier> expected» en el fin de `new`', (_palabra, miembro) => {
+    const fuente = `class C {\n    Object o = new\n    ${miembro}\n}`;
+    const error = errorDe(fuente);
+    expect(error.codigo).not.toBe('falta-punto-y-coma');
+    expect(error.rango.inicio).toBe(fuente.indexOf('new') + 3);
+  });
+
+  it.each([
+    ['int', 'int a;'],
+    ['long', 'long a;'],
+    ['double', 'double a;'],
+    ['float', 'float a;'],
+    ['char', 'char a;'],
+    ['boolean', 'boolean a;'],
+    ['byte', 'byte a;'],
+    ['short', 'short a;'],
+    ['void', 'void a() { }'],
+  ])('tras un operando, un miembro cuyo tipo es `%s`: «falta-punto-y-coma» en el fin del operando', (_palabra, miembro) => {
+    const fuente = `class C {\n    int x = 5\n    ${miembro}\n}`;
+    const error = errorDe(fuente);
+    expect(error.codigo).toBe('falta-punto-y-coma');
+    expect(error.rango.inicio).toBe(fuente.indexOf('5') + 1);
+  });
+
+  // `true`, `false` y `null` son operandos: lo que sigue a uno de ellos ya no puede continuar la expresión; y detrás de otro operando no pueden aparecer (`y true`).
+  it.each([
+    ['true', 'boolean b = true'],
+    ['false', 'boolean b = false'],
+    ['null', 'Object o = null'],
+  ])('un campo que termina en `%s` y el siguiente miembro: «falta-punto-y-coma» en el fin del literal', (palabra, campo) => {
+    const fuente = `class C {\n    ${campo}\n    int y;\n}`;
+    const error = errorDe(fuente);
+    expect(error.codigo).toBe('falta-punto-y-coma');
+    expect(error.rango.inicio).toBe(fuente.indexOf(campo) + campo.length);
+    expect(fuente.slice(error.rango.inicio - palabra.length, error.rango.inicio)).toBe(palabra);
+  });
+
+  it.each(['true', 'false', 'null'])('un `%s` detrás de un operando («y %s»): «falta-punto-y-coma» en el fin del operando', (palabra) => {
+    const fuente = `class C {\n    boolean b = y ${palabra};\n}`;
+    const error = errorDe(fuente);
+    expect(error.codigo).toBe('falta-punto-y-coma');
+    expect(error.rango.inicio).toBe(fuente.indexOf('y') + 1);
+  });
+
+  // Los signos que puede llevar el TIPO de una conversión (`(Map<K, V>) x`): sin cualquiera de ellos, el grupo no se reconocería como un posible cast y el nombre que sigue
+  // se leería como «dos nombres seguidos»: un «falta el ;» falso para un campo que javac compila.
+  it.each([
+    ['una coma (dos argumentos de tipo)', 'static Object a = (java.util.Map<String, Integer>) x;'],
+    ['un `>>` (un genérico dentro de otro)', 'static Object a = (java.util.List<java.util.List<String>>) x;'],
+    ['un `>>>` (tres genéricos anidados)', 'static Object a = (java.util.List<java.util.List<java.util.List<String>>>) x;'],
+    ['un comodín `?`', 'static Object a = (java.util.List<?>) x;'],
+    ['un `&` (una intersección)', 'static Object a = (Object & java.io.Serializable) x;'],
+    ['corchetes (un arreglo)', 'static Object a = (int[]) x;'],
+    ['dos pares de corchetes', 'static Object a = (String[][]) x;'],
+    ['una anotación del tipo', 'static Object a = (@Deprecated String) x;'],
+  ])('un campo con una conversión cuyo tipo lleva %s es válido (aviso), aunque otro miembro venga detrás', (_descripcion, campo) => {
+    const programa = analizar(`class C {\n    static Object x = null;\n    ${campo}\n    static int z = 1;\n    public static void main(String[] a) { }\n}`);
+    expect(programa.clase.main).not.toBeNull();
+    expect(programa.clase.otrosMiembros).toHaveLength(3);
+  });
+
+  // Y los argumentos de tipo de un `new` con cuerpo (clase anónima): la «(» tras ellos son los argumentos del constructor y la «{» el cuerpo, no un «falta el ;».
+  it.each([
+    ['una coma', 'static Object a = new java.util.HashMap<String, Integer>() { };'],
+    ['un `>>`', 'static Object a = new java.util.ArrayList<java.util.List<String>>() { };'],
+    ['un `>>>`', 'static Object a = new java.util.ArrayList<java.util.List<java.util.List<String>>>() { };'],
+    ['un comodín `?`', 'static Object a = new java.util.ArrayList<?>() { };'],
+  ])('un campo con una clase anónima cuyo tipo lleva %s es válido (aviso)', (_descripcion, campo) => {
+    const programa = analizar(`class C {\n    ${campo}\n    static int z = 1;\n    public static void main(String[] a) { }\n}`);
+    expect(programa.clase.main).not.toBeNull();
+    expect(programa.clase.otrosMiembros).toHaveLength(2);
+  });
+
+  // Los 11 modificadores de miembro son miembros válidos (avisos): `native` y `abstract` sin cuerpo, los demás con él.
+  it.each([
+    'protected int a;',
+    'synchronized void s() { }',
+    'transient int t;',
+    'volatile int v;',
+    'native void n();',
+    'strictfp void f() { }',
+    'abstract void q();',
+  ])('control: «%s» es un miembro válido (aviso)', (miembro) => {
+    const programa = analizar(`class C {\n    ${miembro}\n    public static void main(String[] a) { }\n}`);
+    expect(programa.clase.main).not.toBeNull();
+    expect(programa.clase.otrosMiembros).toHaveLength(1);
+  });
+});
+
+// Tarea 1.35 (la misma mutación por elemento, sobre `sealed`): `JavacParser.isSealedClassStart` (JDK 17, miembros y nivel superior) acepta tras `sealed` EXACTAMENTE estas palabras —los
+// modificadores `public protected private abstract static final strictfp` y `class interface enum`—, una anotación que no abra `@interface`, otro `sealed` o `non-sealed`; ninguna otra
+// (`synchronized`, `native`, `transient`, `volatile`, `default`, un tipo, un nombre). `non-sealed` son tres tokens PEGADOS.
+describe('longitudDeModificadorSellado — qué palabras puede seguir a `sealed` y a `non-sealed` (tarea 1.35, JavacParser.isSealedClassStart)', () => {
+  const longitudDe = (texto: string): number => longitudDeModificadorSellado(new CursorDeTokens(tokenizar(texto)), 0);
+
+  it.each(['public', 'protected', 'private', 'abstract', 'static', 'final', 'strictfp', 'class', 'interface', 'enum'])('`sealed %s` es el modificador `sealed` (1 token)', (palabra) => {
+    expect(longitudDe(`sealed ${palabra} X { }`)).toBe(1);
+  });
+
+  it.each(['public', 'protected', 'private', 'abstract', 'static', 'final', 'strictfp', 'class', 'interface', 'enum'])('`non-sealed %s` es el modificador `non-sealed` (3 tokens)', (palabra) => {
+    expect(longitudDe(`non-sealed ${palabra} X { }`)).toBe(3);
+  });
+
+  it.each(['synchronized', 'native', 'transient', 'volatile', 'default', 'int', 'void', 'x', '=', ';'])('`sealed %s` NO es un modificador: `sealed` es un nombre', (palabra) => {
+    expect(longitudDe(`sealed ${palabra} X { }`)).toBe(0);
+  });
+
+  it('una anotación, otro `sealed` o `non-sealed` tras `sealed` también cuentan; `@interface` solo tras `non-sealed`', () => {
+    expect(longitudDe('sealed @A class X { }')).toBe(1);
+    expect(longitudDe('sealed sealed class X { }')).toBe(1);
+    expect(longitudDe('sealed non-sealed class X { }')).toBe(1);
+    expect(longitudDe('sealed @interface X { }')).toBe(0);
+    expect(longitudDe('non-sealed @interface X { }')).toBe(3);
+  });
+
+  it('`non-sealed` con espacios no es el modificador (son tres tokens que deben ir pegados)', () => {
+    expect(longitudDe('non - sealed class X { }')).toBe(0);
+    expect(longitudDe('non-sealed class X { }')).toBe(3);
+  });
+});
+
+// Tarea 1.35: `strictfp` también es modificador de un tipo de nivel superior (`strictfp class Q { }` lo compila javac 17.0.18).
+describe('no-soportado — `strictfp` como modificador de un tipo de nivel superior (tarea 1.35)', () => {
+  it('`strictfp class Q { }` antes o después de la clase principal es un tipo más (aviso)', () => {
+    const despues = analizar('class C { public static void main(String[] a) { } } strictfp class Q { }');
+    expect(despues.otrosTiposDeNivelSuperior).toHaveLength(1);
+    // Antes de la principal pasa lo mismo que con cualquier otra clase: la primera es «la clase» del programa y las demás son tipos más.
+    const antes = analizar('strictfp class Q { } class C { public static void main(String[] a) { } }');
+    expect(antes.clase.nombre).toBe('Q');
+    expect(antes.otrosTiposDeNivelSuperior).toHaveLength(1);
   });
 });
 
@@ -785,6 +1358,40 @@ describe('analizarClase — cabecera con genéricos, extends e implements avisa,
       { codigo: 'generico-no-soportado', texto: '<T extends Comparable<T>>' },
       { codigo: 'herencia-no-soportada', texto: 'implements A<T>' },
     ]);
+  });
+
+  // Tarea 1.35 (WARNING 3, `sealed`/`permits`): la clase principal también puede ser sellada (`public sealed class C permits D`), y lo que no se puede
+  // revisar con el resto del archivo (¿tiene subclases?, ¿están en la lista?) hace que sea un aviso, nunca un error; el modificador y la cláusula `permits`
+  // cuentan como herencia (JLS 8.1.6). Con espacios, `non - sealed` NO es el modificador (javac pide los tres tokens pegados).
+  it('"public sealed class C permits D": aviso del modificador `sealed` y aviso de herencia por la cláusula `permits`', () => {
+    expect(avisosDeCabecera('public sealed class C permits D')).toEqual([
+      { codigo: 'herencia-no-soportada', texto: 'sealed' },
+      { codigo: 'herencia-no-soportada', texto: 'permits D' },
+    ]);
+  });
+
+  it('triangulación: lista de `permits`, `sealed` antes de `public`, `non-sealed` con `extends`', () => {
+    expect(avisosDeCabecera('sealed public class C permits D, E.F')).toEqual([
+      { codigo: 'herencia-no-soportada', texto: 'sealed' },
+      { codigo: 'herencia-no-soportada', texto: 'permits D, E.F' },
+    ]);
+    expect(avisosDeCabecera('non-sealed class C extends B')).toEqual([
+      { codigo: 'herencia-no-soportada', texto: 'non-sealed' },
+      { codigo: 'herencia-no-soportada', texto: 'extends B' },
+    ]);
+    expect(avisosDeCabecera('class C extends B implements A permits D')).toEqual([
+      { codigo: 'herencia-no-soportada', texto: 'extends B implements A permits D' },
+    ]);
+  });
+
+  it('una clase `sealed` sin cláusula `permits` también avisa (javac exige que tenga subclases en el mismo archivo, y eso no se revisa)', () => {
+    expect(avisosDeCabecera('public sealed class C')).toEqual([{ codigo: 'herencia-no-soportada', texto: 'sealed' }]);
+  });
+
+  it('control: `sealed` y `permits` siguen siendo nombres válidos de variable, y `non - sealed` con espacios no es el modificador (error de sintaxis)', () => {
+    const programa = analizar('class C { public static void main(String[] a) { int sealed = 1; int permits = 2; } }');
+    expect(programa.clase.main).not.toBeNull();
+    expect(() => analizar('non - sealed class C { public static void main(String[] a) { } }')).toThrow(ErrorDeCompilacion);
   });
 
   const cabecerasInvalidas: ReadonlyArray<readonly [string, string]> = [

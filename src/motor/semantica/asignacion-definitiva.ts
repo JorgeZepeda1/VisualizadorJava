@@ -42,7 +42,7 @@
 //     estado tras el cuerpo Y antes de cada `continue` (antes la actualización veía solo el estado previo al cuerpo).
 import type { NodoBloque, NodoDeclaracionLocal, NodoElementoBloque, NodoExpresion, NodoPrograma, NodoSentencia } from '../sintaxis/ast.ts';
 import { Alcance } from './alcance.ts';
-import { valorConstante } from './constantes.ts';
+import { constanteDeVariable, valorConstante } from './constantes.ts';
 import type { ProblemaAtribucion } from './diagnostico.ts';
 
 /** El conjunto de variables DEFINITIVAMENTE ASIGNADAS ("DA", JLS 16) en un punto del programa.
@@ -168,8 +168,11 @@ function visitarDeclaracionLocal(
   for (const declarador of declaracion.declaradores) {
     // Tarea 1.29 (JLS 4.12.4 + 16.1.1): una `final` con inicializador constante es una VARIABLE CONSTANTE — `if (DEBUG)` con
     // `final boolean DEBUG = true;` es una condición constante (mismo campo que arman `atribucion.ts`/`alcanzabilidad.ts`).
+    // Tarea 1.35: el valor se guarda convertido al tipo declarado (JLS 4.12.4 y 5.2), igual que en `atribucion.ts`.
     const constante =
-      declarador.inicializador !== null && declaracion.esFinal ? (valorConstante(declarador.inicializador, alcance) ?? undefined) : undefined;
+      declarador.inicializador !== null && declaracion.esFinal
+        ? constanteDeVariable(declaracion.nombreTipo, valorConstante(declarador.inicializador, alcance))
+        : undefined;
     // Tarea 1.32 (N6, JLS 6.3 + 16): el alcance de la variable EMPIEZA en su propio inicializador — se declara antes de visitarlo, sin valor
     // (`conQuitada`: tampoco hereda el «asignada» de una variable homónima de un alcance hermano ya cerrado, p. ej. la `i` de un `for`
     // anterior). Así `int x = x + 1;` lee una variable todavía sin valor («might not have been initialized»), como javac, y una

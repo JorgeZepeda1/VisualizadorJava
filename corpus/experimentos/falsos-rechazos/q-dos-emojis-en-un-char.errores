@@ -1,0 +1,10 @@
+QDosEmojisEnUnChar.java:4: error: unclosed character literal
+        char c = '😀😀';
+                 ^
+QDosEmojisEnUnChar.java:4: error: illegal character: '\ud83d\ude00'
+        char c = '😀😀';
+                    ^
+QDosEmojisEnUnChar.java:4: error: unclosed character literal
+        char c = '😀😀';
+                      ^
+3 errors

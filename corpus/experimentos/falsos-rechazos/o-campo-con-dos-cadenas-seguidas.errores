@@ -1,0 +1,4 @@
+OCampoConDosCadenasSeguidas.java:3: error: ';' expected
+    String s = "a" "b";
+                  ^
+1 error

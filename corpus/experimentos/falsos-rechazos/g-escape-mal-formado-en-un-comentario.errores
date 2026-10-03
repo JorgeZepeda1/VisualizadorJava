@@ -1,0 +1,4 @@
+GEscapeMalFormadoEnUnComentario.java:5: error: illegal unicode escape
+        /* mal: \u00 */
+                    ^
+1 error

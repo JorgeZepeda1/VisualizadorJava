@@ -11,6 +11,7 @@ import {
 } from '../../pruebas/compilacion/tablas-de-prototipo.ts';
 import { compilarEnLote } from './compilar-en-lote.ts';
 import { localizarJdk, verificarVersionJdk, type InfoJdk } from './jdk.ts';
+import { LIMITE_DE_LAS_PRUEBAS_CON_JDK_MS } from './limites-de-pruebas.ts';
 
 let jdk: InfoJdk;
 beforeAll(() => {
@@ -37,5 +38,5 @@ describe('javac 17 real — la matriz de nombres de Object.prototype', () => {
       }
     }
     expect(desacuerdos).toEqual([]);
-  }, 120_000);
+  }, LIMITE_DE_LAS_PRUEBAS_CON_JDK_MS);
 });

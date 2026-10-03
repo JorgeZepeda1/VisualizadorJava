@@ -42,6 +42,9 @@ export interface Token {
    * copiar un valor ya construido no necesita repetir la verificación (mismo patrón que
    * `NoSoportadoColectado.datos`, sintaxis/no-soportado.ts). */
   readonly datos?: Readonly<Record<string, unknown>>;
+  /** Tarea 1.35: solo para el token «no soportado» de un escape Unicode (`\\uXXXX`): `true` si estaba DENTRO de un comentario. Un escape en un comentario no puede ser la
+   * causa de un error de sintaxis posterior (no cambia ningún token del código); uno en el código sí (`\\u0026\\u0026` por `&&`). */
+  readonly enComentario?: boolean;
   readonly rango: Rango;
 }
 

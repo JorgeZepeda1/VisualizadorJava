@@ -5,7 +5,7 @@
 // omisión (todo módulo que exporta API, java.* y jdk.* salvo los incubadores) y solo los tipos que
 // se pueden importar: públicos, con todos sus tipos envolventes públicos, fuera de la vista previa.
 import { describe, expect, it } from 'vitest';
-import { clasesDelPaquete, existeClaseDelJdk } from './catalogo-clases.ts';
+import { clasesDelPaquete, existeClaseDelJdk, existePaqueteOTipoDelJdk } from './catalogo-clases.ts';
 
 describe('existeClaseDelJdk — nombres calificados reales (JLS 7.5.1: el nombre canónico)', () => {
   it.each([
@@ -64,5 +64,41 @@ describe('clasesDelPaquete — las clases que un import con comodín (o java.lan
   it('un paquete que no existe (o mal escrito) no trae ninguna clase', () => {
     expect(clasesDelPaquete('java.utill').size).toBe(0);
     expect(clasesDelPaquete('constructor').size).toBe(0);
+  });
+});
+
+// Tarea 1.35 (SUGGESTION-3 y un falso acepto: `import foo.*;`, `import java.Util.*;`, `import org.junit.*;` terminaban en `ok`; javac: «package foo does not exist» en la línea del
+// `import`): un `import nombre.*;` (JLS 7.5.2) es válido si `nombre` es un PAQUETE que tiene tipos visibles o un TIPO (se importan sus miembros: `import java.util.Map.*;`). La regla se
+// midió con javac 17.0.18 sobre 886 nombres (los 871 paquetes del sistema y 15 más): lo que javac acepta es EXACTAMENTE los 226 paquetes de la lista y 4 tipos.
+describe('existePaqueteOTipoDelJdk — qué acepta `import nombre.*;` (JLS 7.5.2, tarea 1.35)', () => {
+  it.each(['java.util', 'java.lang', 'java.util.concurrent', 'javax.swing', 'org.w3c.dom', 'sun.misc'])('el paquete %s existe', (nombre) => {
+    expect(existePaqueteOTipoDelJdk(nombre)).toBe(true);
+  });
+
+  it.each(['java.util.Map', 'java.util.Map.Entry', 'java.lang.Math', 'java.lang.String'])('el TIPO %s también vale: se importan sus miembros', (nombre) => {
+    expect(existePaqueteOTipoDelJdk(nombre)).toBe(true);
+  });
+
+  it.each([
+    ['java', 'un paquete que solo tiene subpaquetes'],
+    ['javax', 'idem'],
+    ['java.sqrt', 'un paquete inventado dentro de uno real'],
+    ['java.Util', 'una mayúscula de más'],
+    ['java.util2', 'un número de más'],
+    ['java.lang.Matth', 'una falta de ortografía en un tipo'],
+    ['foo', 'un paquete inventado'],
+    ['org.junit', 'una biblioteca que no es del JDK'],
+    ['com.google.gson', 'idem'],
+    ['jdk.internal.misc', 'un paquete interno (no exportado)'],
+    ['jdk.incubator.vector', 'un módulo incubador'],
+    ['', 'nada'],
+  ])('%s NO existe (%s)', (nombre) => {
+    expect(existePaqueteOTipoDelJdk(nombre)).toBe(false);
+  });
+
+  it('un nombre que JavaScript trae en todos sus objetos no es un paquete (la tabla no hereda de Object.prototype)', () => {
+    expect(existePaqueteOTipoDelJdk('constructor')).toBe(false);
+    expect(existePaqueteOTipoDelJdk('__proto__')).toBe(false);
+    expect(existePaqueteOTipoDelJdk('toString')).toBe(false);
   });
 });

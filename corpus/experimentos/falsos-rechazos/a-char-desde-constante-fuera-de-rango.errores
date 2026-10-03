@@ -1,0 +1,4 @@
+ACharDesdeConstanteFueraDeRango.java:5: error: incompatible types: possible lossy conversion from int to char
+        char c = A;
+                 ^
+1 error

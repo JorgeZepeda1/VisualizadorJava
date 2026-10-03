@@ -55,6 +55,7 @@ import {
   type Expr,
   type Sentencia,
 } from './programa.ts';
+import { PLANTILLAS_FUERA_DEL_SUBCONJUNTO } from './plantillas-fuera-del-subconjunto.ts';
 import {
   CAMPOS_SOBRE_PRIMITIVOS,
   CONSTANTES_PARA_ESTRECHAR,
@@ -1019,8 +1020,10 @@ const ARGUMENTOS_DE_NEW: Readonly<Record<string, string>> = {
  * `System`, `System.out.println(…)` (la forma que más se escribe). `generador.ts` la pone PRIMERA en los programas de nombre del JDK, estratificados: así cada nombre se
  * ejerce siempre y no por suerte (familia C de la re-verificación del lote 1: antes del 1.34 la clase `System` con `System.out.println` salía `ok`).
  */
-export function usoDeLaClase(entorno: Entorno): Sentencia[] {
+export function usoDeLaClase(entorno: Entorno, controlValido = false): Sentencia[] {
   const { azar, clase } = entorno;
+  // Tarea 1.35: el CONTROL válido (`Math m = null;`): un tipo con el nombre de la propia clase es siempre válido (el tipo es la clase del programa), con cualquier nombre de variable.
+  if (controlValido) return [declararConNombre(entorno, clase, literal('null', 'null'))];
   const delCatalogo = entorno.api.clases.includes(clase);
   const metodos = delCatalogo ? entorno.api.metodos(clase) : [];
   const campos = delCatalogo ? entorno.api.campos(clase) : [];
@@ -1227,15 +1230,17 @@ export const PLANTILLAS: readonly PlantillaDeSentencia[] = [
   { nombre: 'llamada-de-biblioteca', peso: 16, generar: llamadaDeBiblioteca },
   { nombre: 'void-como-valor', peso: 2, generar: voidEnPosicionDeValor },
   { nombre: 'switch', peso: 5, generar: switchAlAzar },
-  { nombre: 'switch-con-constante', peso: 2.5, generar: switchConConstante },
+  { nombre: 'switch-con-constante', peso: 3.3, generar: switchConConstante }, // 2.5 hasta la 1.34; la 1.35 sumó 7.4 de peso a la lista y la muestra de 4 000 bajó a 20 de los 25 programas que exige la cobertura
   { nombre: 'printf-como-valor', peso: 2.5, generar: printfComoValor },
   { nombre: 'switch-con-sentencia-antes-del-case', peso: 1, generar: switchConSentenciaAntesDelCase },
   { nombre: 'valor-de-tipo-no-modelado', peso: 2.4, generar: valorDeTipoNoModelado },
-  { nombre: 'sentencia-entre-parentesis', peso: 1.8, generar: sentenciaEntreParentesis },
+  { nombre: 'sentencia-entre-parentesis', peso: 2.3, generar: sentenciaEntreParentesis }, // 1.8 hasta la 1.34; ver `switch-con-constante`: la forma `(x) += 1;` dejó de salir en la muestra
   { nombre: 'condicional-o-ciclo', peso: 12, generar: condicionalOCiclo },
   { nombre: 'salto-suelto', peso: 0.6, generar: saltoSuelto },
   { nombre: 'impresion', peso: 15, generar: impresionAlAzar },
   { nombre: 'alcance-y-repeticion', peso: 1, generar: alcanceYRepeticion },
   { nombre: 'flujo', peso: 2, generar: flujo },
   { nombre: 'varios', peso: 1, generar: variosAlAzar },
+  // Tarea 1.35: `instanceof` con patrón, clases anónimas y `for` mejorado (construcciones que Java acepta y el subconjunto no interpreta).
+  ...PLANTILLAS_FUERA_DEL_SUBCONJUNTO,
 ];

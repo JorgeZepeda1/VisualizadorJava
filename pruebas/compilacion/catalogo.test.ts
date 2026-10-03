@@ -24,11 +24,19 @@ function archivosJava(ruta: string): string[] {
     .sort();
 }
 
+// Las muestras que traen más de una ocurrencia de la construcción a propósito, y cuántas «más» hay tras la primera: `36-switch-flecha.java` tiene dos brazos con flecha;
+// `65-clase-sellada.java` declara tres miembros propios (la interfaz sellada y sus dos records).
+const MUESTRAS_CON_VARIAS_OCURRENCIAS: ReadonlyMap<string, number> = new Map([
+  ['36-switch-flecha.java', 1],
+  ['65-clase-sellada.java', 2],
+]);
+
 describe('pruebas/compilacion/catalogo — avisos NO-DISP (uno por construcción, corpus/compilacion/avisos)', () => {
   const archivos = archivosJava(RUTA_AVISOS);
 
   it('el corpus de avisos no está vacío (guarda contra un directorio mal armado)', () => {
-    expect(archivos.length).toBeGreaterThanOrEqual(37);
+    // 67 muestras: las 61 de la 1.17–1.34 y las 6 de la 1.35 (clase anónima, llamada a `main`, `instanceof` con patrón, clase sellada, literal de clase, emoji en un `char`).
+    expect(archivos.length).toBeGreaterThanOrEqual(67);
   });
 
   // Tarea 1.23 (agregada por el orquestador: hallazgo de la guarda de avisos, sub-lote 1-D6):
@@ -49,7 +57,15 @@ describe('pruebas/compilacion/catalogo — avisos NO-DISP (uno por construcción
       // acepta) ni "error-arranque" — siempre "no-disponible".
       expect(resultado.problema.categoria).toBe('no-disponible');
       expect(resultado.problema.linea).toBeGreaterThanOrEqual(1);
-      expect(resultado.adicionales).toBeGreaterThanOrEqual(0);
+      // Tarea 1.35 (SUGGESTION-5 de la re-verificación del lote 1): `adicionales ≥ 0` no podía fallar nunca. Cada muestra ejemplifica UNA construcción, así que no queda
+      // nada «más» que contar (REQ-SUB-006: «y N más»), salvo las que traen varias ocurrencias A PROPÓSITO (`MUESTRAS_CON_VARIAS_OCURRENCIAS`). Al volverla exacta apareció un
+      // defecto real: un literal fuera del subconjunto (`0x1F`, `010`, `0b101`, `3.5f`, un bloque de texto, un escape raro) se contaba DOS veces —el aviso del léxico y el
+      // nodo del analizador, con el mismo rango— y el alumno habría leído «y 1 más» en un programa con una sola construcción.
+      expect(resultado.adicionales).toBe(MUESTRAS_CON_VARIAS_OCURRENCIAS.get(nombre) ?? 0);
+      // Y la línea del aviso cae DENTRO del archivo y es la de una línea con código, no una vacía ni el final.
+      const lineas = fuente.split('\n');
+      expect(resultado.problema.linea).toBeLessThanOrEqual(lineas.length);
+      expect(lineas[resultado.problema.linea - 1]?.trim().length).toBeGreaterThan(0);
     },
   );
 });

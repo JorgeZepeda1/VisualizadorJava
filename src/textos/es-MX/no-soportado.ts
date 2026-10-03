@@ -192,9 +192,9 @@ export const textosNoSoportado: { readonly [K in CodigoNoSoportado]: (datos: Dat
   // esté bien escrito»); el visualizador solo no la simula. El nombre es el que escribió el alumno.
   'clase-no-soportada': ({ linea, nombre }) => marco(linea, `la clase \`${nombre}\``, 'no simula esa clase'),
 
-  // Tarea 1.29: la cabecera de la clase con `extends` (hereda de otra clase) o `implements` (cumple una interfaz).
+  // Tarea 1.29: la cabecera de la clase con `extends` (hereda de otra clase) o `implements` (cumple una interfaz). Tarea 1.35: y `sealed`/`non-sealed`/`permits` (clases selladas).
   'herencia-no-soportada': ({ linea }) =>
-    marco(linea, 'una clase que hereda de otra o implementa una interfaz (`extends` o `implements`)', 'no simula herencia ni interfaces'),
+    marco(linea, 'una clase con herencia, interfaces o clases selladas (`extends`, `implements`, `sealed` o `permits`)', 'no simula herencia, interfaces ni clases selladas'),
 
   // Tarea 1.29: `assert`, un tipo declarado dentro de un método y un bloque `synchronized`.
   'assert-no-soportado': ({ linea }) => marco(linea, 'una instrucción `assert`', 'no comprueba aserciones'),
@@ -224,12 +224,34 @@ export const textosNoSoportado: { readonly [K in CodigoNoSoportado]: (datos: Dat
   'sincronizado-no-soportado': ({ linea }) =>
     marco(linea, 'un bloque `synchronized`', 'no simula hilos ni sincronización'),
 
+  // Tarea 1.35: `new Tipo() { … }`. Mismo «no simula clases propias» que el tipo local: el cuerpo es una clase que el alumno escribió.
+  'clase-anonima-no-soportada': ({ linea }) =>
+    marco(linea, 'una clase anónima (`new Tipo() { … }`)', 'no simula clases propias'),
+
+  // Tarea 1.35 (decisión del PO, 2026-10-02): un archivo vacío, o con solo un comentario, un `package` o imports, no declara ninguna clase. javac lo compila sin error y no
+  // hay nada que ejecutar. Como `ejecucion-no-disponible`, NO usa el marco («Es parte de Java…»: no hay una construcción que nombrar) ni habla de una línea: es del archivo entero.
+  'archivo-sin-clase': () =>
+    'Tu programa no tiene ninguna clase, así que no hay nada que ejecutar. Un programa de Java empieza en una clase con un método `main`; por ejemplo: ' +
+    '`public class MiPrograma { public static void main(String[] args) { … } }`.',
+
+  // Tarea 1.35: `main(args);` — la recursión de `main`, el único método propio que llega a la atribución (los demás avisan en su declaración).
+  'llamada-a-metodo-propio-no-soportada': ({ linea, nombre }) =>
+    marco(linea, `una llamada a un método propio (\`${nombre}(...)\`)`, 'no ejecuta llamadas a métodos de tu propia clase'),
+
+  // Tarea 1.35: `String.class`, `int[].class` — un literal de clase. Java lo acepta como una construcción más (JLS 15.8.2); el visualizador no maneja los objetos `Class`.
+  'literal-de-clase-no-soportado': ({ linea, literal }) =>
+    marco(linea, `un literal de clase (\`${literal}\`)`, 'no maneja los objetos que representan a una clase (`Class`)'),
+
   'escape-no-soportado': ({ linea }) =>
     marco(linea, 'una secuencia de escape que Java reconoce pero este visualizador todavía no simula (como `\\r`, `\\b`, `\\f` o `\\s`)', 'no decodifica ese escape'),
 
   'escape-octal-no-soportado': ({ linea }) => marco(linea, 'un escape octal dentro de un texto o carácter (como `\\101`)', 'no decodifica escapes octales'),
 
   'escape-unicode-no-soportado': ({ linea }) => marco(linea, 'un escape Unicode (`\\uXXXX`)', 'no decodifica escapes Unicode'),
+
+  // Tarea 1.35: `char c = '<un emoji>';` — javac lo acepta (el valor del `char` es la primera de las dos unidades UTF-16 del carácter); el visualizador no simula ese literal.
+  'caracter-suplementario-no-soportado': ({ linea, caracter }) =>
+    marco(linea, `el carácter \`${caracter}\` dentro de un literal \`char\``, 'no simula un carácter que Java guarda en dos `char` (como un emoji)'),
 
   'bloque-de-texto-no-soportado': ({ linea }) =>
     marco(linea, 'un bloque de texto (`""" … """`)', 'no interpreta bloques de texto', 'Usa comillas dobles normales, con `\\n` para los saltos de línea.'),

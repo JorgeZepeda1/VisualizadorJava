@@ -217,7 +217,14 @@ export interface CaracterLeido {
   readonly noSoportados: readonly NoSoportadoLexico[];
 }
 
-/** Lee un literal char ('x') que empieza en `inicio`: exactamente una unidad de contenido. */
+/** Tarea 1.35: ¿hay en `fuente[i]` un par de sustitutos UTF-16 (una unidad alta y una baja), es decir, un carácter fuera del plano básico como un emoji? */
+function esParDeSustitutos(fuente: string, i: number): boolean {
+  const alta = fuente.charCodeAt(i);
+  const baja = fuente.charCodeAt(i + 1);
+  return alta >= 0xd800 && alta <= 0xdbff && baja >= 0xdc00 && baja <= 0xdfff;
+}
+
+/** Lee un literal char ('x') que empieza en `inicio`: exactamente una unidad de contenido (o, desde la tarea 1.35, el par de unidades de un carácter fuera del plano básico). */
 export function leerCaracter(fuente: string, inicio: number): CaracterLeido {
   if (fuente[inicio] !== "'") {
     throw new ErrorDeCompilacion('se esperaba un literal char entre comillas simples', {
@@ -235,6 +242,24 @@ export function leerCaracter(fuente: string, inicio: number): CaracterLeido {
   }
   if (fuente[cursorContenido] === undefined || fuente[cursorContenido] === '\n') {
     throw new ErrorDeCompilacion('literal char sin cerrar', { inicio, fin: cursorContenido });
+  }
+
+  // Tarea 1.35: un carácter fuera del plano básico (un emoji) ocupa DOS unidades UTF-16. javac 17 lo acepta como el contenido de un literal `char` (el valor es la primera unidad:
+  // `int x = '<emoji>';` da 55357 para U+1F600), así que no es un error; el visualizador no simula ese literal y avisa.
+  if (esParDeSustitutos(fuente, cursorContenido) && fuente[cursorContenido + 2] === "'") {
+    const caracter = fuente.slice(cursorContenido, cursorContenido + 2);
+    return {
+      valor: caracter,
+      longitud: cursorContenido + 3 - inicio,
+      noSoportados: [
+        {
+          codigo: CODIGOS_NO_SOPORTADO.caracterSuplementario,
+          nota: `Java sí acepta el carácter "${caracter}" dentro de un literal char (ocupa dos unidades), pero este visualizador todavía no lo soporta.`,
+          datos: { caracter },
+          rango: { inicio: cursorContenido, fin: cursorContenido + 2 },
+        },
+      ],
+    };
   }
 
   const unidad = decodificarUnidad(fuente, cursorContenido);

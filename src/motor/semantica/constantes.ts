@@ -362,10 +362,14 @@ function aTextoJava(v: ValorConstanteDeTexto): string {
   }
 }
 
-// ---- Casts a primitivo (JLS 15.29: "casts a primitivo o String" — solo primitivo por ahora, ver
-// cabecera: ningún caso real de 1.10/1.11 pide un cast a String) ----
+// ---- Casts a primitivo y a String (JLS 15.29: "casts a primitivo o String"; el de `String` y el de `boolean` son la identidad, tarea 1.35) ----
 
 function plegarConversion(nombreTipo: string, v: ValorConstante): ValorConstante | null {
+  // Tarea 1.35 (JLS 15.29: «casts a tipos primitivos y a `String`»): `(String) "a"` y `(boolean) true` son la identidad — el único cast válido de un `String` a
+  // `String` o de un `boolean` a `boolean` — y siguen siendo constantes (`case (String) "a":`, `if ((boolean) true)`). Cualquier otro operando (`(String) 5`,
+  // `(boolean) 1`) es un cast que Java rechaza: no es una constante (el error lo da la atribución, REQ-SUB-003).
+  if (nombreTipo === 'String') return v.tipo === 'String' ? v : null;
+  if (nombreTipo === 'boolean') return v.tipo === 'boolean' ? v : null;
   const p = promoverNumerico(v);
   if (p === null) return null; // cast numérico de boolean/String: no es una conversión válida de Java
   switch (nombreTipo) {
@@ -413,4 +417,38 @@ function saturarDoubleALargo(valor: number): bigint {
   if (valor <= -9223372036854775808) return LARGO_MIN;
   if (valor >= 9223372036854775808) return LARGO_MAX; // 2^63: el double más cercano por arriba de LARGO_MAX
   return BigInt(Math.trunc(valor));
+}
+
+// ---- El valor de una variable CONSTANTE (JLS 4.12.4) ----
+
+/**
+ * Tarea 1.35 (JLS 4.12.4 y 5.2): el valor que guarda una variable `final` constante — el del inicializador ya CONVERTIDO al tipo declarado por la
+ * conversión de asignación: `final int A = 'a';` guarda el `int` 97 (no el `char`), `final double D = 5;` guarda el `double` 5.0 y `final char C = 65;`
+ * guarda el `char` 65 (estrechamiento de una constante `int` que cabe en un `char`, JLS 5.2). Antes cada pasada guardaba el valor plegado TAL CUAL salió del
+ * inicializador: `char c = A;` (con `A` el `int` 97 declarado con un `char`) no reconocía la constante y daba un `conversion-con-perdida` falso, y
+ * `final double D = 5; D / 2` se plegaba como división entera. Pura. `undefined` si no hay valor, si el tipo declarado no puede ser constante (solo los
+ * primitivos del subconjunto y `String`, JLS 4.12.4) o si la asignación no es válida (el error de asignación lo da la atribución: aquí no queda una
+ * constante inventada).
+ */
+export function constanteDeVariable(nombreTipo: string, valor: ValorConstante | null): ValorConstante | undefined {
+  if (valor === null) return undefined;
+  switch (nombreTipo) {
+    case 'boolean':
+      return valor.tipo === 'boolean' ? valor : undefined;
+    case 'String':
+      return valor.tipo === 'String' ? valor : undefined;
+    case 'int':
+      return valor.tipo === 'int' ? valor : valor.tipo === 'char' ? { tipo: 'int', valor: valor.valor } : undefined;
+    case 'long':
+      return valor.tipo === 'long' ? valor : valor.tipo === 'int' || valor.tipo === 'char' ? { tipo: 'long', valor: BigInt(valor.valor) } : undefined;
+    case 'double':
+      if (valor.tipo === 'double') return valor;
+      if (valor.tipo === 'long') return { tipo: 'double', valor: Number(valor.valor) };
+      return valor.tipo === 'int' || valor.tipo === 'char' ? { tipo: 'double', valor: valor.valor } : undefined;
+    case 'char':
+      if (valor.tipo === 'char') return valor;
+      return valor.tipo === 'int' && valor.valor >= 0 && valor.valor <= 65535 ? { tipo: 'char', valor: valor.valor } : undefined;
+    default:
+      return undefined;
+  }
 }

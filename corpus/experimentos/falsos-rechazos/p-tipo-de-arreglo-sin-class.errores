@@ -1,0 +1,4 @@
+PTipoDeArregloSinClass.java:4: error: '.class' expected
+        Object o = String[];
+                           ^
+1 error

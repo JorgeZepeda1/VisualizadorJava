@@ -91,8 +91,17 @@ describe('resolverSobrecarga — printf/String.format: aridad variable (JLS 15.1
     expect(firma).toMatchObject({ parametros: ['java.lang.String', 'java.lang.Object[]'] });
   });
 
-  it('printf(".2f de 3 -> %.2f", 3) — mismo caso con un int distinto (triangulación, arg. tal cual la corrección lo pide)', () => {
-    expect(resolverSobrecarga('PrintStream', 'printf', ['String', 'int'])).not.toBeNull();
+  // Tarea 1.35 (SUGGESTION-5 de la re-verificación del lote 1): aquí había `printf(".2f de 3 -> %.2f", 3)` con `not.toBeNull()`: los mismos argumentos de la prueba anterior y una
+  // aserción que cualquier firma habría cumplido. Ahora la triangulación usa OTROS dos primitivos (`char` y `boolean`, javac 17.0.18 compila `printf("%c %b%n", 'x', true)`) y exige la
+  // firma completa: si el boxing de alguno dejara de funcionar, la llamada no se resolvería.
+  it('printf("%c %b%n", \'x\', true) — triangulación: char y boolean también se empaquetan en el varargs (char -> Character, boolean -> Boolean) y sale la MISMA firma', () => {
+    expect(resolverSobrecarga('PrintStream', 'printf', ['String', 'char', 'boolean'])).toMatchObject({
+      clase: 'PrintStream',
+      nombre: 'printf',
+      parametros: ['java.lang.String', 'java.lang.Object[]'],
+      retorno: 'java.io.PrintStream',
+      esVarargs: true,
+    });
   });
 
   it('triangulación: varios argumentos empacados de tipos MEZCLADOS (String, int, double) — printf real con 3 sustituciones', () => {

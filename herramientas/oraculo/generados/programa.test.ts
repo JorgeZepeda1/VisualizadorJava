@@ -12,6 +12,7 @@ import {
   mientras,
   nombre,
   para,
+  paraCada,
   plantilla,
   pretendeErrorDeSintaxis,
   renderizarCuerpo,
@@ -312,5 +313,136 @@ describe('seleccion con sentencias antes del primer case (tarea 1.34)', () => {
       seleccion({ selector: nombre('a', 'int'), antes: [salto('break')], casos: [{ etiquetas: [literal('1', 'int')], cuerpo: [] }], flecha: true }),
     );
     expect(renderizarPrograma(conFlecha)).toBe(`${CABECERA}        switch (a) {\n            break;\n            case 1 -> {\n            }\n        }\n${PIE}`);
+  });
+});
+
+// Tarea 1.35: la estructura de la clase. Hasta la 1.34 un programa generado era `imports` + una clase con el `main` de siempre + las sentencias de `main`; la re-verificación del lote 1
+// halló falsos rechazos y falsos aceptos que viven FUERA del cuerpo de `main` (un campo sin su `;`, un `main` con otra firma, una clase sellada, un archivo sin clase, un `import` de un
+// paquete que no existe, un escape Unicode). Los campos nuevos son opcionales: un programa que no los usa se imprime EXACTAMENTE como antes.
+describe('renderizarPrograma — la estructura de la clase (tarea 1.35)', () => {
+  const B = String.fromCharCode(92); // una barra real: nunca se escribe una barra-u literal en este archivo
+
+  it('un programa sin estructura especial se imprime exactamente como antes', () => {
+    expect(renderizarPrograma({ imports: [], sentencias: [] })).toBe(`${CABECERA}${PIE}`);
+  });
+
+  it('`parametrosDeMain` cambia la lista de parámetros de `main` (String..., final String[], String args[], ninguno…)', () => {
+    expect(renderizarPrograma({ imports: [], sentencias: [], parametrosDeMain: 'String... args' })).toBe('public class P {\n    public static void main(String... args) {\n    }\n}\n');
+    expect(renderizarPrograma({ imports: [], sentencias: [], parametrosDeMain: '' })).toContain('    public static void main() {\n');
+    expect(renderizarPrograma({ imports: [], sentencias: [], parametrosDeMain: 'String args[]' })).toContain('main(String args[]) {');
+  });
+
+  it('los miembros se imprimen entre la cabecera de la clase y `main`, un renglón por línea y con la sangría de la clase', () => {
+    const p: Programa = {
+      imports: [],
+      sentencias: [],
+      miembros: [
+        { lineas: ['static int y = 1;', 'static int x = y', '    - y;'], etiquetas: [] },
+        { lineas: ['interface I { }'], etiquetas: [] },
+      ],
+    };
+    expect(renderizarPrograma(p)).toBe(
+      'public class P {\n    static int y = 1;\n    static int x = y\n        - y;\n    interface I { }\n    public static void main(String[] args) {\n    }\n}\n',
+    );
+  });
+
+  it('un miembro marcado `despuesDeMain` se imprime DESPUÉS de `main` y antes de la `}` de la clase (el último miembro de la clase)', () => {
+    const p: Programa = {
+      imports: [],
+      sentencias: [],
+      miembros: [
+        { lineas: ['int antes;'], etiquetas: [] },
+        { lineas: ['int despues'], etiquetas: [], despuesDeMain: true },
+      ],
+    };
+    expect(renderizarPrograma(p)).toBe('public class P {\n    int antes;\n    public static void main(String[] args) {\n    }\n    int despues\n}\n');
+  });
+
+  it('`sinClase` imprime solo los imports (un archivo sin ninguna clase), o nada si no hay ninguno', () => {
+    expect(renderizarPrograma({ imports: ['import java.util.Scanner;'], sentencias: [], sinClase: true })).toBe('import java.util.Scanner;\n');
+    expect(renderizarPrograma({ imports: [], sentencias: [], sinClase: true })).toBe('');
+  });
+
+  it('`escapeUnicode` reemplaza UNA aparición del carácter por su escape (JLS 3.3), con cuatro dígitos hexadecimales', () => {
+    const p: Programa = {
+      imports: [],
+      sentencias: [sentenciaExpr(plantilla(['System.out.println(', ')'], [literal('"a"', 'String')], 'void'))],
+      escapeUnicode: { caracter: '"', aparicion: 0 },
+    };
+    expect(renderizarPrograma(p)).toContain(`System.out.println(${B}u0022a");`);
+    expect(renderizarPrograma({ ...p, escapeUnicode: { caracter: '"', aparicion: 1 } })).toContain(`System.out.println("a${B}u0022);`);
+    expect(renderizarPrograma({ ...p, escapeUnicode: { caracter: ';', aparicion: 0 } })).toContain(`System.out.println("a")${B}u003b`);
+  });
+
+  it('la aparición se toma módulo el número de apariciones (el escape sobrevive a que el reductor quite texto), y un carácter que no aparece deja el texto igual', () => {
+    const sin = renderizarPrograma({ imports: [], sentencias: [] });
+    expect(renderizarPrograma({ imports: [], sentencias: [], escapeUnicode: { caracter: ';', aparicion: 0 } })).toBe(sin);
+    // `{` aparece dos veces en un programa vacío (la clase y `main`): la aparición 2 es otra vez la primera.
+    const primera = renderizarPrograma({ imports: [], sentencias: [], escapeUnicode: { caracter: '{', aparicion: 0 } });
+    expect(primera).not.toBe(sin);
+    expect(renderizarPrograma({ imports: [], sentencias: [], escapeUnicode: { caracter: '{', aparicion: 2 } })).toBe(primera);
+    expect(renderizarPrograma({ imports: [], sentencias: [], escapeUnicode: { caracter: '{', aparicion: 1 } })).not.toBe(primera);
+  });
+
+  it('un escape no cambia el número de renglones: la línea de javac sigue señalando la misma sentencia', () => {
+    const p: Programa = { imports: [], sentencias: [declaracion({ tipo: 'int', nombre: 'x', inicial: literal('5', 'int') })], escapeUnicode: { caracter: ';', aparicion: 0 } };
+    expect(renderizarPrograma(p).split('\n')).toHaveLength(renderizarPrograma({ ...p, escapeUnicode: undefined }).split('\n').length);
+  });
+});
+
+describe('etiquetasDe y pretendeErrorDeSintaxis — la estructura de la clase (tarea 1.35)', () => {
+  it('cada rasgo estructural se deduce de su campo', () => {
+    expect(etiquetasDe({ imports: [], sentencias: [], parametrosDeMain: 'String... args' })).toEqual(['main-con-otra-firma']);
+    expect(etiquetasDe({ imports: [], sentencias: [], sinClase: true })).toEqual(['archivo-sin-clase']);
+    expect(etiquetasDe({ imports: [], sentencias: [], escapeUnicode: { caracter: '{', aparicion: 0 } })).toEqual(['escape-unicode']);
+    expect(etiquetasDe({ imports: ['import java.sqrt.*;'], sentencias: [] })).toEqual(['import-con-comodin']);
+    expect(etiquetasDe({ imports: ['import java.util.Scanner;'], sentencias: [] })).toEqual([]);
+  });
+
+  it('los miembros aportan sus propios rasgos', () => {
+    const p: Programa = {
+      imports: [],
+      sentencias: [],
+      miembros: [
+        { lineas: ['sealed interface I { }'], etiquetas: ['clase-sellada'] },
+        { lineas: ['int x;'], etiquetas: ['campo-de-la-clase'] },
+      ],
+    };
+    expect(etiquetasDe(p)).toEqual(['campo-de-la-clase', 'clase-sellada']);
+  });
+
+  it('un miembro marcado como sintaxis inválida hace que el programa pretenda un error de sintaxis; uno normal, no', () => {
+    const conError: Programa = { imports: [], sentencias: [], miembros: [{ lineas: ['int x = 5'], etiquetas: [], sintaxisInvalida: true }] };
+    const normal: Programa = { imports: [], sentencias: [], miembros: [{ lineas: ['int x = 5;'], etiquetas: [] }] };
+    expect(pretendeErrorDeSintaxis(conError)).toBe(true);
+    expect(pretendeErrorDeSintaxis(normal)).toBe(false);
+  });
+});
+
+describe('paraCada — el `for` mejorado (tarea 1.35)', () => {
+  const impresion = (variable: string) => sentenciaExpr(plantilla(['System.out.println(', ')'], [nombre(variable, 'int')], 'void'));
+
+  it('se imprime con el tipo, el nombre y la colección, y su cuerpo entre llaves', () => {
+    const p = programa(paraCada({ tipo: 'int', nombre: 'x', coleccion: nombre('datos', 'int[]'), cuerpo: [impresion('x')] }));
+    expect(renderizarPrograma(p)).toBe(`${CABECERA}        for (int x : datos) {\n            System.out.println(x);\n        }\n${PIE}`);
+  });
+
+  it('con `final` y con un tipo calificado o de arreglo', () => {
+    const conFinal = programa(paraCada({ tipo: 'String', nombre: 's', coleccion: nombre('nombres', 'String[]'), cuerpo: [], esFinal: true }));
+    expect(renderizarPrograma(conFinal)).toContain('for (final String s : nombres) {');
+    const conArreglo = programa(paraCada({ tipo: 'int[]', nombre: 'fila', coleccion: nombre('m', 'int[][]'), cuerpo: [] }));
+    expect(renderizarPrograma(conArreglo)).toContain('for (int[] fila : m) {');
+  });
+
+  it('sentenciasDe recorre su cuerpo, y todasLasExprs incluye la colección y las expresiones del cuerpo', () => {
+    const p = programa(paraCada({ tipo: 'int', nombre: 'x', coleccion: nombre('datos', 'int[]'), cuerpo: [impresion('x'), salto('break')] }));
+    expect([...sentenciasDe(p.sentencias)].map((s) => s.k)).toEqual(['para-cada', 'expresion', 'salto']);
+    expect([...todasLasExprs(p)].map((e) => renderizarExpr(e))).toContain('datos');
+    expect([...todasLasExprs(p)].map((e) => renderizarExpr(e))).toContain('System.out.println(x)');
+  });
+
+  it('lleva el rasgo for-mejorado, y el break de su cuerpo el suyo', () => {
+    const p = programa(paraCada({ tipo: 'int', nombre: 'x', coleccion: nombre('datos', 'int[]'), cuerpo: [salto('break')] }));
+    expect(etiquetasDe(p)).toEqual(['break', 'for-mejorado']);
   });
 });

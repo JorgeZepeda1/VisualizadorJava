@@ -288,3 +288,17 @@ describe('verificarAlcanzabilidad — cuerpo de while/for con condición `false`
     expect(fuente.slice(problemas[0]!.rango.inicio, problemas[0]!.rango.inicio + 1)).toBe('{');
   });
 });
+
+// Tarea 1.35 (WARNING 3, JLS 15.29 + 14.22; verificado con javac 17.0.18): `(boolean) true` es una expresión constante, así que `while ((boolean) true) { }` es un
+// ciclo que no termina y lo que sigue es inalcanzable, igual que con `while (true)`; con una variable (`(boolean) b`) sí termina y no hay problema.
+describe('verificarAlcanzabilidad — un cast constante a `boolean` cuenta como la constante (tarea 1.35, JLS 15.29 y 14.22)', () => {
+  it('`while ((boolean) true) { }` seguido de una sentencia: la sentencia es inalcanzable (javac: «unreachable statement»)', () => {
+    const problemas = alcanzabilidadDeCuerpo('while ((boolean) true) { } System.out.println(1);');
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toMatchObject({ codigo: 'sentencia-inalcanzable' });
+  });
+
+  it('control: `while ((boolean) b) { }` (con una variable) termina cuando `b` es falso: nada inalcanzable', () => {
+    expect(alcanzabilidadDeCuerpo('boolean b = true; while ((boolean) b) { } System.out.println(1);')).toEqual([]);
+  });
+});

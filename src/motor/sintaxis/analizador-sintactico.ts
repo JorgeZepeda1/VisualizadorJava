@@ -19,7 +19,10 @@ import {
   consumirMiembroDeClase,
   consumirRestoDeSentenciaNoSoportada,
   consumirTipoDeNivelSuperior,
+  desplazamientoTrasTipoOpcional,
   esTipoPrimitivoNoSoportado,
+  listaDeParametrosEsValida,
+  longitudDeModificadorSellado,
   pareceGenericoDesde,
   nombreDelTipoDeNivelSuperior,
   pareceOtroTipoDeNivelSuperior,
@@ -83,12 +86,18 @@ export function analizarPrograma(tokens: readonly Token[]): NodoPrograma {
   const cursor = new CursorDeTokens(tokens);
   consumirPackageOpcional(cursor);
   const importacionesNoSoportadas: NodoNoSoportado[] = [];
-  const importaciones = analizarImportaciones(cursor, importacionesNoSoportadas);
+  const importaciones: NodoImportacion[] = [];
   // Sub-lote 1-D3 (JLS 7.3, mutante real contra veredicto de javac): un ";" suelto es una
   // "declaración vacía" válida en CUALQUIER posición de nivel superior -- ya se toleraba TRAS la
   // clase (abajo) pero no aquí, entre los imports y la clase. Verificado contra javac 17 real
   // (mutantes reales de esta sesión): "import java.util.Scanner; ;" compila limpio.
-  consumirPuntosYComasSueltos(cursor);
+  // Tarea 1.35 (el fuzzer de tokens duplica un `;`; javac 17.0.18 lo compila): los `;` sueltos y los imports se pueden ALTERNAR mientras no haya empezado el primer tipo
+  // (`; import a.B;`, `import a.B; ; import c.D;`): antes un `;` cerraba la zona de imports y el siguiente `import` daba «class, interface, enum, or record expected».
+  for (;;) {
+    consumirPuntosYComasSueltos(cursor);
+    if (!cursor.coincideTexto('import')) break;
+    importaciones.push(...analizarImportaciones(cursor, importacionesNoSoportadas));
+  }
   // Tarea 1.29 (REQ-SUB-007: «clases/objetos propios» → aviso): el archivo puede traer una interfaz, un enum o un
   // record ANTES de la clase con `main` (`enum Dia { … }` arriba, muy habitual): cada uno avisa y el análisis sigue con
   // la primera clase, que es la principal. Si tras ellos no queda ninguna clase (un archivo con solo una interfaz, o
@@ -102,9 +111,17 @@ export function analizarPrograma(tokens: readonly Token[]): NodoPrograma {
     consumirPuntosYComasSueltos(cursor);
   }
   const primerTipoAnterior = otrosTiposDeNivelSuperior[0];
+  // Tarea 1.35 (WARNING 3, decisión del PO 2026-10-02): un archivo SIN ningún tipo —vacío, solo un comentario, un `package`, imports o `;`— lo compila javac sin error. No hay
+  // nada que ejecutar, pero tampoco hay un error de compilación que dar: el aviso `archivo-sin-clase` cubre el archivo entero y la «clase principal» es un relleno sin `main`.
+  const sinNingunTipo = primerTipoAnterior === undefined && cursor.actual().tipo === 'eof';
+  if (sinNingunTipo) {
+    const archivoEntero = { inicio: 0, fin: cursor.actual().rango.fin };
+    otrosTiposDeNivelSuperior.push({ tipo: 'no-soportado', codigo: CODIGOS_NO_SOPORTADO.archivoSinClase, datos: {}, rango: archivoEntero });
+  }
+  const tipoAnterior = otrosTiposDeNivelSuperior[0];
   const clase: NodoClase =
-    primerTipoAnterior !== undefined && cursor.actual().tipo === 'eof'
-      ? { tipo: 'clase', nombre: nombreDelPrimerTipo ?? '', main: null, otrosMiembros: [], rango: primerTipoAnterior.rango }
+    tipoAnterior !== undefined && cursor.actual().tipo === 'eof'
+      ? { tipo: 'clase', nombre: nombreDelPrimerTipo ?? '', main: null, otrosMiembros: [], rango: tipoAnterior.rango }
       : analizarClase(cursor);
 
   consumirPuntosYComasSueltos(cursor);
@@ -222,7 +239,8 @@ function analizarClase(cursor: CursorDeTokens): NodoClase {
   const otrosMiembros: NodoNoSoportado[] = [];
   const anotacionDeLaClase = consumirAnotaciones(cursor);
   if (anotacionDeLaClase) otrosMiembros.push(anotacionDeLaClase);
-  const modificadoresDeLaClase = consumirModificadores(cursor, MODIFICADORES_CLASE, 'class');
+  // Tarea 1.35: `sealed` y `non-sealed` también son modificadores de la clase (JLS 8.1.1.2); cada uno avisa (el resto del archivo decide si es válida: tiene que haber subclases).
+  const modificadoresDeLaClase = consumirModificadores(cursor, MODIFICADORES_CLASE, 'class', otrosMiembros);
   cursor.esperarTexto('class');
   const nombre = cursor.esperarTipo('identificador');
   // Tarea 1.33 (V): `var`, `yield`, `record`, `sealed` y `permits` valen como nombre de variable pero NO como nombre de una clase (javac:
@@ -291,7 +309,23 @@ function pareceMain(cursor: CursorDeTokens): boolean {
     return false;
   }
   const primerTokenDelParametro = cursor.mirar(i + 3).texto;
-  return primerTokenDelParametro === 'final' || primerTokenDelParametro === 'String';
+  if (primerTokenDelParametro !== 'final' && primerTokenDelParametro !== 'String') return false;
+  // Tarea 1.35 (WARNING 3, falsos RECHAZOS): lo que hace «main» al `main` del lanzador es su firma ENTERA, no que el primer parámetro empiece por `final`/`String`.
+  // Con cualquier otra lista BIEN FORMADA (`main(String[] args, int x)`, `main(String args)`, `main(String[] args[])`, `main(final double[] args)`) javac compila un
+  // método propio más y aquí es un miembro (REQ-SUB-007). Una lista MAL formada sigue por el camino de `main`: `analizarMain` da su error de sintaxis de siempre.
+  return esFirmaDeMainDelLanzador(cursor, i + 3) || !listaDeParametrosEsValida(cursor, i + 3);
+}
+
+/** ¿Los tokens desde `desplazamiento` son EXACTAMENTE `[final] String[] x )`, `[final] String... x )` o `[final] String x[] )`? Solo mira. */
+function esFirmaDeMainDelLanzador(cursor: CursorDeTokens, desplazamiento: number): boolean {
+  let j = desplazamiento;
+  if (cursor.mirar(j).texto === 'final') j += 1;
+  if (cursor.mirar(j).texto !== 'String') return false;
+  j += 1;
+  const tras = (n: number): Token => cursor.mirar(j + n);
+  if (tras(0).texto === '[' && tras(1).texto === ']') return tras(2).tipo === 'identificador' && tras(3).texto === ')';
+  if (tras(0).texto === '.' && tras(1).texto === '.' && tras(2).texto === '.') return tras(3).tipo === 'identificador' && tras(4).texto === ')';
+  return tras(0).tipo === 'identificador' && tras(1).texto === '[' && tras(2).texto === ']' && tras(3).texto === ')';
 }
 
 function analizarMain(cursor: CursorDeTokens): NodoMain {
@@ -401,6 +435,8 @@ function analizarElementoDeBloque(cursor: CursorDeTokens): NodoElementoBloque {
 function pareceDeclaracionLocal(cursor: CursorDeTokens): boolean {
   const token = cursor.actual();
   if (token.texto === 'final') return true;
+  // Tarea 1.35 (JLS 15.8.2): `int.class.getName();` y `String[].class.getName();` empiezan con un tipo pero son una expresión: un literal de clase.
+  if (empiezaUnLiteralDeClase(cursor)) return false;
   // Tarea 1.33: `var` ya no es una palabra reservada (JLS 3.9: es un identificador que solo significa algo como TIPO de una variable local):
   // `var x = 5;` es «identificador identificador» y llega aquí por esa regla, mientras `var = 5;` y `var++;` son expresiones sobre una variable llamada `var`.
   if (token.tipo === 'palabra-clave' && PALABRAS_CLAVE_TIPO_PRIMITIVO.has(token.texto)) return true;
@@ -430,6 +466,17 @@ function pareceDeclaracionLocal(cursor: CursorDeTokens): boolean {
     if (siguiente.texto === '<' && pareceGenericoDesde(cursor, i)) return true;
   }
   return false;
+}
+
+/** Tarea 1.35: ¿empieza en el cursor un literal de clase (`int.class`, `int[][].class`, `java.lang.String[].class`)? Un tipo, sus corchetes y `.class`; solo mira. */
+function empiezaUnLiteralDeClase(cursor: CursorDeTokens): boolean {
+  const token = cursor.actual();
+  let i: number;
+  if (token.tipo === 'identificador') i = desplazamientoTrasNombreCalificado(cursor);
+  else if (token.tipo === 'palabra-clave' && (PALABRAS_CLAVE_TIPO_PRIMITIVO.has(token.texto) || PALABRAS_TIPO_PRIMITIVO_NO_SOPORTADO.has(token.texto))) i = 1;
+  else return false;
+  while (cursor.mirar(i).texto === '[' && cursor.mirar(i + 1).texto === ']') i += 2;
+  return cursor.mirar(i).texto === '.' && cursor.mirar(i + 1).texto === 'class';
 }
 
 /** ¿Lo que sigue al tipo (un identificador) es «palabra reservada» y luego `;`, `=` o `,`, la forma de un declarador? */
@@ -753,14 +800,18 @@ function analizarFor(cursor: CursorDeTokens): NodoFor | NodoNoSoportado {
   };
 }
 
-// "for (" ya consumido. "Tipo Id ':'" con Tipo de UN token (primitivo o nombre simple) cubre el
-// caso real de currículo, "for (int x : arreglo)"; un tipo calificado o con arreglo no se detecta
-// aquí (simplificación deliberada: rarísimo en este nivel) y cae al camino general, que producirá
-// su propio error o aviso más abajo.
+// "for (" ya consumido. «[final] Tipo Id ':'» (JLS 14.14.2): el `for` mejorado. Tarea 1.35: el tipo de la variable es un TIPO completo y no un solo token —un primitivo (también `float`/`byte`/
+// `short`, que el subconjunto no ejecuta), un arreglo (`int[] fila`), un nombre con paquete, genéricos (`Map.Entry<K, V>`)—, con `final` si se quiere. Antes solo se reconocía un tipo de UN token
+// y «for (int[] fila : matriz)» o «for (float x : datos)» daban «falta cerrar un paréntesis»: falsos rechazos de programas que javac compila.
 function pareceForMejorado(cursor: CursorDeTokens): boolean {
-  const t0 = cursor.mirar(0);
-  const t0EsTipo = (t0.tipo === 'palabra-clave' && PALABRAS_CLAVE_TIPO_PRIMITIVO.has(t0.texto)) || t0.tipo === 'identificador';
-  return t0EsTipo && cursor.mirar(1).tipo === 'identificador' && cursor.mirar(2).texto === ':';
+  let i = cursor.mirar(0).texto === 'final' ? 1 : 0;
+  const trasElTipo = desplazamientoTrasTipoOpcional(cursor, i);
+  if (trasElTipo === null) return false;
+  i = trasElTipo;
+  if (cursor.mirar(i).tipo !== 'identificador') return false;
+  i += 1;
+  while (cursor.mirar(i).texto === '[' && cursor.mirar(i + 1).texto === ']') i += 2; // `int fila[] : matriz`
+  return cursor.mirar(i).texto === ':';
 }
 
 function analizarListaDeSentenciasExpresion(cursor: CursorDeTokens): NodoSentenciaExpresion[] {
@@ -1109,19 +1160,34 @@ function consumirModificadores(
   cursor: CursorDeTokens,
   permitidos: ReadonlySet<string>,
   hasta: string,
+  avisosDeSellado?: NodoNoSoportado[],
 ): ReadonlySet<string> {
   const vistos = new Set<string>();
-  while (!cursor.coincideTexto(hasta) && permitidos.has(cursor.actual().texto)) {
-    const token = cursor.actual();
-    if (vistos.has(token.texto)) {
+  while (!cursor.coincideTexto(hasta)) {
+    // Tarea 1.35: con `avisosDeSellado`, `sealed` (1 token) y `non-sealed` (3, pegados) son modificadores más; cada uno deja un aviso de herencia con su rango.
+    const longitudSellado = avisosDeSellado === undefined ? 0 : longitudDeModificadorSellado(cursor, 0);
+    if (longitudSellado === 0 && !permitidos.has(cursor.actual().texto)) break;
+    const primero = cursor.actual();
+    const nombre = longitudSellado === 3 ? 'non-sealed' : primero.texto;
+    if (vistos.has(nombre)) {
       throw new ErrorDeCompilacion(
-        `escribiste "${token.texto}" dos veces seguidas`,
-        token.rango,
+        `escribiste "${nombre}" dos veces seguidas`,
+        primero.rango,
         undefined,
         'modificador-repetido',
       );
     }
-    vistos.add(cursor.avanzar().texto);
+    vistos.add(nombre);
+    let ultimo = cursor.avanzar();
+    for (let n = 1; n < longitudSellado; n += 1) ultimo = cursor.avanzar();
+    if (longitudSellado > 0) {
+      avisosDeSellado!.push({
+        tipo: 'no-soportado',
+        codigo: CODIGOS_NO_SOPORTADO.herencia,
+        datos: {},
+        rango: { inicio: primero.rango.inicio, fin: ultimo.rango.fin },
+      });
+    }
   }
   return vistos;
 }

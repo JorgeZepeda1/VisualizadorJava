@@ -43,10 +43,12 @@ describe('corpus real → a un programa que javac 17 rechaza nunca se le dice qu
     // clase) y los 31 mínimos de `corpus/experimentos/lexico-y-sintaxis` (tarea 1.33: una palabra reservada como nombre, un guion bajo mal puesto,
     // un literal mal formado, `return 0;` en `main`, `println("a", x)` y `print()`, `printf` como valor, `yield` como sentencia…) y los 33 mínimos de
     // `corpus/experimentos/cierre-por-defecto` (tarea 1.34: una sentencia antes del primer `case`, `args` y `System.in` como valor, una clase con nombre de una
-    // clase del JDK, una expresión entre paréntesis como sentencia, los nombres de `Object.prototype`), con el veredicto real de javac.
-    expect(rechazados.length).toBeGreaterThanOrEqual(150);
+    // clase del JDK, una expresión entre paréntesis como sentencia, los nombres de `Object.prototype`) y los 22 mínimos de `corpus/experimentos/falsos-rechazos` (tarea 1.35: una
+    // conversión de constante que javac no permite, un `\u` mal formado en un comentario, `import paquete.*;` de un paquete que no existe, un parámetro de `main` que tapa a `System`,
+    // un campo sin su `;` o que espera un operando), con el veredicto real de javac.
+    expect(rechazados.length).toBeGreaterThanOrEqual(178);
     // Si el filtro `compilo` no separara nada, la prueba de abajo no distinguiría un rechazo de un programa válido.
-    expect(programas.length - rechazados.length).toBeGreaterThanOrEqual(187);
+    expect(programas.length - rechazados.length).toBeGreaterThanOrEqual(245);
   });
 
   it('cada programa con "compilo": false sale como error o como aviso de una construcción, nunca como aceptado (ni ok, ni "ejecucion-no-disponible")', () => {

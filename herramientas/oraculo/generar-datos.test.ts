@@ -17,6 +17,7 @@ import {
   analizarPalabrasReservadas,
   analizarSalidaRegional,
   analizarSupertipos,
+  LIMITE_MS_DE_LAS_SONDAS,
   generarDatos,
   pareceLanzadorEnEspanol,
   renderizarClasesTs,
@@ -27,7 +28,9 @@ import {
   renderizarRegionalTs,
   renderizarSupertiposTs,
   verificarMarcoEnEspanol,
+  verificarQueLaSondaTermino,
 } from './generar-datos.ts';
+import { LIMITE_DE_LAS_PRUEBAS_CON_JDK_MS } from './limites-de-pruebas.ts';
 
 describe('analizarLineaFirma (pura) — parsea una línea de GenerarFirmasApi.java', () => {
   it('un método estático con un parámetro (Math.round(double))', () => {
@@ -361,6 +364,51 @@ describe('verificarMarcoEnEspanol (pura) — falla con un error claro en vez de 
   });
 });
 
+// Tarea 1.35 (WARNING-1 de la re-verificación del lote 1: `npm run test:oraculo` falló 1 vez de 2 con «se leyeron 0 clases»; aislado y con la CPU saturada pasaba). El mecanismo,
+// reproducido forzando el límite: `ejecutar.ts` da 5 s por omisión a cada corrida de `java` y `generarDatos` NO pasaba `limiteMs` ni miraba `agotoTiempo`, así que una sonda que
+// la máquina cargada dejaba pasar de 5 s era MATADA a medio escribir, su stdout quedaba en 0 bytes y el análisis culpaba al tope de captura («se leyeron 0 clases… revisa
+// LIMITE_BYTES_SONDAS»). Dos arreglos: un límite propio y generoso para las sondas, y que una sonda que no terminó se diagnostique como lo que es, con su nombre y su causa.
+describe('verificarQueLaSondaTermino (pura) — una sonda detenida por el límite de tiempo se diagnostica, nunca como «0 clases» (tarea 1.35, WARNING-1)', () => {
+  const resultado = (extra: Partial<{ agotoTiempo: boolean; codigoSalida: number | null; stdout: Buffer; stderr: Buffer }>) => ({
+    agotoTiempo: false,
+    codigoSalida: 0,
+    stdout: Buffer.from('salida completa'),
+    stderr: Buffer.alloc(0),
+    ...extra,
+  });
+
+  it('una sonda que agotó el tiempo lanza un error que dice cuál fue, cuánto se le dio y que la causa es el TIEMPO (no el tope de captura)', () => {
+    expect(() => verificarQueLaSondaTermino('GenerarClasesJdk.java', resultado({ agotoTiempo: true, codigoSalida: null, stdout: Buffer.alloc(0) }), 7000, true)).toThrowError(
+      /GenerarClasesJdk\.java no terminó a tiempo.*7000 ms/s,
+    );
+    try {
+      verificarQueLaSondaTermino('GenerarClasesJdk.java', resultado({ agotoTiempo: true, codigoSalida: null, stdout: Buffer.alloc(0) }), 7000, true);
+    } catch (error) {
+      expect(String(error)).toContain('0 bytes');
+      expect(String(error)).not.toMatch(/se leyeron|tope de captura/);
+    }
+  });
+
+  it('el tiempo agotado se diagnostica también en las sondas cuyo código de salida distinto de 0 es el DATO (los marcos del lanzador)', () => {
+    expect(() => verificarQueLaSondaTermino('SinMain', resultado({ agotoTiempo: true, codigoSalida: null }), 5000, false)).toThrowError(/SinMain no terminó a tiempo/);
+    expect(() => verificarQueLaSondaTermino('SinMain', resultado({ codigoSalida: 1, stderr: Buffer.from('Error: no encuentro main') }), 5000, false)).not.toThrow();
+  });
+
+  it('una sonda que salió con un código distinto de 0 lanza con el código y lo que escribió en stderr', () => {
+    expect(() =>
+      verificarQueLaSondaTermino('GenerarFirmasApi.java', resultado({ codigoSalida: 3, stderr: Buffer.from('Exception in thread "main"') }), 5000, true),
+    ).toThrowError(/GenerarFirmasApi\.java terminó con código 3.*Exception in thread "main"/s);
+  });
+
+  it('control: una sonda que terminó a tiempo y con código 0 no lanza', () => {
+    expect(() => verificarQueLaSondaTermino('GenerarClasesJdk.java', resultado({}), 5000, true)).not.toThrow();
+  });
+
+  it('el límite propio de las sondas es MUCHO mayor que los 5 s por omisión de `ejecutar.ts` (el límite que sí sirve para el ciclo infinito de un programa)', () => {
+    expect(LIMITE_MS_DE_LAS_SONDAS).toBeGreaterThanOrEqual(60_000);
+  });
+});
+
 // Integración contra el JDK real (ADR 010/011) — requiere el proyecto Vitest `oraculo`
 // (`npm run test:oraculo`). Verifica que el oráculo, HOY, observa exactamente los hechos ya
 // confirmados a mano en esta sesión (ver engram): Math.round tiene sobrecarga float (no long/int),
@@ -372,7 +420,7 @@ describe('generarDatos — integración contra el JDK real (Temurin 17.0.18)', (
   let datos: DatosJdk;
   beforeAll(async () => {
     datos = await generarDatos(jdk);
-  }, 120_000);
+  }, LIMITE_DE_LAS_PRUEBAS_CON_JDK_MS);
 
   it('Math.round tiene EXACTAMENTE 2 sobrecargas: round(double)->long y round(float)->int (JLS 15.12, REQ-BIB-004)', async () => {
     const round = datos.firmas.filter((f) => f.clase === 'Math' && f.nombre === 'round');
@@ -434,7 +482,7 @@ describe('generarDatos — integración contra el JDK real (Temurin 17.0.18)', (
     expect(segunda.supertipos).toEqual(datos.supertipos);
     const deRandom = datos.firmas.filter((f) => f.clase === 'Random' && f.genero === 'metodo').map((f) => f.nombre);
     expect(deRandom).toEqual([...deRandom].sort());
-  }, 120_000);
+  }, LIMITE_DE_LAS_PRUEBAS_CON_JDK_MS);
 
   // Tarea 1.29 (causa 2): las clases públicas que ve un programa sin módulo (java.se + los módulos
   // `jdk.*` que exportan API), por su nombre canónico — la única fuente de «esta clase existe».
@@ -477,7 +525,7 @@ describe('generarDatos — integración contra el JDK real (Temurin 17.0.18)', (
     expect(rechazadosSinRazon).toEqual([]);
     const aceptadosSinRazon = negativos.filter((nombre) => veredictos.get(nombre) !== false);
     expect(aceptadosSinRazon).toEqual([]);
-  }, 300_000);
+  }, LIMITE_DE_LAS_PRUEBAS_CON_JDK_MS);
 
   // Tarea 1.29 (causa 8): los rangos de identificador salen del JDK y se verifican contra javac por los
   // BORDES de cada rango (el último punto de código de dentro y el primero de fuera, por los dos lados):
@@ -524,7 +572,7 @@ describe('generarDatos — integración contra el JDK real (Temurin 17.0.18)', (
     const veredictos = await compilarEnLote(jdk, casos);
     const discrepancias = casos.filter((caso) => veredictos.get(caso.id)?.compila !== caso.esperado).map((caso) => caso.id);
     expect(discrepancias).toEqual([]);
-  }, 300_000);
+  }, LIMITE_DE_LAS_PRUEBAS_CON_JDK_MS);
 
   // Tarea 1.33 (N2): las palabras reservadas NO se escriben de memoria (15 de 54 faltaban del léxico): salen de `Tokens.TokenKind` de javac
   // y se cruzan con una fuente independiente (`SourceVersion.isKeyword`) dentro de la propia sonda. Aquí se verifica contra javac por
@@ -554,7 +602,7 @@ describe('generarDatos — integración contra el JDK real (Temurin 17.0.18)', (
     const veredictos = await compilarEnLote(jdk, casos);
     const discrepancias = casos.filter((caso) => veredictos.get(caso.id)?.compila !== caso.esperado).map((caso) => caso.id);
     expect(discrepancias).toEqual([]);
-  }, 120_000);
+  }, LIMITE_DE_LAS_PRUEBAS_CON_JDK_MS);
 
   it('String.split existe (miembro real, REQ-SUB-007 "existe pero no soportado")', async () => {
     expect(datos.firmas.some((f) => f.clase === 'String' && f.nombre === 'split')).toBe(true);
@@ -580,4 +628,16 @@ describe('generarDatos — integración contra el JDK real (Temurin 17.0.18)', (
     expect(datos.marcos.mainNoStatic.mensaje).toContain('siguiente modo:\n   public static void main');
     expect(datos.marcos.mainNoStatic.mensaje).not.toContain('\\n');
   });
+});
+
+// Tarea 1.35 (WARNING-1): el mecanismo del flake forzado de verdad. Con un límite imposible (1 ms) toda corrida de `java` es matada: antes eso se manifestaba al final, en la sonda de
+// clases, como «se leyeron 0 clases» (el mensaje que culpaba al tope de captura); ahora falla en la PRIMERA sonda, con su nombre y con la causa.
+describe('generarDatos — una sonda que agota el tiempo se diagnostica con claridad (tarea 1.35, WARNING-1)', () => {
+  const jdk = localizarJdk();
+
+  it('con un límite de 1 ms la primera sonda falla con «no terminó a tiempo» y su nombre, nunca con «se leyeron 0 clases»', async () => {
+    const intento = generarDatos(jdk, { limiteMsDeLasSondas: 1 });
+    await expect(intento).rejects.toThrowError(/GenerarFirmasApi\.java no terminó a tiempo/);
+    await expect(intento).rejects.not.toThrowError(/se leyeron 0 clases|tope de captura/);
+  }, 60_000);
 });

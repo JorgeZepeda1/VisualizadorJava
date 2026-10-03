@@ -50,6 +50,8 @@ function variantesDeSentencia(sentencia: Sentencia): (readonly Sentencia[])[] {
       const conInicial: readonly Sentencia[] = sentencia.inicial === null ? sentencia.cuerpo : [sentencia.inicial, ...sentencia.cuerpo];
       return [sentencia.cuerpo, conInicial, ...variantesDeLista(sentencia.cuerpo).map((cuerpo) => [{ ...sentencia, cuerpo }])];
     }
+    case 'para-cada':
+      return [sentencia.cuerpo, ...variantesDeLista(sentencia.cuerpo).map((cuerpo) => [{ ...sentencia, cuerpo }])];
     case 'seleccion': {
       const variantes: (readonly Sentencia[])[] = sentencia.casos.map((_, i) => [{ ...sentencia, casos: sentencia.casos.filter((__, j) => j !== i) }]);
       // Tarea 1.34: las sentencias de antes del primer `case`: quitarlas todas, quitar una o entrar a lo que contiene una compuesta.
@@ -104,9 +106,31 @@ function soloLosMasCortos(original: Programa, candidatos: readonly Programa[]): 
 export function variantesDeSentencias(programa: Programa): Programa[] {
   const conOtrasSentencias = variantesDeLista(programa.sentencias).map((sentencias): Programa => ({ ...programa, sentencias }));
   const sinUnImport = programa.imports.map((_, i): Programa => ({ ...programa, imports: programa.imports.filter((__, j) => j !== i) }));
-  const conClasePorOmision: Programa[] =
-    programa.clase === undefined || programa.clase === CLASE_POR_OMISION ? [] : [{ imports: programa.imports, sentencias: programa.sentencias }];
-  return soloLosMasCortos(programa, [...conOtrasSentencias, ...sinUnImport, ...conClasePorOmision]);
+  const conClasePorOmision: Programa[] = programa.clase === undefined || programa.clase === CLASE_POR_OMISION ? [] : [sinElCampo(programa, 'clase')];
+  return soloLosMasCortos(programa, [...conOtrasSentencias, ...sinUnImport, ...variantesDeLaEstructura(programa), ...conClasePorOmision]);
+}
+
+/** Los campos OPCIONALES de `Programa`: los únicos que un candidato puede quitar del todo. */
+type CampoOpcional = 'clase' | 'miembros' | 'parametrosDeMain' | 'sinClase' | 'escapeUnicode';
+
+/** El programa sin ese campo (con `exactOptionalPropertyTypes`, quitarlo no es lo mismo que ponerlo en `undefined`). */
+function sinElCampo(programa: Programa, campo: CampoOpcional): Programa {
+  const copia: { -readonly [P in keyof Programa]: Programa[P] } = { ...programa };
+  delete copia[campo];
+  return copia;
+}
+
+/**
+ * Tarea 1.35: candidatos que quitan estructura de la clase: cada miembro por separado, todos los miembros, el escape Unicode y la firma especial de `main` (esta última solo
+ * es candidata cuando la firma de siempre es más corta; `soloLosMasCortos` descarta el resto, y entonces la firma `main()` ES el mínimo).
+ */
+function variantesDeLaEstructura(programa: Programa): Programa[] {
+  const miembros = programa.miembros ?? [];
+  const sinUnMiembro = miembros.length < 2 ? [] : miembros.map((_, i): Programa => ({ ...programa, miembros: miembros.filter((__, j) => j !== i) }));
+  const sinMiembros = miembros.length === 0 ? [] : [sinElCampo(programa, 'miembros')];
+  const sinFirmaEspecial = programa.parametrosDeMain === undefined ? [] : [sinElCampo(programa, 'parametrosDeMain')];
+  const sinEscape = programa.escapeUnicode === undefined ? [] : [sinElCampo(programa, 'escapeUnicode')];
+  return [...sinUnMiembro, ...sinMiembros, ...sinFirmaEspecial, ...sinEscape];
 }
 
 // ---- Candidatos que simplifican expresiones ----
@@ -177,6 +201,11 @@ function variantesDeExpresionesDeSentencia(sentencia: Sentencia): Sentencia[] {
       for (const cuerpo of variantesDeExpresionesEnLista(sentencia.cuerpo)) variantes.push({ ...sentencia, cuerpo });
       return variantes;
     }
+    case 'para-cada':
+      return [
+        ...variantesDeExpr(sentencia.coleccion).map((coleccion) => ({ ...sentencia, coleccion })),
+        ...variantesDeExpresionesEnLista(sentencia.cuerpo).map((cuerpo) => ({ ...sentencia, cuerpo })),
+      ];
     case 'seleccion': {
       const variantes: Sentencia[] = variantesDeExpr(sentencia.selector).map((selector) => ({ ...sentencia, selector }));
       for (const antes of variantesDeExpresionesEnLista(sentencia.antes ?? [])) variantes.push({ ...sentencia, antes });

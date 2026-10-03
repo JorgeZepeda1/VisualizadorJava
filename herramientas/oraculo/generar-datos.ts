@@ -10,7 +10,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { type InfoJdk, localizarJdk, verificarVersionJdk } from './jdk.ts';
-import { ejecutarPrograma } from './ejecutar.ts';
+import { type ResultadoEjecucion, ejecutarPrograma } from './ejecutar.ts';
 
 const AQUI = dirname(fileURLToPath(import.meta.url));
 const RAIZ_PROYECTO = resolve(AQUI, '..', '..');
@@ -19,6 +19,38 @@ const RAIZ_PROYECTO = resolve(AQUI, '..', '..');
 // UN programa del alumno). Las sondas de este archivo devuelven catálogos enteros (la lista de clases
 // pesa ~83 KB y `firmas` ya va por 41 KB): con el tope por omisión la lista salió CORTADA, en silencio.
 const LIMITE_BYTES_SONDAS = 16 * 1024 * 1024;
+
+/**
+ * Tarea 1.35 (WARNING-1 de la re-verificación del lote 1): el tiempo máximo de CADA corrida de `java` de una sonda. `ejecutar.ts` da 5 s por omisión a un programa (el límite que sirve
+ * para detectar el ciclo infinito de un programa del alumno), y las sondas del JDK no son un programa del alumno: la de clases lee todos los módulos (≈ 1,3 s con la máquina libre) y con la
+ * CPU cargada o una JVM en frío puede pasar de 5 s, caso en que el sistema la mataba a medio escribir y `npm run test:oraculo` fallaba a ratos con «se leyeron 0 clases». 60 s es 12 veces
+ * el límite anterior y queda por debajo de los 120 s de la prueba de integración, así que si una sonda de verdad se cuelga, el error CLARO de esta sonda llega antes que el del tiempo de la prueba.
+ */
+export const LIMITE_MS_DE_LAS_SONDAS = 60_000;
+
+export interface OpcionesDeGenerarDatos {
+  /** El tope de cada corrida de `java` de una sonda; por omisión `LIMITE_MS_DE_LAS_SONDAS`. Las pruebas lo bajan para FORZAR el tiempo agotado y comprobar el diagnóstico. */
+  readonly limiteMsDeLasSondas?: number;
+}
+
+type ResultadoDeSonda = Pick<ResultadoEjecucion, 'agotoTiempo' | 'codigoSalida' | 'stdout' | 'stderr'>;
+
+/**
+ * Tarea 1.35 (pura): lanza un error CLARO —con el nombre de la sonda y la causa— si la sonda no terminó. Antes `generarDatos` no miraba `agotoTiempo` ni el código de salida: una sonda
+ * detenida por el límite dejaba 0 bytes y el analizador culpaba al tope de captura («se leyeron 0 clases… revisa LIMITE_BYTES_SONDAS»), un diagnóstico FALSO que escondía la causa real.
+ * `exigeCodigoCero` es falso para las sondas cuyo código de salida distinto de 0 es el dato mismo (el lanzador de `SinMain` sale con 1: ese mensaje es lo que se captura).
+ */
+export function verificarQueLaSondaTermino(nombre: string, resultado: ResultadoDeSonda, limiteMs: number, exigeCodigoCero: boolean): void {
+  if (resultado.agotoTiempo) {
+    throw new Error(
+      `La sonda ${nombre} no terminó a tiempo: "java" se detuvo al pasar ${limiteMs} ms y dejó ${resultado.stdout.length} bytes de salida ` +
+        `(máquina cargada, JVM en frío o poca memoria). Vuelve a correrla con la máquina más libre; si pasa seguido, sube LIMITE_MS_DE_LAS_SONDAS (herramientas/oraculo/generar-datos.ts).`,
+    );
+  }
+  if (exigeCodigoCero && resultado.codigoSalida !== 0) {
+    throw new Error(`La sonda ${nombre} terminó con código ${resultado.codigoSalida}. stderr:\n${resultado.stderr.toString('utf-8')}`);
+  }
+}
 
 // ---- Firmas de la API (GenerarFirmasApi.java) ----
 
@@ -212,22 +244,36 @@ const EXPORTS_DE_LA_SONDA_DE_PALABRAS = ['jdk.compiler/com.sun.tools.javac.parse
  * devuelve su stdout. Solo la usa la sonda de palabras reservadas: `ejecutarPrograma` (`ejecutar.ts`) compila con `javac` y corre con
  * `java -cp`, sin los `--add-exports` que necesita leer `TokenKind`. Falla con el stderr de la sonda si sale con un código distinto de 0.
  */
-function ejecutarSondaConExports(jdk: InfoJdk, rutaFuente: string, exports: readonly string[]): Promise<string> {
+function ejecutarSondaConExports(jdk: InfoJdk, rutaFuente: string, exports: readonly string[], limiteMs: number): Promise<string> {
   return new Promise((resolverPromesa, rechazarPromesa) => {
     const argumentos = [...exports.flatMap((e) => ['--add-exports', e]), rutaFuente];
     const proceso = spawn(jdk.rutaJava, argumentos, { stdio: ['ignore', 'pipe', 'pipe'] });
     let salida = '';
     let error = '';
+    let agotoTiempo = false;
+    // Tarea 1.35: esta sonda no pasa por `ejecutarPrograma`, así que tampoco tenía NINGÚN límite (una JVM colgada esperaba para siempre); ahora el mismo que las demás.
+    const temporizador = setTimeout(() => {
+      agotoTiempo = true;
+      proceso.kill('SIGKILL');
+    }, limiteMs);
     proceso.stdout.on('data', (fragmento: Buffer) => {
       salida += fragmento.toString('utf-8');
     });
     proceso.stderr.on('data', (fragmento: Buffer) => {
       error += fragmento.toString('utf-8');
     });
-    proceso.on('error', rechazarPromesa);
+    proceso.on('error', (causa) => {
+      clearTimeout(temporizador);
+      rechazarPromesa(causa);
+    });
     proceso.on('close', (codigo) => {
-      if (codigo === 0) resolverPromesa(salida);
-      else rechazarPromesa(new Error(`${basename(rutaFuente)} terminó con código ${codigo}. stderr:\n${error}`));
+      clearTimeout(temporizador);
+      try {
+        verificarQueLaSondaTermino(basename(rutaFuente), { agotoTiempo, codigoSalida: codigo, stdout: Buffer.from(salida), stderr: Buffer.from(error) }, limiteMs, true);
+        resolverPromesa(salida);
+      } catch (causa) {
+        rechazarPromesa(causa);
+      }
     });
   });
 }
@@ -339,47 +385,29 @@ export function verificarMarcoEnEspanol(mensaje: string, etiqueta: string): void
  * el propio dato que se está capturando) — solo lanza si el JDK no es la versión de referencia o
  * si `GenerarFirmasApi.java` no compila (error real de la herramienta, no del subconjunto).
  */
-export async function generarDatos(jdk: InfoJdk): Promise<DatosJdk> {
+export async function generarDatos(jdk: InfoJdk, opciones: OpcionesDeGenerarDatos = {}): Promise<DatosJdk> {
   verificarVersionJdk(jdk);
+  const limiteMs = opciones.limiteMsDeLasSondas ?? LIMITE_MS_DE_LAS_SONDAS;
 
-  const fuenteFirmas = readFileSync(resolve(AQUI, 'java', 'GenerarFirmasApi.java'), 'utf-8');
-  const resultadoFirmas = await ejecutarPrograma(jdk, { fuente: fuenteFirmas, limiteBytesCaptura: LIMITE_BYTES_SONDAS });
-  if (!resultadoFirmas.compilo) {
-    throw new Error(
-      `GenerarFirmasApi.java no compiló contra el JDK real:\n${resultadoFirmas.erroresCompilacion.toString('utf-8')}`,
-    );
-  }
-  const firmas = analizarFirmasApi(resultadoFirmas.stdout.toString('utf-8'));
+  // Tarea 1.35: una sola forma de correr cada sonda del JDK (compila, corre con el límite propio, comprueba que terminó y devuelve su stdout); antes eran cuatro bloques casi
+  // iguales que no pasaban `limiteMs` ni miraban `agotoTiempo`.
+  const correrSonda = async (nombreDelArchivo: string): Promise<string> => {
+    const fuente = readFileSync(resolve(AQUI, 'java', nombreDelArchivo), 'utf-8');
+    const resultado = await ejecutarPrograma(jdk, { fuente, limiteMs, limiteBytesCaptura: LIMITE_BYTES_SONDAS });
+    if (!resultado.compilo) {
+      throw new Error(`${nombreDelArchivo} no compiló contra el JDK real:\n${resultado.erroresCompilacion.toString('utf-8')}`);
+    }
+    verificarQueLaSondaTermino(nombreDelArchivo, resultado, limiteMs, true);
+    return resultado.stdout.toString('utf-8');
+  };
 
-  const fuenteSupertipos = readFileSync(resolve(AQUI, 'java', 'GenerarSupertipos.java'), 'utf-8');
-  const resultadoSupertipos = await ejecutarPrograma(jdk, { fuente: fuenteSupertipos, limiteBytesCaptura: LIMITE_BYTES_SONDAS });
-  if (!resultadoSupertipos.compilo) {
-    throw new Error(
-      `GenerarSupertipos.java no compiló contra el JDK real:\n${resultadoSupertipos.erroresCompilacion.toString('utf-8')}`,
-    );
-  }
-  const supertipos = analizarSupertipos(resultadoSupertipos.stdout.toString('utf-8'));
-
-  const fuenteClases = readFileSync(resolve(AQUI, 'java', 'GenerarClasesJdk.java'), 'utf-8');
-  const resultadoClases = await ejecutarPrograma(jdk, { fuente: fuenteClases, limiteBytesCaptura: LIMITE_BYTES_SONDAS });
-  if (!resultadoClases.compilo) {
-    throw new Error(
-      `GenerarClasesJdk.java no compiló contra el JDK real:\n${resultadoClases.erroresCompilacion.toString('utf-8')}`,
-    );
-  }
-  const clases = analizarClasesJdk(resultadoClases.stdout.toString('utf-8'));
-
-  const fuenteIdentificadores = readFileSync(resolve(AQUI, 'java', 'GenerarIdentificadores.java'), 'utf-8');
-  const resultadoIdentificadores = await ejecutarPrograma(jdk, { fuente: fuenteIdentificadores, limiteBytesCaptura: LIMITE_BYTES_SONDAS });
-  if (!resultadoIdentificadores.compilo) {
-    throw new Error(
-      `GenerarIdentificadores.java no compiló contra el JDK real:\n${resultadoIdentificadores.erroresCompilacion.toString('utf-8')}`,
-    );
-  }
-  const identificadores = analizarIdentificadoresJava(resultadoIdentificadores.stdout.toString('utf-8'));
+  const firmas = analizarFirmasApi(await correrSonda('GenerarFirmasApi.java'));
+  const supertipos = analizarSupertipos(await correrSonda('GenerarSupertipos.java'));
+  const clases = analizarClasesJdk(await correrSonda('GenerarClasesJdk.java'));
+  const identificadores = analizarIdentificadoresJava(await correrSonda('GenerarIdentificadores.java'));
 
   const palabrasReservadas = analizarPalabrasReservadas(
-    await ejecutarSondaConExports(jdk, resolve(AQUI, 'java', 'GenerarPalabrasReservadas.java'), EXPORTS_DE_LA_SONDA_DE_PALABRAS),
+    await ejecutarSondaConExports(jdk, resolve(AQUI, 'java', 'GenerarPalabrasReservadas.java'), EXPORTS_DE_LA_SONDA_DE_PALABRAS, limiteMs),
   );
 
   // Parte A.2: defensa adicional (además de -Duser.language/-Duser.country, que YA viaja vía
@@ -390,11 +418,17 @@ export async function generarDatos(jdk: InfoJdk): Promise<DatosJdk> {
   // `verificarMarcoEnEspanol` de abajo es la defensa real, incondicional.
   const ENTORNO_LOCALE_ES_MX = { LANG: 'es_MX.UTF-8', LC_ALL: 'es_MX.UTF-8' };
   const [regionalMx, regionalEs, sinMain, mainNoStatic] = await Promise.all([
-    ejecutarPrograma(jdk, { fuente: FUENTE_GENERAR_REGIONAL, regional: 'es-MX' }),
-    ejecutarPrograma(jdk, { fuente: FUENTE_GENERAR_REGIONAL, regional: 'es-ES' }),
-    ejecutarPrograma(jdk, { fuente: FUENTE_SIN_MAIN, regional: 'es-MX', envAdicional: ENTORNO_LOCALE_ES_MX }),
-    ejecutarPrograma(jdk, { fuente: FUENTE_MAIN_NO_STATIC, regional: 'es-MX', envAdicional: ENTORNO_LOCALE_ES_MX }),
+    ejecutarPrograma(jdk, { fuente: FUENTE_GENERAR_REGIONAL, regional: 'es-MX', limiteMs }),
+    ejecutarPrograma(jdk, { fuente: FUENTE_GENERAR_REGIONAL, regional: 'es-ES', limiteMs }),
+    ejecutarPrograma(jdk, { fuente: FUENTE_SIN_MAIN, regional: 'es-MX', envAdicional: ENTORNO_LOCALE_ES_MX, limiteMs }),
+    ejecutarPrograma(jdk, { fuente: FUENTE_MAIN_NO_STATIC, regional: 'es-MX', envAdicional: ENTORNO_LOCALE_ES_MX, limiteMs }),
   ]);
+  // Tarea 1.35: las cuatro también pueden agotar el tiempo (la salida cortada de `GenerarRegional` se guardaría como separadores vacíos). Las dos del lanzador salen con código 1 a propósito:
+  // ese mensaje es el dato, así que solo se les exige haber TERMINADO.
+  verificarQueLaSondaTermino('GenerarRegional (es-MX)', regionalMx, limiteMs, true);
+  verificarQueLaSondaTermino('GenerarRegional (es-ES)', regionalEs, limiteMs, true);
+  verificarQueLaSondaTermino('SinMain', sinMain, limiteMs, false);
+  verificarQueLaSondaTermino('MainNoStatic', mainNoStatic, limiteMs, false);
 
   const mensajeSinMain = sinMain.stderr.toString('utf-8');
   const mensajeMainNoStatic = mainNoStatic.stderr.toString('utf-8');

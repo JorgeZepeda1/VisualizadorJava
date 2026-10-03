@@ -9,6 +9,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { generarPrograma, generarProgramas } from './generador.ts';
+import { FASE_DE_LAS_ESTRUCTURAS, FORMAS_ESTRUCTURALES, PERIODO_DE_LAS_ESTRUCTURAS } from './estructuras.ts';
 import { IDENTIFICADORES_CONTEXTUALES } from '../../../pruebas/compilacion/tablas-lexicas.ts';
 import { NOMBRES_DE_OBJECT_PROTOTYPE } from '../../../pruebas/compilacion/tablas-de-prototipo.ts';
 import { NOMBRES_CONTEXTUALES, PALABRAS_RESERVADAS } from './vocabulario.ts';
@@ -80,8 +81,8 @@ describe('generarPrograma — determinismo por semilla', () => {
 });
 
 describe('generarPrograma — forma del programa', () => {
-  it('cada programa tiene de 1 a 6 sentencias en main, y se ven los seis tamaños', () => {
-    const tamanos = new Set(muestra.map((p) => p.sentencias.length));
+  it('cada programa con clase tiene de 1 a 6 sentencias en main, y se ven los seis tamaños (un archivo sin clase, de la 1.35, no tiene `main`)', () => {
+    const tamanos = new Set(muestra.filter((p) => p.sinClase !== true).map((p) => p.sentencias.length));
     expect(Math.min(...tamanos)).toBeGreaterThanOrEqual(1);
     expect(Math.max(...tamanos)).toBeLessThanOrEqual(6);
     expect([...tamanos].sort()).toEqual([1, 2, 3, 4, 5, 6]);
@@ -777,5 +778,148 @@ describe('cobertura — 1.34 E: nombres de propiedades de JavaScript como identi
     const conNombre = muestra.filter((p) => declaraciones(p).some((d) => d.nombre === 'constructor'));
     expect(conNombre.length).toBeGreaterThan(0);
     expect(conNombre.every((p) => etiquetasDe(p).includes('nombre-de-javascript'))).toBe(true);
+  });
+});
+
+describe('cobertura — 1.35: la estructura de la clase (campos, firmas de main, clases selladas, imports, archivos sin clase, escapes Unicode)', () => {
+  const esEstructural = (indice: number): boolean => indice % PERIODO_DE_LAS_ESTRUCTURAS === FASE_DE_LAS_ESTRUCTURAS;
+  const tieneEstructuraDeClase = (p: Programa): boolean => (p.miembros ?? []).length > 0 || p.parametrosDeMain !== undefined || p.sinClase === true || p.escapeUnicode !== undefined;
+
+  it('uno de cada doce programas (el índice 5 de cada doce) es estructural, ESTRATIFICADO; en los demás no hay miembros, ni firma de main, ni escape, ni archivo sin clase', () => {
+    expect(muestra.every((p, i) => esEstructural(i) || !tieneEstructuraDeClase(p))).toBe(true);
+    expect(muestra.filter((p, i) => esEstructural(i) && tieneEstructuraDeClase(p)).length).toBeGreaterThan((CANTIDAD_DE_LA_MUESTRA / PERIODO_DE_LAS_ESTRUCTURAS) * 0.6);
+  });
+
+  it('cada forma sale en el índice que le toca (la i-ésima en el programa 5 + 12·i) y muestra sus rasgos', () => {
+    FORMAS_ESTRUCTURALES.forEach((forma, i) => {
+      const programa = generarPrograma(SEMILLA, FASE_DE_LAS_ESTRUCTURAS + PERIODO_DE_LAS_ESTRUCTURAS * i);
+      expect(etiquetasDe(programa), forma.nombre).toEqual(expect.arrayContaining([...forma.etiquetas]));
+    });
+  });
+
+  it('las formas dan la vuelta: con 4 000 programas, cada una sale al menos 4 veces, y con otra semilla cambian sus variantes pero no sus rasgos', () => {
+    const veces = new Map<string, number>();
+    muestra.forEach((_, i) => {
+      if (!esEstructural(i)) return;
+      const forma = FORMAS_ESTRUCTURALES[Math.floor(i / PERIODO_DE_LAS_ESTRUCTURAS) % FORMAS_ESTRUCTURALES.length]!;
+      veces.set(forma.nombre, (veces.get(forma.nombre) ?? 0) + 1);
+    });
+    for (const forma of FORMAS_ESTRUCTURALES) expect(veces.get(forma.nombre) ?? 0, forma.nombre).toBeGreaterThanOrEqual(4);
+  });
+
+  it('el cuerpo de `main` de un programa estructural es corto: hasta 3 sentencias del cuerpo más las 2 que una forma agrega al principio (el uso de lo que declara)', () => {
+    for (const [i, programa] of muestra.entries()) {
+      if (!esEstructural(i) || programa.sinClase === true) continue;
+      expect(programa.sentencias.length, `programa ${i}`).toBeLessThanOrEqual(5);
+    }
+  });
+
+  it('una forma estructural no cambia el programa que se genera con la misma semilla y el mismo índice (determinista)', () => {
+    const indice = FASE_DE_LAS_ESTRUCTURAS + PERIODO_DE_LAS_ESTRUCTURAS * 9;
+    expect(textoDe(generarPrograma(SEMILLA, indice))).toBe(textoDe(generarPrograma(SEMILLA, indice)));
+    expect(textoDe(generarPrograma(SEMILLA, indice))).not.toBe(textoDe(generarPrograma(SEMILLA + 1, indice)));
+  });
+});
+
+describe('cobertura — 1.35: instanceof, clases anónimas y for mejorado', () => {
+  const fuentesCon = (etiqueta: string): string[] => muestra.filter((p) => etiquetasDe(p).includes(etiqueta as never)).map(renderizarPrograma);
+
+  it('hay `instanceof` con patrón (con y sin `final`), con el nombre completo del tipo y sin patrón, en al menos 40 programas', () => {
+    const fuentes = fuentesCon('instanceof-con-patron');
+    expect(fuentes.length).toBeGreaterThanOrEqual(40);
+    const todo = fuentes.join('\n');
+    expect(todo).toMatch(/instanceof String \w+\)/);
+    expect(todo).toMatch(/instanceof final String \w+\)/);
+    expect(todo).toMatch(/instanceof java\.lang\.String\)/);
+    expect(todo).toMatch(/instanceof Integer;/);
+    expect(todo).toMatch(/instanceof String \w+ && /);
+  });
+
+  it('hay clases anónimas (de `Runnable` y de `Object`, con cuerpo y vacías) en al menos 40 programas', () => {
+    const fuentes = fuentesCon('clase-anonima');
+    expect(fuentes.length).toBeGreaterThanOrEqual(40);
+    const todo = fuentes.join('\n');
+    expect(todo).toMatch(/new Runnable\(\) \{ public void run\(\)/);
+    expect(todo).toMatch(/new Object\(\) \{ \}/);
+    expect(todo).toMatch(/new Object\(\) \{ public String toString\(\)/);
+  });
+
+  it('hay `for` mejorado con `int`, `float`, `final String`, arreglos de arreglos y tipos calificados, en al menos 60 programas', () => {
+    const fuentes = fuentesCon('for-mejorado');
+    expect(fuentes.length).toBeGreaterThanOrEqual(60);
+    const todo = fuentes.join('\n');
+    expect(todo).toMatch(/for \(int \w+ : \w+\) \{/);
+    expect(todo).toMatch(/for \(float \w+ : \w+\) \{/);
+    expect(todo).toMatch(/for \(final String \w+ : \w+\) \{/);
+    expect(todo).toMatch(/for \(int\[\] \w+ : \w+\) \{/);
+    expect(todo).toMatch(/for \(java\.util\.Map\.Entry<String, Integer> \w+ : /);
+  });
+
+  it('también hay formas que javac rechaza (el tipo de la variable no es el de los elementos, la colección no es un arreglo), para que un falso acepto se vea', () => {
+    const todo = fuentesCon('for-mejorado').join('\n');
+    expect(todo).toMatch(/for \(String \w+ : \w+\) \{/);
+    expect(todo).toMatch(/for \(int \w+ : 5\) \{/);
+  });
+});
+
+describe('cobertura — 1.35: un tipo en posición de expresión y un emoji en un `char`', () => {
+  const fuentesCon = (etiqueta: string): string[] => muestra.filter((p) => etiquetasDe(p).includes(etiqueta as never)).map(renderizarPrograma);
+
+  it('hay literales de clase de un nombre, de un primitivo, de un arreglo, con el nombre completo y de `void`, en al menos 40 programas', () => {
+    const fuentes = fuentesCon('literal-de-clase');
+    expect(fuentes.length).toBeGreaterThanOrEqual(40);
+    const todo = fuentes.join('\n');
+    expect(todo).toMatch(/\bString\.class\b/);
+    expect(todo).toMatch(/\bint\.class\b/);
+    expect(todo).toMatch(/\bint\[\]\.class\b/);
+    expect(todo).toMatch(/java\.util\.List\.class/);
+    expect(todo).toMatch(/\bvoid\.class\b/);
+    expect(todo).toMatch(/\.class\.getName\(\)/);
+  });
+
+  it('también hay literales de clase que javac rechaza (un literal como receptor, `.class.class`, un arreglo o un primitivo sin `.class`), para que un falso acepto se vea', () => {
+    const todo = fuentesCon('literal-de-clase').join('\n');
+    expect(todo).toMatch(/"a"\.class/);
+    expect(todo).toMatch(/\.class\.class/);
+    expect(todo).toMatch(/= String\[\];/);
+    expect(todo).toMatch(/= int;/);
+  });
+
+  it('hay casts a un arreglo, a un genérico, a un nombre con su paquete y a una intersección, en al menos 40 programas', () => {
+    const fuentes = fuentesCon('cast-a-tipo-complejo');
+    expect(fuentes.length).toBeGreaterThanOrEqual(40);
+    const todo = fuentes.join('\n');
+    expect(todo).toMatch(/\(String\[\]\) new String\[0\]/);
+    expect(todo).toMatch(/\(java\.util\.List<String>\) /);
+    expect(todo).toMatch(/\(java\.util\.Map<String, Integer>\) /);
+    expect(todo).toMatch(/\(java\.lang\.Object\) /);
+    expect(todo).toMatch(/\(Object & java\.io\.Serializable\) /);
+    expect(todo).toMatch(/\(int\[\]\) /);
+  });
+
+  it('también hay casts a un tipo complejo que javac rechaza (un `int` a un arreglo o a un genérico, un nombre con paquete que no existe)', () => {
+    const todo = fuentesCon('cast-a-tipo-complejo').join('\n');
+    expect(todo).toMatch(/\(String\[\]\) 5/);
+    expect(todo).toMatch(/\(java\.lang\.Strin\) /);
+  });
+
+  it('hay referencias a método con un arreglo o un genérico de receptor, en al menos 30 programas', () => {
+    const fuentes = fuentesCon('referencia-a-metodo-de-tipo');
+    expect(fuentes.length).toBeGreaterThanOrEqual(30);
+    const todo = fuentes.join('\n');
+    expect(todo).toMatch(/String\[\]::new/);
+    expect(todo).toMatch(/java\.util\.ArrayList<String>::new/);
+    expect(todo).toMatch(/int\[\]::clone/);
+  });
+
+  it('sortea el emoji en un `char` (válido) y dos emojis en un `char` (error de sintaxis), con el tipo `char` y su rasgo', () => {
+    const emoji = String.fromCodePoint(0x1f600);
+    const usos = (texto: string) => todasLasDeclaraciones().filter((d) => d.inicial !== null && renderizarExpr(d.inicial) === texto);
+    const uno = usos(`'${emoji}'`);
+    expect(uno.length).toBeGreaterThan(0);
+    expect(uno.every((d) => d.tipo === 'char' && d.inicial!.sintaxisInvalida !== true && d.inicial!.etiquetas?.includes('caracter-suplementario') === true)).toBe(true);
+    const dos = usos(`'${emoji}${emoji}'`);
+    expect(dos.length).toBeGreaterThan(0);
+    expect(dos.every((d) => d.tipo === 'char' && d.inicial!.sintaxisInvalida === true)).toBe(true);
   });
 });

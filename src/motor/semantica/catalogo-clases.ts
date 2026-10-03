@@ -40,3 +40,12 @@ export function existeClaseDelJdk(nombreCalificado: string): boolean {
   }
   return false;
 }
+
+/**
+ * Tarea 1.35 (JLS 7.5.2): ¿`import nombre.*;` es válido? Lo es si `nombre` es un PAQUETE con tipos visibles (`java.util`) o un TIPO del que se importan los miembros (`java.util.Map`,
+ * `java.lang.Math`). Medido con javac 17.0.18 sobre 886 nombres (los 871 paquetes del sistema y 15 más: typos, paquetes de arriba como `java`, bibliotecas ajenas, internos e incubadoras):
+ * lo que javac acepta es EXACTAMENTE los paquetes de la lista del oráculo y los tipos que `existeClaseDelJdk` reconoce. Un paquete que solo tiene subpaquetes (`java`) no vale.
+ */
+export function existePaqueteOTipoDelJdk(nombre: string): boolean {
+  return clasesDelPaquete(nombre).size > 0 || existeClaseDelJdk(nombre);
+}

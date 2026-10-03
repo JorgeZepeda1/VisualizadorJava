@@ -484,3 +484,22 @@ describe('verificarAsignacionDefinitiva — una variable se lee en su propio ini
     expect(asignacionDefinitivaDeCuerpo('final boolean DEBUG = true; int x; if (DEBUG) { x = 1; } System.out.println(x);')).toEqual([]);
   });
 });
+
+// Tarea 1.35 (WARNING 3, JLS 15.29 + 16.1.1; javac 17.0.18 compila los cuatro): `(boolean) true` es una constante booleana — el cast a un primitivo conserva la
+// constante —, así que `if ((boolean) true) { x = 1; }` deja a `x` asignada (la rama que no corre es vacua) y `while ((boolean) true)` solo termina con `break`.
+describe('verificarAsignacionDefinitiva — un cast constante a `boolean` es una condición constante (tarea 1.35, JLS 15.29 y 16.1.1)', () => {
+  it('`int x; if ((boolean) true) { x = 1; } System.out.println(x);` compila: no hay problema', () => {
+    expect(asignacionDefinitivaDeCuerpo('int x; if ((boolean) true) { x = 1; } System.out.println(x);')).toEqual([]);
+  });
+
+  it('`int x; if ((boolean) false) { } else { x = 1; } System.out.println(x);` y `while ((boolean) true) { x = 1; break; }` también', () => {
+    expect(asignacionDefinitivaDeCuerpo('int x; if ((boolean) false) { } else { x = 1; } System.out.println(x);')).toEqual([]);
+    expect(asignacionDefinitivaDeCuerpo('int x; while ((boolean) true) { x = 1; break; } System.out.println(x);')).toEqual([]);
+  });
+
+  it('control: con una variable en vez de la constante (`(boolean) b`) NO es constante, y `x` sigue sin estar asignada: javac también lo rechaza', () => {
+    const problemas = asignacionDefinitivaDeCuerpo('boolean b = true; int x; if ((boolean) b) { x = 1; } System.out.println(x);');
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toMatchObject({ codigo: 'variable-posiblemente-no-asignada', datos: { nombre: 'x' } });
+  });
+});

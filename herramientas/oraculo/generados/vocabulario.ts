@@ -124,6 +124,9 @@ type EntradaDeLiteral = readonly [tipo: string, texto: string, ...rasgos: Etique
 
 const GUION_BAJO: Etiqueta = 'guion-bajo-en-literal';
 const FLOTANTE_HEXADECIMAL: Etiqueta = 'flotante-hexadecimal';
+const CARACTER_SUPLEMENTARIO: Etiqueta = 'caracter-suplementario';
+// Un emoji: DOS unidades UTF-16. Nunca escrito a mano en el archivo (el fuente de una herramienta no lleva caracteres que un editor pueda mutilar).
+const EMOJI = String.fromCodePoint(0x1f600);
 
 /**
  * Formas de literal que un curso rara vez usa pero que Java acepta (hexadecimal, octal, binario, guiones bajos,
@@ -146,6 +149,7 @@ export const LITERALES_RAROS: readonly LiteralRaro[] = [
       ['double', '0x1.8p1', FLOTANTE_HEXADECIMAL], ['double', '0x.8p0', FLOTANTE_HEXADECIMAL], ['double', '0X1P-2', FLOTANTE_HEXADECIMAL], ['double', '0x1p3d', FLOTANTE_HEXADECIMAL],
       ['double', '0x1p3f', FLOTANTE_HEXADECIMAL], ['double', '1e1_0', GUION_BAJO], ['double', '3_1.4_1e+1_0', GUION_BAJO],
       ['char', "'\\u0041'"], ['char', "'\\t'"], ['char', "'\\\\'"], ['char', "'\\''"], ['char', "'\\101'"],
+      ['char', `'${EMOJI}'`, CARACTER_SUPLEMENTARIO],
       ['String', '"\\"q\\""'], ['String', '"\\u00e9"'], ['String', '"tab\\t"'], ['String', '"a\\\\b"'],
     ] as readonly EntradaDeLiteral[]
   ).map(([tipo, texto, ...rasgos]): LiteralRaro => ({ tipo, texto, valido: true, rasgos })),
@@ -154,7 +158,7 @@ export const LITERALES_RAROS: readonly LiteralRaro[] = [
       ['int', '09'], ['int', '0x'], ['int', '1_', GUION_BAJO], ['int', '1__', GUION_BAJO], ['int', '0b2'], ['int', '3000000000'], ['long', '3000000000'], ['double', '1e'],
       ['long', '1_L', GUION_BAJO], ['double', '1_.0', GUION_BAJO], ['double', '1._0', GUION_BAJO], ['double', '1_e1', GUION_BAJO],
       ['double', '1e1_', GUION_BAJO], ['double', '1.0_', GUION_BAJO], ['int', '0x_1', GUION_BAJO], ['int', '0b_1', GUION_BAJO], ['int', '07_', GUION_BAJO],
-      ['char', "'ab'"], ['char', "''"], ['char', "'\\q'"], ['String', '"\\q"'],
+      ['char', "'ab'"], ['char', "''"], ['char', "'\\q'"], ['String', '"\\q"'], ['char', `'${EMOJI}${EMOJI}'`, CARACTER_SUPLEMENTARIO],
     ] as readonly EntradaDeLiteral[]
   ).map(([tipo, texto, ...rasgos]): LiteralRaro => ({ tipo, texto, valido: false, rasgos })),
 ];

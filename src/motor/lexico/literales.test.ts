@@ -123,6 +123,36 @@ describe('leerCaracter', () => {
   it('lanza un error si el char no cierra', () => {
     expect(() => leerCaracter("'a", 0)).toThrow();
   });
+
+  // Tarea 1.35 (hallado con una sonda de Java válido; javac 17.0.18 compila `int x = '<emoji>';` y el valor es la PRIMERA unidad UTF-16: 55357 para U+1F600): un carácter fuera del
+  // plano básico ocupa dos unidades. javac lo acepta como el contenido de un literal `char`, así que no es un error; el visualizador no simula ese literal (su valor no es el carácter).
+  it('un carácter de dos unidades UTF-16 (un emoji) es NoSoportado, no un error: javac lo acepta como el contenido de un literal char', () => {
+    const emoji = String.fromCodePoint(0x1f600);
+    const fuente = `'${emoji}'`;
+    const resultado = leerCaracter(fuente, 0);
+    expect(resultado.longitud).toBe(fuente.length);
+    expect(resultado.noSoportados).toHaveLength(1);
+    expect(resultado.noSoportados[0]).toMatchObject({ codigo: 'caracter-suplementario-no-soportado', datos: { caracter: emoji } });
+  });
+
+  it('triangulación: otro carácter de dos unidades (el primero del plano suplementario, U+10000) y el último (U+10FFFF)', () => {
+    for (const codigo of [0x10000, 0x10ffff]) {
+      const caracter = String.fromCodePoint(codigo);
+      expect(leerCaracter(`'${caracter}'`, 0).noSoportados[0]).toMatchObject({ codigo: 'caracter-suplementario-no-soportado', datos: { caracter } });
+    }
+  });
+
+  it('control: dos de esos caracteres, o uno y otro más, siguen siendo un error (javac: «unclosed character literal»)', () => {
+    const emoji = String.fromCodePoint(0x1f600);
+    expect(() => leerCaracter(`'${emoji}${emoji}'`, 0)).toThrow();
+    expect(() => leerCaracter(`'a${emoji}'`, 0)).toThrow();
+    expect(() => leerCaracter(`'${emoji}a'`, 0)).toThrow();
+  });
+
+  it('control: un carácter del plano básico que no es ASCII (`ñ`, `日`) sigue siendo un char normal', () => {
+    expect(leerCaracter("'ñ'", 0)).toEqual({ valor: 'ñ', longitud: 3, noSoportados: [] });
+    expect(leerCaracter("'日'", 0)).toEqual({ valor: '日', longitud: 3, noSoportados: [] });
+  });
 });
 
 describe('leerNumero — enteros', () => {
