@@ -66,6 +66,14 @@ const DATOS_DE_EJEMPLO: Record<CodigoNoSoportado, Record<string, unknown>> = {
   // Tarea 1.35: un carácter de dos unidades UTF-16 (un emoji) dentro de un literal `char`.
   'caracter-suplementario-no-soportado': { linea: 1, caracter: String.fromCodePoint(0x1f600) },
   'sincronizado-no-soportado': { linea: 1 },
+  // Tarea 1.36 (C-3): `package java.util.Map;`, un nombre de paquete que es también el de una clase del JDK.
+  'paquete-con-nombre-de-clase-no-soportado': { linea: 1, nombre: 'java.util.Map' },
+  // Tarea 1.36 (C-5 y W-10): una constante de texto con un número decimal (`"a" + 1.5`) donde Java necesita su valor al compilar.
+  'constante-de-texto-con-decimal-no-soportada': { linea: 1 },
+  // Tarea 1.36 (C-4b): un programa que se pasa del tope de tamaño; el texto señala la línea donde se pasó, sin el marco de «construcción».
+  'programa-demasiado-grande': { linea: 1 },
+  // Tarea 1.36 (C-4a): un texto tan largo que se acerca al límite del archivo de clase y cuyo tamaño exacto no se puede calcular.
+  'tamano-de-texto-no-revisable': { linea: 1 },
   'escape-no-soportado': { linea: 1 },
   'escape-octal-no-soportado': { linea: 1 },
   'escape-unicode-no-soportado': { linea: 1 },
@@ -434,14 +442,16 @@ describe('textosNoSoportado — tarea 1.30: un aviso afirma algo de la construcc
   // tampoco usa el marco: no sabe qué construcción es.
   const codigos = Object.keys(DATOS_DE_EJEMPLO) as CodigoNoSoportado[];
   // Tarea 1.35: `archivo-sin-clase` tampoco usa el marco: no hay una construcción que nombrar, el archivo no tiene ninguna clase.
-  const codigosConMarco = codigos.filter((codigo) => codigo !== 'ejecucion-no-disponible' && codigo !== 'no-soportado' && codigo !== 'archivo-sin-clase');
+  // Tarea 1.36: ni `programa-demasiado-grande`: tampoco hay una construcción, es el programa entero el que se pasa del tope de tamaño.
+  const SIN_MARCO: ReadonlySet<CodigoNoSoportado> = new Set<CodigoNoSoportado>(['ejecucion-no-disponible', 'no-soportado', 'archivo-sin-clase', 'programa-demasiado-grande']);
+  const codigosConMarco = codigos.filter((codigo) => !SIN_MARCO.has(codigo));
   const texto = (codigo: CodigoNoSoportado): string =>
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- datos varían por código, ver DATOS_DE_EJEMPLO
     (textosNoSoportado[codigo] as (d: any) => string)(DATOS_DE_EJEMPLO[codigo]);
 
   it('el barrido recorre el catálogo entero (guarda contra un filtro que deje la lista vacía)', () => {
     expect(codigos.length).toBeGreaterThanOrEqual(52);
-    expect(codigosConMarco.length).toBe(codigos.length - 3);
+    expect(codigosConMarco.length).toBe(codigos.length - SIN_MARCO.size);
   });
 
   it.each(codigos)('"%s" no dice que Java acepta el programa ("Java sí lo acepta", "Java sí acepta", "Java sí tiene")', (codigo) => {
@@ -516,5 +526,79 @@ describe('textosNoSoportado — un valor cuyo tipo el subconjunto no modela (cie
     const sinNombre = textosNoSoportado['valor-de-tipo-no-modelado']({ linea: 9, valor: null });
     expect(sinNombre).toContain('un valor de un tipo que este visualizador no simula en la línea 9');
     expect(sinNombre).not.toMatch(/undefined|null|`null`/);
+  });
+});
+
+// Tarea 1.36 (C-3): `package java.util.Map;`. javac lo rechaza o no según lo que use el programa (`pkg.clashes.with.class.of.same.name` solo cuando el paquete de arriba ya se
+// cargó: siempre con `java.lang`, con `java.util` solo si se importa algo de él), y decidirlo pide modelar la carga de paquetes de javac: aviso honesto.
+describe('textosNoSoportado — un nombre de paquete que es también el de una clase de Java (C-3, tarea 1.36)', () => {
+  it('nombra el paquete y la línea, usa el marco aprobado y da la salida (un nombre propio o quitar la línea)', () => {
+    const texto = textosNoSoportado['paquete-con-nombre-de-clase-no-soportado']({ linea: 1, nombre: 'java.util.Map' });
+    expect(texto).toBe(
+      'Tu programa usa un nombre de paquete (`java.util.Map`) que también es el de una clase de Java en la línea 1. Es parte de Java, pero este visualizador cubre las unidades 3 a 7 y ' +
+        'todavía no comprueba los paquetes que se llaman como una clase, así que no puedo revisar si esa parte está bien escrita. ' +
+        'Usa un nombre de paquete propio, como `package miproyecto;`, o quita la línea `package`. ' +
+        'No lo ejecuto para no enseñarte un resultado que podría no ser el de Java.',
+    );
+    expect(texto).not.toMatch(/Java sí (lo |la )?(acepta|tiene)/);
+  });
+
+  it('triangulación: con otro nombre la frase cambia con él', () => {
+    expect(textosNoSoportado['paquete-con-nombre-de-clase-no-soportado']({ linea: 3, nombre: 'java.lang.String' })).toContain('`java.lang.String`');
+  });
+});
+
+// Tarea 1.36 (C-5 y W-10): `while ("a" + 1.5 == "a1.5") { }`, `case "d" + 1.5:`. Java trata `"a" + 1.5` como una constante y decide con su valor si un ciclo termina, si una variable queda asignada o si dos
+// etiquetas se repiten; el valor depende de cómo Java convierte un número decimal a texto, y eso todavía no está en el visualizador. El aviso dice qué es, por qué no se puede revisar y qué hacer.
+describe('textosNoSoportado — una constante de texto con un número decimal (C-5 y W-10, tarea 1.36)', () => {
+  it('nombra la construcción y la línea, usa el marco aprobado y da la salida (escribir el texto completo)', () => {
+    const texto = textosNoSoportado['constante-de-texto-con-decimal-no-soportada']({ linea: 4 });
+    expect(texto).toBe(
+      'Tu programa usa una constante de texto con un número decimal (como `"a" + 1.5`) en la línea 4. Es parte de Java, pero este visualizador cubre las unidades 3 a 7 y todavía no sabe ' +
+        'convertir un número decimal a texto como lo hace Java, así que no puedo revisar si esa parte está bien escrita. ' +
+        'Java necesita conocer ese valor al compilar para decidir cosas como si un ciclo termina; si puedes, escribe el texto ya completo (por ejemplo, `"a1.5"`). ' +
+        'No lo ejecuto para no enseñarte un resultado que podría no ser el de Java.',
+    );
+    expect(texto).not.toMatch(/Java sí (lo |la )?(acepta|tiene)|token|constante desconocida/);
+  });
+
+  it('triangulación: con otra línea la frase cambia con ella', () => {
+    expect(textosNoSoportado['constante-de-texto-con-decimal-no-soportada']({ linea: 12 })).toContain('en la línea 12.');
+  });
+});
+
+// Tarea 1.36 (C-4b y S-1): javac rechaza un método de más de 65 535 bytes de bytecode (`limit.code`) y el motor no modela ese tamaño: pone un tope conservador de elementos del programa. Un programa de
+// clase está muy por debajo; el aviso dice dónde se pasó, que el visualizador está pensado para programas de clase y qué hacer, sin afirmar que Java rechace o acepte el programa.
+describe('textosNoSoportado — un programa demasiado grande (C-4b, tarea 1.36)', () => {
+  it('señala la línea donde se pasó del tope, explica para qué está pensado el visualizador y da la salida (una parte más pequeña)', () => {
+    const texto = textosNoSoportado['programa-demasiado-grande']({ linea: 312 });
+    expect(texto).toBe(
+      'Tu programa es demasiado grande para este visualizador: a partir de la línea 312 se pasa del tamaño que sabe revisar (está pensado para programas de clase). ' +
+        'Prueba con una parte más pequeña. No lo ejecuto para no enseñarte un resultado que podría no ser el de Java.',
+    );
+    expect(texto).not.toMatch(/Java sí (lo |la )?(acepta|tiene)|token|bytecode/);
+  });
+
+  it('triangulación: con otra línea la frase cambia con ella', () => {
+    expect(textosNoSoportado['programa-demasiado-grande']({ linea: 5 })).toContain('a partir de la línea 5 se pasa');
+  });
+});
+
+// Tarea 1.36 (C-4a): un texto cuyo largo cae justo en el límite de Java (65 535 bytes) y que el visualizador no sabe medir con seguridad —lleva un decimal, cuyo largo decide `Double.toString`, o hay
+// condiciones fijas que podrían podar código—. El aviso dice qué es, por qué no se revisa y qué hacer; sin la frase de un número exacto que no se tiene.
+describe('textosNoSoportado — un texto cerca del límite de tamaño que no se puede medir (C-4a, tarea 1.36)', () => {
+  it('señala la línea, usa el marco aprobado y da la salida (acortarlo o dividirlo)', () => {
+    const texto = textosNoSoportado['tamano-de-texto-no-revisable']({ linea: 7 });
+    expect(texto).toBe(
+      'Tu programa usa un texto tan largo que se acerca al límite de tamaño que Java permite (65 535 bytes por texto) en la línea 7. Es parte de Java, pero este visualizador cubre las unidades 3 a 7 y ' +
+        'todavía no sabe comprobar con seguridad si Java lo aceptaría, así que no puedo revisar si esa parte está bien escrita. ' +
+        'Acórtalo, o divídelo en varias instrucciones `System.out.print`. ' +
+        'No lo ejecuto para no enseñarte un resultado que podría no ser el de Java.',
+    );
+    expect(texto).not.toMatch(/Java sí (lo |la )?(acepta|tiene)|UTF|constant pool|bytecode/);
+  });
+
+  it('triangulación: con otra línea la frase cambia con ella', () => {
+    expect(textosNoSoportado['tamano-de-texto-no-revisable']({ linea: 120 })).toContain('en la línea 120.');
   });
 });

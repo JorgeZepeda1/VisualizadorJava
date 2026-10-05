@@ -50,6 +50,7 @@ import type {
   NodoImpresion,
   NodoMain,
   NodoNoSoportado,
+  NodoPaquete,
   NodoPrograma,
   NodoRetorno,
   NodoSentencia,
@@ -84,7 +85,7 @@ const TIPOS_EXPRESION_SENTENCIA_VALIDOS: ReadonlySet<string> = new Set([
 
 export function analizarPrograma(tokens: readonly Token[]): NodoPrograma {
   const cursor = new CursorDeTokens(tokens);
-  consumirPackageOpcional(cursor);
+  const paquete = consumirPackageOpcional(cursor);
   const importacionesNoSoportadas: NodoNoSoportado[] = [];
   const importaciones: NodoImportacion[] = [];
   // Sub-lote 1-D3 (JLS 7.3, mutante real contra veredicto de javac): un ";" suelto es una
@@ -121,7 +122,7 @@ export function analizarPrograma(tokens: readonly Token[]): NodoPrograma {
   const tipoAnterior = otrosTiposDeNivelSuperior[0];
   const clase: NodoClase =
     tipoAnterior !== undefined && cursor.actual().tipo === 'eof'
-      ? { tipo: 'clase', nombre: nombreDelPrimerTipo ?? '', main: null, otrosMiembros: [], rango: tipoAnterior.rango }
+      ? { tipo: 'clase', nombre: nombreDelPrimerTipo ?? '', main: null, otrosMiembros: [], rango: tipoAnterior.rango, rangoDeLaPalabraClass: tipoAnterior.rango }
       : analizarClase(cursor);
 
   consumirPuntosYComasSueltos(cursor);
@@ -147,6 +148,7 @@ export function analizarPrograma(tokens: readonly Token[]): NodoPrograma {
   const finToken = cursor.avanzar();
   return {
     tipo: 'programa',
+    paquete,
     importaciones,
     importacionesNoSoportadas,
     clase,
@@ -159,12 +161,14 @@ function consumirPuntosYComasSueltos(cursor: CursorDeTokens): void {
   while (cursor.coincideTexto(';')) cursor.avanzar();
 }
 
-// REQ-SUB-001: "MUST ignorar una línea package ...; sin rechazarla" — no se guarda en el AST.
-function consumirPackageOpcional(cursor: CursorDeTokens): void {
-  if (!cursor.coincideTexto('package')) return;
-  cursor.avanzar();
-  analizarNombreCalificado(cursor);
-  cursor.esperarTexto(';');
+// REQ-SUB-001: "MUST ignorar una línea package ...; sin rechazarla". Tarea 1.36 (C-3): el visualizador no ejecuta paquetes, pero SÍ la guarda en el árbol: javac rechaza
+// el nombre de un paquete que el JDK ya trae (`package java.util;`) y la atribución lo comprueba (`atribucion.ts`).
+function consumirPackageOpcional(cursor: CursorDeTokens): NodoPaquete | null {
+  if (!cursor.coincideTexto('package')) return null;
+  const inicio = cursor.avanzar().rango.inicio;
+  const nombre = analizarNombreCalificado(cursor);
+  const fin = cursor.esperarTexto(';').rango.fin;
+  return { tipo: 'paquete', nombre, rango: { inicio, fin } };
 }
 
 function analizarImportaciones(cursor: CursorDeTokens, noSoportadas: NodoNoSoportado[]): NodoImportacion[] {
@@ -241,7 +245,7 @@ function analizarClase(cursor: CursorDeTokens): NodoClase {
   if (anotacionDeLaClase) otrosMiembros.push(anotacionDeLaClase);
   // Tarea 1.35: `sealed` y `non-sealed` también son modificadores de la clase (JLS 8.1.1.2); cada uno avisa (el resto del archivo decide si es válida: tiene que haber subclases).
   const modificadoresDeLaClase = consumirModificadores(cursor, MODIFICADORES_CLASE, 'class', otrosMiembros);
-  cursor.esperarTexto('class');
+  const palabraClass = cursor.esperarTexto('class');
   const nombre = cursor.esperarTipo('identificador');
   // Tarea 1.33 (V): `var`, `yield`, `record`, `sealed` y `permits` valen como nombre de variable pero NO como nombre de una clase (javac:
   // `restricted.type.not.allowed`, JLS 3.9). `module`, `open`, `to`, `with`… sí pueden ser una clase.
@@ -290,7 +294,7 @@ function analizarClase(cursor: CursorDeTokens): NodoClase {
   // Tarea 1.15 (REQ-COMP-008): "sin main" ya NO es un error de sintaxis -- javac compila esa clase
   // limpio (verificado, exploracion/03 §4.2); `main: null` sigue hasta `semantica/arranque.ts`
   // (pasada 5, ADR 004), que es quien de verdad lo rechaza, como error de ARRANQUE al ejecutar.
-  return { tipo: 'clase', nombre: nombre.texto, main, otrosMiembros, rango: { inicio, fin: cierre.rango.fin } };
+  return { tipo: 'clase', nombre: nombre.texto, main, otrosMiembros, rango: { inicio, fin: cierre.rango.fin }, rangoDeLaPalabraClass: palabraClass.rango };
 }
 
 // Corrección obligatoria (sub-lote 1-D2c): verificado contra javac 17 real que
@@ -324,7 +328,7 @@ function esFirmaDeMainDelLanzador(cursor: CursorDeTokens, desplazamiento: number
   j += 1;
   const tras = (n: number): Token => cursor.mirar(j + n);
   if (tras(0).texto === '[' && tras(1).texto === ']') return tras(2).tipo === 'identificador' && tras(3).texto === ')';
-  if (tras(0).texto === '.' && tras(1).texto === '.' && tras(2).texto === '.') return tras(3).tipo === 'identificador' && tras(4).texto === ')';
+  if (tras(0).texto === '...') return tras(1).tipo === 'identificador' && tras(2).texto === ')'; // tarea 1.36: la elipsis es UN token (tres puntos pegados)
   return tras(0).tipo === 'identificador' && tras(1).texto === '[' && tras(2).texto === ']' && tras(3).texto === ')';
 }
 
@@ -382,12 +386,17 @@ function analizarParamMain(cursor: CursorDeTokens): string {
     cursor.esperarTexto(']');
     return cursor.esperarTipo('identificador').texto;
   }
-  if (cursor.coincideTexto('.')) {
-    // String... args — el lexer no tiene un token "...": son tres "." seguidos (PUNTUACION).
-    cursor.esperarTexto('.');
-    cursor.esperarTexto('.');
-    cursor.esperarTexto('.');
+  if (cursor.coincideTexto('...')) {
+    // String... args — la elipsis es UN token de tres puntos pegados (tarea 1.36, JLS 3.11).
+    cursor.avanzar();
     return cursor.esperarTipo('identificador').texto;
+  }
+  if (cursor.coincideTexto('.')) {
+    // Tarea 1.36 (C-1): un «.» tras `String` que no es el principio de una elipsis (`String . . . args`, `String.. args`): javac lee `String.` como el principio de un tipo calificado y
+    // se queja del token que sigue al punto (`<identifier> expected` o `illegal '.'`); el error cae ahí, en su misma línea.
+    cursor.avanzar();
+    const siguiente = cursor.actual();
+    throw new ErrorDeCompilacion(`se esperaban tres puntos pegados ("...") y se encontró un "." suelto`, siguiente.rango);
   }
   // String args[]
   const nombre = cursor.esperarTipo('identificador').texto;

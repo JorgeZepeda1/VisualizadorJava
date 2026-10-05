@@ -1,8 +1,18 @@
 // RED de la tarea 0.12: compilador.ts orquesta léxico+sintaxis→IR y fija ResultadoCompilacion
 // (design.md §1.3). Las 5 pasadas completas (atribución, alcanzabilidad…) llegan en la tarea 1.14;
 // aquí solo léxico+sintaxis, que ya es un subconjunto real de esas pasadas.
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { compilar } from './compilador.ts';
+import * as analizadorSintactico from './sintaxis/analizador-sintactico.ts';
+import { MAXIMO_DE_TOKENS_DE_UN_PROGRAMA } from './limites.ts';
+import { tokenizar } from './lexico/analizador-lexico.ts';
+import { TablaDeLineas } from './fuente/tabla-de-lineas.ts';
+
+// Tarea 1.36: el analizador sintáctico se envuelve para poder INYECTAR una falla interna en las pruebas de «solo un ErrorDeCompilacion es un error de compilación» (por omisión llama al real).
+vi.mock('./sintaxis/analizador-sintactico.ts', async (importarOriginal) => {
+  const original = await importarOriginal<typeof import('./sintaxis/analizador-sintactico.ts')>();
+  return { ...original, analizarPrograma: vi.fn(original.analizarPrograma) };
+});
 
 describe('compilar', () => {
   it('compila el programa dorado y produce programa + vista', () => {
@@ -104,29 +114,44 @@ describe('compilar — el Problema tiene EXACTAMENTE las claves del contrato, ve
 // excepción es un fallo interno y se propaga fuera de `compilar()` (el trabajador la convierte en
 // `error-interno`, ver `trabajador.test.ts`).
 //
-// Entrada que fuerza el fallo de forma legítima, sin simular nada: una expresión con paréntesis
-// anidados mucho más allá del límite de la pila del analizador (descenso recursivo). Verificada con
-// javac 17.0.18 real: 500 niveles compilan sin salida; 100 000 niveles matan al propio javac con su
-// `StackOverflowError` («The system is out of resources») — es una entrada patológica, no un
-// programa de alumno, y lo único que se afirma aquí es que NUESTRO fallo no se disfraza.
+// Tarea 1.36 (C-4b): ANTES la entrada que forzaba el fallo era «legítima, sin simular nada»: una expresión con 100 000 paréntesis anidados (más allá del límite de la pila del analizador
+// de descenso recursivo; con javac 17.0.18 real, 500 niveles compilan y 100 000 matan a javac con su `StackOverflowError`). El tope de tamaño de `limites.ts` detiene ahora esa entrada
+// ANTES del análisis sintáctico (es un programa que no es de clase: aviso honesto), y con menos de 4 000 elementos el analizador ya no agota la pila (se midieron 1 990 niveles). Que NUESTRO
+// fallo no se disfrace de error del alumno se sigue afirmando, ahora con una falla INYECTADA en el analizador: la prueba ya no depende de cuánta pila tenga la máquina.
 describe('compilar — solo un ErrorDeCompilacion es un error de compilación (tarea 1.28)', () => {
-  const NIVELES_QUE_AGOTAN_LA_PILA = 100_000;
-  const anidada = `${'('.repeat(NIVELES_QUE_AGOTAN_LA_PILA)}1${')'.repeat(NIVELES_QUE_AGOTAN_LA_PILA)}`;
+  const fallaDelAnalizador = (): never => {
+    throw new RangeError('Maximum call stack size exceeded');
+  };
 
   it('una excepción ajena al alumno (agotar la pila del analizador) se propaga: NO se disfraza de error de sintaxis', () => {
-    const fuente = `class C { public static void main(String[] a) { int x = ${anidada}; } }`;
-    expect(() => compilar(fuente)).toThrow(RangeError);
+    vi.mocked(analizadorSintactico.analizarPrograma).mockImplementationOnce(fallaDelAnalizador);
+    expect(() => compilar('class C { public static void main(String[] a) { int x = 1; } }')).toThrow(RangeError);
   });
 
   it('triangulación: aunque un aviso léxico ("0x10", hexadecimal) preceda a la falla, el fallo interno sigue propagándose', () => {
-    const fuente = `class C { public static void main(String[] a) { int y = 0x10; int x = ${anidada}; } }`;
-    expect(() => compilar(fuente)).toThrow(RangeError);
+    vi.mocked(analizadorSintactico.analizarPrograma).mockImplementationOnce(fallaDelAnalizador);
+    expect(() => compilar('class C { public static void main(String[] a) { int y = 0x10; int x = 1; } }')).toThrow(RangeError);
   });
 
   it('contraste: un ErrorDeCompilacion real (falta el ";") SIGUE siendo un Problema "error-compilacion", nunca una excepción', () => {
     const fuente = 'class C { public static void main(String[] a) { int x = 5 } }';
     const resultado = compilar(fuente);
     expect(resultado).toMatchObject({ ok: false, problema: { categoria: 'error-compilacion', codigo: 'falta-punto-y-coma' } });
+  });
+
+  it('la entrada de antes (100 000 paréntesis anidados) ya no llega al analizador: es el aviso de tamaño, no una excepción', () => {
+    const niveles = 100_000;
+    const resultado = compilar(`class C { public static void main(String[] a) { int x = ${'('.repeat(niveles)}1${')'.repeat(niveles)}; } }`);
+    expect(resultado).toMatchObject({ ok: false, problema: { categoria: 'no-disponible', codigo: 'programa-demasiado-grande' } });
+  });
+
+  // La pila que agota el analizador depende del entorno: con la de Node por omisión aguanta 1 900 niveles de paréntesis (HEAD y ahora), con la del ejecutor de pruebas se agota entre 500 y 700. Aquí solo se
+  // afirma lo que vale en cualquiera: un anidamiento muy por encima del que escribe un alumno (300 niveles) compila sin lanzar nada.
+  it('un anidamiento de 300 niveles de paréntesis, de llaves y de `else if` (muy por encima del de un alumno) compila sin lanzar nada', () => {
+    const niveles = 300;
+    expect(() => compilar(`class C { public static void main(String[] a) { int x = ${'('.repeat(niveles)}1${')'.repeat(niveles)}; } }`)).not.toThrow();
+    expect(() => compilar(`class C { public static void main(String[] a) { ${'{'.repeat(niveles)}${'}'.repeat(niveles)} } }`)).not.toThrow();
+    expect(() => compilar(`class C { public static void main(String[] a) { int k = 1; ${'if (k == 0) { } else '.repeat(niveles)}{ } } }`)).not.toThrow();
   });
 });
 
@@ -905,6 +930,153 @@ describe('compilar — una variable leída en su propio inicializador (N6, tarea
 
 // Tarea 1.35 (WARNING 3 de la re-verificación del lote 1, decisión del PO 2026-10-02; javac 17.0.18 compila estos cinco archivos sin un solo error): un programa sin ninguna
 // clase no tiene nada que ejecutar. Antes salía «Hay un error de sintaxis aquí» en la línea 2 —un error de compilación que javac no da—; ahora es un aviso honesto.
+// Tarea 1.36 (C-2 y W-2a de la verificación final del lote 1, JLS 3.4): el retorno de carro suelto `\r` es un fin de línea. `compilar()` normaliza los fines de línea a `\n` al entrar —el editor
+// (CodeMirror) ya los entrega así, y un llamado directo, una prueba o un enlace compartido pueden traer `\r`—, y los números de línea salen como los de javac. Medido con javac 17.0.18 real.
+describe('compilar — el retorno de carro suelto es un fin de línea (C-2 y W-2a, tarea 1.36, JLS 3.4)', () => {
+  const programa = (cuerpo: string, fin = '\n'): string => ['public class P {', '    public static void main(String[] args) {', cuerpo, '    }', '}', ''].join(fin);
+
+  it.each([
+    ["un `char` que abre y no cierra antes del `\\r` (javac: «illegal line end in character literal»)", "        char c = '\r';", 'error-no-clasificado'],
+    ['una cadena cortada por un `\\r` (javac: «unclosed string literal»)', '        String s = "a\rb";', 'cadena-sin-cerrar'],
+    ['una cadena cuyo `\\r` es lo último (javac: «unclosed string literal»)', '        String s = "a\r";', 'cadena-sin-cerrar'],
+    ['una cadena con una pareja `\\r\\n` adentro (javac: «unclosed string literal»)', '        String s = "a\r\nb";', 'cadena-sin-cerrar'],
+    ['el `;` que falta quedaba DENTRO del comentario que el `\\r` debía cerrar (javac: `\';\' expected`)', '        int x = 1; // uno\r        int y = 2', 'falta-punto-y-coma'],
+  ])('%s → error en la línea 3, no «ejecución no disponible»', (_descripcion, cuerpo, codigo) => {
+    const resultado = compilar(programa(cuerpo));
+    if (resultado.ok) throw new Error('se esperaba un error y salió ok: true');
+    expect(resultado.problema).toMatchObject({ categoria: 'error-compilacion', codigo });
+    // `';' expected` se ancla en el fin de la palabra anterior: la línea 4 (la de `int y = 2`).
+    expect(resultado.problema.linea).toBe(codigo === 'falta-punto-y-coma' ? 4 : 3);
+  });
+
+  it('el comentario `//` que cierra un `\\r` NO se traga la línea siguiente (W-2a: javac compila `int x = 1; // fin<CR>int y = 2;`)', () => {
+    const resultado = compilar(programa('        int x = 1; // fin\r        int y = 2;'));
+    if (!resultado.ok) expect(resultado.problema.categoria).toBe('no-disponible'); // la declaración todavía no se ejecuta: aviso honesto, nunca un error
+    else expect(resultado.ok).toBe(true);
+  });
+
+  it.each([
+    ['solo `\\r\\n` (Windows)', '\r\n'],
+    ['solo `\\r` (Mac clásico)', '\r'],
+    ['una mezcla', '\r\n'],
+  ])('un programa válido entero con fines de línea %s compila: ok', (_descripcion, fin) => {
+    const resultado = compilar(programa('        System.out.println("x");', fin));
+    expect(resultado.ok).toBe(true);
+  });
+
+  it('los números de línea siguen la cuenta de javac: `\\r\\n` y `\\r` son UN fin de línea, `\\n\\r` y `\\r\\r\\n` son DOS', () => {
+    const lineaDelError = (fin: string): number => {
+      const resultado = compilar(['public class P {', '    public static void main(String[] args) {', '        int x = 1;', '        int x = 2;', '    }', '}', ''].join(fin));
+      if (resultado.ok) throw new Error('se esperaba un error');
+      expect(resultado.problema.codigo).toBe('variable-ya-definida');
+      return resultado.problema.linea;
+    };
+    expect([lineaDelError('\n'), lineaDelError('\r'), lineaDelError('\r\n')]).toEqual([4, 4, 4]);
+    expect([lineaDelError('\n\r'), lineaDelError('\r\r\n'), lineaDelError('\r\n\r')]).toEqual([7, 7, 7]);
+  });
+
+  it('el rango y `vista.fuente` hablan del texto NORMALIZADO (sin `\\r`), para que los desplazamientos de un problema coincidan con el texto que se muestra', () => {
+    const resultado = compilar(programa('        System.out.println("x");', '\r\n'));
+    if (!resultado.ok) throw new Error('se esperaba ok: true');
+    expect(resultado.vista.fuente).toBe(programa('        System.out.println("x");', '\n'));
+    expect(resultado.vista.fuente.includes('\r')).toBe(false);
+  });
+});
+
+// Tarea 1.36 (C-5 y W-10 de la verificación final del lote 1): `compilar()` de punta a punta con una constante de texto con un `double`. Los 12 + 6 programas del corpus
+// (`corpus/experimentos/constantes-desconocidas/`, con los veredictos de javac) los vigila `constantes-desconocidas-del-corpus.test.ts`; aquí, los cuatro que bastan para cada pasada.
+describe('compilar — una constante de texto con un número decimal es un aviso honesto, nunca una respuesta inventada (C-5 y W-10, tarea 1.36)', () => {
+  const programa = (...lineas: string[]): string => ['public class P {', '    public static void main(String[] args) {', ...lineas.map((l) => `        ${l}`), '    }', '}', ''].join('\n');
+
+  it.each([
+    ['un ciclo `while` (alcanzabilidad: javac dice «unreachable statement»)', ['while ("a" + 1.5 == "a1.5") { }', 'System.out.println("x");'], 3],
+    ['una etiqueta de `case` (javac la compila)', ['String s = "d1.5";', 'switch (s) {', '    case "d" + 1.5:', '        break;', '    default:', '        break;', '}'], 5],
+    ['una asignación definitiva (javac compila: la condición vale `true`)', ['int x;', 'if ("a" + 1.5 == "a1.5") x = 1;', 'System.out.println(x);'], 4],
+  ])('%s → aviso `constante-de-texto-con-decimal-no-soportada` en la línea de la construcción, ni `ok` ni «ejecución no disponible»', (_descripcion, lineas, linea) => {
+    const resultado = compilar(programa(...lineas));
+    if (resultado.ok) throw new Error('se esperaba un aviso y salió ok: true');
+    expect(resultado.problema).toMatchObject({ categoria: 'no-disponible', codigo: 'constante-de-texto-con-decimal-no-soportada', linea, datos: {} });
+  });
+
+  it.each([
+    ['se imprime', ['System.out.println("a" + 1.5);']],
+    ['se declara y se imprime', ['String s = "a" + 1.5;', 'System.out.println(s);']],
+    ['se compara sin decidir nada', ['boolean b = "a" + 1.5 == "a1.5";', 'System.out.println(b);']],
+    ['un `if` que no deja ninguna variable sin asignar', ['if ("a" + 1.5 == "a1.5") {', '    System.out.println("x");', '}']],
+  ])('control: un texto con un `double` que NO decide nada (%s) sigue su camino de siempre: «ejecución no disponible», sin aviso de constante', (_descripcion, lineas) => {
+    const resultado = compilar(programa(...lineas));
+    if (resultado.ok) throw new Error('lo que no es un literal todavía no se ejecuta: se esperaba un aviso');
+    expect(resultado.problema).toMatchObject({ categoria: 'no-disponible', codigo: 'ejecucion-no-disponible' });
+  });
+
+  it('control: una condición constante CONOCIDA sigue dando el error exacto de javac (`while ("a" + 1 == "a2") { … }` es «unreachable statement»)', () => {
+    const resultado = compilar(programa('while ("a" + 1 == "a2") {', '    System.out.println("nunca");', '}'));
+    if (resultado.ok) throw new Error('se esperaba un error');
+    expect(resultado.problema).toMatchObject({ categoria: 'error-compilacion', codigo: 'sentencia-inalcanzable', linea: 3 });
+  });
+});
+
+// Tarea 1.36 (C-4b y S-1 de la verificación final del lote 1): el tope de tamaño. javac rechaza un método de más de 65 535 bytes de bytecode (`limit.code`); el motor no genera bytecode y no lo modela:
+// pone un tope CONSERVADOR en los elementos del programa y da un aviso honesto. Se revisa justo después del léxico, ANTES de las pasadas que crecían como n² con las declaraciones locales.
+describe('compilar — un programa demasiado grande es un aviso honesto, no un resultado inventado ni un cuelgue (C-4b y S-1, tarea 1.36)', () => {
+  /** Un programa con EXACTAMENTE `tokens` tokens (sin el de fin de archivo): el encabezado de `main` y tantas sentencias vacías `;` como hagan falta, una por línea. */
+  const programaConTokens = (tokens: number): string => {
+    const encabezado = 'public class P {\n    public static void main(String[] args) {\n';
+    const cierre = '    }\n}\n';
+    const fijos = tokenizar(encabezado + cierre).length - 1;
+    return encabezado + ';\n'.repeat(tokens - fijos) + cierre;
+  };
+  const lineaDelAviso = (fuente: string): number | 'ok' | 'otro' => {
+    const resultado = compilar(fuente);
+    if (resultado.ok) return 'ok';
+    return resultado.problema.codigo === 'programa-demasiado-grande' ? resultado.problema.linea : 'otro';
+  };
+
+  it('un programa de exactamente el tope de tokens se revisa como siempre: no es el aviso de tamaño (aquí, solo sentencias vacías, que todavía no se ejecutan)', () => {
+    const resultado = compilar(programaConTokens(MAXIMO_DE_TOKENS_DE_UN_PROGRAMA));
+    expect(typeof lineaDelAviso(programaConTokens(MAXIMO_DE_TOKENS_DE_UN_PROGRAMA))).not.toBe('number');
+    if (!resultado.ok) expect(resultado.problema.codigo).toBe('ejecucion-no-disponible');
+  });
+
+  it('con UN token más es el aviso `programa-demasiado-grande`, señalado en la línea donde se pasó del tope (la del primer token de más)', () => {
+    const fuente = programaConTokens(MAXIMO_DE_TOKENS_DE_UN_PROGRAMA + 1);
+    const resultado = compilar(fuente);
+    if (resultado.ok) throw new Error('se esperaba un aviso');
+    expect(resultado.problema).toMatchObject({ categoria: 'no-disponible', codigo: 'programa-demasiado-grande', datos: {} });
+    // El token de más es el del lugar tope + 1 (aquí, la `}` final de la clase): la línea del aviso es la suya.
+    expect(resultado.problema.linea).toBe(new TablaDeLineas(fuente).ubicar(tokenizar(fuente)[MAXIMO_DE_TOKENS_DE_UN_PROGRAMA]!.rango.inicio).linea);
+  });
+
+  it('20 000 declaraciones locales (más de 60 s con la pasada cuadrática, S-1) terminan al instante con el aviso, sin correr ninguna pasada costosa', () => {
+    const declaraciones = Array.from({ length: 20_000 }, (_, i) => `        int v${i} = ${i};`).join('\n');
+    const fuente = `public class P {\n    public static void main(String[] args) {\n${declaraciones}\n    }\n}\n`;
+    const antes = Date.now();
+    const resultado = compilar(fuente);
+    const milisegundos = Date.now() - antes;
+    if (resultado.ok) throw new Error('se esperaba un aviso');
+    expect(resultado.problema).toMatchObject({ categoria: 'no-disponible', codigo: 'programa-demasiado-grande' });
+    expect(milisegundos).toBeLessThan(2_000);
+  });
+
+  it('8 200 sentencias `println` (javac: `limit.code`) también son el aviso, no `ok` ni «ejecución no disponible»', () => {
+    const cuerpo = Array.from({ length: 8_200 }, () => '        System.out.println("x");').join('\n');
+    expect(lineaDelAviso(`public class P {\n    public static void main(String[] args) {\n${cuerpo}\n    }\n}\n`)).not.toBe('ok');
+    expect(lineaDelAviso(`public class P {\n    public static void main(String[] args) {\n${cuerpo}\n    }\n}\n`)).not.toBe('otro');
+  });
+
+  it('un error LÉXICO sigue ganando (el léxico corre antes del tope): una cadena sin cerrar en un programa enorme es ese error', () => {
+    const cuerpo = Array.from({ length: 6_000 }, () => '        int x = 1;').join('\n');
+    const resultado = compilar(`public class P {\n    public static void main(String[] args) {\n${cuerpo}\n        String s = "sin cerrar;\n    }\n}\n`);
+    if (resultado.ok) throw new Error('se esperaba un error');
+    expect(resultado.problema).toMatchObject({ categoria: 'error-compilacion', codigo: 'cadena-sin-cerrar' });
+  });
+
+  it('control: un programa de clase (cientos de tokens) no cambia en nada', () => {
+    const resultado = compilar(['public class P {', '    public static void main(String[] args) {', '        System.out.println("hola");', '    }', '}', ''].join('\n'));
+    expect(resultado.ok).toBe(true);
+  });
+});
+
 describe('compilar — un archivo sin ninguna clase (tarea 1.35)', () => {
   it.each([
     ['vacío', ''],
@@ -1093,5 +1265,44 @@ describe('compilar — «y N más» cuenta las construcciones distintas, no las 
 
   it('un literal y dos construcciones de otra clase suman tres hallazgos: dos más', () => {
     expect(adicionalesDe(programa('int a = 0x1F; int c = 1 << 2; int d = 5 & 3;'))).toBe(2);
+  });
+});
+
+// Tarea 1.36 (C-4a de la verificación final del lote 1): javac 17 rechaza una constante de texto de 65 535 caracteres o más (`limit.string`) y una entrada de más de 65 535 bytes en el archivo de clase
+// (`limit.string.overflow`); antes un `String s = "a…65 535";` salía como `ok` y se ejecutaba. La pasada de límites va DESPUÉS de las semánticas (javac revisa esto al generar el código, cuando ya no
+// quedan errores de Attr ni de Flow), así que un programa con otro error muestra ESE error.
+describe('compilar — los límites del archivo de clase de javac (C-4a, tarea 1.36)', () => {
+  const programa = (cuerpoDeMain: string): string => `public class P {\n  public static void main(String[] args) {\n${cuerpoDeMain}\n  }\n}\n`;
+  const problemaDe = (fuente: string) => {
+    const resultado = compilar(fuente);
+    if (resultado.ok) throw new Error('se esperaba ok:false');
+    return resultado.problema;
+  };
+
+  it('un texto de 65 535 caracteres: error de compilación `texto-con-demasiados-caracteres`, en la línea del texto (la misma de javac)', () => {
+    expect(problemaDe(programa(`    String s = "${'a'.repeat(65_535)}";`))).toMatchObject({ categoria: 'error-compilacion', codigo: 'texto-con-demasiados-caracteres', linea: 3 });
+  });
+
+  it('un texto de 32 768 letras con acento (65 536 bytes): `texto-con-demasiados-bytes`, en la línea de la clase', () => {
+    expect(problemaDe(programa(`    String s = "${'é'.repeat(32_768)}";`))).toMatchObject({ categoria: 'error-compilacion', codigo: 'texto-con-demasiados-bytes', linea: 1 });
+  });
+
+  it('control: con un carácter menos Java lo acepta y el programa pasa (nunca uno de los dos errores)', () => {
+    for (const texto of ['a'.repeat(65_534), 'é'.repeat(32_767)]) {
+      const resultado = compilar(programa(`    String s = "${texto}";`));
+      if (!resultado.ok) expect(['texto-con-demasiados-caracteres', 'texto-con-demasiados-bytes']).not.toContain(resultado.problema.codigo);
+    }
+  });
+
+  it('un texto con un decimal que cae en la frontera: aviso `tamano-de-texto-no-revisable` en la línea del texto (nunca ok, nunca un error inventado)', () => {
+    expect(problemaDe(programa(`    String s = "${'a'.repeat(65_531)}" + 1.5;`))).toMatchObject({ categoria: 'no-disponible', codigo: 'tamano-de-texto-no-revisable', linea: 3 });
+  });
+
+  it('un error de una pasada anterior gana: `unreachable statement` se informa aunque el programa también tenga un texto de más', () => {
+    expect(problemaDe(programa(`    return;\n    String s = "${'a'.repeat(65_535)}";`))).toMatchObject({ categoria: 'error-compilacion', codigo: 'sentencia-inalcanzable', linea: 4 });
+  });
+
+  it('un error de tipos gana también al texto largo', () => {
+    expect(problemaDe(programa(`    int n = "x";\n    String s = "${'a'.repeat(65_535)}";`))).toMatchObject({ categoria: 'error-compilacion', linea: 3 });
   });
 });

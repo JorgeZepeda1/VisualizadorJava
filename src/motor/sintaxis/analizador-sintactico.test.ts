@@ -96,11 +96,31 @@ describe('analizarPrograma', () => {
 });
 
 describe('analizarPrograma — núcleo del programa (tarea 1.2, REQ-SUB-001)', () => {
-  it('ignora una línea "package" sin rechazarla ni guardarla', () => {
+  it('acepta una línea "package" sin rechazarla y la guarda en el árbol (tarea 1.36: la atribución revisa que el nombre no sea el de un paquete del JDK)', () => {
     const fuente =
       'package paquetedeprueba; class C { public static void main(String[] a) { System.out.println("x"); } }';
     const programa = analizar(fuente);
     expect(programa.clase.nombre).toBe('C');
+    expect(programa.paquete).toEqual({ tipo: 'paquete', nombre: 'paquetedeprueba', rango: { inicio: 0, fin: 'package paquetedeprueba;'.length } });
+  });
+
+  it('triangulación: el nombre del paquete es el nombre calificado completo, y sin "package" el árbol no trae ninguno', () => {
+    const conPaquete = analizar('package aula.curso.u3;\nclass C { public static void main(String[] a) { } }');
+    expect(conPaquete.paquete).toMatchObject({ nombre: 'aula.curso.u3', rango: { inicio: 0, fin: 'package aula.curso.u3;'.length } });
+    expect(analizar('class C { public static void main(String[] a) { } }').paquete).toBeNull();
+  });
+
+  // Tarea 1.36 (C-4a): javac ancla el error «UTF8 representation ... is too long for the constant pool» en la posición de la CLASE, y esa posición es la palabra `class`, no el primer
+  // modificador (`public` en una línea y `class` en la siguiente dan la línea de `class`, verificado con javac 17.0.18). El árbol conserva el rango de esa palabra.
+  it('la clase guarda el rango de su palabra `class`, no el de sus modificadores', () => {
+    const fuente = 'public\nclass C { public static void main(String[] a) { } }';
+    expect(analizar(fuente).clase.rangoDeLaPalabraClass).toEqual({ inicio: 'public\n'.length, fin: 'public\nclass'.length });
+  });
+
+  it('triangulación: sin modificadores, y con varios, la palabra `class` es la que sigue a todos', () => {
+    expect(analizar('class C { public static void main(String[] a) { } }').clase.rangoDeLaPalabraClass).toEqual({ inicio: 0, fin: 5 });
+    const conVarios = '  public   final class C { public static void main(String[] a) { } }';
+    expect(analizar(conVarios).clase.rangoDeLaPalabraClass).toEqual({ inicio: conVarios.indexOf('class'), fin: conVarios.indexOf('class') + 'class'.length });
   });
 
   it('acepta un import simple de Scanner y lo registra en el AST', () => {
@@ -297,6 +317,56 @@ describe('analizarPrograma — «main» con otra firma que la del lanzador es un
   it('control: una lista MAL formada sigue siendo un error de sintaxis de `main`, no se esconde como método propio', () => {
     expect(() => analizar('class C { public static void main(String[ args) { } }')).toThrow(ErrorDeCompilacion);
     expect(() => analizar('class C { public static void main(String[] args { } }')).toThrow(ErrorDeCompilacion);
+  });
+});
+
+// Tarea 1.36 (C-1 de la verificación final del lote 1): la elipsis de `main(String... args)` es UN token de tres puntos pegados (JLS 3.11). El analizador leía tres «.» seguidos sin
+// comprobar que estuvieran juntos, así que `main(String . . . args)` y seis variantes más se aceptaban como el `main` del lanzador (javac: «<identifier> expected» o «illegal '.'»).
+describe('analizarPrograma — los tres puntos de `main(String... args)` van pegados (tarea 1.36, C-1)', () => {
+  it.each([
+    'String . . . args',
+    'String.. .args',
+    'String. ..args',
+    'String./**/.. args',
+    'String.. ./**/args',
+    'String.\n.. args',
+    'String.  .  . args',
+    'final String . . . args',
+    'String.. args',
+    'String .... args',
+    'String. args',
+  ])('main(%s) es un error de sintaxis: no es el `main` del lanzador ni un método propio', (parametros) => {
+    expect(() => analizar(`class C { public static void main(${parametros}) { } }`)).toThrow(ErrorDeCompilacion);
+  });
+
+  it('el error cae en el token que sigue al primer punto, como en javac (aquí, en la línea siguiente)', () => {
+    const fuente = 'class C { public static void main(String.\n.. args) { } }';
+    let error: unknown;
+    try {
+      analizar(fuente);
+    } catch (e) {
+      error = e;
+    }
+    expect(error).toBeInstanceOf(ErrorDeCompilacion);
+    expect((error as ErrorDeCompilacion).rango.inicio).toBe(fuente.indexOf('\n') + 1);
+  });
+
+  it.each(['String... args', 'String ... args', 'String...args', 'final String... args', 'String /* a */ ... /* b */ args'])(
+    'control: main(%s) sigue siendo el `main` del lanzador',
+    (parametros) => {
+      const programa = analizar(`class C { public static void main(${parametros}) { } }`);
+      expect(programa.clase.main).not.toBeNull();
+      expect(programa.clase.main!.parametro).toBe('args');
+    },
+  );
+
+  it.each(['int . . . xs', 'int.. .xs', 'int. ..xs'])('la lista de parámetros de OTRO método con «%s» también es un error de sintaxis', (parametros) => {
+    expect(() => analizar(`class C { static void f(${parametros}) { } }`)).toThrow(ErrorDeCompilacion);
+  });
+
+  it.each(['int... xs', 'int ... xs', 'String[]... xs'])('control: un método propio con «%s» es un varargs válido (aviso de miembro, no error)', (parametros) => {
+    const programa = analizar(`class C { static void f(${parametros}) { } }`);
+    expect(programa.clase.otrosMiembros).toHaveLength(1);
   });
 });
 

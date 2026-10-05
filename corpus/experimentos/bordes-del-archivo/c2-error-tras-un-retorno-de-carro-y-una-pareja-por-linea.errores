@@ -1,0 +1,4 @@
+Saludo.java:7: error: variable x is already defined in method main(String[])
+        int x = 2;
+            ^
+1 error

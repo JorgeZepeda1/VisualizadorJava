@@ -1,0 +1,2 @@
+Error: no se ha encontrado o cargado la clase principal sun.nio.ch.Saludo
+Causado por: java.lang.ClassNotFoundException: sun.nio.ch.Saludo

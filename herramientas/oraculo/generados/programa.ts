@@ -53,6 +53,13 @@ export type Etiqueta =
   | 'cast-a-tipo-complejo' // `(String[]) args`, `(java.util.List<String>) x`, `(java.lang.Object) x`, `(Object & Serializable) x`
   | 'referencia-a-metodo-de-tipo' // `String[]::new`, `ArrayList<String>::new`, `int[]::clone`
   | 'caracter-suplementario' // un emoji (dos unidades UTF-16) dentro de un literal `char`
+  // Tarea 1.36: las familias que la verificación final del lote 1 halló fuera de la gramática del generador (C-1, C-3, W-1, C-2/W-2, C-5/W-10, C-4).
+  | 'varargs-mal-escrito' // C-1: `String . . . args`, `String .. . args`: los tres puntos de `String...` separados
+  | 'paquete-declarado' // C-3: una línea `package …;` (de un paquete que el JDK exporta, uno propio, o con el nombre de una clase)
+  | 'caracter-ignorable' // W-1: un carácter invisible (U+200B, U+00AD, U+FEFF…) dentro de un nombre o de una palabra clave: javac lo salta
+  | 'fin-de-linea-especial' // C-2/W-2: el programa termina sus renglones con `\r`, `\r\n`, `\n\r` o una mezcla
+  | 'constante-de-texto-con-decimal' // C-5/W-10: `"a" + 1.5` donde Java decide con su valor (una condición, una etiqueta de `case`, la asignación definitiva)
+  | 'texto-largo' // C-4: una constante de texto en la frontera del archivo de clase (65 535 caracteres o 65 535 bytes)
   // Rasgos de las declaraciones que pone el generador.
   | 'var'
   | 'tipo-envoltorio'
@@ -235,6 +242,9 @@ export interface EscapeUnicode {
   readonly aparicion: number;
 }
 
+/** Tarea 1.36: cómo termina cada renglón. `lf-y-cr` es `\n\r` (javac lo cuenta como DOS terminadores) y `mezclado` alterna `\r\n`, `\n` y `\r`. */
+export type FinDeLinea = 'cr' | 'crlf' | 'lf-y-cr' | 'mezclado';
+
 export interface Programa {
   /** Renglones completos (`import java.util.Scanner;`). */
   readonly imports: readonly string[];
@@ -246,6 +256,10 @@ export interface Programa {
   readonly sinClase?: boolean;
   /** Tarea 1.35: un carácter del programa escrito como escape Unicode. */
   readonly escapeUnicode?: EscapeUnicode;
+  /** Tarea 1.36 (C-2/W-2, JLS 3.4): con qué termina cada renglón del programa impreso; sin esto, `\n`. El retorno de carro solo y la pareja `\r\n` son fines de línea de Java. */
+  readonly finDeLinea?: FinDeLinea;
+  /** Tarea 1.36: el programa entero pretende un error de sintaxis (los tres puntos separados de `main`, un carácter invisible al principio de un nombre): no vive en un miembro ni en una expresión. */
+  readonly sintaxisInvalida?: boolean;
   /**
    * Tarea 1.34 (familia C): el nombre de la clase. Por omisión `P`; el generador la llama a veces como una clase del JDK (`System`,
    * `Math`, `Scanner`…): JLS 6.4.1 y 7.5.1 dicen que la clase del alumno TAPA a la del JDK, y es una regla que el motor tuvo que modelar.
@@ -445,7 +459,25 @@ export function renderizarPrograma(programa: Programa): string {
           '}',
           '',
         ].join('\n');
-  return programa.escapeUnicode === undefined ? texto : aplicarEscapeUnicode(texto, programa.escapeUnicode);
+  const conEscape = programa.escapeUnicode === undefined ? texto : aplicarEscapeUnicode(texto, programa.escapeUnicode);
+  return programa.finDeLinea === undefined ? conEscape : conFinDeLinea(conEscape, programa.finDeLinea);
+}
+
+/** Tarea 1.36: cambia cada `\n` del programa impreso por el fin de línea pedido (los textos del programa no traen renglones sueltos: una cadena escribe `\\n`, no un salto de línea). */
+function conFinDeLinea(texto: string, fin: FinDeLinea): string {
+  switch (fin) {
+    case 'cr':
+      return texto.replace(/\n/g, '\r');
+    case 'crlf':
+      return texto.replace(/\n/g, '\r\n');
+    case 'lf-y-cr':
+      return texto.replace(/\n/g, '\n\r');
+    case 'mezclado': {
+      const finales = ['\r\n', '\n', '\r'] as const;
+      let renglon = 0;
+      return texto.replace(/\n/g, () => finales[renglon++ % finales.length]!);
+    }
+  }
 }
 
 // ---- Recorridos y rasgos ----
@@ -559,6 +591,10 @@ export function etiquetasDe(programa: Programa): readonly Etiqueta[] {
   if (programa.sinClase === true) etiquetas.add('archivo-sin-clase');
   if (programa.parametrosDeMain !== undefined) etiquetas.add('main-con-otra-firma');
   if (programa.escapeUnicode !== undefined) etiquetas.add('escape-unicode');
+  if (programa.finDeLinea !== undefined) etiquetas.add('fin-de-linea-especial');
+  // Tarea 1.36 (C-1): los tres puntos de `String...` mal escritos (separados, o dos pegados y uno suelto); `String ... args` con espacios alrededor es válido y no cuenta.
+  if (programa.parametrosDeMain !== undefined && /\.\s+\.|(?<!\.)\.\.(?!\.)/.test(programa.parametrosDeMain)) etiquetas.add('varargs-mal-escrito');
+  if (programa.imports.some((linea) => /^package\s/.test(linea))) etiquetas.add('paquete-declarado');
   if (programa.imports.some((linea) => /\.\*;/.test(linea))) etiquetas.add('import-con-comodin');
   if (programa.imports.some((linea) => /;;/.test(linea))) etiquetas.add('import-con-punto-y-coma-de-mas');
   for (const miembro of programa.miembros ?? []) for (const etiqueta of miembro.etiquetas) etiquetas.add(etiqueta);
@@ -581,6 +617,7 @@ export function etiquetasDe(programa: Programa): readonly Etiqueta[] {
 
 /** ¿Alguna parte del programa está marcada como error de sintaxis A PROPÓSITO? */
 export function pretendeErrorDeSintaxis(programa: Programa): boolean {
+  if (programa.sintaxisInvalida === true) return true;
   if ((programa.miembros ?? []).some((miembro) => miembro.sintaxisInvalida === true)) return true;
   for (const sentencia of sentenciasDe(programa.sentencias)) {
     if (sentencia.k === 'declaracion' && sentencia.sintaxisInvalida) return true;

@@ -2,10 +2,18 @@
 // `manejarMensaje` directamente — la lógica real del trabajador — sin un Worker de verdad: Vitest
 // corre en Node/jsdom y el cableado a self.onmessage (más abajo en trabajador.ts) solo se activa
 // dentro de un worker real, nunca en estos entornos (ADR 007).
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { manejarMensaje } from './trabajador.ts';
+import * as motor from '../motor/index.ts';
 import type { ConfigEjecucion } from '../motor/index.ts';
 import type { MensajeTrabajadorAUi } from './protocolo.ts';
+
+// Tarea 1.36 (C-4b): `compilar()` se envuelve para poder INYECTAR una falla interna (por omisión llama al real). La entrada que antes la forzaba «sin simular nada» —100 000 paréntesis anidados— la
+// detiene ahora el tope de tamaño del motor (`motor/limites.ts`) con un aviso honesto, antes de llegar al analizador.
+vi.mock('../motor/index.ts', async (importarOriginal) => {
+  const original = await importarOriginal<typeof import('../motor/index.ts')>();
+  return { ...original, compilar: vi.fn(original.compilar) };
+});
 
 function configPorOmision(): ConfigEjecucion {
   return {
@@ -73,18 +81,22 @@ describe('manejarMensaje', () => {
   // error del alumno, se vuelve `Problema`); la excepción sale de `compilar()` y aquí, en el borde
   // del trabajador, se convierte en el mensaje de protocolo `error-interno` (design.md §5) que la
   // interfaz ya sabe mostrar («Algo falló dentro del visualizador.»). Antes el trabajador NUNCA lo
-  // emitía. Entrada que fuerza el fallo sin simular nada: paréntesis anidados más allá de la pila
-  // del analizador (mismo caso que `compilador.test.ts`; javac 17.0.18 real la rechaza con su propio
-  // `StackOverflowError` -- entrada patológica, no un programa de alumno). Las excepciones DURANTE
+  // emitía. Tarea 1.36: el fallo ahora se INYECTA (una `RangeError` como la de agotar la pila del
+  // analizador) en vez de forzarlo con 100 000 paréntesis, que el tope de tamaño detiene antes. Las excepciones DURANTE
   // la ejecución (`crearEjecucion`/`avanzarYEmitir`) quedan fuera: son del perro guardián (lote 3).
   describe('un fallo interno de compilar() (tarea 1.28)', () => {
-    const NIVELES_QUE_AGOTAN_LA_PILA = 100_000;
-    const anidada = `${'('.repeat(NIVELES_QUE_AGOTAN_LA_PILA)}1${')'.repeat(NIVELES_QUE_AGOTAN_LA_PILA)}`;
-    const fuenteQueAgotaLaPila = `class C { public static void main(String[] a) { int x = ${anidada}; } }`;
+    const fuenteQueFalla = 'class C { public static void main(String[] a) { int x = 1; } }';
+    const fallaDelMotor = (): never => {
+      throw new RangeError('Maximum call stack size exceeded');
+    };
+    const hacerQueFalleLaProximaCompilacion = (): void => {
+      vi.mocked(motor.compilar).mockImplementationOnce(fallaDelMotor);
+    };
 
     it('emite UN solo mensaje error-interno con el id de la ejecución, sin compilado, pasos ni fin', () => {
       const emitidos: MensajeTrabajadorAUi[] = [];
-      manejarMensaje({ tipo: 'ejecutar', id: 7, fuente: fuenteQueAgotaLaPila, config: configPorOmision() }, (m) =>
+      hacerQueFalleLaProximaCompilacion();
+      manejarMensaje({ tipo: 'ejecutar', id: 7, fuente: fuenteQueFalla, config: configPorOmision() }, (m) =>
         emitidos.push(m),
       );
       expect(emitidos).toHaveLength(1);
@@ -93,7 +105,8 @@ describe('manejarMensaje', () => {
 
     it('el mensaje de protocolo lleva el detalle del fallo como texto no vacío (para quien depure, nunca para el alumno)', () => {
       const emitidos: MensajeTrabajadorAUi[] = [];
-      manejarMensaje({ tipo: 'ejecutar', id: 8, fuente: fuenteQueAgotaLaPila, config: configPorOmision() }, (m) =>
+      hacerQueFalleLaProximaCompilacion();
+      manejarMensaje({ tipo: 'ejecutar', id: 8, fuente: fuenteQueFalla, config: configPorOmision() }, (m) =>
         emitidos.push(m),
       );
       const [interno] = emitidos;
@@ -103,7 +116,8 @@ describe('manejarMensaje', () => {
 
     it('el trabajador sigue sirviendo: la siguiente ejecución con un programa normal emite compilado→pasos→fin', () => {
       const emitidos: MensajeTrabajadorAUi[] = [];
-      manejarMensaje({ tipo: 'ejecutar', id: 1, fuente: fuenteQueAgotaLaPila, config: configPorOmision() }, (m) =>
+      hacerQueFalleLaProximaCompilacion();
+      manejarMensaje({ tipo: 'ejecutar', id: 1, fuente: fuenteQueFalla, config: configPorOmision() }, (m) =>
         emitidos.push(m),
       );
       manejarMensaje(

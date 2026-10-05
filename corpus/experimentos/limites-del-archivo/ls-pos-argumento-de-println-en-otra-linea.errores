@@ -1,0 +1,4 @@
+Saludo.java:21: error: constant string too long
+                + B);
+                ^
+1 error

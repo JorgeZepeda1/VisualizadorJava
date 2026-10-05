@@ -55,3 +55,24 @@ describe('compilarEnLote — modo solo sintaxis (--solo-sintaxis)', () => {
     expect(respuestas.get('palabra-reservada')?.compila).toBe(false);
   });
 });
+
+// Tarea 1.36 (C-4a): el oráculo de los goldens compila con `javac -g` (ADR 011, como NetBeans) y el compilador por lotes —el que usan el generador, los mutantes y la matriz— lo hacía SIN `-g`, así que
+// los dos daban respuestas distintas en lo único que `-g` cambia: con `-g` (`varDebugInfo`) javac GENERA el inicializador de una `final` constante, y sin él no. Una `final` de más de 65 535 bytes (UTF-8
+// modificado) que nadie usa compila sin `-g` y da `limit.string.overflow` con él. Las dos formas de preguntarle a javac tienen que decir lo mismo.
+describe('compilarEnLote — compila con `-g`, igual que el oráculo de los goldens (ADR 011)', () => {
+  /** Un texto de 16 384 acentos plegando constantes (cada `final` mide 2 bytes por letra: 32 768 bytes la más grande) y una `final` que suma dos: 65 536 bytes. */
+  const pila = Array.from({ length: 15 }, (_, k) => (k === 0 ? '        final String E0 = "é";' : `        final String E${k} = E${k - 1} + E${k - 1};`));
+  const conLaFinalGrande = (id: string, ultimaLinea: string): FuenteParaCompilar => ({
+    id,
+    fuente: ['public class P {', '    public static void main(String[] args) {', ...pila, ultimaLinea, '    }', '}', ''].join('\n'),
+  });
+
+  it('una `final` constante de 65 536 bytes que nadie usa se rechaza (`limit.string.overflow`); con 65 534 bytes (32 767 letras) compila', async () => {
+    const respuestas = await compilarEnLote(jdk, [
+      conLaFinalGrande('final-de-mas', '        final String K = E14 + E14;'),
+      conLaFinalGrande('final-justa', '        final String K = E14 + E13 + E12 + E11 + E10 + E9 + E8 + E7 + E6 + E5 + E4 + E3 + E2 + E1 + E0;'),
+    ]);
+    expect(respuestas.get('final-de-mas')).toMatchObject({ compila: false, codigoJavac: 'compiler.err.limit.string.overflow' });
+    expect(respuestas.get('final-justa')?.compila).toBe(true);
+  });
+});

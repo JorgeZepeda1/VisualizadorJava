@@ -1,0 +1,4 @@
+Saludo.java:3: error: illegal '.'
+        .. args) {
+         ^
+1 error

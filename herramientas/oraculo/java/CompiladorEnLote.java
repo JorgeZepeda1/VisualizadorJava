@@ -147,7 +147,9 @@ public class CompiladorEnLote {
             null,
             fileManagerBase,
             diagnosticos,
-            List.of("-encoding", "UTF-8", "-proc:none"),
+            // Tarea 1.36: `-g`, igual que el oráculo de los goldens (`ejecutar.ts`, ADR 011; es también lo que hace NetBeans). Sin `-g` javac no genera el inicializador de una `final` constante
+            // y con él sí (`Gen.visitVarDef`: `varDebugInfo`), así que una `final` de más de 65 535 bytes que nadie usa compilaba aquí y se rechazaba en el golden.
+            List.of("-encoding", "UTF-8", "-proc:none", "-g"),
             null,
             List.of(fuenteEnMemoria));
 

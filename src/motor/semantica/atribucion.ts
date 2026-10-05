@@ -36,8 +36,8 @@ import { CODIGOS_NO_SOPORTADO } from '../sintaxis/no-soportado.ts';
 import { Alcance } from './alcance.ts';
 import { construirAmbito, type AmbitoDeNombres } from './ambito-de-nombres.ts';
 import { CONSTRUCTORES_SOPORTADOS, clasificarCampo, clasificarMetodo } from './catalogo-api.ts';
-import { existeClaseDelJdk, existePaqueteOTipoDelJdk } from './catalogo-clases.ts';
-import { constanteDeVariable, valorConstante } from './constantes.ts';
+import { clasesDelPaquete, existeClaseDelJdk, existePaqueteOTipoDelJdk } from './catalogo-clases.ts';
+import { constanteDeVariable, valorConstante, valorSiSeSabe } from './constantes.ts';
 import type { ProblemaAtribucion } from './diagnostico.ts';
 import { resolverSobrecarga } from './sobrecargas.ts';
 import { verificarEtiquetasDeCase, verificarSelectorDeSwitch } from './switch.ts';
@@ -88,6 +88,16 @@ const TIPO_DEL_PARAMETRO_DE_MAIN = 'String[]';
 
 export function atribuir(programa: NodoPrograma): ProblemaAtribucion[] {
   const problemas: ProblemaAtribucion[] = [];
+  // Tarea 1.36 (C-3, JLS 7.4.1): el `package` va primero, como en javac (lo declara la fase que entra las clases, antes de resolver los tipos): `package java.util;` es «package exists in
+  // another module», y `package java.lang.String;` choca con una clase. Un `package` normal (`miproyecto;`, el de NetBeans) sigue sin problemas.
+  if (programa.paquete !== null) {
+    const { nombre, rango } = programa.paquete;
+    if (clasesDelPaquete(nombre).size > 0) {
+      problemas.push({ codigo: 'paquete-del-jdk', rango, datos: { nombre } });
+    } else if (existeClaseDelJdk(nombre)) {
+      problemas.push({ codigo: CODIGOS_NO_SOPORTADO.paqueteConNombreDeClase, categoria: 'no-disponible', rango, datos: { nombre } });
+    }
+  }
   // Tarea 1.21 (sub-lote 1-D4, REQ-SUB-001): los imports existen y se validan SIN IMPORTAR si hay
   // "main" o no (a diferencia del resto de esta pasada, que necesita un cuerpo que recorrer) --
   // verificado contra javac 17 real: un import roto se rechaza aunque la clase no tenga "main".
@@ -239,7 +249,7 @@ function visitarDeclaracionLocal(
       // ya se reportó un problema arriba — nunca dos problemas por la misma causa).
       const destino = tipoDeNombreDeTipo(declaracion.nombreTipo);
       const origen = tipoDeExpresion(declarador.inicializador, alcance);
-      if (destino !== 'desconocido' && !esAsignable(origen, destino, valorInicializador)) {
+      if (destino !== 'desconocido' && !esAsignable(origen, destino, valorSiSeSabe(valorInicializador))) {
         problemas.push({
           codigo: codigoDeAsignacionInvalida(origen, destino),
           rango: declarador.inicializador.rango,
@@ -879,7 +889,7 @@ function verificarAsignacionSimple(expresion: NodoAsignacion, alcance: Alcance, 
   const destino = tipoDeExpresion(expresion.objetivo, alcance);
   if (destino === 'desconocido') return;
   const origen = tipoDeExpresion(expresion.valor, alcance);
-  const constanteOrigen = valorConstante(expresion.valor, alcance);
+  const constanteOrigen = valorSiSeSabe(valorConstante(expresion.valor, alcance)); // tarea 1.36: solo importa el valor de una constante entera (estrechamiento); lo desconocido es texto o boolean
   if (esAsignable(origen, destino, constanteOrigen)) return;
   problemas.push({
     codigo: codigoDeAsignacionInvalida(origen, destino),

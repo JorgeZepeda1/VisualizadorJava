@@ -169,7 +169,16 @@ export type CodigoProblema =
   | 'sentencia-entre-parentesis'
   // Tarea 1.34 (C, JLS 7.5.1): `import java.util.Scanner;` junto a `public class Scanner` — verificado contra javac 17 real:
   // `compiler.err.already.defined.this.unit` («Scanner is already defined in this compilation unit»), en la línea del `import`. Lo da la atribución.
-  | 'clase-repetida-con-import';
+  | 'clase-repetida-con-import'
+  // Tarea 1.36 (C-3, JLS 7.4.1): `package java.util;` (o `java.lang`, `javax.swing`, `java.sql`… cualquier paquete con tipos que el JDK exporte) — verificado contra javac 17.0.18
+  // real sobre 278 nombres: `compiler.err.package.in.other.module` («package exists in another module: java.base»), en la línea del `package`. Lo da la atribución.
+  | 'paquete-del-jdk'
+  // Tarea 1.36 (C-4a, JVMS 4.4.7 y `Gen.checkStringConstant`): una constante de texto de 65 535 caracteres o más que el programa genera — verificado contra javac 17.0.18 real:
+  // `compiler.err.limit.string` («constant string too long»), en la línea del árbol que `Gen` generaba (la del texto, la del último `+` de una suma, la del `switch` para una etiqueta). Lo da `semantica/limites-del-archivo.ts`.
+  | 'texto-con-demasiados-caracteres'
+  // Tarea 1.36 (C-4a): una entrada del archivo de clase de más de 65 535 BYTES en UTF-8 modificado —un texto con acentos o emojis que pesa más de lo que mide, o la receta de una concatenación—: javac 17.0.18 da
+  // `compiler.err.limit.string.overflow` («UTF8 representation for string … is too long for the constant pool») al escribir la clase, en la línea de la palabra `class`.
+  | 'texto-con-demasiados-bytes';
 
 // Datos EXTRA que el texto es-MX (`src/textos/es-MX/problemas.ts`) necesita de cada código — la
 // ÚNICA fuente de verdad de su forma. Vive en el MOTOR (no en el catálogo) para que el propio emisor
@@ -339,6 +348,9 @@ export interface DatosPorCodigoProblema {
   'sentencia-antes-del-primer-case': DatosMensajeCrudo;
   'sentencia-entre-parentesis': DatosMensajeCrudo;
   'clase-repetida-con-import': DatosClaseRepetidaConImport;
+  'paquete-del-jdk': DatosNombre;
+  'texto-con-demasiados-caracteres': Record<never, never>;
+  'texto-con-demasiados-bytes': Record<never, never>;
 }
 
 // Los códigos que `compilar()` saca de un `ErrorDeCompilacion` (léxico y sintaxis): TODOS llevan

@@ -46,8 +46,8 @@ import type {
   NodoSwitch,
 } from '../sintaxis/ast.ts';
 import { Alcance } from './alcance.ts';
-import { constanteDeVariable, valorConstante } from './constantes.ts';
-import type { ProblemaAtribucion } from './diagnostico.ts';
+import { constanteDeVariable, esDeValorDesconocido, valorConstante } from './constantes.ts';
+import { avisoDeConstanteDeValorDesconocido, type ProblemaAtribucion } from './diagnostico.ts';
 
 export function verificarAlcanzabilidad(programa: NodoPrograma): ProblemaAtribucion[] {
   // Tarea 1.15 (REQ-COMP-008): sin "main" no hay cuerpo que recorrer -- nada que reportar aquí (el
@@ -219,8 +219,12 @@ function visitarCiclo(
   alcanzable: boolean,
   problemas: ProblemaAtribucion[],
 ): boolean {
-  const condicionFalsa = esCondicionConstante(condicion, alcance, false);
-  const condicionVerdadera = esCondicionConstante(condicion, alcance, true);
+  // Tarea 1.36 (C-5): una condición CONSTANTE cuyo valor no se sabe calcular (`"a" + 1.5 == "a1.5"`) decide si el ciclo termina y si lo que sigue es alcanzable, y no se puede decidir: aviso honesto,
+  // y a partir de ahí se sigue como si no fuera constante (ningún `sentencia-inalcanzable` inventado).
+  const valorDeLaCondicion = valorDeUnaCondicionConstante(condicion, alcance);
+  if (valorDeLaCondicion === 'desconocido') problemas.push(avisoDeConstanteDeValorDesconocido(condicion.rango));
+  const condicionFalsa = valorDeLaCondicion === false;
+  const condicionVerdadera = valorDeLaCondicion === true;
   // "do-while" SIEMPRE ejecuta su cuerpo al menos una vez (JLS 14.22.2) — ignora la condición para
   // esto, a diferencia de "while"/"for" (JLS 14.22.1/.4).
   const cuerpoAlcanzable = esDoWhile ? alcanzable : alcanzable && !condicionFalsa;
@@ -261,8 +265,10 @@ function visitarFor(sentencia: NodoFor, alcance: Alcance, alcanzable: boolean, p
   }
   const condicion = sentencia.condicion;
   // "for(;;)" (condición OMITIDA) cuenta como constante `true` (JLS 14.21, igual que while(true)).
-  const condicionFalsa = condicion !== null && esCondicionConstante(condicion, alcance, false);
-  const condicionVerdadera = condicion === null || esCondicionConstante(condicion, alcance, true);
+  const valorDeLaCondicion = condicion === null ? true : valorDeUnaCondicionConstante(condicion, alcance);
+  if (condicion !== null && valorDeLaCondicion === 'desconocido') problemas.push(avisoDeConstanteDeValorDesconocido(condicion.rango)); // tarea 1.36 (C-5), ver `visitarCiclo`
+  const condicionFalsa = valorDeLaCondicion === false;
+  const condicionVerdadera = valorDeLaCondicion === true;
   const cuerpoAlcanzable = alcanzable && !condicionFalsa;
   visitarCuerpoDeCiclo(sentencia.cuerpo, alcanzable, cuerpoAlcanzable, alcance, problemas);
   const tieneBreakQueSale = contieneBreakQueSaleDelCiclo(sentencia.cuerpo);
@@ -270,12 +276,14 @@ function visitarFor(sentencia: NodoFor, alcance: Alcance, alcanzable: boolean, p
   return alcanzable && (!condicionVerdadera || tieneBreakQueSale);
 }
 
-/** ¿`condicion` es una expresión constante (JLS 15.29, variables `final` constantes incluidas —
- * deuda 3 del commit 999a8ca) de valor EXACTAMENTE `valorEsperado`? Compartido con la tarea 1.13
- * (REFACTOR pedido por 1.12, asignación definitiva también necesita "condición constante"). */
-export function esCondicionConstante(condicion: NodoExpresion, alcance: Alcance, valorEsperado: boolean): boolean {
+/**
+ * El valor de `condicion` si es una expresión constante booleana (JLS 15.29, variables `final` constantes incluidas —deuda 3 del commit 999a8ca): `true` o `false`; `'desconocido'` si es constante pero
+ * su valor no se sabe calcular todavía (tarea 1.36, C-5: `"a" + 1.5 == "a1.5"`); `null` si no es constante (o no es booleana: eso lo rechaza la atribución).
+ */
+function valorDeUnaCondicionConstante(condicion: NodoExpresion, alcance: Alcance): boolean | 'desconocido' | null {
   const constante = valorConstante(condicion, alcance);
-  return constante !== null && constante.tipo === 'boolean' && constante.valor === valorEsperado;
+  if (esDeValorDesconocido(constante)) return constante.tipoJava === 'boolean' ? 'desconocido' : null;
+  return constante !== null && constante.tipo === 'boolean' ? constante.valor : null;
 }
 
 /** Tarea 1.29 (JLS 14.22.2): ¿hay un `continue` SIN etiqueta (1.6: `continueConEtiqueta` es NO-DISP) dentro de `cuerpo` que apunte

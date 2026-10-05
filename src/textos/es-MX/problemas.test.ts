@@ -59,6 +59,11 @@ const DATOS_DE_EJEMPLO: Record<CodigoProblema, Record<string, unknown>> = {
   'sentencia-antes-del-primer-case': { mensaje: 'una sentencia antes del primer "case"' },
   'sentencia-entre-parentesis': { mensaje: 'una sentencia entre paréntesis' },
   'clase-repetida-con-import': { nombre: 'Scanner', importacion: 'java.util.Scanner' },
+  // Tarea 1.36 (C-3): `package java.util;` (un paquete que el JDK ya trae).
+  'paquete-del-jdk': { nombre: 'java.util' },
+  // Tarea 1.36 (C-4a): un texto de 65 535 caracteres o más, y un texto (o una receta de concatenación) de más de 65 535 bytes al guardarse.
+  'texto-con-demasiados-caracteres': {},
+  'texto-con-demasiados-bytes': {},
 };
 
 describe('textosProblemas — catálogo completo (ADR 015): cada código produce una frase real', () => {
@@ -372,5 +377,45 @@ describe('textosProblemas — una clase con el mismo nombre que algo que se impo
     expect(texto).toContain('`System`');
     expect(texto).toContain('`java.lang.System`');
     expect(texto).not.toMatch(/undefined|\{/);
+  });
+});
+
+// Tarea 1.36 (C-3): `package java.util;`. javac: «package exists in another module: java.base», en la línea del `package`. Nadie escribe esto a propósito, pero un alumno que copia el
+// encabezado de un ejemplo puede traer un nombre ajeno; la frase dice por qué no vale y qué poner en su lugar.
+describe('textosProblemas — un `package` con el nombre de un paquete que Java ya trae (C-3, tarea 1.36)', () => {
+  it('nombra el paquete y da las dos salidas (un nombre propio o quitar la línea)', () => {
+    const texto = textosProblemas['paquete-del-jdk']({ nombre: 'java.util' });
+    expect(texto).toBe(
+      'El paquete `java.util` ya existe en Java: lo trae el propio JDK, así que no puedes usar ese nombre para tu programa. ' +
+        'Cambia la línea `package` por un nombre propio (por ejemplo, `package miproyecto;`) o quítala.',
+    );
+    expect(texto).not.toMatch(/módulo|token|undefined/);
+  });
+
+  it('triangulación: con otro paquete la frase cambia con él', () => {
+    const texto = textosProblemas['paquete-del-jdk']({ nombre: 'javax.swing' });
+    expect(texto).toContain('`javax.swing`');
+    expect(texto).not.toContain('java.util');
+  });
+});
+
+// Tarea 1.36 (C-4a): javac rechaza una constante de texto de 65 535 caracteres o más («constant string too long») y una entrada de más de 65 535 bytes del archivo de clase
+// («UTF8 representation for string … is too long for the constant pool»). Los dos textos dicen el número, qué lo causa (los acentos y los emojis pesan más) y qué hacer.
+describe('textosProblemas — textos de más de 65 534 caracteres y de más de 65 535 bytes (C-4a, tarea 1.36)', () => {
+  it('«demasiados caracteres» da el máximo y las dos salidas (más corto, o en varias instrucciones)', () => {
+    expect(textosProblemas['texto-con-demasiados-caracteres']({})).toBe(
+      'Este texto es demasiado largo: Java no acepta un texto de 65 535 caracteres o más escrito en el programa (el máximo son 65 534). ' +
+        'Escríbelo más corto, o divídelo en varias instrucciones `System.out.print`.',
+    );
+  });
+
+  it('«demasiados bytes» explica por qué un texto más corto puede no caber (acentos, euro, emojis) y qué hacer', () => {
+    const texto = textosProblemas['texto-con-demasiados-bytes']({});
+    expect(texto).toBe(
+      'Java no puede guardar tu programa: uno de sus textos (o varios textos unidos con `+`) ocupa más de 65 535 bytes. ' +
+        'Las letras con acento y la ñ ocupan 2 bytes cada una, el símbolo del euro 3 y un emoji 6. ' +
+        'Acorta los textos más largos, o divídelos en varias instrucciones `System.out.print`.',
+    );
+    expect(texto).not.toMatch(/UTF|constant pool|undefined|bytecode/);
   });
 });

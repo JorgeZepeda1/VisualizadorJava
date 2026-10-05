@@ -1,0 +1,4 @@
+Saludo.java:3: error: reached end of file while parsing
+        int x = 1; int y = 2;
+                  ^
+1 error

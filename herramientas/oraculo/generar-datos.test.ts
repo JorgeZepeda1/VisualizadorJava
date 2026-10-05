@@ -190,28 +190,33 @@ describe('renderizarClasesTs (pura) — genera el .ts compacto con cabecera "no 
 // Las propiedades Unicode del motor de JavaScript son de OTRA versión (Node 22 trae Unicode 17: acepta
 // ~14 000 letras que javac 17 rechaza) y no modelan los caracteres ignorables que javac sí admite.
 describe('analizarIdentificadoresJava (pura) — parsea la salida de GenerarIdentificadores', () => {
-  it('dos líneas "inicio|…" y "parte|…" con rangos en hexadecimal ("41-5a" o un solo punto de código "5f")', () => {
-    const tabla = analizarIdentificadoresJava(['inicio|24,41-5a,5f', 'parte|0-8,24,30-39,41-5a', '#total|3,4', ''].join('\n'));
-    expect(tabla).toEqual({ inicio: '24,41-5a,5f', parte: '0-8,24,30-39,41-5a' });
+  // Tarea 1.36 (W-1): la sonda suma una tercera tabla, `ignorable|…` (`Character.isIdentifierIgnorable`: los caracteres que javac SALTA dentro de un nombre), y `#total|N,M,K`.
+  it('tres líneas "inicio|…", "parte|…" e "ignorable|…" con rangos en hexadecimal ("41-5a" o un solo punto de código "5f")', () => {
+    const tabla = analizarIdentificadoresJava(['inicio|24,41-5a,5f', 'parte|0-8,24,30-39,41-5a', 'ignorable|0-8,e-1b', '#total|3,4,2', ''].join('\n'));
+    expect(tabla).toEqual({ inicio: '24,41-5a,5f', parte: '0-8,24,30-39,41-5a', ignorable: '0-8,e-1b' });
   });
 
-  it('una salida sin la línea "#total|N,M" (truncada) o con cuentas que no coinciden lanza un error claro', () => {
-    expect(() => analizarIdentificadoresJava('inicio|24,41-5a\nparte|30-39\n')).toThrow(/truncada/);
-    expect(() => analizarIdentificadoresJava('inicio|24,41-5a\nparte|30-39\n#total|9,9\n')).toThrow(/truncada/);
+  it('una salida sin la línea "#total|N,M,K" (truncada) o con cuentas que no coinciden lanza un error claro', () => {
+    expect(() => analizarIdentificadoresJava('inicio|24,41-5a\nparte|30-39\nignorable|0-8\n')).toThrow(/truncada/);
+    expect(() => analizarIdentificadoresJava('inicio|24,41-5a\nparte|30-39\nignorable|0-8\n#total|9,9,9\n')).toThrow(/truncada/);
+    // la cuenta de la tercera tabla también se cruza: una tabla de ignorables cortada se guardaría como completa
+    expect(() => analizarIdentificadoresJava('inicio|24,41-5a\nparte|30-39\nignorable|0-8,e-1b\n#total|2,1,1\n')).toThrow(/truncada/);
   });
 
-  it('una salida sin alguna de las dos líneas lanza (no se guarda una tabla a medias)', () => {
-    expect(() => analizarIdentificadoresJava('inicio|24\n#total|1,0\n')).toThrow(/mal formada/);
+  it('una salida sin alguna de las tres líneas lanza (no se guarda una tabla a medias)', () => {
+    expect(() => analizarIdentificadoresJava('inicio|24\n#total|1,0,0\n')).toThrow(/mal formada/);
+    expect(() => analizarIdentificadoresJava('inicio|24\nparte|30-39\n#total|1,1,0\n')).toThrow(/mal formada/);
   });
 });
 
 describe('renderizarIdentificadoresTs (pura) — genera el .ts compacto con cabecera "no editar"', () => {
-  it('exporta las dos tablas de rangos como cadenas', () => {
-    const texto = renderizarIdentificadoresTs({ inicio: '24,41-5a', parte: '30-39' });
+  it('exporta las tres tablas de rangos como cadenas', () => {
+    const texto = renderizarIdentificadoresTs({ inicio: '24,41-5a', parte: '30-39', ignorable: '0-8,e-1b' });
     expect(texto).toContain('generado');
     expect(texto).toContain('no editar');
     expect(texto).toContain("INICIO_DE_IDENTIFICADOR_JAVA: string = '24,41-5a'");
     expect(texto).toContain("PARTE_DE_IDENTIFICADOR_JAVA: string = '30-39'");
+    expect(texto).toContain("IGNORABLE_EN_IDENTIFICADOR_JAVA: string = '0-8,e-1b'");
   });
 });
 
@@ -569,6 +574,51 @@ describe('generarDatos — integración contra el JDK real (Temurin 17.0.18)', (
       ];
     });
     expect(casos.length).toBeGreaterThan(4000);
+    const veredictos = await compilarEnLote(jdk, casos);
+    const discrepancias = casos.filter((caso) => veredictos.get(caso.id)?.compila !== caso.esperado).map((caso) => caso.id);
+    expect(discrepancias).toEqual([]);
+  }, LIMITE_DE_LAS_PRUEBAS_CON_JDK_MS);
+
+  // Tarea 1.36 (W-1): los caracteres que javac SALTA dentro de un nombre (`scanIdent`: `Character.isIdentifierIgnorable(char)`) salen del JDK, no de memoria. Las propiedades Unicode de
+  // JavaScript no los modelan, y el visualizador culpaba al alumno de una variable que sí existe (`int a<U+200B>b = 1; … ab`). Se verifican contra javac por COMPORTAMIENTO: con `int ab = 1;`
+  // declarado, `int x = a<c>b;` COMPILA exactamente cuando `c` se salta (si `c` es parte de un nombre pero no ignorable, `a<c>b` es otro nombre y no existe; si no es parte, es un carácter ilegal).
+  it('identificadores (tarea 1.36, W-1): la tabla de ignorables es la de `Character.isIdentifierIgnorable` del plano básico (97 puntos de código) y está dentro de la de «parte»', () => {
+    expect(datos.identificadores.ignorable).toBe(
+      '0-8,e-1b,7f-9f,ad,600-605,61c,6dd,70f,8e2,180e,200b-200f,202a-202e,2060-2064,2066-206f,feff,fff9-fffb',
+    );
+    const aPuntos = (texto: string): number[] =>
+      texto.split(',').flatMap((rango) => {
+        const [desde, hasta] = rango.split('-').map((h) => Number.parseInt(h, 16)) as [number, number?];
+        return Array.from({ length: (hasta ?? desde) - desde + 1 }, (_, i) => desde + i);
+      });
+    const ignorables = aPuntos(datos.identificadores.ignorable);
+    const parte = new Set(aPuntos(datos.identificadores.parte));
+    expect(ignorables).toHaveLength(97);
+    expect(ignorables.filter((punto) => !parte.has(punto))).toEqual([]); // un ignorable es también «parte» de un nombre (`isJavaIdentifierPart` lo admite)
+  });
+
+  it('identificadores (tarea 1.36, W-1): en los BORDES de cada rango de ignorables (y en los suplementarios), javac real salta el carácter exactamente cuando la tabla lo dice', async () => {
+    const aRangos = (texto: string): [number, number][] =>
+      texto.split(',').map((rango) => {
+        const [desde, hasta] = rango.split('-').map((h) => Number.parseInt(h, 16)) as [number, number?];
+        return [desde, hasta ?? desde];
+      });
+    const ignorable = aRangos(datos.identificadores.ignorable);
+    const dentro = (punto: number): boolean => ignorable.some(([desde, hasta]) => punto >= desde && punto <= hasta);
+    const puntos = new Set<number>();
+    for (const [desde, hasta] of ignorable) {
+      for (const punto of [desde - 1, desde, hasta, hasta + 1]) {
+        if (punto >= 0 && punto <= 0xffff && !(punto >= 0xd800 && punto <= 0xdfff)) puntos.add(punto);
+      }
+    }
+    // Los de fuera del plano básico de la misma categoría (`Cf`: `U+E0001`, `U+E007F`, `U+1D173`, `U+1BCA0`): javac los toma como parte del nombre, NO los salta.
+    for (const punto of [0xe0001, 0xe007f, 0x1d173, 0x1bca0]) puntos.add(punto);
+    const casos = [...puntos].map((punto) => ({
+      id: `ignorable:${punto.toString(16)}`,
+      fuente: `class T { void m() { int ab = 1; int x = a${String.fromCodePoint(punto)}b; } }\n`,
+      esperado: dentro(punto),
+    }));
+    expect(casos.length).toBeGreaterThan(50); // 16 rangos × sus 4 bordes (sin los repetidos ni los que caen fuera del plano básico) + 4 suplementarios
     const veredictos = await compilarEnLote(jdk, casos);
     const discrepancias = casos.filter((caso) => veredictos.get(caso.id)?.compila !== caso.esperado).map((caso) => caso.id);
     expect(discrepancias).toEqual([]);

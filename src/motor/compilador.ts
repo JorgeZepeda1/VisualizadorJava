@@ -21,6 +21,7 @@ import { CODIGOS_NO_SOPORTADO } from './no-soportado.ts';
 import { atribuir } from './semantica/atribucion.ts';
 import { verificarAlcanzabilidad } from './semantica/alcanzabilidad.ts';
 import { verificarAsignacionDefinitiva } from './semantica/asignacion-definitiva.ts';
+import { verificarLimitesDelArchivo } from './semantica/limites-del-archivo.ts';
 import { verificarArranque } from './semantica/arranque.ts';
 import type { ProblemaAtribucion } from './semantica/diagnostico.ts';
 import { ErrorDeEjecucionNoDisponible } from './ir/error-de-ejecucion-no-disponible.ts';
@@ -30,6 +31,8 @@ import type { CodigoDeSintaxis, Problema, ProblemaNoDisponible } from './problem
 import { ErrorDeCompilacion } from './error-de-compilacion.ts';
 import { TablaDeLineas } from './fuente/tabla-de-lineas.ts';
 import type { Rango } from './fuente/rango.ts';
+import { normalizarFinesDeLinea } from './fuente/fines-de-linea.ts';
+import { primerTokenFueraDelLimite } from './limites.ts';
 
 export interface VistaPrograma {
   readonly fuente: string;
@@ -43,11 +46,14 @@ export type ResultadoCompilacion =
 // "verificarAlcanzabilidad" (JLS 14.22), luego "verificarAsignacionDefinitiva" (JLS 16). Cada una
 // recorre TODO el árbol y devuelve su lista COMPLETA (nunca se detiene en el primer problema, ver
 // la cabecera de cada módulo) -- aquí, y SOLO aquí, se decide quedarse con el primero de la PRIMERA
-// pasada que reportó algo.
+// pasada que reportó algo. Tarea 1.36 (C-4a): la última, `verificarLimitesDelArchivo`, es lo que javac
+// revisa al GENERAR la clase (`Gen`, `ClassWriter`), cuando ya no queda ningún error de Attr ni de Flow:
+// un programa con otro error muestra ESE error, no el del tamaño de un texto.
 const PASADAS_SEMANTICAS: readonly ((programa: NodoPrograma) => readonly ProblemaAtribucion[])[] = [
   atribuir,
   verificarAlcanzabilidad,
   verificarAsignacionDefinitiva,
+  verificarLimitesDelArchivo,
 ];
 
 // Tarea 1.17 (C8, REQ-SUB-006, REQ-SUB-008): detecta lo NO-DISP (léxico y sintáctico) ANTES de
@@ -58,7 +64,10 @@ const PASADAS_SEMANTICAS: readonly ((programa: NodoPrograma) => readonly Problem
 // ANTES de esa posición, gana el aviso (p. ej. un "\uXXXX" en un comentario que precede a un error
 // de sintaxis genuino más adelante) -- ver `avisoEnmascaraError` para el criterio REAL, refinado en
 // el sub-lote 1-D5 (cierre de C7).
-export function compilar(fuente: string): ResultadoCompilacion {
+export function compilar(fuenteOriginal: string): ResultadoCompilacion {
+  // Tarea 1.36 (C-2 y W-2a, JLS 3.4): un `\r` suelto y la pareja `\r\n` son fines de línea de Java, igual que `\n`. Se llevan todos a `\n` ANTES de leer nada, y de aquí en adelante TODO
+  // el motor —los rangos de los problemas, las líneas, `vista.fuente`— habla del texto normalizado. Con el editor (CodeMirror ya entrega `\n`) no cambia nada.
+  const fuente = normalizarFinesDeLinea(fuenteOriginal);
   let tokens: Token[];
   try {
     tokens = tokenizar(fuente);
@@ -72,6 +81,13 @@ export function compilar(fuente: string): ResultadoCompilacion {
       return construirResultadoNoDisponible([{ codigo: CODIGOS_NO_SOPORTADO.escapeUnicodeNoSoportado, rango: escapeAnterior, datos: {} }], fuente);
     }
     return { ok: false, problema: construirProblema(error, fuente), adicionales: 0 };
+  }
+
+  // Tarea 1.36 (C-4b y S-1): el tope de tamaño se revisa AQUÍ, justo después del léxico (lineal) y antes del análisis sintáctico y de las pasadas semánticas (algunas crecían como n² con las
+  // declaraciones locales de un bloque). Un error léxico sigue ganando: ya salió arriba. Ver `limites.ts` para de dónde sale el número.
+  const tokenDeMas = primerTokenFueraDelLimite(tokens);
+  if (tokenDeMas !== null) {
+    return construirResultadoNoDisponible([{ codigo: CODIGOS_NO_SOPORTADO.programaDemasiadoGrande, rango: tokenDeMas.rango, datos: {} }], fuente);
   }
 
   const noSoportadosLexicos = tokens.filter((t) => t.tipo === 'no-soportado');

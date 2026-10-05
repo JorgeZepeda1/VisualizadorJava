@@ -9,7 +9,7 @@ import { leerCadena, leerCaracter, leerNumero } from './literales.ts';
 import { OPERADORES_MULTICARACTER, PALABRAS_CLAVE, PUNTUACION, type Token } from './tokens.ts';
 // Tarea 1.24: única fuente de verdad de códigos "no soportado" (antes string inline suelto aquí).
 import { CODIGOS_NO_SOPORTADO } from '../no-soportado.ts';
-import { INICIO_DE_IDENTIFICADOR_JAVA, PARTE_DE_IDENTIFICADOR_JAVA } from '../biblioteca/datos/identificadores-java.generado.ts';
+import { IGNORABLE_EN_IDENTIFICADOR_JAVA, INICIO_DE_IDENTIFICADOR_JAVA, PARTE_DE_IDENTIFICADOR_JAVA } from '../biblioteca/datos/identificadores-java.generado.ts';
 import { crearTablaDeRangos } from './tabla-de-rangos.ts';
 
 // JLS 3.8: qué puede llevar un identificador lo decide `Character.isJavaIdentifierStart/Part` — letras
@@ -21,6 +21,12 @@ import { crearTablaDeRangos } from './tabla-de-rangos.ts';
 // PUNTO DE CÓDIGO (un `𝒳` ocupa dos unidades UTF-16).
 const INICIO_IDENTIFICADOR = crearTablaDeRangos(INICIO_DE_IDENTIFICADOR_JAVA);
 const RESTO_IDENTIFICADOR = crearTablaDeRangos(PARTE_DE_IDENTIFICADOR_JAVA);
+// Tarea 1.36 (W-1): los caracteres IGNORABLES (`Character.isIdentifierIgnorable(char)`: el espacio de ancho cero `U+200B`, el guion blando `U+00AD`, `U+FEFF`, los de control…) que
+// javac SALTA dentro de un nombre (`JavaTokenizer.scanIdent`): son «parte» del identificador —así que no lo cortan—, pero no forman su nombre: `int a<U+200B>b` es la variable `ab`,
+// y `in<U+200B>t` es la palabra `int`. La tabla (solo el plano básico: los suplementarios los toma javac como parte del nombre) la genera el oráculo, igual que las dos de arriba.
+const IGNORABLE_EN_IDENTIFICADOR = crearTablaDeRangos(IGNORABLE_EN_IDENTIFICADOR_JAVA);
+// Tarea 1.36 (W-2b, JLS 3.5): el `U+001A` (Ctrl-Z, el fin de archivo de MS-DOS) donde empezaría un token es el FIN DE LA ENTRADA para javac: lo que sigue no se lee.
+const FIN_DE_ENTRADA = '\u001a';
 const DIGITO_DECIMAL = /[0-9]/;
 const DIGITO_HEX = /[0-9A-Fa-f]/;
 
@@ -110,6 +116,10 @@ export function tokenizar(fuente: string): Token[] {
 
   while (cursor < fuente.length) {
     const caracter = fuente[cursor];
+
+    // Tarea 1.36 (W-2b, JLS 3.5): donde debería empezar un token, el `U+001A` termina la entrada (javac: `is((char) EOI)` → EOF). Dentro de un comentario, una cadena o un `char` es un
+    // carácter cualquiera (esos lectores lo consumen sin mirarlo), y dentro de un nombre es un ignorable más (abajo).
+    if (caracter === FIN_DE_ENTRADA) break;
 
     // JLS 3.6: espacio, tabulador, SALTO DE PÁGINA (tarea 1.29), retorno y salto de línea.
     if (caracter === ' ' || caracter === '\t' || caracter === '\f' || caracter === '\r' || caracter === '\n') {
@@ -254,14 +264,24 @@ export function tokenizar(fuente: string): Token[] {
     if (INICIO_IDENTIFICADOR.contiene(caracterCompleto.codePointAt(0) ?? 0)) {
       const inicio = cursor;
       cursor += caracterCompleto.length;
+      // Tarea 1.36 (W-1): el nombre se arma SIN los caracteres ignorables (el rango del token sí los abarca): la palabra clave se busca con el nombre ya limpio, como javac.
+      let nombre = '';
+      let inicioDelTramo = inicio;
       while (cursor < fuente.length) {
-        const siguiente = String.fromCodePoint(fuente.codePointAt(cursor) ?? 0);
-        if (!RESTO_IDENTIFICADOR.contiene(siguiente.codePointAt(0) ?? 0)) break;
-        cursor += siguiente.length;
+        const punto = fuente.codePointAt(cursor) ?? 0;
+        const longitud = punto > 0xffff ? 2 : 1;
+        if (IGNORABLE_EN_IDENTIFICADOR.contiene(punto)) {
+          nombre += fuente.slice(inicioDelTramo, cursor);
+          cursor += longitud;
+          inicioDelTramo = cursor;
+          continue;
+        }
+        if (!RESTO_IDENTIFICADOR.contiene(punto)) break;
+        cursor += longitud;
       }
-      const texto = fuente.slice(inicio, cursor);
-      const tipo = PALABRAS_CLAVE.has(texto) ? 'palabra-clave' : 'identificador';
-      tokens.push({ tipo, texto, rango: { inicio, fin: cursor } });
+      nombre += fuente.slice(inicioDelTramo, cursor);
+      const tipo = PALABRAS_CLAVE.has(nombre) ? 'palabra-clave' : 'identificador';
+      tokens.push({ tipo, texto: nombre, rango: { inicio, fin: cursor } });
       continue;
     }
 
@@ -271,6 +291,7 @@ export function tokenizar(fuente: string): Token[] {
     });
   }
 
-  tokens.push({ tipo: 'eof', texto: '', rango: { inicio: fuente.length, fin: fuente.length } });
+  // Normalmente `cursor` es el largo del texto; con un `U+001A` que termina la entrada (tarea 1.36) es donde estaba.
+  tokens.push({ tipo: 'eof', texto: '', rango: { inicio: cursor, fin: cursor } });
   return tokens;
 }

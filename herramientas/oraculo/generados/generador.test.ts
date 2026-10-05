@@ -81,8 +81,9 @@ describe('generarPrograma — determinismo por semilla', () => {
 });
 
 describe('generarPrograma — forma del programa', () => {
-  it('cada programa con clase tiene de 1 a 6 sentencias en main, y se ven los seis tamaños (un archivo sin clase, de la 1.35, no tiene `main`)', () => {
-    const tamanos = new Set(muestra.filter((p) => p.sinClase !== true).map((p) => p.sentencias.length));
+  it('cada programa con clase tiene de 1 a 6 sentencias en main, y se ven los seis tamaños (un archivo sin clase, de la 1.35, no tiene `main`; los programas con una forma estructural llevan además lo que la forma agrega y se miden aparte)', () => {
+    // Tarea 1.36: las formas de los textos largos declaran una pila de `final` (16 sentencias) y las de los decimales o los invisibles, hasta 5: el tamaño del cuerpo ordinario se mide sin ellas.
+    const tamanos = new Set(muestra.filter((p, i) => p.sinClase !== true && i % PERIODO_DE_LAS_ESTRUCTURAS !== FASE_DE_LAS_ESTRUCTURAS).map((p) => p.sentencias.length));
     expect(Math.min(...tamanos)).toBeGreaterThanOrEqual(1);
     expect(Math.max(...tamanos)).toBeLessThanOrEqual(6);
     expect([...tamanos].sort()).toEqual([1, 2, 3, 4, 5, 6]);
@@ -783,7 +784,15 @@ describe('cobertura — 1.34 E: nombres de propiedades de JavaScript como identi
 
 describe('cobertura — 1.35: la estructura de la clase (campos, firmas de main, clases selladas, imports, archivos sin clase, escapes Unicode)', () => {
   const esEstructural = (indice: number): boolean => indice % PERIODO_DE_LAS_ESTRUCTURAS === FASE_DE_LAS_ESTRUCTURAS;
-  const tieneEstructuraDeClase = (p: Programa): boolean => (p.miembros ?? []).length > 0 || p.parametrosDeMain !== undefined || p.sinClase === true || p.escapeUnicode !== undefined;
+  // Tarea 1.36: las formas nuevas muestran su estructura con rasgos propios (un `package`, el fin de línea, un invisible, un decimal en una constante, un texto largo).
+  const RASGOS_DE_LA_1_36 = ['varargs-mal-escrito', 'paquete-declarado', 'caracter-ignorable', 'fin-de-linea-especial', 'constante-de-texto-con-decimal', 'texto-largo'] as const;
+  const tieneEstructuraDeClase = (p: Programa): boolean =>
+    (p.miembros ?? []).length > 0 ||
+    p.parametrosDeMain !== undefined ||
+    p.sinClase === true ||
+    p.escapeUnicode !== undefined ||
+    p.finDeLinea !== undefined ||
+    etiquetasDe(p).some((etiqueta) => (RASGOS_DE_LA_1_36 as readonly string[]).includes(etiqueta));
 
   it('uno de cada doce programas (el índice 5 de cada doce) es estructural, ESTRATIFICADO; en los demás no hay miembros, ni firma de main, ni escape, ni archivo sin clase', () => {
     expect(muestra.every((p, i) => esEstructural(i) || !tieneEstructuraDeClase(p))).toBe(true);
@@ -797,9 +806,11 @@ describe('cobertura — 1.35: la estructura de la clase (campos, firmas de main,
     });
   });
 
-  it('las formas dan la vuelta: con 4 000 programas, cada una sale al menos 4 veces, y con otra semilla cambian sus variantes pero no sus rasgos', () => {
+  it('las formas dan la vuelta: con los programas que hacen falta para 4 vueltas completas, cada una sale al menos 4 veces', () => {
+    // Tarea 1.36: con más de cien formas, 4 000 programas ya no dan 4 vueltas (cada forma sale cada 12 · formas programas): se genera la muestra que sí las da.
+    const cantidad = PERIODO_DE_LAS_ESTRUCTURAS * FORMAS_ESTRUCTURALES.length * 4 + PERIODO_DE_LAS_ESTRUCTURAS;
     const veces = new Map<string, number>();
-    muestra.forEach((_, i) => {
+    Array.from({ length: cantidad }).forEach((_, i) => {
       if (!esEstructural(i)) return;
       const forma = FORMAS_ESTRUCTURALES[Math.floor(i / PERIODO_DE_LAS_ESTRUCTURAS) % FORMAS_ESTRUCTURALES.length]!;
       veces.set(forma.nombre, (veces.get(forma.nombre) ?? 0) + 1);
@@ -807,10 +818,11 @@ describe('cobertura — 1.35: la estructura de la clase (campos, firmas de main,
     for (const forma of FORMAS_ESTRUCTURALES) expect(veces.get(forma.nombre) ?? 0, forma.nombre).toBeGreaterThanOrEqual(4);
   });
 
-  it('el cuerpo de `main` de un programa estructural es corto: hasta 3 sentencias del cuerpo más las 2 que una forma agrega al principio (el uso de lo que declara)', () => {
+  it('el cuerpo de `main` de un programa estructural es corto: hasta 3 sentencias del cuerpo más las que una forma agrega al principio (el uso de lo que declara: 2 las de la 1.35, hasta 6 las de la 1.36, y la pila de `final` de un texto largo, que se arma plegando constantes)', () => {
     for (const [i, programa] of muestra.entries()) {
       if (!esEstructural(i) || programa.sinClase === true) continue;
-      expect(programa.sentencias.length, `programa ${i}`).toBeLessThanOrEqual(5);
+      const alPrincipio = etiquetasDe(programa).includes('texto-largo') ? 22 : 6;
+      expect(programa.sentencias.length, `programa ${i}`).toBeLessThanOrEqual(3 + alPrincipio);
     }
   });
 

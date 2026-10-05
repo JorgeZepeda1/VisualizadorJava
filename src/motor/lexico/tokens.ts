@@ -86,6 +86,9 @@ export const OPERADORES_MULTICARACTER: readonly string[] = [
   '<<=',
   '>>=',
   '>>>',
+  // Tarea 1.36 (C-1, JLS 3.11): la elipsis de un varargs es UN token de tres puntos ADYACENTES (`ELLIPSIS` de javac). Tres «.» separados por un espacio, un comentario o un salto de
+  // línea NO son una elipsis: siguen siendo puntos sueltos y el analizador sintáctico los rechaza.
+  '...',
   '==',
   '!=',
   '<=',

@@ -1,0 +1,4 @@
+Saludo.java:4: error: UTF8 representation for string "éééééééééééééééééééé..." is too long for the constant pool
+class Saludo {
+^
+1 error

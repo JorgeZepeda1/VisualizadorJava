@@ -8,7 +8,27 @@
 // `FASE + PERIODO · i`, así que cada forma aparece cada `PERIODO · FORMAS.length` programas con cualquier semilla y no depende de la suerte. El residuo 5 módulo 12 nunca coincide
 // con los de los casts (0 módulo 8), los literales (3 módulo 16) ni las clases con nombre del JDK (7 módulo 20): los cuatro son distintos módulo 4.
 import type { Azar } from './azar.ts';
-import { CLASE_POR_OMISION, declaracion, literal, nombre, plantilla, sentenciaExpr, si, type EscapeUnicode, type Etiqueta, type MiembroDeClase, type Programa, type Sentencia } from './programa.ts';
+import {
+  CLASE_POR_OMISION,
+  declaracion,
+  haz,
+  literal,
+  mientras,
+  nombre,
+  para,
+  plantilla,
+  salto,
+  seleccion,
+  sentenciaExpr,
+  si,
+  type EscapeUnicode,
+  type Etiqueta,
+  type Expr,
+  type FinDeLinea,
+  type MiembroDeClase,
+  type Programa,
+  type Sentencia,
+} from './programa.ts';
 
 export const PERIODO_DE_LAS_ESTRUCTURAS = 12;
 export const FASE_DE_LAS_ESTRUCTURAS = 5;
@@ -24,6 +44,10 @@ export interface RasgosEstructurales {
   readonly escapeUnicode?: EscapeUnicode;
   /** Sentencias que van ANTES de las del cuerpo: el uso de lo que la forma declara (una llamada, un `System.out`…). */
   readonly sentenciasAlPrincipio?: readonly Sentencia[];
+  /** Tarea 1.36: con qué termina cada renglón del programa impreso (el retorno de carro solo y `\r\n` son fines de línea de Java). */
+  readonly finDeLinea?: FinDeLinea;
+  /** Tarea 1.36: el programa entero pretende un error de sintaxis (los tres puntos separados de `main`). */
+  readonly sintaxisInvalida?: boolean;
 }
 
 export interface FormaEstructural {
@@ -45,6 +69,8 @@ export function conLaForma(forma: FormaEstructural, azar: Azar, cuerpo: readonly
     ...(rasgos.miembros !== undefined ? { miembros: rasgos.miembros } : {}),
     ...(rasgos.parametrosDeMain !== undefined ? { parametrosDeMain: rasgos.parametrosDeMain } : {}),
     ...(rasgos.escapeUnicode !== undefined ? { escapeUnicode: rasgos.escapeUnicode } : {}),
+    ...(rasgos.finDeLinea !== undefined ? { finDeLinea: rasgos.finDeLinea } : {}),
+    ...(rasgos.sintaxisInvalida === true ? { sintaxisInvalida: true } : {}),
     sentencias: [...(rasgos.sentenciasAlPrincipio ?? []), ...cuerpo],
   };
 }
@@ -272,6 +298,347 @@ const ESCAPES: readonly FormaEstructural[] = [
   ),
 ];
 
+// ---- Tarea 1.36: lo que la verificación final del lote 1 halló fuera de la gramática del generador (C-1, C-3, W-1, C-2/W-2, C-5/W-10, C-4) ----
+
+// C-1: los tres puntos de `String... args`. Pegados son UN token (JLS 3.11); `String . . . args` son tres puntos sueltos y javac pide un identificador. Con espacios alrededor de los tres puntos pegados es válido.
+const firmaDeMainConPuntosMalEscritos = (nombreDeLaForma: string, parametros: string): FormaEstructural =>
+  forma(nombreDeLaForma, ['main-con-otra-firma', 'varargs-mal-escrito'], () => ({ parametrosDeMain: parametros, sintaxisInvalida: true }), false);
+
+const FIRMAS_DE_MAIN_CON_PUNTOS: readonly FormaEstructural[] = [
+  firmaDeMain('main-con-varargs-con-espacios', 'String ... args'),
+  firmaDeMainConPuntosMalEscritos('main-con-puntos-separados', 'String . . . args'),
+  firmaDeMainConPuntosMalEscritos('main-con-dos-puntos-pegados-y-uno-suelto', 'String .. . args'),
+  firmaDeMainConPuntosMalEscritos('main-con-un-punto-suelto-y-dos-pegados', 'String . .. args'),
+  firmaDeMainConPuntosMalEscritos('main-con-final-y-puntos-separados', 'final String . . . args'),
+];
+
+// C-3: `package` con el nombre de un paquete que el JDK exporta (javac: «package exists in another module»), uno propio, y uno con el nombre de una CLASE del JDK (javac solo lo rechaza si esa clase
+// ya está cargada). Los imports del cuerpo van después: la línea `package` va primero.
+const PAQUETES_DEL_JDK: readonly string[] = [
+  'java.util', 'java.lang', 'java.io', 'java.net', 'java.text', 'java.time', 'java.math', 'java.sql', 'javax.swing',
+  'java.util.function', 'java.nio.file', 'java.awt', 'javax.xml.parsers', 'java.util.concurrent',
+];
+const PAQUETES_PROPIOS: readonly string[] = ['miproyecto', 'aula.curso.u3', 'mx.edu.escuela', 'java.utilidades', 'javax.nada', 'programa'];
+const PAQUETES_CON_NOMBRE_DE_CLASE: readonly string[] = ['java.util.Map', 'java.lang.String', 'java.util.Scanner', 'java.io.File'];
+
+const paquete = (nombreDeLaForma: string, nombres: readonly string[]): FormaEstructural =>
+  forma(nombreDeLaForma, ['paquete-declarado'], (azar) => ({ imports: [`package ${azar.elegir(nombres)};`] }));
+
+const PAQUETES: readonly FormaEstructural[] = [
+  paquete('paquete-del-jdk', PAQUETES_DEL_JDK),
+  paquete('paquete-propio', PAQUETES_PROPIOS),
+  paquete('paquete-con-nombre-de-clase', PAQUETES_CON_NOMBRE_DE_CLASE),
+];
+
+// W-1: un carácter invisible (de los que `Character.isIdentifierIgnorable` da por ignorables) DENTRO de un nombre o de una palabra clave: javac lo salta, así que `in\u200bt` es `int` y `a\u200bb` es `ab`.
+// Al principio de un nombre no vale (no es un inicio de identificador: «illegal character»).
+const INVISIBLES: readonly string[] = ['\u00ad', '\u200b', '\u200c', '\u200d', '\u200e', '\u200f', '\u2060', '\ufeff'];
+const IGNORABLE: readonly Etiqueta[] = ['caracter-ignorable'];
+
+/** `palabra` con `invisible` metido en una posición cualquiera de su interior. */
+const conInvisibleAdentro = (palabra: string, invisible: string, azar: Azar): string => {
+  const posicion = 1 + azar.entero(palabra.length - 1);
+  return `${palabra.slice(0, posicion)}${invisible}${palabra.slice(posicion)}`;
+};
+
+const NOMBRES_DE_VARIABLE = ['saldo', 'total', 'cuenta', 'precio', 'edad'] as const;
+
+const INVISIBLES_EN_NOMBRES: readonly FormaEstructural[] = [
+  forma('nombre-con-un-caracter-invisible', IGNORABLE, (azar) => {
+    const visible = azar.elegir(NOMBRES_DE_VARIABLE);
+    return {
+      sentenciasAlPrincipio: [
+        declaracion({ tipo: 'int', nombre: conInvisibleAdentro(visible, azar.elegir(INVISIBLES), azar), inicial: literal('1', 'int'), etiquetas: IGNORABLE }),
+        declaracion({ tipo: 'int', nombre: 'copia', inicial: nombre(visible, 'int') }),
+        imprimir('copia', 'int'),
+      ],
+    };
+  }),
+  forma('palabra-clave-con-un-caracter-invisible', IGNORABLE, (azar) => ({
+    sentenciasAlPrincipio: [
+      declaracion({ tipo: conInvisibleAdentro(azar.elegir(['int', 'long', 'double']), azar.elegir(INVISIBLES), azar), nombre: 'numero', inicial: literal('5', 'int'), etiquetas: IGNORABLE }),
+      imprimir('numero', 'int'),
+    ],
+  })),
+  // El modificador `final` con el invisible dentro: `fina\u200bl int k = 1;`.
+  forma('modificador-con-un-caracter-invisible', IGNORABLE, (azar) => ({
+    sentenciasAlPrincipio: [
+      declaracion({ tipo: `${conInvisibleAdentro('final', azar.elegir(INVISIBLES), azar)} int`, nombre: 'constante', inicial: literal('1', 'int'), etiquetas: IGNORABLE }),
+      imprimir('constante', 'int'),
+    ],
+  })),
+  // `ab` y `a\u200bb` son el MISMO nombre: la segunda declaración repite la primera (javac: «already defined»).
+  forma('nombre-repetido-por-un-caracter-invisible', IGNORABLE, (azar) => {
+    const visible = azar.elegir(NOMBRES_DE_VARIABLE);
+    return {
+      sentenciasAlPrincipio: [
+        declaracion({ tipo: 'int', nombre: visible, inicial: literal('1', 'int') }),
+        declaracion({ tipo: 'int', nombre: conInvisibleAdentro(visible, azar.elegir(INVISIBLES), azar), inicial: literal('2', 'int'), etiquetas: IGNORABLE }),
+      ],
+    };
+  }),
+  // Pegado a la palabra clave, el invisible es parte del nombre: `int\u200bx` es el nombre `intx` (no un tipo), y `intx = 1;` no declara nada.
+  forma('tipo-pegado-a-un-caracter-invisible', IGNORABLE, (azar) => ({
+    sentenciasAlPrincipio: [sentenciaExpr(literal(`int${azar.elegir(INVISIBLES)}x = 1`, 'int', { etiquetas: IGNORABLE }))],
+  })),
+  // Al principio de un nombre no es un inicio de identificador: javac da «illegal character».
+  forma(
+    'nombre-que-empieza-con-un-caracter-invisible',
+    IGNORABLE,
+    (azar) => ({
+      sentenciasAlPrincipio: [declaracion({ tipo: 'int', nombre: `${azar.elegir(INVISIBLES)}x`, inicial: literal('1', 'int'), etiquetas: IGNORABLE, sintaxisInvalida: true })],
+    }),
+    false,
+  ),
+];
+
+// C-2/W-2 (JLS 3.4): `\r` solo y `\r\n` son fines de línea, igual que `\n`; `\n\r` son DOS (javac cuenta una línea de más). El programa es el mismo y las líneas de javac son las del texto con sus fines.
+const FINES_DE_LINEA: readonly FormaEstructural[] = [
+  forma('fin-de-linea-cr', ['fin-de-linea-especial'], () => ({ finDeLinea: 'cr' })),
+  forma('fin-de-linea-crlf', ['fin-de-linea-especial'], () => ({ finDeLinea: 'crlf' })),
+  forma('fin-de-linea-lf-y-cr', ['fin-de-linea-especial'], () => ({ finDeLinea: 'lf-y-cr' })),
+  forma('fin-de-linea-mezclado', ['fin-de-linea-especial'], () => ({ finDeLinea: 'mezclado' })),
+];
+
+// C-5/W-10: una constante de texto con un decimal (`"a" + 1.5`) es una expresión constante para javac (JLS 15.29) y su VALOR depende de `Double.toString`: decide si un ciclo termina, si una variable queda
+// asignada y si dos etiquetas de `case` se repiten. El decimal sale de una lista; comparado con su propio texto o con otro, la condición vale `true` o `false` y javac decide en consecuencia.
+const DECIMALES: readonly string[] = ['1.5', '2.0', '0.1', '100.25', '3.14', '0.5'];
+const CON_DECIMAL: readonly Etiqueta[] = ['constante-de-texto-con-decimal'];
+
+/** `"a" + 1.5 == "a1.5"`, o `!=`, o con un decimal distinto del otro lado: una condición constante de valor desconocido para el motor. */
+function condicionConDecimal(azar: Azar): Expr {
+  const decimal = azar.elegir(DECIMALES);
+  const otro = azar.probabilidad(0.25) ? azar.elegir(DECIMALES) : decimal;
+  const operador = azar.elegir(['==', '!=']);
+  return literal(`"a" + ${decimal} ${operador} "a${otro}"`, 'boolean', { etiquetas: CON_DECIMAL });
+}
+
+const DECIMALES_EN_CONSTANTES: readonly FormaEstructural[] = [
+  forma('decimal-en-la-condicion-de-un-while', CON_DECIMAL, (azar) => ({ sentenciasAlPrincipio: [mientras(condicionConDecimal(azar), []), imprimir('"fin"')] })),
+  forma('decimal-en-la-condicion-de-un-for', CON_DECIMAL, (azar) => ({
+    sentenciasAlPrincipio: [para({ inicial: null, condicion: condicionConDecimal(azar), paso: null, cuerpo: [] }), imprimir('"fin"')],
+  })),
+  forma('decimal-en-la-condicion-de-un-do-while', CON_DECIMAL, (azar) => ({ sentenciasAlPrincipio: [haz([], condicionConDecimal(azar)), imprimir('"fin"')] })),
+  forma('decimal-en-una-final-y-un-while', CON_DECIMAL, (azar) => {
+    const decimal = azar.elegir(DECIMALES);
+    return {
+      sentenciasAlPrincipio: [
+        declaracion({ esFinal: true, tipo: 'String', nombre: 'CLAVE', inicial: literal(`"a" + ${decimal}`, 'String', { etiquetas: CON_DECIMAL }) }),
+        mientras(literal(`CLAVE == "a${decimal}"`, 'boolean'), []),
+        imprimir('"fin"'),
+      ],
+    };
+  }),
+  forma('decimal-en-una-etiqueta-de-case', CON_DECIMAL, (azar) => {
+    const decimal = azar.elegir(DECIMALES);
+    return {
+      sentenciasAlPrincipio: [
+        declaracion({ tipo: 'String', nombre: 'opcion', inicial: literal(`"d${azar.elegir(DECIMALES)}"`, 'String') }),
+        seleccion({
+          selector: nombre('opcion', 'String'),
+          casos: [
+            { etiquetas: [literal(`"d" + ${decimal}`, 'String', { etiquetas: CON_DECIMAL })], cuerpo: [imprimir('"uno"'), salto('break')] },
+            { etiquetas: 'default', cuerpo: [salto('break')] },
+          ],
+          flecha: false,
+        }),
+      ],
+    };
+  }),
+  forma('decimal-en-una-etiqueta-de-case-con-final', CON_DECIMAL, (azar) => {
+    const decimal = azar.elegir(DECIMALES);
+    return {
+      sentenciasAlPrincipio: [
+        declaracion({ esFinal: true, tipo: 'String', nombre: 'CLAVE', inicial: literal(`"d" + ${decimal}`, 'String', { etiquetas: CON_DECIMAL }) }),
+        declaracion({ tipo: 'String', nombre: 'opcion', inicial: literal(`"d${decimal}"`, 'String') }),
+        seleccion({
+          selector: nombre('opcion', 'String'),
+          casos: [
+            { etiquetas: [nombre('CLAVE', 'String')], cuerpo: [imprimir('"uno"'), salto('break')] },
+            { etiquetas: 'default', cuerpo: [salto('break')] },
+          ],
+          flecha: false,
+        }),
+      ],
+    };
+  }),
+  // La asignación definitiva depende de la condición: con una constante `true`, `x` queda asignada; con una `false`, no.
+  forma('decimal-y-asignacion-definitiva-con-if', CON_DECIMAL, (azar) => ({
+    sentenciasAlPrincipio: [
+      declaracion({ tipo: 'int', nombre: 'valor', inicial: null }),
+      si(condicionConDecimal(azar), [sentenciaExpr(literal('valor = 1', 'int', { etiquetas: ['asignacion'] }))], null),
+      imprimir('valor', 'int'),
+    ],
+  })),
+  forma('decimal-y-asignacion-definitiva-con-while-y-break', CON_DECIMAL, (azar) => ({
+    sentenciasAlPrincipio: [
+      declaracion({ tipo: 'int', nombre: 'valor', inicial: null }),
+      mientras(condicionConDecimal(azar), [sentenciaExpr(literal('valor = 1', 'int', { etiquetas: ['asignacion'] })), salto('break')]),
+      imprimir('valor', 'int'),
+    ],
+  })),
+  forma('decimal-en-una-final-booleana', CON_DECIMAL, (azar) => ({
+    sentenciasAlPrincipio: [
+      declaracion({ esFinal: true, tipo: 'boolean', nombre: 'BANDERA', inicial: condicionConDecimal(azar) }),
+      declaracion({ tipo: 'int', nombre: 'valor', inicial: null }),
+      si(nombre('BANDERA', 'boolean'), [sentenciaExpr(literal('valor = 1', 'int', { etiquetas: ['asignacion'] }))], null),
+      imprimir('valor', 'int'),
+    ],
+  })),
+  // Control: el texto con decimal solo se declara, se imprime y se compara sin que ninguna decisión del compilador dependa de su valor.
+  forma('decimal-sin-decision-de-por-medio', CON_DECIMAL, (azar) => {
+    const decimal = azar.elegir(DECIMALES);
+    return {
+      sentenciasAlPrincipio: [
+        declaracion({ tipo: 'String', nombre: 'texto', inicial: literal(`"a" + ${decimal}`, 'String', { etiquetas: CON_DECIMAL }) }),
+        imprimir('texto'),
+        declaracion({ tipo: 'boolean', nombre: 'igual', inicial: condicionConDecimal(azar) }),
+        imprimir('igual', 'boolean'),
+      ],
+    };
+  }),
+];
+
+// C-4: una constante de texto de 65 535 caracteres, o de 65 535 bytes en UTF-8 modificado. Cada texto largo se ARMA plegando `final` (`final String tl1 = tl0 + tl0;` …): son constantes para javac, que las
+// pliega igual que un literal enorme, y el programa no pesa 64 KB. Con los largos en la FRONTERA exacta de cada alfabeto (un carácter más o menos decide si javac lo acepta); el motor modela las dos
+// reglas (`limit.string` y `limit.string.overflow`) y avisa cuando no puede decidir.
+interface AlfabetoDeTextos {
+  readonly prefijo: string;
+  readonly unidad: string;
+  /** La última `final` de la pila (la que mide 2^kMaximo unidades): ninguna `final` pasa de 65 535 bytes, así que cada una compila sola. */
+  readonly kMaximo: number;
+}
+
+const ASCII: AlfabetoDeTextos = { prefijo: 'tl', unidad: 'a', kMaximo: 15 };
+const ACENTOS: AlfabetoDeTextos = { prefijo: 'el', unidad: 'é', kMaximo: 14 };
+const EUROS: AlfabetoDeTextos = { prefijo: 'eu', unidad: '€', kMaximo: 14 };
+const EMOJIS: AlfabetoDeTextos = { prefijo: 'em', unidad: '😀', kMaximo: 13 };
+const TEXTO_LARGO: readonly Etiqueta[] = ['texto-largo'];
+
+/** `final String x0 = "a"; final String x1 = x0 + x0; …`: cada una duplica a la anterior. */
+function pilaDeFinales(alfabeto: AlfabetoDeTextos): Sentencia[] {
+  return Array.from({ length: alfabeto.kMaximo + 1 }, (_, k) =>
+    declaracion({
+      esFinal: true,
+      tipo: 'String',
+      nombre: `${alfabeto.prefijo}${k}`,
+      inicial: literal(k === 0 ? `"${alfabeto.unidad}"` : `${alfabeto.prefijo}${k - 1} + ${alfabeto.prefijo}${k - 1}`, 'String'),
+    }),
+  );
+}
+
+/** La suma de las `final` que mide `cantidad` unidades (los bits de `cantidad`, de mayor a menor; un bit por encima de la pila repite la más grande). */
+function sumaDeFinales(alfabeto: AlfabetoDeTextos, cantidad: number): string {
+  const partes: string[] = [];
+  for (let k = 20; k >= 0; k -= 1) {
+    if (((cantidad >> k) & 1) === 0) continue;
+    const veces = k > alfabeto.kMaximo ? 2 ** (k - alfabeto.kMaximo) : 1;
+    for (let i = 0; i < veces; i += 1) partes.push(`${alfabeto.prefijo}${Math.min(k, alfabeto.kMaximo)}`);
+  }
+  return partes.join(' + ');
+}
+
+const textoDe = (alfabeto: AlfabetoDeTextos, cantidad: number, resto = '', etiquetasExtra: readonly Etiqueta[] = []): Expr =>
+  literal(`${sumaDeFinales(alfabeto, cantidad)}${resto}`, 'String', { etiquetas: [...TEXTO_LARGO, ...etiquetasExtra] });
+
+// El largo, en unidades de cada alfabeto: la frontera de `limit.string` (65 534 / 65 535 caracteres) y la de `limit.string.overflow` (32 767 / 32 768 acentos, 21 845 / 21 846 euros, 10 922 / 10 923 emojis).
+const LARGOS_ASCII = [65_533, 65_534, 65_535, 65_536] as const;
+const LARGOS_CON_ACENTOS = [32_766, 32_767, 32_768] as const;
+const LARGOS_CON_EUROS = [21_844, 21_845, 21_846] as const;
+const LARGOS_CON_EMOJIS = [10_921, 10_922, 10_923] as const;
+
+const textoLargo = (nombreDeLaForma: string, aplicar: (azar: Azar) => readonly Sentencia[], etiquetas: readonly Etiqueta[] = TEXTO_LARGO): FormaEstructural =>
+  forma(nombreDeLaForma, etiquetas, (azar) => ({ sentenciasAlPrincipio: aplicar(azar) }));
+
+const imprimirTexto = (texto: Expr): Sentencia => sentenciaExpr(plantilla(['System.out.println(', ')'], [texto], 'void', { etiquetas: ['impresion'] }));
+const declararTexto = (nombreDeLaVariable: string, inicial: Expr | null, esFinal = false): Sentencia => declaracion({ esFinal, tipo: 'String', nombre: nombreDeLaVariable, inicial });
+
+const TEXTOS_LARGOS: readonly FormaEstructural[] = [
+  textoLargo('texto-largo-en-un-inicializador', (azar) => [...pilaDeFinales(ASCII), declararTexto('textoLargo', textoDe(ASCII, azar.elegir(LARGOS_ASCII))), imprimir('textoLargo.length()', 'int')]),
+  textoLargo('texto-largo-en-println', (azar) => [...pilaDeFinales(ASCII), imprimirTexto(textoDe(ASCII, azar.elegir(LARGOS_ASCII)))]),
+  textoLargo('texto-largo-en-una-asignacion', (azar) => [
+    ...pilaDeFinales(ASCII),
+    declararTexto('textoLargo', null),
+    sentenciaExpr(plantilla(['textoLargo = ', ''], [textoDe(ASCII, azar.elegir(LARGOS_ASCII))], 'String', { etiquetas: ['asignacion'] })),
+    imprimir('textoLargo.length()', 'int'),
+  ]),
+  textoLargo('texto-largo-como-argumento', (azar) => [
+    ...pilaDeFinales(ASCII),
+    declararTexto('t', literal('"q"', 'String')),
+    declaracion({ tipo: 'boolean', nombre: 'igual', inicial: plantilla(['t.equals(', ')'], [textoDe(ASCII, azar.elegir(LARGOS_ASCII))], 'boolean', { etiquetas: ['llamada-de-biblioteca'] }) }),
+    imprimir('igual', 'boolean'),
+  ]),
+  // Una `final` con una constante así de larga se revisa aunque nadie la use.
+  textoLargo('texto-largo-en-una-final', (azar) => [...pilaDeFinales(ASCII), declararTexto('LARGO', textoDe(ASCII, azar.elegir(LARGOS_ASCII)), true), imprimir('LARGO.length()', 'int')]),
+  textoLargo('texto-largo-como-etiqueta-de-switch', (azar) => [
+    ...pilaDeFinales(ASCII),
+    declararTexto('t', literal('"q"', 'String')),
+    seleccion({
+      selector: nombre('t', 'String'),
+      casos: [
+        { etiquetas: [textoDe(ASCII, azar.elegir(LARGOS_ASCII))], cuerpo: [salto('break')] },
+        { etiquetas: 'default', cuerpo: [salto('break')] },
+      ],
+      flecha: false,
+    }),
+  ]),
+  textoLargo('texto-largo-con-acentos', (azar) => [...pilaDeFinales(ACENTOS), declararTexto('textoLargo', textoDe(ACENTOS, azar.elegir(LARGOS_CON_ACENTOS))), imprimir('textoLargo.length()', 'int')]),
+  textoLargo('texto-largo-con-euros', (azar) => [...pilaDeFinales(EUROS), declararTexto('textoLargo', textoDe(EUROS, azar.elegir(LARGOS_CON_EUROS))), imprimir('textoLargo.length()', 'int')]),
+  textoLargo('texto-largo-con-emojis', (azar) => [...pilaDeFinales(EMOJIS), declararTexto('textoLargo', textoDe(EMOJIS, azar.elegir(LARGOS_CON_EMOJIS))), imprimir('textoLargo.length()', 'int')]),
+  textoLargo('texto-largo-en-el-cuerpo-de-un-ciclo', (azar) => [
+    ...pilaDeFinales(ASCII),
+    declaracion({ tipo: 'int', nombre: 'vuelta', inicial: literal('0', 'int') }),
+    mientras(literal('vuelta < 1', 'boolean'), [declararTexto('textoLargo', textoDe(ASCII, azar.elegir(LARGOS_ASCII))), sentenciaExpr(literal('vuelta++', 'int', { etiquetas: ['incremento'] }))]),
+  ]),
+  // La receta de una concatenación que NO es constante: las constantes más un byte por operando dinámico (`invokedynamic`).
+  textoLargo('receta-de-una-concatenacion', (azar) => {
+    const dos = azar.probabilidad(0.5);
+    return [
+      ...pilaDeFinales(ASCII),
+      declaracion({ tipo: 'int', nombre: 'x', inicial: literal('1', 'int') }),
+      ...(dos ? [declaracion({ tipo: 'int', nombre: 'y', inicial: literal('2', 'int') })] : []),
+      declararTexto('textoLargo', textoDe(ASCII, azar.elegir([65_531, 65_532, 65_533, 65_534, 65_535]), dos ? ' + x + y' : ' + x')),
+      imprimir('textoLargo.length()', 'int'),
+    ];
+  }),
+  textoLargo('receta-con-acentos', (azar) => [
+    ...pilaDeFinales(ACENTOS),
+    declaracion({ tipo: 'int', nombre: 'x', inicial: literal('1', 'int') }),
+    declararTexto('textoLargo', textoDe(ACENTOS, azar.elegir(LARGOS_CON_ACENTOS), ' + x')),
+    imprimir('textoLargo.length()', 'int'),
+  ]),
+  textoLargo('receta-con-mas-igual', (azar) => [
+    ...pilaDeFinales(ASCII),
+    declararTexto('acumulado', literal('"q"', 'String')),
+    sentenciaExpr(plantilla(['acumulado += ', ''], [textoDe(ASCII, azar.elegir([65_533, 65_534, 65_535]))], 'String', { etiquetas: ['asignacion-compuesta'] })),
+    imprimir('acumulado.length()', 'int'),
+  ]),
+  // Un decimal en el texto: su largo exacto lo decide `Double.toString` (de 3 a 25 caracteres); si el límite cae dentro de ese margen, el motor avisa.
+  textoLargo(
+    'texto-largo-con-un-decimal',
+    (azar) => [...pilaDeFinales(ASCII), declararTexto('textoLargo', textoDe(ASCII, azar.elegir([60_000, 65_520, 65_531, 65_532, 65_540]), ' + 1.5', CON_DECIMAL)), imprimir('textoLargo.length()', 'int')],
+    [...TEXTO_LARGO, ...CON_DECIMAL],
+  ),
+  // Lo que javac NO genera no cuenta: la rama que no se toma de un `if` con condición constante, el lado derecho de `false && …`; y lo que el motor no sabe decidir (código tras `if (true) return;`).
+  textoLargo('texto-largo-junto-a-una-condicion-constante', (azar) => {
+    const texto = textoDe(ASCII, azar.elegir([65_534, 65_535]));
+    const gran = (): Sentencia => declararTexto('textoLargo', texto);
+    return [
+      ...pilaDeFinales(ASCII),
+      ...azar.elegir<readonly Sentencia[]>([
+        [si(literal('true', 'boolean'), [gran()], null)],
+        [si(literal('false', 'boolean'), [gran()], null)],
+        [si(literal('true', 'boolean'), [imprimir('"sí"')], [gran()])],
+        [declaracion({ esFinal: true, tipo: 'boolean', nombre: 'DEPURAR', inicial: literal('false', 'boolean') }), si(nombre('DEPURAR', 'boolean'), [imprimirTexto(texto)], null)],
+        [declararTexto('t', literal('"q"', 'String')), si(plantilla(['false && t.equals(', ')'], [texto], 'boolean'), [], null)],
+        [declararTexto('t', literal('"q"', 'String')), si(plantilla(['true || t.equals(', ')'], [texto], 'boolean'), [], null)],
+        [declararTexto('t', literal('"q"', 'String')), si(plantilla(['true && t.equals(', ')'], [texto], 'boolean'), [], null)],
+        [si(literal('true', 'boolean'), [sentenciaExpr(literal('return', 'void'))], null), gran()],
+      ]),
+    ];
+  }),
+];
+
 /** Todas las formas, en el orden en que salen (la i-ésima, en el programa `FASE + PERIODO · i`). */
 export const FORMAS_ESTRUCTURALES: readonly FormaEstructural[] = [
   ...FIRMAS_DE_MAIN,
@@ -283,6 +650,13 @@ export const FORMAS_ESTRUCTURALES: readonly FormaEstructural[] = [
   ...IMPORTS,
   ...ARCHIVOS_SIN_CLASE,
   ...ESCAPES,
+  // Tarea 1.36
+  ...FIRMAS_DE_MAIN_CON_PUNTOS,
+  ...PAQUETES,
+  ...INVISIBLES_EN_NOMBRES,
+  ...FINES_DE_LINEA,
+  ...DECIMALES_EN_CONSTANTES,
+  ...TEXTOS_LARGOS,
 ];
 
 /** La forma que le toca al programa `indice` de una campaña, o `null` si ese programa no es estructural. */

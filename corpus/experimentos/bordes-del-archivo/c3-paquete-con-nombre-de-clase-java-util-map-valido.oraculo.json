@@ -1,0 +1,9 @@
+{
+  "nombreArchivo": "Saludo.java",
+  "paquete": "java.util.Map",
+  "compilo": true,
+  "codigoSalida": 1,
+  "agotoTiempo": false,
+  "desenlace": "excepcion",
+  "version": "17.0.18"
+}

@@ -1,0 +1,7 @@
+Saludo.java:5: error: illegal character: '\u200b'
+        int ​z = 3;
+            ^
+Saludo.java:5: error: not a statement
+        int ​z = 3;
+        ^
+2 errors

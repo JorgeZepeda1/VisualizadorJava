@@ -64,7 +64,7 @@ function saltarAnotacion(cursor: CursorDeTokens, desde: number): number {
 
 /**
  * ¿El «(» que está en el cursor abre el tipo de una conversión (`'conversion'`) o es otra cosa (`'otra'`)? Solo mira, nunca consume. Es `analyzeParens` con el mismo orden de
- * ramas; cada una lleva el nombre de la suya en javac. Los tres puntos de una lambda con argumentos variables (`ELLIPSIS`) llegan del léxico como tres «.» seguidos.
+ * ramas; cada una lleva el nombre de la suya en javac. Los tres puntos de una lambda con argumentos variables (`ELLIPSIS`) llegan del léxico como UN token `...` (tarea 1.36).
  */
 export function leerParentesis(cursor: CursorDeTokens): LecturaDelParentesis {
   let profundidad = 0;
@@ -92,9 +92,7 @@ export function leerParentesis(cursor: CursorDeTokens): LecturaDelParentesis {
       case 'extends':
       case 'super':
       case '&':
-        break;
       case '.':
-        if (mas(1).texto === '.' && mas(2).texto === '.') return 'otra'; // `...`: solo aparece en una lambda explícita
         break;
       case '?':
         if (mas(1).texto === 'extends' || mas(1).texto === 'super') marcaUnTipo = true; // un comodín con cota
@@ -119,7 +117,8 @@ export function leerParentesis(cursor: CursorDeTokens): LecturaDelParentesis {
         if (marcaUnTipo) return 'conversion'; // lo visto solo podía ser un tipo
         return abreElOperandoDeUnaConversion(mas(1)) ? 'conversion' : 'otra'; // si no, decide lo que sigue
       case 'final':
-        return 'otra'; // solo aparece en una lambda explícita
+      case '...':
+        return 'otra'; // `final` y `ELLIPSIS` solo aparecen en una lambda explícita (tarea 1.36: el léxico entrega la elipsis como UN token)
       case '@':
         marcaUnTipo = true;
         i = saltarAnotacion(cursor, i);
@@ -142,7 +141,7 @@ export function leerParentesis(cursor: CursorDeTokens): LecturaDelParentesis {
           if (mas(1).texto === ')' || mas(1).texto === '&') return 'conversion'; // «>» «)» y «>» «&»
           // Argumentos de tipo seguidos de un nombre y una coma, de un nombre y «) ->», o de «...»: una lambda explícita.
           if (esIdentificadorLaxo(mas(1)) && (mas(2).texto === ',' || (mas(2).texto === ')' && mas(3).texto === '->'))) return 'otra';
-          if (mas(1).texto === '.' && mas(2).texto === '.' && mas(3).texto === '.') return 'otra';
+          if (mas(1).texto === '...') return 'otra';
           marcaUnTipo = true; // parece un tipo, y todavía puede ser un cast, una referencia a método o una lambda
         } else if (profundidad < 0) {
           return 'otra'; // «<» y «>» que no se corresponden: no es un tipo

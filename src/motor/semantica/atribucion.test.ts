@@ -2088,6 +2088,130 @@ describe('atribuir — `import` de un solo tipo con el mismo nombre que la clase
   });
 });
 
+// Tarea 1.36 (C-3 de la verificación final del lote 1, javac `package.in.other.module`): un `package` cuyo nombre es el de un paquete que el JDK exporta (`java.util`, `java.lang`, `javax.swing`,
+// `java.sql`… 226 en el JDK 17, la lista que ya generó el oráculo) lo rechaza javac: «package exists in another module: java.base». El motor ignoraba la línea entera (REQ-SUB-001: «`package` se ignora») y
+// el programa se «ejecutaría». Medido con javac 17.0.18 sobre 278 nombres (los 226 paquetes exportados, los paquetes de arriba como `java`, `javax` y `com.sun`, nombres de clases usados como paquete y typos): rechaza EXACTAMENTE los que tienen tipos exportados;
+// `java`, `javax`, `jdk`, `sun`, `com.sun`, `aula.java`, `java.utils`, `Java.util` y los internos no exportados (`jdk.internal.misc`, `sun.nio.ch`) compilan.
+describe('atribuir — `package` con el nombre de un paquete del JDK (C-3, tarea 1.36, javac: «package exists in another module»)', () => {
+  it.each([
+    'java.util',
+    'java.lang',
+    'java.io',
+    'java.net',
+    'java.awt',
+    'java.sql',
+    'java.nio.file',
+    'javax.swing',
+    'javax.crypto',
+    'org.w3c.dom',
+    'org.xml.sax',
+    'org.ietf.jgss',
+    'com.sun.net.httpserver',
+    'jdk.net',
+    'jdk.jfr',
+    'sun.misc',
+    'java.util.concurrent',
+    'java.util.function',
+    'java.lang.invoke',
+    'java.util.logging',
+  ])('«package %s;» → «paquete-del-jdk», señalado en la línea del `package`', (nombre) => {
+    const problemas = atribuirPrograma(`package ${nombre};\npublic class C { public static void main(String[] a) { } }`);
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toMatchObject({ codigo: 'paquete-del-jdk', datos: { nombre } });
+    expect(problemas[0]!.categoria).toBeUndefined(); // un error de compilación, no un aviso
+    expect(problemas[0]!.rango.inicio).toBe(0);
+  });
+
+  it.each([
+    'miproyecto', // lo que pone NetBeans: el caso más común
+    'aula',
+    'mi.proyecto',
+    'util',
+    'java', // un paquete que solo tiene subpaquetes: javac lo compila
+    'javax',
+    'jdk',
+    'sun',
+    'com',
+    'com.sun',
+    'org',
+    'aula.java',
+    'mi.java.util',
+    'java.utils',
+    'Java.util',
+    'java.util.foo',
+    'java.sqrt',
+    'jdk.internal.misc', // existe, pero no lo exporta a nadie: javac lo compila
+    'sun.nio.ch',
+    'sun.security.x509',
+    'jdk.nashorn',
+  ])('control: «package %s;» lo compila javac y no da ningún problema', (nombre) => {
+    expect(atribuirPrograma(`package ${nombre};\npublic class C { public static void main(String[] a) { } }`)).toEqual([]);
+  });
+
+  it('un programa SIN `package` no cambia, y el `package` va antes que los `import` en el orden del texto (se reporta primero)', () => {
+    expect(atribuirPrograma('public class C { public static void main(String[] a) { } }')).toEqual([]);
+    const problemas = atribuirPrograma('package java.util;\nimport java.util.Scanner;\npublic class C { public static void main(String[] a) { } }');
+    expect(problemas.map((p) => p.codigo)).toEqual(['paquete-del-jdk']);
+  });
+
+  it('el rango cubre la declaración entera (de `package` al `;`), para que la línea sea la del `package`', () => {
+    const fuente = '// aula\n\npackage java.util;\npublic class C { public static void main(String[] a) { } }';
+    const problemas = atribuirPrograma(fuente);
+    expect(problemas[0]!.rango).toEqual({ inicio: fuente.indexOf('package'), fin: fuente.indexOf(';') + 1 });
+  });
+
+  // `java.lang.String` y `java.lang.Math` los rechaza javac aunque no sean paquetes (`pkg.clashes.with.class.of.same.name`): el nombre de un paquete no puede ser el de
+  // una clase que el compilador ya conoce, y `java.lang` siempre está a la vista. Con `java.util.Map` depende de que el programa use `java.util`: no se puede revisar, y es un aviso.
+  it.each(['java.lang.String', 'java.lang.Math', 'java.util.Map', 'java.util.Scanner', 'java.util.Map.Entry'])(
+    '«package %s;» es el nombre de una CLASE del JDK: aviso honesto, nunca «ok»',
+    (nombre) => {
+      const problemas = atribuirPrograma(`package ${nombre};\npublic class C { public static void main(String[] a) { } }`);
+      expect(problemas).toHaveLength(1);
+      expect(problemas[0]).toMatchObject({ categoria: 'no-disponible', codigo: 'paquete-con-nombre-de-clase-no-soportado', datos: { nombre } });
+    },
+  );
+});
+
+// Tarea 1.36 (W-10 de la verificación final del lote 1, JLS 14.11 y 15.29): `case "d" + 1.5:` es una etiqueta CONSTANTE para javac (el valor lo decide el `Double.toString` de Java) y la compila;
+// el motor la tomaba por «no constante» y daba «Cada "case" necesita un valor fijo». Ahora es un aviso honesto: no se puede revisar si dos etiquetas se repiten, pero tampoco se inventa un error.
+describe('atribuir — una etiqueta de `case` constante de valor desconocido: aviso, nunca «etiqueta-de-case-no-constante» (W-10, tarea 1.36)', () => {
+  const AVISO = { categoria: 'no-disponible', codigo: 'constante-de-texto-con-decimal-no-soportada', datos: {} } as const;
+
+  it.each([
+    ['una concatenación con un decimal', 'String s = "d1.5"; switch (s) { case "d" + 1.5: break; default: break; }'],
+    ['una variable `final String` con un decimal', 'final String K = "d" + 1.5; String s = "d1.5"; switch (s) { case K: break; default: break; }'],
+    ['un cast a double dentro del texto', 'String s = "a1.0"; switch (s) { case "a" + (double) 1: break; default: break; }'],
+    ['con otra etiqueta conocida al lado', 'String s = "x"; switch (s) { case "x": break; case "d" + 1.5: break; default: break; }'],
+  ])('%s: un solo aviso', (_nombre, cuerpo) => {
+    const problemas = atribuirCuerpo(cuerpo);
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toMatchObject(AVISO);
+  });
+
+  it('el aviso se señala en la etiqueta, y no se cuenta como duplicada de otra (no se puede saber su valor)', () => {
+    const cuerpo = 'String s = "d1.5"; switch (s) { case "d" + 1.5: break; case "d1.5": break; default: break; }';
+    const problemas = atribuirCuerpo(cuerpo);
+    expect(problemas.map((p) => p.codigo)).toEqual(['constante-de-texto-con-decimal-no-soportada']);
+    expect(problemas[0]!.rango.inicio).toBe(`class C { public static void main(String[] a) { ${cuerpo} } }`.indexOf('case "d" + 1.5'));
+  });
+
+  it('el TIPO se sigue revisando antes que la constancia (como javac): `case "d" + 1.5:` con un selector `int` es un error de tipos', () => {
+    const problemas = atribuirCuerpo('int n = 1; switch (n) { case "d" + 1.5: break; default: break; }');
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toMatchObject({ codigo: 'etiqueta-de-case-de-otro-tipo', datos: { etiqueta: 'String', selector: 'int' } });
+  });
+
+  it('control: una etiqueta que NO es constante sigue siendo «etiqueta-de-case-no-constante» (una variable que no es `final`, o un texto con un `double` que no es constante)', () => {
+    expect(atribuirCuerpo('String k = "a"; String s = "a"; switch (s) { case k: break; default: break; }')[0]).toMatchObject({ codigo: 'etiqueta-de-case-no-constante' });
+    expect(atribuirCuerpo('double d = 1.5; String s = "a"; switch (s) { case "a" + d: break; default: break; }')[0]).toMatchObject({ codigo: 'etiqueta-de-case-no-constante' });
+  });
+
+  it('control: una constante CONOCIDA sigue plegándose y revisándose (`"d" + 1` es "d1", y repetirla es un error)', () => {
+    expect(atribuirCuerpo('String s = "d1"; switch (s) { case "d" + 1: break; default: break; }')).toEqual([]);
+    expect(atribuirCuerpo('String s = "d1"; switch (s) { case "d" + 1: break; case "d1": break; default: break; }')[0]).toMatchObject({ codigo: 'etiqueta-de-case-duplicada' });
+  });
+});
+
 // Tarea 1.34 (familia B de la re-verificación del lote 1, y el cambio de fondo detrás de ella): CERRAR POR DEFECTO. Si la atribución no sabía el tipo de una
 // expresión ('desconocido') la suprimía en silencio — era el sumidero de cascada de la 1.7: nunca informar un error que Java podría no dar — y el programa
 // terminaba en «Java sí acepta tu programa». Pero «no sé» no es «sí»: `int x = System.in;`, `args.length()` y `System.in.nextInt()` los rechaza javac y se

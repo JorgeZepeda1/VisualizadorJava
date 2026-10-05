@@ -623,8 +623,8 @@ function indiceDeErrorEnListaDeParametros(cursor: CursorDeTokens, indiceInicial:
     if (cursor.mirar(i).texto === 'final') i += 1;
     if (!pareceInicioDeTipo(cursor.mirar(i))) return i;
     i = indiceTrasTipo(cursor, i); // Tipo.Calificado<Genérico>[] (antes del nombre)
-    if (cursor.mirar(i).texto === '.' && cursor.mirar(i + 1).texto === '.' && cursor.mirar(i + 2).texto === '.') {
-      i += 3; // varargs: Tipo... nombre
+    if (cursor.mirar(i).texto === '...') {
+      i += 1; // varargs: Tipo... nombre (tarea 1.36: la elipsis es UN token de tres puntos pegados)
     }
     if (cursor.mirar(i).tipo !== 'identificador') return i; // falta el nombre del parámetro
     i += 1;

@@ -156,3 +156,128 @@ describe('FORMAS_ESTRUCTURALES — cada familia de la re-verificación del lote 
     expect(etiquetasDe(programa)).toContain('llamada-generica-explicita');
   });
 });
+
+// Tarea 1.36: las familias que la verificación final del lote 1 halló FUERA de la gramática del generador, y que 448 817 programas propios del verificador sí ejercían: los tres puntos de `main(String
+// . . . args)` (C-1), el `package` con el nombre de un paquete del JDK (C-3), los caracteres invisibles dentro de un nombre (W-1), el retorno de carro como fin de línea (C-2/W-2), una constante de texto
+// con un decimal (C-5/W-10) y una constante de texto de 65 535 caracteres o 65 535 bytes (C-4). Sin ellas el generador diferencial no habría visto ninguna de las cinco familias de falsos aceptos.
+describe('FORMAS_ESTRUCTURALES — las familias de la tarea 1.36', () => {
+  const forma = (nombre: string) => {
+    const encontrada = FORMAS_ESTRUCTURALES.find((candidata) => candidata.nombre === nombre);
+    if (encontrada === undefined) throw new Error(`no hay una forma llamada «${nombre}»`);
+    return encontrada;
+  };
+  const texto = (nombre: string, semilla = 1) => renderizarPrograma(conLaForma(forma(nombre), crearAzar(semilla), [], []));
+
+  it('C-1: los tres puntos separados son un error de sintaxis con su rasgo propio; pegados, aunque con espacios alrededor, son válidos', () => {
+    for (const [nombre, parametros] of [
+      ['main-con-puntos-separados', 'String . . . args'],
+      ['main-con-dos-puntos-pegados-y-uno-suelto', 'String .. . args'],
+      ['main-con-un-punto-suelto-y-dos-pegados', 'String . .. args'],
+      ['main-con-final-y-puntos-separados', 'final String . . . args'],
+    ] as const) {
+      expect(forma(nombre).sintaxisValida, nombre).toBe(false);
+      for (const semilla of SEMILLAS) {
+        const programa = conLaForma(forma(nombre), crearAzar(semilla), [], []);
+        expect(programa.parametrosDeMain, nombre).toBe(parametros);
+        expect(etiquetasDe(programa), nombre).toEqual(expect.arrayContaining(['main-con-otra-firma', 'varargs-mal-escrito']));
+        expect(pretendeErrorDeSintaxis(programa), nombre).toBe(true);
+      }
+    }
+    expect(forma('main-con-varargs-con-espacios').sintaxisValida).toBe(true);
+    expect(texto('main-con-varargs-con-espacios')).toContain('main(String ... args)');
+    expect(etiquetasDe(conLaForma(forma('main-con-varargs-con-espacios'), crearAzar(1), [], []))).not.toContain('varargs-mal-escrito');
+  });
+
+  it('C-3: el `package` de un paquete del JDK, uno propio y uno con nombre de clase van ANTES de los imports, con el rasgo `paquete-declarado`', () => {
+    for (const nombre of ['paquete-del-jdk', 'paquete-propio', 'paquete-con-nombre-de-clase']) {
+      expect(forma(nombre).sintaxisValida, nombre).toBe(true);
+      for (const semilla of SEMILLAS) {
+        const fuente = texto(nombre, semilla);
+        expect(fuente, nombre).toMatch(/^package [a-z]+(\.[A-Za-z]+)*;\n/);
+        expect(etiquetasDe(conLaForma(forma(nombre), crearAzar(semilla), [], [])), nombre).toContain('paquete-declarado');
+      }
+    }
+    // El del JDK sale de la lista de paquetes que el JDK exporta, con cualquier semilla; el propio, nunca de ahí.
+    const paquetesDelJdk = new Set(SEMILLAS.map((semilla) => /^package (.+);/.exec(texto('paquete-del-jdk', semilla))![1]!));
+    for (const nombre of ['java.util', 'java.lang', 'java.io', 'javax.swing', 'java.sql']) expect([...paquetesDelJdk, 'java.util', 'java.lang', 'java.io', 'javax.swing', 'java.sql']).toContain(nombre);
+    for (const semilla of SEMILLAS) expect(texto('paquete-propio', semilla)).not.toMatch(/^package (java|javax)\.(util|lang|io|swing|sql);/);
+    // Los imports del cuerpo van DESPUÉS del `package` (si no, javac da otro error).
+    const programa = conLaForma(forma('paquete-propio'), crearAzar(1), [], ['import java.util.Scanner;']);
+    const lineas = renderizarPrograma(programa).split('\n');
+    expect(lineas.findIndex((l) => l.startsWith('package '))).toBeLessThan(lineas.findIndex((l) => l.startsWith('import ')));
+  });
+
+  it('W-1: un nombre o una palabra clave con un carácter invisible dentro; los que javac salta y los que no', () => {
+    const invisible = /[\u00ad\u200b-\u200f\u2060\ufeff]/;
+    for (const nombre of ['nombre-con-un-caracter-invisible', 'palabra-clave-con-un-caracter-invisible', 'nombre-repetido-por-un-caracter-invisible', 'nombre-que-empieza-con-un-caracter-invisible', 'tipo-pegado-a-un-caracter-invisible']) {
+      for (const semilla of SEMILLAS) {
+        const programa = conLaForma(forma(nombre), crearAzar(semilla), [], []);
+        expect(renderizarPrograma(programa), nombre).toMatch(invisible);
+        expect(etiquetasDe(programa), nombre).toContain('caracter-ignorable');
+      }
+    }
+    // El que empieza con uno es un error del análisis de javac («illegal character»); los demás son sintaxis válida (lo decide la semántica).
+    expect(forma('nombre-que-empieza-con-un-caracter-invisible').sintaxisValida).toBe(false);
+    for (const nombre of ['nombre-con-un-caracter-invisible', 'palabra-clave-con-un-caracter-invisible', 'nombre-repetido-por-un-caracter-invisible', 'tipo-pegado-a-un-caracter-invisible']) expect(forma(nombre).sintaxisValida, nombre).toBe(true);
+  });
+
+  it('C-2/W-2: el programa termina cada renglón con un retorno de carro, con CRLF, con LF y CR, o mezclados, sin ningún otro cambio', () => {
+    const normal = renderizarPrograma(conLaForma(forma('fin-de-linea-cr'), crearAzar(1), [], [])).replace(/\r/g, '\n');
+    expect(normal).toContain('public class P {\n');
+    expect(texto('fin-de-linea-cr')).not.toContain('\n');
+    expect(texto('fin-de-linea-cr')).toContain('public class P {\r    public static void main');
+    expect(texto('fin-de-linea-crlf')).toContain('public class P {\r\n');
+    expect(texto('fin-de-linea-crlf').replace(/\r\n/g, '')).not.toMatch(/[\r\n]/);
+    expect(texto('fin-de-linea-lf-y-cr')).toContain('public class P {\n\r');
+    const mezclado = texto('fin-de-linea-mezclado');
+    expect(mezclado).toMatch(/\r\n/);
+    expect(mezclado).toMatch(/[^\r]\n/);
+    expect(mezclado).toMatch(/\r[^\n]/);
+    for (const nombre of ['fin-de-linea-cr', 'fin-de-linea-crlf', 'fin-de-linea-lf-y-cr', 'fin-de-linea-mezclado']) {
+      expect(forma(nombre).sintaxisValida, nombre).toBe(true);
+      expect(etiquetasDe(conLaForma(forma(nombre), crearAzar(1), [], [])), nombre).toContain('fin-de-linea-especial');
+    }
+  });
+
+  it('C-5/W-10: una constante de texto con un decimal en una condición de ciclo, una `final`, una etiqueta de `case` o la asignación definitiva', () => {
+    for (const nombre of [
+      'decimal-en-la-condicion-de-un-while',
+      'decimal-en-la-condicion-de-un-for',
+      'decimal-en-la-condicion-de-un-do-while',
+      'decimal-en-una-final-y-un-while',
+      'decimal-en-una-etiqueta-de-case',
+      'decimal-en-una-etiqueta-de-case-con-final',
+      'decimal-y-asignacion-definitiva-con-if',
+      'decimal-y-asignacion-definitiva-con-while-y-break',
+      'decimal-en-una-final-booleana',
+      'decimal-sin-decision-de-por-medio',
+    ]) {
+      expect(forma(nombre).sintaxisValida, nombre).toBe(true);
+      for (const semilla of SEMILLAS) {
+        const programa = conLaForma(forma(nombre), crearAzar(semilla), [], []);
+        expect(etiquetasDe(programa), nombre).toContain('constante-de-texto-con-decimal');
+        expect(renderizarPrograma(programa), nombre).toMatch(/"\w+" \+ \d+\.\d+|\d+\.\d+ \+ "\w+"/);
+      }
+    }
+  });
+
+  it('C-4: los textos largos arman la constante plegando `final` (cada una es corta), con el largo en la frontera exacta de cada alfabeto', () => {
+    const formasDeTextoLargo = FORMAS_ESTRUCTURALES.filter((candidata) => candidata.nombre.startsWith('texto-largo-') || candidata.nombre.startsWith('receta-'));
+    expect(formasDeTextoLargo.length).toBeGreaterThanOrEqual(12);
+    for (const candidata of formasDeTextoLargo) {
+      expect(candidata.sintaxisValida, candidata.nombre).toBe(true);
+      for (const semilla of SEMILLAS) {
+        const programa = conLaForma(candidata, crearAzar(semilla), [], []);
+        const fuente = renderizarPrograma(programa);
+        expect(etiquetasDe(programa), candidata.nombre).toContain('texto-largo');
+        // Ningún archivo pesa 64 KB: la constante se arma con ~16 `final` encadenadas.
+        expect(fuente.length, candidata.nombre).toBeLessThan(5000);
+        expect(fuente, candidata.nombre).toMatch(/final String \w+0 = "[^"]+";/);
+      }
+    }
+    // Con las semillas de la prueba salen los largos de la frontera, no solo uno: 65 534 / 65 535 de `a`, 32 767 / 32 768 `é`, 21 845 / 21 846 `€`, 10 922 / 10 923 emojis.
+    const largos = new Set<string>();
+    for (const candidata of formasDeTextoLargo) for (const semilla of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]) largos.add(texto(candidata.nombre, semilla).includes('é') ? 'é' : texto(candidata.nombre, semilla).includes('€') ? '€' : texto(candidata.nombre, semilla).includes('😀') ? '😀' : 'a');
+    expect([...largos].sort()).toEqual(['a', 'é', '€', '😀'].sort());
+  });
+});

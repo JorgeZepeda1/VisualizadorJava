@@ -35,8 +35,9 @@ describe('pruebas/compilacion/catalogo — avisos NO-DISP (uno por construcción
   const archivos = archivosJava(RUTA_AVISOS);
 
   it('el corpus de avisos no está vacío (guarda contra un directorio mal armado)', () => {
-    // 67 muestras: las 61 de la 1.17–1.34 y las 6 de la 1.35 (clase anónima, llamada a `main`, `instanceof` con patrón, clase sellada, literal de clase, emoji en un `char`).
-    expect(archivos.length).toBeGreaterThanOrEqual(67);
+    // 71 muestras: las 61 de la 1.17–1.34, las 6 de la 1.35 (clase anónima, llamada a `main`, `instanceof` con patrón, clase sellada, literal de clase, emoji en un `char`) y las 4 de la 1.36
+    // (un paquete con nombre de clase, una constante de texto con un decimal, un programa demasiado grande, un texto cerca del límite de tamaño).
+    expect(archivos.length).toBeGreaterThanOrEqual(71);
   });
 
   // Tarea 1.23 (agregada por el orquestador: hallazgo de la guarda de avisos, sub-lote 1-D6):

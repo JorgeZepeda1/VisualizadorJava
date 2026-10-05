@@ -214,6 +214,15 @@ function codigoEsperadoDeJavac(codigoJavac: string, mensajeJavac: string): strin
  *  - `illegal.start.of.expr` → `fin-de-archivo-inesperado` (17): ni siquiera la línea coincide (javac señala la cabecera; nosotros el final del archivo).
  *  - `illegal.start.of.stmt` → `else-sin-if` (2): `else }`: el `else` sí tiene su `if`; lo que sobra es la `}`.
  *  - el resto (`variable-no-declarada` ↔ `campo-no-declarado`, operador unario ↔ binario…) son diferencias de la heurística de la tabla de javac, ajenas a esta auditoría.
+ *
+ * Tarea 1.36 (S-8 de la verificación final del lote 1: «la tabla va indexada por id de mutante; más estable por clave de javac → códigos aceptables»): SE QUEDA indexada por mutante, a propósito.
+ *  - La auditoría es POR MUTANTE y una clave de javac no la puede reproducir: el par (`not.stmt`, `palabra-reservada-como-nombre`) tiene 31 mutantes aceptados y 1 rechazado por engañoso
+ *    (`seEncontroNegativo  true;`: falta el `=` y el texto habla de `true`); una tabla por clave los aceptaría a los 32 (52 en vez de 51) y dejaría de ser lo que se auditó uno por uno. Lo que
+ *    distingue al rechazado es la FORMA de la mutación, no ningún dato de javac.
+ *  - El id (`archivo.java#N`) solo cambia si se regenera `corpus/mutantes/` (`npm run oraculo:mutantes`, semilla fija: sin tocar el mutador ni la semilla sale idéntico) y entonces cambian los PROGRAMAS
+ *    mutados junto con la métrica entera —la de veredicto, la de línea y la de código—, que hay que volver a medir y auditar de todas formas; una clave por contenido tampoco sobreviviría a una semilla distinta.
+ *  - Una entrada que deja de coincidir no pasa en silencio: la prueba de abajo exige que cada una exista, que javac la rechace, que su código y su línea sean los de la tabla y que la tabla de javac
+ *    esperara otro (con el aviso de cómo reauditarla).
  */
 const CODIGOS_MAS_PRECISOS_QUE_EL_DE_JAVAC: ReadonlyMap<string, string> = new Map<string, string>([
   // not.stmt → sentencia-entre-parentesis: 10 mutantes: `(cond) {` con el `if`/`while`/`switch` olvidado, de `else if` o metido dentro del paréntesis. javac: «not a statement» sobre el paréntesis; el texto de `sentencia-entre-parentesis` dice justo eso y su segunda frase nombra la palabra que falta.
@@ -329,7 +338,7 @@ describe('mutantes contra veredictos de javac (tarea 1.16, REQ-DIFF-006, criteri
     for (const [id, codigo] of CODIGOS_MAS_PRECISOS_QUE_EL_DE_JAVAC) {
       const v = porId.get(id);
       if (v === undefined) {
-        problemas.push(`${id}: no está en el corpus`);
+        problemas.push(`${id}: no está en el corpus (¿se regeneró \`corpus/mutantes/\`? el id cambia con la semilla o el mutador: reaudita esta entrada contra el mutante nuevo antes de moverla)`);
         continue;
       }
       const nuestro = nuestroVeredicto(v.fuente);

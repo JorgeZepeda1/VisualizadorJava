@@ -141,7 +141,7 @@ describe('tokenizar — literales decimales con punto en cualquier posición (JL
 
   it('regresión: el punto de acceso, de varargs y los literales de siempre no cambian ("a.b", "String... args", "3.14", "42")', () => {
     expect(tokenizar('a.b').slice(0, -1).map((t) => t.texto)).toEqual(['a', '.', 'b']);
-    expect(tokenizar('String... args').slice(0, -1).map((t) => t.texto)).toEqual(['String', '.', '.', '.', 'args']);
+    expect(tokenizar('String... args').slice(0, -1).map((t) => t.texto)).toEqual(['String', '...', 'args']); // tarea 1.36: los tres puntos pegados son UN token (JLS 3.11)
     expect(tokenizar('3.14')[0]).toMatchObject({ tipo: 'doble', valorDoble: 3.14 });
     expect(tokenizar('42')[0]).toMatchObject({ tipo: 'entero', valorEntero: 42n });
     expect(tokenizar('x.length()').slice(0, -1).map((t) => t.texto)).toEqual(['x', '.', 'length', '(', ')']);
@@ -150,6 +150,179 @@ describe('tokenizar — literales decimales con punto en cualquier posición (JL
   it('regresión: un octal sin punto sigue siendo el aviso octal ("010"), pero "010.5" es un decimal', () => {
     expect(tokenizar('010')[0]).toMatchObject({ tipo: 'no-soportado', codigo: 'literal-octal-no-soportado' });
     expect(tokenizar('010.5')[0]).toMatchObject({ tipo: 'doble', valorDoble: 10.5 });
+  });
+});
+
+// Tarea 1.36 (C-1 de la verificación final del lote 1): la elipsis `...` de un varargs es UN token (JLS 3.11, `ELLIPSIS` de javac: `accept("...")` en `JavaTokenizer.readToken`),
+// de tres puntos ADYACENTES. Antes el léxico no la conocía y el analizador sintáctico leía tres «.» seguidos sin comprobar que estuvieran pegados: `main(String . . . args)` se aceptaba
+// (javac: «<identifier> expected») y el programa se «ejecutaría».
+describe('tokenizar — la elipsis "..." es UN token de tres puntos adyacentes (JLS 3.11, tarea 1.36)', () => {
+  it.each([
+    ['String... args', ['String', '...', 'args']],
+    ['String ... args', ['String', '...', 'args']],
+    ['String...args', ['String', '...', 'args']],
+    ['int/* a */... /* b */x', ['int', '...', 'x']],
+  ] as const)('"%s" tiene un solo token "..."', (fuente, textos) => {
+    expect(tokenizar(fuente).slice(0, -1).map((t) => t.texto)).toEqual(textos);
+  });
+
+  it('el token "..." es de puntuación y su rango abarca exactamente los tres puntos', () => {
+    const tokens = tokenizar('String... args');
+    expect(tokens[1]).toMatchObject({ tipo: 'puntuacion', texto: '...', rango: { inicio: 6, fin: 9 } });
+  });
+
+  it.each([
+    ['String . . . args', ['String', '.', '.', '.', 'args']],
+    ['String.. .args', ['String', '.', '.', '.', 'args']],
+    ['String. ..args', ['String', '.', '.', '.', 'args']],
+    ['String./**/.. args', ['String', '.', '.', '.', 'args']],
+    ['String.. ./**/args', ['String', '.', '.', '.', 'args']],
+    ['String.\n.. args', ['String', '.', '.', '.', 'args']],
+    ['String.  .  . args', ['String', '.', '.', '.', 'args']],
+    ['String.\t.\t. args', ['String', '.', '.', '.', 'args']],
+    ['String.. args', ['String', '.', '.', 'args']],
+  ] as const)('"%s": tres puntos que NO están pegados siguen siendo puntos sueltos, nunca una elipsis', (fuente, textos) => {
+    expect(tokenizar(fuente).slice(0, -1).map((t) => t.texto)).toEqual(textos);
+  });
+
+  it.each([
+    ['....', ['...', '.']],
+    ['.....', ['...', '.', '.']],
+    ['......', ['...', '...']],
+    ['a....b', ['a', '...', '.', 'b']],
+  ] as const)('"%s": se toman tres puntos de izquierda a derecha (el resto son puntos sueltos), como javac', (fuente, textos) => {
+    expect(tokenizar(fuente).slice(0, -1).map((t) => t.texto)).toEqual(textos);
+  });
+
+  it('un punto de acceso y un decimal con punto inicial no se confunden con la elipsis ("a.b", ".5", "1...x")', () => {
+    expect(tokenizar('a.b').slice(0, -1).map((t) => t.texto)).toEqual(['a', '.', 'b']);
+    expect(tokenizar('.5')[0]).toMatchObject({ tipo: 'doble', valorDoble: 0.5 });
+    // javac lee `1.` como el literal 1.0 (el punto es del número) y la elipsis no se forma con él: quedan dos puntos sueltos.
+    expect(tokenizar('1...x').slice(0, -1).map((t) => t.texto)).toEqual(['1.', '.', '.', 'x']);
+  });
+});
+
+// Tarea 1.36 (W-1 de la verificación final del lote 1): javac (`JavaTokenizer.scanIdent`) SALTA los caracteres ignorables de identificador (`Character.isIdentifierIgnorable`) cuando arma el
+// nombre: `int a<U+200B>b = 1; System.out.println(ab);` compila, porque el nombre es `ab`. El léxico los dejaba dentro del nombre y el alumno leía «No existe una variable llamada "ab"» sobre
+// un nombre que se ve IGUAL al que declaró (se cuelan al copiar y pegar desde una página, un PDF —el guion blando de fin de renglón— o una app de mensajes). Los 97 puntos de código del
+// BMP son los que midió el verificador con javac 17.0.18 sobre todo el plano básico (190 257 programas); la tabla del motor la genera el oráculo (`GenerarIdentificadores.java`).
+const rangoDePuntos = (desde: number, hasta: number): number[] => Array.from({ length: hasta - desde + 1 }, (_, i) => desde + i);
+const IGNORABLES_DE_JAVA_17: readonly number[] = [
+  ...rangoDePuntos(0x0, 0x8),
+  ...rangoDePuntos(0xe, 0x1b),
+  ...rangoDePuntos(0x7f, 0x9f),
+  0xad,
+  ...rangoDePuntos(0x600, 0x605),
+  0x61c,
+  0x6dd,
+  0x70f,
+  0x8e2,
+  0x180e,
+  ...rangoDePuntos(0x200b, 0x200f),
+  ...rangoDePuntos(0x202a, 0x202e),
+  ...rangoDePuntos(0x2060, 0x2064),
+  ...rangoDePuntos(0x2066, 0x206f),
+  0xfeff,
+  ...rangoDePuntos(0xfff9, 0xfffb),
+];
+const rotulo = (punto: number): string => `U+${punto.toString(16).toUpperCase().padStart(4, '0')}`;
+
+describe('tokenizar — los caracteres ignorables de identificador no forman parte del nombre (W-1, tarea 1.36, JLS 3.8 / `Character.isIdentifierIgnorable`)', () => {
+  it('son 97 puntos de código del plano básico (los que javac 17.0.18 salta dentro de un nombre)', () => {
+    expect(IGNORABLES_DE_JAVA_17).toHaveLength(97);
+    expect(new Set(IGNORABLES_DE_JAVA_17).size).toBe(97);
+  });
+
+  it.each(IGNORABLES_DE_JAVA_17.map((punto) => [rotulo(punto), punto] as const))(
+    '«a%s b»: UN identificador de nombre "ab" (el carácter invisible queda dentro del rango, no dentro del nombre)',
+    (_rotulo, punto) => {
+      const fuente = `a${String.fromCodePoint(punto)}b`;
+      const tokens = tokenizar(fuente);
+      expect(tokens).toHaveLength(2);
+      expect(tokens[0]).toMatchObject({ tipo: 'identificador', texto: 'ab', rango: { inicio: 0, fin: 3 } });
+    },
+  );
+
+  it('con el carácter ignorable al FINAL del nombre sigue siendo el nombre sin él, y el rango lo abarca', () => {
+    const tokens = tokenizar('x\u200b = 1');
+    expect(tokens[0]).toMatchObject({ tipo: 'identificador', texto: 'x', rango: { inicio: 0, fin: 2 } });
+    expect(tokens[1]).toMatchObject({ tipo: 'puntuacion', texto: '=' });
+  });
+
+  it('varios seguidos, y de varias clases, se saltan todos: «a<200B><200B>b<00AD>c» es "abc"', () => {
+    expect(tokenizar('a\u200b\u200bb\u00adc')[0]).toMatchObject({ tipo: 'identificador', texto: 'abc', rango: { inicio: 0, fin: 6 } });
+  });
+
+  it('dentro de una PALABRA CLAVE: «in<200B>t» es la palabra `int` (javac busca la palabra clave con el nombre ya sin ellos)', () => {
+    const tokens = tokenizar('in\u200bt x');
+    expect(tokens[0]).toMatchObject({ tipo: 'palabra-clave', texto: 'int', rango: { inicio: 0, fin: 4 } });
+    expect(tokenizar('pu\u00adblic')[0]).toMatchObject({ tipo: 'palabra-clave', texto: 'public' });
+  });
+
+  it('un nombre solo con la letra de inicio y ignorables es esa letra: «x<FEFF><200D>»', () => {
+    expect(tokenizar('x\ufeff\u200d')[0]).toMatchObject({ tipo: 'identificador', texto: 'x', rango: { inicio: 0, fin: 3 } });
+  });
+
+  it('el ignorable NO puede abrir un nombre: javac lo rechaza donde empieza un token («illegal character»), y el léxico también', () => {
+    for (const punto of [0x200b, 0x00ad, 0xfeff, 0x7f, 0x85]) {
+      expect(() => tokenizar(`${String.fromCodePoint(punto)}x`), rotulo(punto)).toThrow(ErrorDeCompilacion);
+    }
+  });
+
+  it.each([0x00a0, 0x2003, 0x3000, 0x2028, 0x000b])(
+    'control: %s (un espacio raro, NO ignorable) no se salta ni dentro de un nombre: «a<c>b» es un error, como en javac',
+    (punto) => {
+      expect(() => tokenizar(`a${String.fromCodePoint(punto)}b`), rotulo(punto)).toThrow(ErrorDeCompilacion);
+    },
+  );
+
+  it('los caracteres de FUERA del plano básico de la misma categoría (`U+E0001`) javac los toma como parte del nombre, no los salta', () => {
+    const fuente = `a${String.fromCodePoint(0xe0001)}b`;
+    expect(tokenizar(fuente)[0]).toMatchObject({ tipo: 'identificador', texto: fuente, rango: { inicio: 0, fin: 4 } });
+  });
+
+  it('regresión: un identificador normal, con letras Unicode y con dígitos, no cambia', () => {
+    expect(tokenizar('año2')[0]).toMatchObject({ tipo: 'identificador', texto: 'año2', rango: { inicio: 0, fin: 4 } });
+    expect(tokenizar('x_1$y')[0]).toMatchObject({ tipo: 'identificador', texto: 'x_1$y' });
+  });
+});
+
+// Tarea 1.36 (W-2b de la verificación final del lote 1, JLS 3.5): el `U+001A` (Ctrl-Z, el fin de archivo de MS-DOS) en el lugar donde empezaría un token es el FIN DE LA ENTRADA para javac: lo
+// que sigue no se lee. Medido con javac 17.0.18: al final del archivo (compila), al principio (compila: un archivo vacío), entre dos tokens de `main` (`reached end of file while parsing`) y seguido
+// de basura (compila). Dentro de un identificador se salta (es un ignorable más); dentro de un comentario, una cadena o un `char` es un carácter cualquiera.
+describe('tokenizar — el U+001A donde empieza un token es el fin de la entrada (W-2b, tarea 1.36, JLS 3.5)', () => {
+  const SUB = '\u001a';
+
+  it('al final del archivo: no es un «carácter no reconocido», la entrada simplemente termina', () => {
+    expect(tokenizar(`class C { }\n${SUB}`).map((t) => t.texto)).toEqual(['class', 'C', '{', '}', '']);
+    expect(tokenizar(`class C { }${SUB}`).map((t) => t.texto)).toEqual(['class', 'C', '{', '}', '']);
+  });
+
+  it('lo que sigue al U+001A no se lee: ni basura, ni otra clase', () => {
+    expect(tokenizar(`class C { }${SUB} esto no es java @@@`).map((t) => t.texto)).toEqual(['class', 'C', '{', '}', '']);
+    expect(tokenizar(`class C { }${SUB}class D { }`).map((t) => t.texto)).toEqual(['class', 'C', '{', '}', '']);
+  });
+
+  it('al PRINCIPIO del archivo, o solo: no hay ningún token', () => {
+    expect(tokenizar(SUB).map((t) => t.texto)).toEqual(['']);
+    expect(tokenizar(`${SUB}class C { }`).map((t) => t.texto)).toEqual(['']);
+  });
+
+  it('el token de fin de archivo queda donde estaba el U+001A', () => {
+    const tokens = tokenizar(`int x;${SUB}`);
+    expect(tokens.at(-1)).toMatchObject({ tipo: 'eof', rango: { inicio: 6, fin: 6 } });
+  });
+
+  it('dentro de un identificador se salta (ignorable): «a<SUB>b» es "ab", y «a<SUB>» al final también', () => {
+    expect(tokenizar(`a${SUB}b`)[0]).toMatchObject({ tipo: 'identificador', texto: 'ab' });
+    expect(tokenizar(`a${SUB}`)[0]).toMatchObject({ tipo: 'identificador', texto: 'a' });
+  });
+
+  it('dentro de un comentario, una cadena o un `char` es un carácter más: no termina nada', () => {
+    expect(tokenizar(`// uno${SUB}dos\nx`).map((t) => t.texto)).toEqual(['x', '']);
+    expect(tokenizar(`/* uno${SUB}dos */ x`).map((t) => t.texto)).toEqual(['x', '']);
+    expect(tokenizar(`"a${SUB}b"`)[0]).toMatchObject({ tipo: 'cadena', valor: `a${SUB}b` });
+    expect(tokenizar(`'${SUB}'`)[0]).toMatchObject({ tipo: 'caracter', valorCaracter: SUB });
   });
 });
 
@@ -200,8 +373,10 @@ describe('tokenizar — identificadores con letras Unicode (JLS 3.8, tarea 1.29)
     expect(() => tokenizar('int \u0870 = 5;')).toThrow(ErrorDeCompilacion);
   });
 
-  it('un carácter ignorable (U+200D, unión de ancho cero) SÍ cabe DENTRO de un identificador para javac, pero no lo inicia', () => {
-    expect(tokenizar('a\u200db')[0]).toMatchObject({ tipo: 'identificador', texto: 'a\u200db' });
+  // Tarea 1.36 (W-1): esta prueba afirmaba que el nombre CONSERVA el carácter ignorable (`texto: 'a\u200db'`). Contra javac 17.0.18 real era falso: `JavaTokenizer.scanIdent` lo SALTA y el nombre es
+  // `ab` (la variable `ab` declarada sin el carácter invisible existe para javac y daba «no existe una variable» aquí). Cabe dentro del identificador (no lo corta), no lo inicia y no forma su nombre.
+  it('un carácter ignorable (U+200D, unión de ancho cero) cabe DENTRO de un identificador para javac (no lo corta) pero no forma su nombre, y no lo inicia', () => {
+    expect(tokenizar('a\u200db')[0]).toMatchObject({ tipo: 'identificador', texto: 'ab', rango: { inicio: 0, fin: 3 } });
     expect(() => tokenizar('int \u200db = 5;')).toThrow(ErrorDeCompilacion);
   });
 

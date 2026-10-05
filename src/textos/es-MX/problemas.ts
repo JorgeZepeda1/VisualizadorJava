@@ -162,6 +162,20 @@ export const textosProblemas: { readonly [K in CodigoProblema]: (datos: DatosPor
   'clase-repetida-con-import': ({ nombre, importacion }) =>
     `Tu clase se llama \`${nombre}\`, igual que \`${importacion}\`, que importas en esta línea: Java no permite dos cosas con el mismo nombre. ` +
     'Cambia el nombre de tu clase o quita el `import`.',
+  // Tarea 1.36 (C-3): `package java.util;` (javac: «package exists in another module: java.base»). Se señala el `package`: nombra el paquete y da las dos salidas.
+  'paquete-del-jdk': ({ nombre }) =>
+    `El paquete \`${nombre}\` ya existe en Java: lo trae el propio JDK, así que no puedes usar ese nombre para tu programa. ` +
+    'Cambia la línea `package` por un nombre propio (por ejemplo, `package miproyecto;`) o quítala.',
+  // Tarea 1.36 (C-4a): javac: «constant string too long» (65 535 caracteres o más en un texto que se genera). Se señala el texto; dice el máximo y qué hacer.
+  'texto-con-demasiados-caracteres': () =>
+    'Este texto es demasiado largo: Java no acepta un texto de 65 535 caracteres o más escrito en el programa (el máximo son 65 534). ' +
+    'Escríbelo más corto, o divídelo en varias instrucciones `System.out.print`.',
+  // Tarea 1.36 (C-4a): javac: «UTF8 representation for string … is too long for the constant pool». Lo señala en la línea de la clase (no en la del texto), así que la frase no habla de «este texto»: explica por qué un
+  // texto de menos de 65 535 caracteres puede no caber (los acentos y los emojis pesan más) y que también cuenta la suma de varios textos.
+  'texto-con-demasiados-bytes': () =>
+    'Java no puede guardar tu programa: uno de sus textos (o varios textos unidos con `+`) ocupa más de 65 535 bytes. ' +
+    'Las letras con acento y la ñ ocupan 2 bytes cada una, el símbolo del euro 3 y un emoji 6. ' +
+    'Acorta los textos más largos, o divídelos en varias instrucciones `System.out.print`.',
   'miembro-de-primitivo': ({ tipo, nombre, receptor }) =>
     receptor === undefined
       ? `Un valor de tipo \`${tipo}\` es primitivo: no tiene métodos ni campos, así que no puedes escribir \`.${nombre}\` después de él. Solo los objetos, como un \`String\`, los tienen.`

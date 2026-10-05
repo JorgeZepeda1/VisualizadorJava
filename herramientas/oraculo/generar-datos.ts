@@ -178,11 +178,13 @@ export interface IdentificadoresJava {
   readonly inicio: string;
   /** `Character.isJavaIdentifierPart`: con qué puede CONTINUAR. */
   readonly parte: string;
+  /** Tarea 1.36 (W-1): `Character.isIdentifierIgnorable(char)` del plano básico — lo que javac SALTA dentro de un nombre (no forma parte de él). */
+  readonly ignorable: string;
 }
 
 /**
- * Pura: el stdout de `GenerarIdentificadores.java` (`inicio|…`, `parte|…`, `#total|N,M`) → las dos
- * tablas. Exige la línea final y que N y M sean la cantidad de rangos realmente leídos: el oráculo
+ * Pura: el stdout de `GenerarIdentificadores.java` (`inicio|…`, `parte|…`, `ignorable|…`, `#total|N,M,K`) → las tres
+ * tablas. Exige la línea final y que N, M y K sean la cantidad de rangos realmente leídos: el oráculo
  * acota lo que captura de stdout, y una tabla CORTADA se guardaría como si fuera completa.
  */
 export function analizarIdentificadoresJava(salida: string): IdentificadoresJava {
@@ -193,18 +195,19 @@ export function analizarIdentificadoresJava(salida: string): IdentificadoresJava
   const lineaDe = (prefijo: string): string | undefined => lineas.find((linea) => linea.startsWith(prefijo));
   const inicio = lineaDe('inicio|')?.slice('inicio|'.length);
   const parte = lineaDe('parte|')?.slice('parte|'.length);
-  if (inicio === undefined || parte === undefined || inicio === '' || parte === '') {
-    throw new Error('la salida de GenerarIdentificadores.java está mal formada (faltan las líneas "inicio|…" y "parte|…")');
+  const ignorable = lineaDe('ignorable|')?.slice('ignorable|'.length);
+  if (inicio === undefined || parte === undefined || ignorable === undefined || inicio === '' || parte === '' || ignorable === '') {
+    throw new Error('la salida de GenerarIdentificadores.java está mal formada (faltan las líneas "inicio|…", "parte|…" e "ignorable|…")');
   }
   const total = lineaDe('#total|')?.slice('#total|'.length);
-  const esperado = `${inicio.split(',').length},${parte.split(',').length}`;
+  const esperado = `${inicio.split(',').length},${parte.split(',').length},${ignorable.split(',').length}`;
   if (total !== esperado) {
     throw new Error(
-      `La salida de GenerarIdentificadores.java está truncada o incompleta: se leyeron ${esperado} rangos (inicio,parte) ` +
-        `y la línea "#total|N,M" ${total === undefined ? 'no aparece' : `dice "${total}"`}. Revisa el tope de captura del oráculo (LIMITE_BYTES_SONDAS).`,
+      `La salida de GenerarIdentificadores.java está truncada o incompleta: se leyeron ${esperado} rangos (inicio,parte,ignorable) ` +
+        `y la línea "#total|N,M,K" ${total === undefined ? 'no aparece' : `dice "${total}"`}. Revisa el tope de captura del oráculo (LIMITE_BYTES_SONDAS).`,
     );
   }
-  return { inicio, parte };
+  return { inicio, parte, ignorable };
 }
 
 // ---- Palabras reservadas (GenerarPalabrasReservadas.java, tarea 1.33) ----
@@ -522,7 +525,9 @@ export function renderizarIdentificadoresTs(identificadores: IdentificadoresJava
     `${cabecera('herramientas/oraculo/java/GenerarIdentificadores.java')}` +
     `// Rangos de puntos de código (hexadecimal: "41-5a" o un solo punto "5f", separados por comas) que el JDK 17 acepta en un identificador.\n` +
     `export const INICIO_DE_IDENTIFICADOR_JAVA: string = ${cadenaSimple(identificadores.inicio)};\n` +
-    `export const PARTE_DE_IDENTIFICADOR_JAVA: string = ${cadenaSimple(identificadores.parte)};\n`
+    `export const PARTE_DE_IDENTIFICADOR_JAVA: string = ${cadenaSimple(identificadores.parte)};\n` +
+    `// Tarea 1.36 (W-1): los caracteres que javac SALTA dentro de un nombre (\`Character.isIdentifierIgnorable\`, solo el plano básico): no forman parte del nombre.\n` +
+    `export const IGNORABLE_EN_IDENTIFICADOR_JAVA: string = ${cadenaSimple(identificadores.ignorable)};\n`
   );
 }
 

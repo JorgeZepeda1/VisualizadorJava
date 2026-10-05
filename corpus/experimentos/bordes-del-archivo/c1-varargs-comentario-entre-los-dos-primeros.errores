@@ -1,0 +1,4 @@
+Saludo.java:2: error: illegal '.'
+    public static void main(String./**/.. args) {
+                                        ^
+1 error

@@ -7,8 +7,8 @@
 // real detectado (`datos.tipo`); el texto en español lo arma la tarea 1.11 sobre ese dato.
 import type { NodoSwitch } from '../sintaxis/ast.ts';
 import type { Alcance } from './alcance.ts';
-import { valorConstante, type ValorConstante } from './constantes.ts';
-import type { ProblemaAtribucion } from './diagnostico.ts';
+import { esDeValorDesconocido, valorConstante, valorSiSeSabe, type ValorConstante } from './constantes.ts';
+import { avisoDeConstanteDeValorDesconocido, type ProblemaAtribucion } from './diagnostico.ts';
 import { type Tipo, tipoDeExpresion } from './tipos.ts';
 import { esAsignable } from './verificaciones-de-tipo.ts';
 
@@ -61,10 +61,17 @@ export function verificarEtiquetasDeCase(nodo: NodoSwitch, alcance: Alcance): Pr
       continue;
     }
     if (elemento.tipo !== 'etiqueta-case') continue;
-    const constante = valorConstante(elemento.valor, alcance);
+    const resultado = valorConstante(elemento.valor, alcance);
+    // Tarea 1.36: para el estrechamiento de un valor entero (`case 65:` con un selector `char`) solo cuenta una constante de valor CONOCIDO; una de valor desconocido es siempre un texto o un boolean.
+    const constante = valorSiSeSabe(resultado);
     const tipoDeLaEtiqueta = tipoDeExpresion(elemento.valor, alcance);
     if (selectorConocido && tipoDeLaEtiqueta !== 'desconocido' && !esAsignable(tipoDeLaEtiqueta, tipoDelSelector, constante)) {
       problemas.push({ codigo: 'etiqueta-de-case-de-otro-tipo', rango: elemento.rango, datos: { etiqueta: tipoDeLaEtiqueta, selector: tipoDelSelector } });
+      continue;
+    }
+    // Tarea 1.36 (W-10): `case "d" + 1.5:` ES una etiqueta constante para javac (el valor lo decide el `Double.toString` de Java): no se puede revisar si se repite con otra, y no es un error: aviso honesto.
+    if (esDeValorDesconocido(resultado)) {
+      problemas.push(avisoDeConstanteDeValorDesconocido(elemento.rango));
       continue;
     }
     if (constante === null) {

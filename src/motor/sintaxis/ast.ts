@@ -16,12 +16,22 @@ import type { ConDatosPorCodigo } from '../no-soportado.ts';
 
 export interface NodoPrograma {
   readonly tipo: 'programa';
+  /** La línea `package nombre;` (tarea 1.36: se guarda para revisar que el nombre no sea el de un paquete del JDK); `null` si el archivo no la trae. */
+  readonly paquete: NodoPaquete | null;
   readonly importaciones: readonly NodoImportacion[];
   /** "import static ...;" (tarea 1.6, REQ-SUB-007) — nunca se trata como un import normal. */
   readonly importacionesNoSoportadas: readonly NodoNoSoportado[];
   readonly clase: NodoClase;
   /** Otra clase/interfaz/enum/record de nivel superior tras la primera (tarea 1.6, REQ-SUB-007). */
   readonly otrosTiposDeNivelSuperior: readonly NodoNoSoportado[];
+  readonly rango: Rango;
+}
+
+/** `package aula.u3;` — de la palabra `package` al `;`. */
+export interface NodoPaquete {
+  readonly tipo: 'paquete';
+  /** El nombre calificado completo (`aula.u3`). */
+  readonly nombre: string;
   readonly rango: Rango;
 }
 
@@ -44,6 +54,9 @@ export interface NodoClase {
   /** Campos, métodos propios, clases internas, inicializadores, anotaciones (tarea 1.6). */
   readonly otrosMiembros: readonly NodoNoSoportado[];
   readonly rango: Rango;
+  /** Tarea 1.36 (C-4a): dónde está la palabra `class` (no el primer modificador: `public\nclass C` es la línea de `class`). Es la posición que javac le da a la clase (`JCClassDecl.pos`) y donde ancla los errores del
+   * archivo ya generado, como «UTF8 representation … is too long for the constant pool». */
+  readonly rangoDeLaPalabraClass: Rango;
 }
 
 export interface NodoMain {
@@ -321,6 +334,9 @@ export interface NodoBinaria extends ConParentesis {
   readonly izquierda: NodoExpresion;
   readonly derecha: NodoExpresion;
   readonly rango: Rango;
+  /** Tarea 1.36 (C-4a): dónde está el SÍMBOLO del operador. javac le da a una binaria como posición la de su operador (`JCBinary.pos`), y de esa posición sale la línea de un error como «constant string too long»
+   * (`A\n + A` es la línea del `+`, no la del primer operando); `rango` no sirve para eso porque va del primer operando al último. */
+  readonly rangoDelOperador: Rango;
 }
 
 export interface NodoUnaria extends ConParentesis {

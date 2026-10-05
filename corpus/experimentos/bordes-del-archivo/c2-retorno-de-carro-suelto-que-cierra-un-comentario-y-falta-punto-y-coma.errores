@@ -1,0 +1,4 @@
+Saludo.java:4: error: ';' expected
+        int y = 2
+                 ^
+1 error

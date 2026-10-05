@@ -853,3 +853,36 @@ describe('expresiones — el árbol recuerda los paréntesis (tarea 1.34)', () =
     expect(expresionDe('(int) x')).toMatchObject({ tipo: 'conversion' });
   });
 });
+
+// Tarea 1.36 (C-4a, límites del archivo de clase): javac le da a una binaria como POSICIÓN la de su operador (`JCBinary.pos`), y la línea de un error de «constant string too long» sale de ahí
+// (`A\n + A` es la línea del `+`, no la del primer operando). El árbol conserva el rango de ese operador para que la pasada de límites pueda dar la misma línea.
+describe('expresiones — el operador de una binaria conserva su posición (tarea 1.36)', () => {
+  it('`a + b` guarda el rango del `+`', () => {
+    expect(expresionDe('a + b')).toMatchObject({ tipo: 'binaria', operador: '+', rangoDelOperador: { inicio: 2, fin: 3 } });
+  });
+
+  it('triangulación: en `a + b * c` cada binaria guarda SU propio operador (el `*` es el de adentro)', () => {
+    expect(expresionDe('a + b * c')).toMatchObject({
+      operador: '+',
+      rangoDelOperador: { inicio: 2, fin: 3 },
+      derecha: { operador: '*', rangoDelOperador: { inicio: 6, fin: 7 } },
+    });
+  });
+
+  it('un operador de dos caracteres (`==`, `&&`) abarca los dos', () => {
+    expect(expresionDe('x == y')).toMatchObject({ operador: '==', rangoDelOperador: { inicio: 2, fin: 4 } });
+    expect(expresionDe('p && q')).toMatchObject({ operador: '&&', rangoDelOperador: { inicio: 2, fin: 4 } });
+  });
+
+  it('en una cadena de `+` asociativa por la izquierda, cada operador conserva el suyo (el de más a la derecha es la raíz)', () => {
+    expect(expresionDe('a + b + c')).toMatchObject({
+      rangoDelOperador: { inicio: 6, fin: 7 },
+      izquierda: { rangoDelOperador: { inicio: 2, fin: 3 } },
+    });
+  });
+
+  it('el operador puede estar en otra línea que sus operandos: el rango es el del propio símbolo', () => {
+    const texto = 'a\n  +\n  b';
+    expect(expresionDe(texto)).toMatchObject({ rangoDelOperador: { inicio: texto.indexOf('+'), fin: texto.indexOf('+') + 1 } });
+  });
+});

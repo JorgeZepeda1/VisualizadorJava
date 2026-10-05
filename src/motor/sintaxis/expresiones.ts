@@ -151,7 +151,8 @@ function analizarBinaria(cursor: CursorDeTokens, precedenciaMinima: number, sinL
   let izquierda = analizarUnaria(cursor, sinLambda);
 
   for (;;) {
-    const operador = cursor.actual().texto;
+    const tokenDelOperador = cursor.actual();
+    const operador = tokenDelOperador.texto;
     const precedencia = PRECEDENCIA.get(operador);
     if (precedencia === undefined || precedencia < precedenciaMinima) break;
     cursor.avanzar();
@@ -177,7 +178,7 @@ function analizarBinaria(cursor: CursorDeTokens, precedenciaMinima: number, sinL
     const codigoNoSoportado = CODIGOS_OPERADOR_NO_SOPORTADO.get(operador);
     izquierda =
       codigoNoSoportado === undefined
-        ? { tipo: 'binaria', operador, izquierda, derecha, rango }
+        ? { tipo: 'binaria', operador, izquierda, derecha, rango, rangoDelOperador: tokenDelOperador.rango }
         : { tipo: 'expresion-no-soportada', codigo: codigoNoSoportado, datos: {}, rango };
   }
 

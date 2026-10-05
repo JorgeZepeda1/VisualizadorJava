@@ -42,7 +42,7 @@ describe('corpus/compilacion/avisos — cada muestra real produce, vía compilar
   const archivos = archivosJava(RUTA_AVISOS);
 
   it('el corpus de avisos no está vacío (guarda contra un directorio mal armado)', () => {
-    expect(archivos.length).toBeGreaterThanOrEqual(67); // 61 + las 6 de la tarea 1.35
+    expect(archivos.length).toBeGreaterThanOrEqual(71); // 61 + las 6 de la tarea 1.35 + las 4 de la 1.36
   });
 
   it.each(archivos)('%s: el texto renderizado con los datos REALES de compilar() no tiene restos sin resolver', (nombre) => {

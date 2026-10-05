@@ -5,7 +5,7 @@
 // archivo con conversiones/sobrecargas reales sobre `NodoLlamada`/`NodoAccesoMiembro`.
 import { describe, expect, it } from 'vitest';
 import { Alcance } from './alcance.ts';
-import { NOMBRES_DE_CLASE_RECONOCIDOS, claseDelObjeto, tipoDeExpresion, tipoDeNombreDeTipo } from './tipos.ts';
+import { NOMBRES_DE_CLASE_RECONOCIDOS, claseDelObjeto, esCastPermitido, tipoDeExpresion, tipoDeNombreDeTipo, type Tipo } from './tipos.ts';
 import type { NodoExpresion } from '../sintaxis/ast.ts';
 import { CODIGOS_NO_SOPORTADO } from '../sintaxis/no-soportado.ts';
 
@@ -114,7 +114,7 @@ function nBooleano(valor: boolean): NodoExpresion {
   return { tipo: 'literal-booleano', valor, rango: R };
 }
 function nBin(operador: string, izquierda: NodoExpresion, derecha: NodoExpresion): NodoExpresion {
-  return { tipo: 'binaria', operador, izquierda, derecha, rango: R };
+  return { tipo: 'binaria', operador, izquierda, derecha, rango: R, rangoDelOperador: R };
 }
 function nUn(operador: '+' | '-' | '!', operando: NodoExpresion): NodoExpresion {
   return { tipo: 'unaria', operador, operando, rango: R };
@@ -462,5 +462,40 @@ describe('NOMBRES_DE_CLASE_RECONOCIDOS (dato) — viene del catálogo real del o
 
   it('NO incluye un nombre de variable típico (triangulación: no es "cualquier identificador")', () => {
     expect(NOMBRES_DE_CLASE_RECONOCIDOS.has('edad')).toBe(false);
+  });
+});
+
+// Tarea 1.36 (S-7 de la verificación final del lote 1): `esCastPermitido` (1.32, F1) solo la cubrían tres suites de nivel superior —un sabotaje que aceptaba cualquier par sobrevivía en este archivo—. Ahora
+// cada uno de los 64 pares de los ocho tipos del subconjunto tiene su fila. La regla se midió contra javac 17.0.18 real en los 64 pares: acepta 20 (los cuatro numéricos entre sí, y cada uno de
+// `boolean`, `String`, `Scanner` y `Random` consigo mismo) y rechaza 44 con «incompatible types» (JLS 5.5).
+describe('esCastPermitido (pura) — los 64 pares de los ocho tipos (JLS 5.5, medidos con javac 17.0.18)', () => {
+  const TIPOS: readonly Tipo[] = ['int', 'long', 'double', 'char', 'boolean', 'String', 'Scanner', 'Random'];
+  const NUMERICOS: ReadonlySet<Tipo> = new Set<Tipo>(['int', 'long', 'double', 'char']);
+  const pares = TIPOS.flatMap((origen) => TIPOS.map((destino) => [origen, destino] as const));
+  /** Lo que javac acepta, escrito par por par y NO derivado de la regla de producción (si no, la prueba repetiría el código que vigila). */
+  const ACEPTADOS: ReadonlySet<string> = new Set([
+    'int>int', 'int>long', 'int>double', 'int>char',
+    'long>int', 'long>long', 'long>double', 'long>char',
+    'double>int', 'double>long', 'double>double', 'double>char',
+    'char>int', 'char>long', 'char>double', 'char>char',
+    'boolean>boolean', 'String>String', 'Scanner>Scanner', 'Random>Random',
+  ]);
+
+  it('la tabla escrita a mano tiene exactamente los 20 pares que javac acepta, de un total de 64', () => {
+    expect(pares).toHaveLength(64);
+    expect(ACEPTADOS.size).toBe(20);
+    expect(pares.filter(([origen, destino]) => NUMERICOS.has(origen) && NUMERICOS.has(destino) || (origen === destino && !NUMERICOS.has(origen)))).toHaveLength(20);
+  });
+
+  it.each(pares)('%s → %s', (origen, destino) => {
+    expect(esCastPermitido(origen, destino)).toBe(ACEPTADOS.has(`${origen}>${destino}`));
+  });
+
+  it('«desconocido» en cualquiera de los dos lados nunca produce un error (D2: suprime la cascada)', () => {
+    for (const tipo of TIPOS) {
+      expect(esCastPermitido('desconocido', tipo)).toBe(true);
+      expect(esCastPermitido(tipo, 'desconocido')).toBe(true);
+    }
+    expect(esCastPermitido('desconocido', 'desconocido')).toBe(true);
   });
 });

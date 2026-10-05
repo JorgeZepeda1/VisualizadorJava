@@ -114,6 +114,19 @@ export const CODIGOS_NO_SOPORTADO = {
   // Tarea 1.35 (JLS 15.8.2; la mutación por elemento de los conjuntos del reconocedor de casts destapó la familia): `String.class`, `int.class`, `int[].class`, `void.class` — un literal de
   // clase. javac lo compila y el visualizador no maneja los objetos `Class`. Lo emite `sintaxis/expresiones.ts`.
   literalDeClase: 'literal-de-clase-no-soportado',
+  // Tarea 1.36 (C-3): `package java.util.Map;` — el nombre del paquete es el de una CLASE del JDK. javac lo rechaza (`pkg.clashes.with.class.of.same.name`) solo si esa clase ya está
+  // cargada —siempre con `java.lang.X`; con `java.util.X`, solo si el programa usa algo de `java.util`—, y decidirlo pide modelar la carga de paquetes de javac. Lo emite `semantica/atribucion.ts`.
+  paqueteConNombreDeClase: 'paquete-con-nombre-de-clase-no-soportado',
+  // Tarea 1.36 (C-5 y W-10): una expresión constante de texto con un número decimal (`"a" + 1.5`, `"a" + 1.5 == "a1.5"`, una `final` que la guarda) usada donde Java decide con su VALOR —la condición
+  // de un ciclo, la asignación definitiva, una etiqueta de `case`—. Su valor depende de cómo Java convierte un `double` a texto (`Double.toString`, lote 2): hasta entonces es un aviso, nunca una
+  // respuesta inventada. Lo emiten `semantica/alcanzabilidad.ts`, `asignacion-definitiva.ts` y `switch.ts` (vía `semantica/diagnostico.ts`).
+  constanteDeTextoConDecimal: 'constante-de-texto-con-decimal-no-soportada',
+  // Tarea 1.36 (C-4b y S-1): el programa tiene más elementos (tokens) que el tope conservador de `motor/limites.ts`. javac rechaza un método de más de 65 535 bytes de bytecode (`limit.code`) y el
+  // motor no modela ese tamaño; tampoco revisa un programa tan grande (las pasadas semánticas crecían como n² con las declaraciones locales). Lo emite `compilador.ts`, justo después del léxico.
+  programaDemasiadoGrande: 'programa-demasiado-grande',
+  // Tarea 1.36 (C-4a): un texto tan largo que se acerca al límite del archivo de clase (65 535 bytes por texto: `limit.string` y `limit.string.overflow` de javac) y cuyo tamaño exacto el motor no puede calcular:
+  // lleva un decimal (su largo lo decide `Double.toString`, que es del lote 2), o hay condiciones constantes que podrían podar el código que lo genera. Lo emite `semantica/limites-del-archivo.ts`.
+  tamanoDeTextoNoRevisable: 'tamano-de-texto-no-revisable',
 
   // ---- Léxico (lexico/literales.ts, lexico/analizador-lexico.ts) — tarea 1.24: antes strings
   // inline, nunca reunidos en una tabla. ----
@@ -274,6 +287,14 @@ export interface DatosPorCodigoNoSoportado {
   'archivo-sin-clase': Record<never, never>;
   /** Tarea 1.35: el literal tal como lo escribió el alumno, sin espacios (`String.class`, `java.util.List.class`, `int[].class`). */
   'literal-de-clase-no-soportado': { readonly literal: string };
+  /** Tarea 1.36: el nombre del paquete tal como lo escribió el alumno (`java.util.Map`). */
+  'paquete-con-nombre-de-clase-no-soportado': { readonly nombre: string };
+  /** Tarea 1.36: solo la línea; el texto da el ejemplo (`"a" + 1.5`). */
+  'constante-de-texto-con-decimal-no-soportada': Record<never, never>;
+  /** Tarea 1.36: solo la línea donde el programa se pasó del tope. */
+  'programa-demasiado-grande': Record<never, never>;
+  /** Tarea 1.36 (C-4a): solo la línea del texto (o de la concatenación) que se acerca al límite. */
+  'tamano-de-texto-no-revisable': Record<never, never>;
   'escape-no-soportado': Record<never, never>;
   'escape-octal-no-soportado': Record<never, never>;
   'escape-unicode-no-soportado': Record<never, never>;
