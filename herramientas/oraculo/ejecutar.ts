@@ -71,7 +71,8 @@ export interface ResultadoEjecucion {
  * técnica sobre nombres de clase": el oráculo siempre compila con el archivo renombrado.
  */
 export function derivarNombreDeArchivo(fuente: string): { paquete: string | null; nombreArchivo: string } {
-  const coincidenciaPaquete = /^\s*package\s+([\w.]+)\s*;/m.exec(fuente);
+  // Tarea 1.38: `$` es una letra de identificador (`java.util.Map$Entry`, el nombre plano de una clase anidada, es un nombre de paquete que javac compila): sin él el paquete salía `null`.
+  const coincidenciaPaquete = /^\s*package\s+([\w.$]+)\s*;/m.exec(fuente);
   const paquete = coincidenciaPaquete ? coincidenciaPaquete[1]! : null;
 
   const coincidenciaPublica = /\bpublic\s+(?:final\s+|abstract\s+)*class\s+(\w+)/.exec(fuente);

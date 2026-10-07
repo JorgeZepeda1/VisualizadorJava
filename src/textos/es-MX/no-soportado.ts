@@ -162,7 +162,8 @@ export const textosNoSoportado: { readonly [K in CodigoNoSoportado]: (datos: Dat
       `Escribe \`import ${nombre};\` al principio del programa y usa solo \`${nombre.slice(nombre.lastIndexOf('.') + 1)}\`.`,
     ),
 
-  // Tarea 1.36 (C-3): `package java.util.Map;`. javac lo rechaza o no según lo que use el programa, así que es un aviso; se dan las dos salidas que sí valen.
+  // Tarea 1.36 (C-3): `package javax.swing.JFrame;`, el nombre de una clase pública del JDK que javac compila. El visualizador no comprueba los paquetes que se llaman como una clase, así que es un aviso;
+  // se dan las dos salidas que sí valen. (Tarea 1.38: solo para las que están fuera de `java`; dentro de `java` el aviso es `paquete-reservado-por-java`.)
   'paquete-con-nombre-de-clase-no-soportado': ({ linea, nombre }) =>
     marco(
       linea,
@@ -170,6 +171,15 @@ export const textosNoSoportado: { readonly [K in CodigoNoSoportado]: (datos: Dat
       'no comprueba los paquetes que se llaman como una clase',
       'Usa un nombre de paquete propio, como `package miproyecto;`, o quita la línea `package`.',
     ),
+
+  // Tarea 1.38 (W-15): `package java.miapp;`. Javac lo compila, pero el lanzador de Java se niega a arrancar un programa cuyo paquete es `java` o está dentro de `java`: se detiene con la
+  // `SecurityException` «Prohibited package name» antes de correr una sola instrucción (el mensaje que el alumno vería en NetBeans). No es algo que el visualizador deje de cubrir sino lo que Java mismo
+  // hace, así que no lleva el marco de «es parte de Java, pero…». Tampoco afirma que Java acepte el programa (1.30): dice «aunque el programa se pueda compilar». Da la salida: un nombre propio o quitar la línea.
+  'paquete-reservado-por-java': ({ linea, nombre }) =>
+    `Tu programa declara el paquete \`${nombre}\` en la línea ${linea}, y Java no deja ejecutar nada que esté dentro del paquete \`java\`: ese nombre está reservado para el propio Java. ` +
+    'Aunque el programa se pueda compilar, al arrancarlo Java se detiene con el error «Prohibited package name» antes de correr una sola instrucción. ' +
+    'Usa un nombre de paquete propio, como `package miproyecto;`, o quita la línea `package`. ' +
+    'No lo ejecuto para no enseñarte un resultado que Java nunca daría.',
 
   // Tarea 1.36 (C-5 y W-10): `while ("a" + 1.5 == "a1.5") { }`, `case "d" + 1.5:`. El valor de esa constante lo decide cómo convierte Java un decimal a texto, y eso todavía no está.
   'constante-de-texto-con-decimal-no-soportada': ({ linea }) =>

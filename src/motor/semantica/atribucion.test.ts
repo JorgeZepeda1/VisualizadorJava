@@ -2127,7 +2127,7 @@ describe('atribuir — `package` con el nombre de un paquete del JDK (C-3, tarea
     'aula',
     'mi.proyecto',
     'util',
-    'java', // un paquete que solo tiene subpaquetes: javac lo compila
+    'java', // un paquete que solo tiene subpaquetes: javac lo compila (y el lanzador no lo arranca: eso lo avisa `verificarPaqueteDelLanzador`, tarea 1.38, no la atribución)
     'javax',
     'jdk',
     'sun',
@@ -2144,7 +2144,7 @@ describe('atribuir — `package` con el nombre de un paquete del JDK (C-3, tarea
     'sun.nio.ch',
     'sun.security.x509',
     'jdk.nashorn',
-  ])('control: «package %s;» lo compila javac y no da ningún problema', (nombre) => {
+  ])('control: «package %s;» lo compila javac y la atribución no da ningún problema', (nombre) => {
     expect(atribuirPrograma(`package ${nombre};\npublic class C { public static void main(String[] a) { } }`)).toEqual([]);
   });
 
@@ -2161,14 +2161,26 @@ describe('atribuir — `package` con el nombre de un paquete del JDK (C-3, tarea
   });
 
   // Tarea 1.37 (C-6): `java.lang.String` y `java.lang.Math` dejaron de ser un aviso: javac los rechaza SIEMPRE (`java.lang` está a la vista en todo programa), así que son un error modelado
-  // (ver el bloque de abajo). Lo que sigue siendo un aviso es el nombre de una clase PÚBLICA que el compilador aún no conoce al leer el `package` (`java.util.Map`, `java.io.File`): javac lo
-  // compila, el visualizador no ejecuta un programa en un paquete `java.*` (el JDK real lo detiene al arrancar), y decirlo con un aviso es honesto.
-  it.each(['java.util.Map', 'java.util.Scanner', 'java.util.Map.Entry', 'java.io.File', 'java.lang.reflect.Method'])(
-    '«package %s;» es el nombre de una CLASE pública del JDK que javac compila: aviso honesto, nunca «ok»',
+  // (ver el bloque de abajo). Lo que sigue siendo un aviso es el nombre de una clase PÚBLICA que el compilador aún no conoce al leer el `package` y que NO está dentro de `java`
+  // (`javax.swing.JFrame`, `org.w3c.dom.Node`): javac la compila, el JDK real la ejecuta con normalidad (golden `c6-valido-con-aviso-javax-swing-jframe`) y el visualizador, que no comprueba
+  // los paquetes que se llaman como una clase, lo avisa en vez de darlo por bueno.
+  // Tarea 1.38 (W-15): las de `java.*` (`java.util.Map`, `java.io.File`) ya NO son este aviso: javac también las compila, pero el lanzador no arranca NADA que esté dentro de `java`
+  // (`SecurityException: Prohibited package name`), y eso lo avisa `verificarPaqueteDelLanzador` con su razón exacta (`paquete-del-lanzador.test.ts`), una vez que las pasadas de javac aceptaron el programa.
+  it.each(['javax.swing.JFrame', 'javax.swing.JOptionPane', 'javax.swing.Box.Filler', 'org.w3c.dom.Node', 'org.xml.sax.Attributes', 'com.sun.net.httpserver.HttpServer', 'jdk.net.Sockets'])(
+    '«package %s;» es el nombre de una CLASE pública del JDK fuera de `java` que javac compila: aviso honesto, nunca «ok»',
     (nombre) => {
       const problemas = atribuirPrograma(`package ${nombre};\npublic class C { public static void main(String[] a) { } }`);
       expect(problemas).toHaveLength(1);
       expect(problemas[0]).toMatchObject({ categoria: 'no-disponible', codigo: 'paquete-con-nombre-de-clase-no-soportado', datos: { nombre } });
+    },
+  );
+
+  it.each(['java.util.Map', 'java.util.Scanner', 'java.util.Map.Entry', 'java.io.File', 'java.lang.reflect.Method'])(
+    '«package %s;» (una clase pública DENTRO de `java`): la atribución no dice nada, de ese paquete se ocupa la pasada del lanzador (tarea 1.38)',
+    (nombre) => {
+      expect(atribuirPrograma(`package ${nombre};\npublic class C { public static void main(String[] a) { } }`)).toEqual([]);
+      // Con la clase pública de otro paquete que sí está fuera de `java`, la misma atribución SÍ habla (el caso de arriba): el vacío viene de la regla nueva, no de que no corra.
+      expect(atribuirPrograma('package javax.swing.JFrame;\npublic class C { public static void main(String[] a) { } }')).toHaveLength(1);
     },
   );
 });

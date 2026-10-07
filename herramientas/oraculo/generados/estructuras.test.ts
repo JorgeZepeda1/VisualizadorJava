@@ -220,6 +220,26 @@ describe('FORMAS_ESTRUCTURALES — las familias de la tarea 1.36', () => {
     for (const nombre of nombres) expect(nombre, nombre).toMatch(/^[a-z]+(\.[A-Za-z0-9$]+)+$/);
   });
 
+  // Tarea 1.38 (W-15 de la «Verificación acotada del lote 1 (1.37)»): `package java.miapp;` lo compila javac y el lanzador del JDK real no arranca nada que esté dentro de `java`. La campaña no tenía
+  // ninguna forma con esos nombres (`java.utilidades` estaba entre los «propios»), así que no habría visto jamás que el compilador diera `ok` para una familia que Java no ejecuta.
+  it('W-15: el `package` dentro de `java` (lo que el lanzador real no arranca) va ANTES de los imports, con el rasgo `paquete-declarado`, y sortea `java` a secas y subpaquetes de varios niveles', () => {
+    expect(forma('paquete-dentro-de-java').sintaxisValida).toBe(true);
+    const nombres = new Set(Array.from({ length: 300 }, (_, i) => /^package (.+);\n/.exec(texto('paquete-dentro-de-java', i + 1))![1]!));
+    for (const esperado of ['java', 'java.miapp', 'java.aula.u3', 'java.lang.curso', 'java.util.aula', 'java.utilidades', 'java.Aula']) expect(nombres, esperado).toContain(esperado);
+    for (const nombre of nombres) expect(nombre, nombre).toMatch(/^java(\.[A-Za-z0-9]+)*$/);
+    for (const semilla of SEMILLAS) {
+      expect(etiquetasDe(conLaForma(forma('paquete-dentro-de-java'), crearAzar(semilla), [], [])), 'paquete-dentro-de-java').toContain('paquete-declarado');
+    }
+    const lineas = renderizarPrograma(conLaForma(forma('paquete-dentro-de-java'), crearAzar(1), [], ['import java.util.Scanner;'])).split('\n');
+    expect(lineas.findIndex((l) => l.startsWith('package '))).toBeLessThan(lineas.findIndex((l) => l.startsWith('import ')));
+  });
+
+  it('W-15: los paquetes «propios» ya no traen ninguno de `java` (el lanzador lo arranca de verdad), para que el veredicto de cada forma no se mezcle con el de la de arriba', () => {
+    const propios = new Set(Array.from({ length: 300 }, (_, i) => /^package (.+);\n/.exec(texto('paquete-propio', i + 1))![1]!));
+    expect(propios.size).toBeGreaterThanOrEqual(5);
+    for (const nombre of propios) expect(nombre, nombre).not.toMatch(/^java(\.|$)/);
+  });
+
   it('W-1: un nombre o una palabra clave con un carácter invisible dentro; los que javac salta y los que no', () => {
     const invisible = /[\u00ad\u200b-\u200f\u2060\ufeff]/;
     for (const nombre of ['nombre-con-un-caracter-invisible', 'palabra-clave-con-un-caracter-invisible', 'nombre-repetido-por-un-caracter-invisible', 'nombre-que-empieza-con-un-caracter-invisible', 'tipo-pegado-a-un-caracter-invisible']) {

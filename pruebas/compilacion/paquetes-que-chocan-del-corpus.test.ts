@@ -6,12 +6,15 @@
 // Esta guarda vigila, en `npm test` y SIN JDK, cada familia con los goldens del oráculo (`corpus/experimentos/paquetes-que-chocan/`): el veredicto y la LÍNEA de javac salen del `.errores` real de
 // cada programa. Lo que fija cada tabla es la respuesta de NUESTRO compilador:
 //   - ERRORES: javac rechaza y el motor modela la regla → `paquete-con-nombre-de-clase`, un error de compilación con la MISMA línea que javac;
-//   - VALIDOS: javac compila → nunca un error: `ok`, o el aviso honesto de una clase pública del JDK en un paquete (`paquete-con-nombre-de-clase-no-soportado`: javac la compila, pero el JDK real
-//     no ejecuta un programa en un paquete `java.*` —`SecurityException: Prohibited package name`— y el visualizador no lo presenta como correcto).
+//   - VALIDOS: javac compila → nunca un error: `ok`, o un aviso honesto. Tarea 1.38 (W-15): lo que está dentro de `java` (`java.util.Map`, `java.lang.Strin`…) lo compila javac, pero el lanzador del JDK
+//     real no ejecuta NADA en un paquete `java.*` —`SecurityException: Prohibited package name`, está en el `.errores` de cada golden—, así que es `paquete-reservado-por-java`, nunca `ok`. El aviso
+//     de la 1.36 (`paquete-con-nombre-de-clase-no-soportado`) queda para las clases públicas FUERA de `java` (`javax.swing.JFrame`): javac las compila y el JDK real las ejecuta con normalidad.
 import { guardaDeCorpusConTablas } from './guarda-de-corpus-con-tablas.ts';
 
 const ERROR = 'paquete-con-nombre-de-clase';
 const AVISO = 'paquete-con-nombre-de-clase-no-soportado';
+// Tarea 1.38 (W-15): el aviso de lo que está dentro de `java`: el lanzador real se niega a arrancarlo.
+const RESERVADO = 'paquete-reservado-por-java';
 
 const ERRORES: ReadonlyArray<readonly [archivo: string, codigo: string]> = [
   // las 33 clases NO públicas de java.lang que halló la verificación del delta: el catálogo de tipos importables no las conocía y el motor daba ok.
@@ -91,23 +94,26 @@ const ERRORES: ReadonlyArray<readonly [archivo: string, codigo: string]> = [
 const AVISOS: ReadonlyArray<readonly [archivo: string, codigo: string]> = [];
 
 // Controles: programas que javac COMPILA. El compilador aún no conoce esa clase cuando lee el `package` (no es de `java.lang` ni de las que crea de antemano), o el nombre es de otro paquete.
+// Tarea 1.38: lo que está dentro de `java` es `paquete-reservado-por-java` (el lanzador real no lo arranca); solo `aula.java.lang.String` y `jdk.internal.misc.Unsafe` —que NO están dentro de
+// `java`— siguen siendo `ok`, y `javax.swing.JFrame`, una clase pública fuera de `java`, el aviso de la 1.36.
 const VALIDOS: ReadonlyArray<readonly [archivo: string, resultado: 'ok' | string]> = [
-  ['c6-valido-java-util-arraysparallelsorthelpers', 'ok'],
-  ['c6-valido-java-io-filesystem', 'ok'],
-  ['c6-valido-java-util-map-dolar-entry', 'ok'],
-  ['c6-valido-java-util-map-aula', 'ok'],
+  ['c6-valido-java-util-arraysparallelsorthelpers', RESERVADO],
+  ['c6-valido-java-io-filesystem', RESERVADO],
+  ['c6-valido-java-util-map-dolar-entry', RESERVADO],
+  ['c6-valido-java-util-map-aula', RESERVADO],
   ['c6-valido-aula-java-lang-string', 'ok'],
-  ['c6-valido-java-lang-strin', 'ok'],
+  ['c6-valido-java-lang-strin', RESERVADO],
   ['c6-valido-jdk-internal-misc-unsafe', 'ok'],
-  ['c6-valido-java-util-concurrent-concurrenthashmap-dolar-node', 'ok'],
-  // Clases PÚBLICAS del JDK que javac compila como nombre de paquete: aviso honesto (el JDK real detiene la ejecución de un paquete `java.*`).
-  ['c6-valido-con-aviso-java-lang-reflect-method', AVISO],
-  ['c6-valido-con-aviso-java-nio-charset-charset', AVISO],
-  ['c6-valido-con-aviso-java-util-scanner', AVISO],
-  ['c6-valido-con-aviso-java-util-map', AVISO],
+  ['c6-valido-java-util-concurrent-concurrenthashmap-dolar-node', RESERVADO],
+  // Clases PÚBLICAS del JDK que javac compila como nombre de paquete. Dentro de `java` el lanzador real las detiene (aviso del paquete reservado); fuera de `java` (`javax.swing.JFrame`) el JDK real
+  // las ejecuta y el aviso conservador de la 1.36 sigue (el visualizador no comprueba los paquetes que se llaman como una clase).
+  ['c6-valido-con-aviso-java-lang-reflect-method', RESERVADO],
+  ['c6-valido-con-aviso-java-nio-charset-charset', RESERVADO],
+  ['c6-valido-con-aviso-java-util-scanner', RESERVADO],
+  ['c6-valido-con-aviso-java-util-map', RESERVADO],
   ['c6-valido-con-aviso-javax-swing-jframe', AVISO],
-  ['c6-valido-con-aviso-java-io-file', AVISO],
-  ['c6-valido-con-aviso-java-io-printstream', AVISO],
+  ['c6-valido-con-aviso-java-io-file', RESERVADO],
+  ['c6-valido-con-aviso-java-io-printstream', RESERVADO],
 ];
 
 guardaDeCorpusConTablas({

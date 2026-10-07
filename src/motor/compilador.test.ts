@@ -1351,3 +1351,83 @@ describe('compilar — un programa demasiado anidado es un aviso honesto, no un 
     expect(['programa-demasiado-anidado', 'literal-hexadecimal-no-soportado']).toContain(resultado.problema.codigo);
   });
 });
+
+// Tarea 1.38 (W-15 de la «Verificación acotada del lote 1 (1.37)»): `package java.miapp;` lo compila javac, pero el JDK real no ejecuta nada que esté dentro de `java`
+// (`java.lang.SecurityException: Prohibited package name: java.miapp`, medido con el `java` 17.0.18 en `herramientas/oraculo/generar-datos.test.ts` y guardado en los goldens de
+// `corpus/experimentos/paquetes-prohibidos/`), y `compilar()` daba `ok`: el visualizador ejecutaba el `println`, un resultado inventado. Es lo que rechaza el LANZADOR, no javac (ADR 004):
+// el aviso solo se da cuando las pasadas de javac ya aceptaron el programa, así que un error del cuerpo se informa antes, igual que en NetBeans (primero el error de compilación, luego el del lanzador).
+describe('compilar — un paquete dentro de `java` es un aviso honesto: el lanzador no lo arranca (W-15, tarea 1.38)', () => {
+  const programa = (paquete: string, cuerpoDeMain = '        System.out.println("hola");'): string =>
+    `${paquete}\n\npublic class Saludo {\n    public static void main(String[] args) {\n${cuerpoDeMain}\n    }\n}\n`;
+  const resultadoDe = (fuente: string) => {
+    const resultado = compilar(fuente);
+    if (resultado.ok) throw new Error('se esperaba ok:false');
+    return resultado;
+  };
+
+  it('«package java.miapp;» con un println: el aviso `paquete-reservado-por-java` en la línea del `package`, con el nombre del paquete; nunca `ok`', () => {
+    const resultado = resultadoDe(programa('package java.miapp;'));
+    expect(resultado.problema).toMatchObject({ categoria: 'no-disponible', codigo: 'paquete-reservado-por-java', datos: { nombre: 'java.miapp' }, linea: 1 });
+    expect(resultado.adicionales).toBe(0);
+  });
+
+  it.each([
+    ['java', 3, '// ejercicio de la unidad 3\n\npackage java;'],
+    ['java.lang.aula', 1, 'package java.lang.aula;'],
+    ['java.util.Map', 1, 'package java.util.Map;'],
+    ['java.Aula', 2, '\npackage java.Aula;'],
+  ])('triangulación: «%s» en la línea %i: el nombre y la línea cambian con el programa', (nombre, linea, paquete) => {
+    expect(resultadoDe(programa(paquete)).problema).toMatchObject({ categoria: 'no-disponible', codigo: 'paquete-reservado-por-java', datos: { nombre }, linea });
+  });
+
+  it('el nombre se lee como lo lee javac: con comentarios o un salto de línea dentro es el mismo `java.miapp`', () => {
+    expect(resultadoDe(programa('package java /* uno */ . miapp;')).problema).toMatchObject({ codigo: 'paquete-reservado-por-java', datos: { nombre: 'java.miapp' }, linea: 1 });
+    expect(resultadoDe(programa('package java\n    .miapp;')).problema).toMatchObject({ codigo: 'paquete-reservado-por-java', datos: { nombre: 'java.miapp' }, linea: 1 });
+  });
+
+  it('el lanzador falla al CARGAR la clase, antes de buscar `main`: una clase sin `main` tiene el aviso del paquete, no un «sin main» de arranque', () => {
+    expect(resultadoDe('package java.miapp;\n\npublic class Vacia {\n}\n').problema).toMatchObject({ categoria: 'no-disponible', codigo: 'paquete-reservado-por-java' });
+    // sin el paquete el mismo programa sí compila, y el problema de «sin main» viaja en `arranque` (REQ-COMP-008)
+    const sinPaquete = compilar('public class Vacia {\n}\n');
+    expect(sinPaquete.ok).toBe(true);
+    if (sinPaquete.ok) expect(sinPaquete.programa.arranque?.codigo).toBe('sin-main');
+  });
+
+  it('gana a `ejecucion-no-disponible`: lo que el lote 0 todavía no sabe ejecutar da igual, el lanzador no arranca el programa', () => {
+    const cuerpo = '        Scanner teclado = new Scanner(System.in);\n        int n = teclado.nextInt();\n        System.out.println(n * 2);';
+    const conScanner = (paquete: string) => `${paquete}\n\nimport java.util.Scanner;\n\npublic class Doble {\n    public static void main(String[] args) {\n${cuerpo}\n    }\n}\n`;
+    expect(resultadoDe(conScanner('package java.miapp;')).problema).toMatchObject({ categoria: 'no-disponible', codigo: 'paquete-reservado-por-java', linea: 1 });
+  });
+
+  // El orden de javac: primero sus errores (cada pasada en su turno), después el del lanzador. Los casos de abajo son los de los goldens `w15-error-*`: javac rechaza el programa en esa línea.
+  it('un error de TIPOS del cuerpo se informa primero, con la línea de javac: el lanzador no cuenta si javac no compila', () => {
+    expect(resultadoDe(programa('package java.miapp;', '        int x = "hola";')).problema).toMatchObject({ categoria: 'error-compilacion', codigo: 'tipos-incompatibles-en-asignacion', linea: 5 });
+  });
+
+  it('un código inalcanzable (alcanzabilidad) y una variable sin asignar (asignación definitiva) también van antes', () => {
+    expect(resultadoDe(programa('package java.miapp;', '        return;\n        System.out.println("x");')).problema).toMatchObject({ categoria: 'error-compilacion', codigo: 'sentencia-inalcanzable', linea: 6 });
+    expect(resultadoDe(programa('package java.miapp;', '        int y;\n        System.out.println(y);')).problema).toMatchObject({ categoria: 'error-compilacion', codigo: 'variable-posiblemente-no-asignada', linea: 6 });
+  });
+
+  it('un error de sintaxis y un texto que se pasa del límite del archivo (los de `Gen` y `ClassWriter`, lo último de javac) también van antes', () => {
+    expect(resultadoDe(programa('package java.miapp;', '        System.out.println("hola")')).problema).toMatchObject({ categoria: 'error-compilacion', codigo: 'falta-punto-y-coma', linea: 5 });
+    expect(resultadoDe(programa('package java.miapp;', `        String s = "${'a'.repeat(65_535)}";`)).problema).toMatchObject({ categoria: 'error-compilacion', codigo: 'texto-con-demasiados-caracteres', linea: 5 });
+  });
+
+  it.each(['package javax.miapp;', 'package javafoo.aula;', 'package Java.miapp;', 'package aula.java;', 'package jdk.miapp;', 'package com.sun.miapp;', 'package miproyecto;', 'package com.escuela.u5;', ''])(
+    'control: «%s» lo arranca el lanzador y el programa se compila sin avisos (ok), igual que antes',
+    (paquete) => {
+      const resultado = compilar(paquete === '' ? 'public class Saludo {\n    public static void main(String[] args) {\n        System.out.println("hola");\n    }\n}\n' : programa(paquete));
+      expect(resultado.ok, paquete).toBe(true);
+    },
+  );
+
+  it('control: un nombre de clase pública fuera de `java` (`javax.swing.JFrame`) sigue siendo el aviso de la 1.36, no el nuevo: el JDK real sí lo ejecuta', () => {
+    expect(resultadoDe(programa('package javax.swing.JFrame;')).problema).toMatchObject({ categoria: 'no-disponible', codigo: 'paquete-con-nombre-de-clase-no-soportado' });
+  });
+
+  it('control: los errores del propio `package` siguen siendo errores de javac, no el aviso (`java.util` es un paquete del JDK; `java.lang.Shutdown`, una clase)', () => {
+    expect(resultadoDe(programa('package java.util;')).problema).toMatchObject({ categoria: 'error-compilacion', codigo: 'paquete-del-jdk' });
+    expect(resultadoDe(programa('package java.lang.Shutdown;')).problema).toMatchObject({ categoria: 'error-compilacion', codigo: 'paquete-con-nombre-de-clase' });
+  });
+});

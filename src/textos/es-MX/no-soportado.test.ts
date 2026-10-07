@@ -68,6 +68,8 @@ const DATOS_DE_EJEMPLO: Record<CodigoNoSoportado, Record<string, unknown>> = {
   'sincronizado-no-soportado': { linea: 1 },
   // Tarea 1.36 (C-3): `package java.util.Map;`, un nombre de paquete que es también el de una clase del JDK.
   'paquete-con-nombre-de-clase-no-soportado': { linea: 1, nombre: 'java.util.Map' },
+  // Tarea 1.38 (W-15): `package java.miapp;`, un paquete dentro de `java`: javac lo compila y el lanzador del JDK real se niega a arrancarlo.
+  'paquete-reservado-por-java': { linea: 1, nombre: 'java.miapp' },
   // Tarea 1.36 (C-5 y W-10): una constante de texto con un número decimal (`"a" + 1.5`) donde Java necesita su valor al compilar.
   'constante-de-texto-con-decimal-no-soportada': { linea: 1 },
   // Tarea 1.36 (C-4b): un programa que se pasa del tope de tamaño; el texto señala la línea donde se pasó, sin el marco de «construcción».
@@ -446,7 +448,8 @@ describe('textosNoSoportado — tarea 1.30: un aviso afirma algo de la construcc
   // Tarea 1.35: `archivo-sin-clase` tampoco usa el marco: no hay una construcción que nombrar, el archivo no tiene ninguna clase.
   // Tarea 1.36: ni `programa-demasiado-grande`: tampoco hay una construcción, es el programa entero el que se pasa del tope de tamaño.
   // Tarea 1.37: ni `programa-demasiado-anidado`: es el programa entero el que se pasa de los niveles que el visualizador sabe revisar.
-  const SIN_MARCO: ReadonlySet<CodigoNoSoportado> = new Set<CodigoNoSoportado>(['ejecucion-no-disponible', 'no-soportado', 'archivo-sin-clase', 'programa-demasiado-grande', 'programa-demasiado-anidado']);
+  // Tarea 1.38: ni `paquete-reservado-por-java`: no es algo que el visualizador deje de cubrir sino lo que Java mismo se niega a hacer con ese paquete.
+  const SIN_MARCO: ReadonlySet<CodigoNoSoportado> = new Set<CodigoNoSoportado>(['ejecucion-no-disponible', 'no-soportado', 'archivo-sin-clase', 'programa-demasiado-grande', 'programa-demasiado-anidado', 'paquete-reservado-por-java']);
   const codigosConMarco = codigos.filter((codigo) => !SIN_MARCO.has(codigo));
   const texto = (codigo: CodigoNoSoportado): string =>
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- datos varían por código, ver DATOS_DE_EJEMPLO
@@ -548,6 +551,27 @@ describe('textosNoSoportado — un nombre de paquete que es también el de una c
 
   it('triangulación: con otro nombre la frase cambia con él', () => {
     expect(textosNoSoportado['paquete-con-nombre-de-clase-no-soportado']({ linea: 3, nombre: 'java.lang.String' })).toContain('`java.lang.String`');
+  });
+});
+
+// Tarea 1.38 (W-15): `package java.miapp;`. Javac lo compila y el lanzador del JDK real se niega a arrancarlo (`SecurityException: Prohibited package name`): los paquetes `java` y todo lo que está dentro
+// están reservados para el propio Java. No es una construcción que el visualizador no cubra (no lleva el marco de «es parte de Java, pero…»): es lo que Java mismo hace, y el texto lo dice con el mensaje
+// que el alumno vería en NetBeans, la salida (un nombre propio o quitar la línea) y por qué no se ejecuta. No afirma que Java acepte el programa (1.30): dice «aunque el programa se pueda compilar».
+describe('textosNoSoportado — un paquete dentro de `java` que el lanzador no arranca (W-15, tarea 1.38)', () => {
+  it('nombra el paquete y la línea, explica que `java` está reservado, cita el error que vería en NetBeans y da la salida (un nombre propio o quitar la línea)', () => {
+    const texto = textosNoSoportado['paquete-reservado-por-java']({ linea: 1, nombre: 'java.miapp' });
+    expect(texto).toBe(
+      'Tu programa declara el paquete `java.miapp` en la línea 1, y Java no deja ejecutar nada que esté dentro del paquete `java`: ese nombre está reservado para el propio Java. ' +
+        'Aunque el programa se pueda compilar, al arrancarlo Java se detiene con el error «Prohibited package name» antes de correr una sola instrucción. ' +
+        'Usa un nombre de paquete propio, como `package miproyecto;`, o quita la línea `package`. ' +
+        'No lo ejecuto para no enseñarte un resultado que Java nunca daría.',
+    );
+    expect(texto).not.toMatch(/Java sí (lo |la )?(acepta|tiene)|undefined|\bpila\b|\btoken\b/);
+  });
+
+  it('triangulación: con otro nombre y otra línea la frase cambia con ellos (el paquete a secas también)', () => {
+    expect(textosNoSoportado['paquete-reservado-por-java']({ linea: 3, nombre: 'java' })).toContain('declara el paquete `java` en la línea 3, y Java no deja ejecutar');
+    expect(textosNoSoportado['paquete-reservado-por-java']({ linea: 12, nombre: 'java.util.aula' })).toContain('declara el paquete `java.util.aula` en la línea 12,');
   });
 });
 

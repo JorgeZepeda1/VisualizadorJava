@@ -318,7 +318,10 @@ const PAQUETES_DEL_JDK: readonly string[] = [
   'java.util', 'java.lang', 'java.io', 'java.net', 'java.text', 'java.time', 'java.math', 'java.sql', 'javax.swing',
   'java.util.function', 'java.nio.file', 'java.awt', 'javax.xml.parsers', 'java.util.concurrent',
 ];
-const PAQUETES_PROPIOS: readonly string[] = ['miproyecto', 'aula.curso.u3', 'mx.edu.escuela', 'java.utilidades', 'javax.nada', 'programa'];
+const PAQUETES_PROPIOS: readonly string[] = ['miproyecto', 'aula.curso.u3', 'mx.edu.escuela', 'javax.nada', 'programa'];
+// Tarea 1.38 (W-15): lo que está DENTRO de `java`. javac lo compila (`java.utilidades` incluido, que estaba entre los «propios»), pero el lanzador del JDK real no arranca NADA que esté en `java`
+// (`SecurityException: Prohibited package name`), y el compilador lo avisa en vez de darlo por bueno. Se sortea `java` a secas, subpaquetes de varios niveles, nombres que parecen del JDK y con mayúsculas.
+const PAQUETES_DENTRO_DE_JAVA: readonly string[] = ['java', 'java.miapp', 'java.aula.u3', 'java.lang.curso', 'java.util.aula', 'java.utilidades', 'java.Aula', 'java.a.b.c.d'];
 // Tarea 1.37 (C-6): javac rechaza el nombre de una clase como paquete cuando el compilador ya la conoce al leer el `package` —todo `java.lang` (público o no, anidado o no) y las pocas que él crea
 // de antemano— o cuando un PREFIJO del nombre lo es (`java.lang.String.aula`). Se sortean de los dos lados para que el veredicto no se escriba solo de uno: los que javac rechaza y los que compila.
 const PAQUETES_CON_NOMBRE_DE_CLASE: readonly string[] = [
@@ -338,6 +341,7 @@ const PAQUETES: readonly FormaEstructural[] = [
   paquete('paquete-del-jdk', PAQUETES_DEL_JDK),
   paquete('paquete-propio', PAQUETES_PROPIOS),
   paquete('paquete-con-nombre-de-clase', PAQUETES_CON_NOMBRE_DE_CLASE),
+  paquete('paquete-dentro-de-java', PAQUETES_DENTRO_DE_JAVA),
 ];
 
 // W-1: un carácter invisible (de los que `Character.isIdentifierIgnorable` da por ignorables) DENTRO de un nombre o de una palabra clave: javac lo salta, así que `in\u200bt` es `int` y `a\u200bb` es `ab`.

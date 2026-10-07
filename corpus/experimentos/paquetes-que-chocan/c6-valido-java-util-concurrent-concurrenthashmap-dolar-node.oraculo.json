@@ -1,6 +1,6 @@
 {
   "nombreArchivo": "Saludo.java",
-  "paquete": null,
+  "paquete": "java.util.concurrent.ConcurrentHashMap$Node",
   "compilo": true,
   "codigoSalida": 1,
   "agotoTiempo": false,

@@ -39,6 +39,7 @@ import { CONSTRUCTORES_SOPORTADOS, clasificarCampo, clasificarMetodo } from './c
 import { claseQueChocaComoPaquete, clasesDelPaquete, existeClaseDelJdk, existePaqueteOTipoDelJdk } from './catalogo-clases.ts';
 import { constanteDeVariable, valorConstante, valorSiSeSabe } from './constantes.ts';
 import type { ProblemaAtribucion } from './diagnostico.ts';
+import { esPaqueteReservadoPorJava } from './paquete-del-lanzador.ts';
 import { resolverSobrecarga } from './sobrecargas.ts';
 import { verificarEtiquetasDeCase, verificarSelectorDeSwitch } from './switch.ts';
 import {
@@ -99,8 +100,10 @@ export function atribuir(programa: NodoPrograma): ProblemaAtribucion[] {
       problemas.push({ codigo: 'paquete-del-jdk', rango, datos: { nombre } });
     } else if (claseQueChoca !== null) {
       problemas.push({ codigo: 'paquete-con-nombre-de-clase', rango, datos: { nombre, clase: claseQueChoca } });
-    } else if (existeClaseDelJdk(nombre)) {
-      // Una clase pública que el compilador aún NO conoce al leer el `package` (`java.util.Map`): javac lo compila, y el JDK real no deja ejecutar un paquete `java.*` (SecurityException al arrancar).
+    } else if (existeClaseDelJdk(nombre) && !esPaqueteReservadoPorJava(nombre)) {
+      // Una clase pública FUERA de `java` que el compilador aún NO conoce al leer el `package` (`javax.swing.JFrame`): javac la compila y el JDK real la ejecuta, pero el visualizador no comprueba los paquetes que
+      // se llaman como una clase: aviso conservador (tarea 1.36). Las de DENTRO de `java` (`java.util.Map`) no pasan por aquí: el lanzador no arranca nada que esté en `java`, y eso lo avisa
+      // `verificarPaqueteDelLanzador` (tarea 1.38) con su razón exacta, cuando las pasadas de javac ya aceptaron el programa.
       problemas.push({ codigo: CODIGOS_NO_SOPORTADO.paqueteConNombreDeClase, categoria: 'no-disponible', rango, datos: { nombre } });
     }
   }

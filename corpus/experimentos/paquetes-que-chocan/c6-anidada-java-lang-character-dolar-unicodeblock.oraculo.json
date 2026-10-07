@@ -1,6 +1,6 @@
 {
   "nombreArchivo": "Saludo.java",
-  "paquete": null,
+  "paquete": "java.lang.Character$UnicodeBlock",
   "compilo": false,
   "codigoSalida": null,
   "agotoTiempo": false,

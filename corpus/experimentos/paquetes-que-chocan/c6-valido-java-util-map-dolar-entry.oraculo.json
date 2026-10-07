@@ -1,6 +1,6 @@
 {
   "nombreArchivo": "Saludo.java",
-  "paquete": null,
+  "paquete": "java.util.Map$Entry",
   "compilo": true,
   "codigoSalida": 1,
   "agotoTiempo": false,

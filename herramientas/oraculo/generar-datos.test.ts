@@ -32,7 +32,9 @@ import {
   verificarMarcoEnEspanol,
   verificarQueLaSondaTermino,
 } from './generar-datos.ts';
+import { ejecutarPrograma, type ResultadoEjecucion } from './ejecutar.ts';
 import { LIMITE_DE_LAS_PRUEBAS_CON_JDK_MS } from './limites-de-pruebas.ts';
+import { esPaqueteReservadoPorJava } from '../../src/motor/semantica/paquete-del-lanzador.ts';
 
 describe('analizarLineaFirma (pura) — parsea una línea de GenerarFirmasApi.java', () => {
   it('un método estático con un parámetro (Math.round(double))', () => {
@@ -805,4 +807,80 @@ describe('generarDatos — una sonda que agota el tiempo se diagnostica con clar
     await expect(intento).rejects.toThrowError(/GenerarFirmasApi\.java no terminó a tiempo/);
     await expect(intento).rejects.not.toThrowError(/se leyeron 0 clases|tope de captura/);
   }, 60_000);
+});
+
+// Tarea 1.38 (W-15 de la «Verificación acotada del lote 1 (1.37)»): qué nombres de `package` NO arranca el lanzador del JDK real. `package java.miapp;` lo compila javac y `java` se detiene con
+// `java.lang.SecurityException: Prohibited package name: java.miapp` (`ClassLoader.preDefineClass`, y `ClassFileParser::check_prohibited_package` en la JVM: el NOMBRE DE LA CLASE empieza con `java.`),
+// antes de buscar `main`. El motor lo daba por bueno (`ok`) y el lote 0 ejecutaba el `println`. La regla del motor (`esPaqueteReservadoPorJava`) sale de ESTA medición, con el `java` 17.0.18 real —nunca
+// escrita a ojo— y se vuelve a medir en cada `npm run test:oraculo`: si otro JDK cambiara qué prefijos prohíbe, falla aquí antes de que el visualizador ejecute un programa que Java rechaza.
+//
+// Vive AL FINAL de este archivo a propósito: las sondas de arriba (la de clases que chocan compila 26 814 candidatos y borra miles de archivos) se rinden a los 60 s si la máquina está saturada
+// (`LIMITE_MS_DE_LAS_SONDAS`), y como archivo suelto esta prueba arrancaba a la vez que ellas y, en tres de cuatro corridas completas de `test:oraculo`, las dejaba sin tiempo. Aquí corre cuando
+// las sondas ya terminaron, y cada programa va solo: una JVM a la vez.
+const fuenteDelPaquete = (nombre: string): string => `package ${nombre};\n\npublic class Saludo {\n    public static void main(String[] args) {\n        System.out.println("hola");\n    }\n}\n`;
+
+async function medirElLanzador(nombres: readonly string[]): Promise<Map<string, ResultadoEjecucion>> {
+  const jdk = localizarJdk();
+  const medidos = new Map<string, ResultadoEjecucion>();
+  for (const nombre of nombres) medidos.set(nombre, await ejecutarPrograma(jdk, { fuente: fuenteDelPaquete(nombre), limiteMs: 30_000 }));
+  return medidos;
+}
+
+const seNego = (nombre: string): RegExp => new RegExp(`^Exception in thread "main" java\\.lang\\.SecurityException: Prohibited package name: ${nombre.replaceAll('.', '\\.')}$`, 'm');
+
+describe('java 17 real — el lanzador no arranca un programa cuyo paquete es `java` o está dentro de `java` (tarea 1.38, W-15)', () => {
+  // Los que el lanzador se niega a arrancar: `java` y todo lo que está dentro (el nombre de la CLASE empieza con `java.`), incluidos los que parecen del JDK, los que no existen y las mayúsculas dentro.
+  const SE_NIEGA: readonly string[] = [
+    'java', 'java.a', 'java.miapp', 'java.a.b.c', 'java.lang.aula', 'java.util.aula', 'java.util.concurrent.aula', 'java.io.aula', 'java.Util', 'java.utils', 'java.util.Map', 'java.util.Scanner', 'java.lang.Strin',
+  ];
+  // Los que se le parecen y el lanzador SÍ arranca: otros prefijos del JDK (`javax`, `jdk`, `sun`, `com.sun`, `org`), otras mayúsculas, y nombres que solo EMPIEZAN con las letras `java`.
+  const ARRANCA: readonly string[] = [
+    'javax', 'javax.miapp', 'javax.swing.JFrame', 'javax.crypto.aula', 'javaa', 'javafoo', 'java1', 'java_', 'javafx.a', 'Java', 'Java.util', 'JAVA.x', 'jAVA.x', 'jdk', 'jdk.miapp', 'jdk.internal.aula', 'sun',
+    'sun.miapp', 'sun.nio.ch.aula', 'com', 'com.sun', 'com.sun.miapp', 'com.escuela.u5', 'org', 'org.w3c.dom.aula', 'aula.java', 'a.java.b', 'my.java', 'miproyecto', 'netscape.javascript.aula',
+  ];
+
+  it(
+    `se niega con «Prohibited package name: <paquete>» EXACTAMENTE en los ${SE_NIEGA.length} nombres de la lista y arranca los ${ARRANCA.length} que se le parecen; el motor dice lo mismo en cada uno (esPaqueteReservadoPorJava)`,
+    async () => {
+      const medidos = await medirElLanzador([...SE_NIEGA, ...ARRANCA]);
+      expect(medidos.size).toBe(SE_NIEGA.length + ARRANCA.length);
+
+      for (const nombre of SE_NIEGA) {
+        const resultado = medidos.get(nombre)!;
+        expect(resultado.compilo, `${nombre}: javac debe compilarlo (el lanzador es lo que se niega)`).toBe(true);
+        expect(resultado.stderr.toString('utf-8'), nombre).toMatch(seNego(nombre));
+        expect(resultado.stdout.toString('utf-8'), `${nombre}: no corre ni una línea`).toBe('');
+        expect(resultado.codigoSalida, nombre).toBe(1);
+        expect(esPaqueteReservadoPorJava(nombre), `${nombre}: el lanzador real se niega y el motor no lo reserva`).toBe(true);
+      }
+      for (const nombre of ARRANCA) {
+        const resultado = medidos.get(nombre)!;
+        expect(resultado.compilo, `${nombre}: javac debe compilarlo`).toBe(true);
+        expect(resultado.stdout.toString('utf-8'), `${nombre}: el lanzador real lo arranca y escribe «hola»`).toBe('hola\n');
+        expect(resultado.codigoSalida, nombre).toBe(0);
+        expect(resultado.stderr.toString('utf-8'), nombre).not.toMatch(/Prohibited package name/);
+        expect(esPaqueteReservadoPorJava(nombre), `${nombre}: el lanzador real lo arranca y el motor lo reserva`).toBe(false);
+      }
+    },
+    LIMITE_DE_LAS_PRUEBAS_CON_JDK_MS,
+  );
+
+  it(
+    'hallazgo W-16 (fuera de alcance de la 1.38, tarea aparte): un paquete que ya existe en un módulo del JDK que javac compila TAMPOCO lo arranca el lanzador, pero con otro mecanismo (ClassNotFoundException, no SecurityException)',
+    async () => {
+      // El cargador de clases encuentra el paquete en un módulo del sistema (`java.base`…) y no busca la clase en el classpath. Solo importa el nombre EXACTO del paquete (`sun.nio.ch.aula` corre,
+      // arriba). De los 871 paquetes de los módulos del sistema, 226 los rechaza javac (`paquete-del-jdk`), 645 los compila y de esos 516 el lanzador no encuentra la clase principal (129 corren:
+      // los módulos que no están en el arranque, como las incubadoras). `compilar()` los da por `ok` todavía; esta prueba solo FIJA el hecho del JDK para quien tome esa tarea.
+      const medidos = await medirElLanzador(['jdk.internal.misc', 'sun.nio.ch']);
+      for (const [nombre, resultado] of medidos) {
+        expect(resultado.compilo, `${nombre}: javac lo compila (no es un paquete que el JDK exporte)`).toBe(true);
+        expect(resultado.codigoSalida, nombre).toBe(1);
+        expect(resultado.stdout.toString('utf-8'), nombre).toBe('');
+        expect(resultado.stderr.toString('utf-8'), nombre).toContain(`java.lang.ClassNotFoundException: ${nombre}.Saludo`);
+        expect(resultado.stderr.toString('utf-8'), nombre).not.toMatch(/SecurityException/);
+        expect(esPaqueteReservadoPorJava(nombre), `${nombre}: la regla de la 1.38 es solo la de \`java\``).toBe(false);
+      }
+    },
+    LIMITE_DE_LAS_PRUEBAS_CON_JDK_MS,
+  );
 });

@@ -22,6 +22,7 @@ import { atribuir } from './semantica/atribucion.ts';
 import { verificarAlcanzabilidad } from './semantica/alcanzabilidad.ts';
 import { verificarAsignacionDefinitiva } from './semantica/asignacion-definitiva.ts';
 import { verificarLimitesDelArchivo } from './semantica/limites-del-archivo.ts';
+import { verificarPaqueteDelLanzador } from './semantica/paquete-del-lanzador.ts';
 import { verificarArranque } from './semantica/arranque.ts';
 import type { ProblemaAtribucion } from './semantica/diagnostico.ts';
 import { ErrorDeEjecucionNoDisponible } from './ir/error-de-ejecucion-no-disponible.ts';
@@ -46,14 +47,19 @@ export type ResultadoCompilacion =
 // "verificarAlcanzabilidad" (JLS 14.22), luego "verificarAsignacionDefinitiva" (JLS 16). Cada una
 // recorre TODO el árbol y devuelve su lista COMPLETA (nunca se detiene en el primer problema, ver
 // la cabecera de cada módulo) -- aquí, y SOLO aquí, se decide quedarse con el primero de la PRIMERA
-// pasada que reportó algo. Tarea 1.36 (C-4a): la última, `verificarLimitesDelArchivo`, es lo que javac
+// pasada que reportó algo. Tarea 1.36 (C-4a): `verificarLimitesDelArchivo` es lo que javac
 // revisa al GENERAR la clase (`Gen`, `ClassWriter`), cuando ya no queda ningún error de Attr ni de Flow:
-// un programa con otro error muestra ESE error, no el del tamaño de un texto.
+// un programa con otro error muestra ESE error, no el del tamaño de un texto. Tarea 1.38 (W-15): la
+// última, `verificarPaqueteDelLanzador`, ya no es de javac sino del LANZADOR (`java`): un paquete dentro de
+// `java` compila y la JVM se niega a arrancarlo, así que su aviso solo sale si todo lo anterior aceptó el
+// programa (primero el error de compilación, después el del lanzador, como en NetBeans), y gana a
+// `ejecucion-no-disponible` y al «sin main» del arranque, porque el lanzador falla antes que ellos.
 const PASADAS_SEMANTICAS: readonly ((programa: NodoPrograma) => readonly ProblemaAtribucion[])[] = [
   atribuir,
   verificarAlcanzabilidad,
   verificarAsignacionDefinitiva,
   verificarLimitesDelArchivo,
+  verificarPaqueteDelLanzador,
 ];
 
 // Tarea 1.17 (C8, REQ-SUB-006, REQ-SUB-008): detecta lo NO-DISP (léxico y sintáctico) ANTES de

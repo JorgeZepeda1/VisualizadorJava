@@ -114,9 +114,15 @@ export const CODIGOS_NO_SOPORTADO = {
   // Tarea 1.35 (JLS 15.8.2; la mutación por elemento de los conjuntos del reconocedor de casts destapó la familia): `String.class`, `int.class`, `int[].class`, `void.class` — un literal de
   // clase. javac lo compila y el visualizador no maneja los objetos `Class`. Lo emite `sintaxis/expresiones.ts`.
   literalDeClase: 'literal-de-clase-no-soportado',
-  // Tarea 1.36 (C-3): `package java.util.Map;` — el nombre del paquete es el de una CLASE del JDK. javac lo rechaza (`pkg.clashes.with.class.of.same.name`) solo si esa clase ya está
-  // cargada —siempre con `java.lang.X`; con `java.util.X`, solo si el programa usa algo de `java.util`—, y decidirlo pide modelar la carga de paquetes de javac. Lo emite `semantica/atribucion.ts`.
+  // Tarea 1.36 (C-3): el nombre del paquete es el de una CLASE pública del JDK que javac todavía no conoce al leer el `package` y COMPILA (`package javax.swing.JFrame;`). Tarea 1.37 midió con el
+  // oráculo cuáles rechaza javac (`paquete-con-nombre-de-clase`, un error modelado); lo que queda es un aviso conservador, porque el visualizador no comprueba los paquetes que se llaman como una
+  // clase. Tarea 1.38: solo las que están FUERA de `java` —el JDK real las ejecuta con normalidad—; dentro de `java` el lanzador no arranca nada y el aviso es `paqueteReservadoPorJava`.
+  // Lo emite `semantica/atribucion.ts`.
   paqueteConNombreDeClase: 'paquete-con-nombre-de-clase-no-soportado',
+  // Tarea 1.38 (W-15 de la «Verificación acotada del lote 1 (1.37)»): `package java.miapp;` — `java` y todo lo que está dentro. javac lo compila, pero el lanzador del JDK real se niega a arrancar el
+  // programa (`java.lang.SecurityException: Prohibited package name: java.miapp`, `ClassLoader.preDefineClass`: el nombre de la CLASE empieza con `java.`), y `compilar()` daba `ok`: el lote 0 ejecutaba el
+  // `println`. Es lo que rechaza el LANZADOR, no javac (ADR 004): lo emite `semantica/paquete-del-lanzador.ts` cuando las pasadas de javac ya aceptaron el programa.
+  paqueteReservadoPorJava: 'paquete-reservado-por-java',
   // Tarea 1.36 (C-5 y W-10): una expresión constante de texto con un número decimal (`"a" + 1.5`, `"a" + 1.5 == "a1.5"`, una `final` que la guarda) usada donde Java decide con su VALOR —la condición
   // de un ciclo, la asignación definitiva, una etiqueta de `case`—. Su valor depende de cómo Java convierte un `double` a texto (`Double.toString`, lote 2): hasta entonces es un aviso, nunca una
   // respuesta inventada. Lo emiten `semantica/alcanzabilidad.ts`, `asignacion-definitiva.ts` y `switch.ts` (vía `semantica/diagnostico.ts`).
@@ -293,6 +299,8 @@ export interface DatosPorCodigoNoSoportado {
   'literal-de-clase-no-soportado': { readonly literal: string };
   /** Tarea 1.36: el nombre del paquete tal como lo escribió el alumno (`java.util.Map`). */
   'paquete-con-nombre-de-clase-no-soportado': { readonly nombre: string };
+  /** Tarea 1.38: el nombre del paquete tal como lo lee javac, sin comentarios ni espacios (`java.miapp`). */
+  'paquete-reservado-por-java': { readonly nombre: string };
   /** Tarea 1.36: solo la línea; el texto da el ejemplo (`"a" + 1.5`). */
   'constante-de-texto-con-decimal-no-soportada': Record<never, never>;
   /** Tarea 1.36: solo la línea donde el programa se pasó del tope. */
