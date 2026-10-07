@@ -678,7 +678,7 @@ Cambio frente a la propuesta §6: el **lote 0 incluye una rebanada vertical** pa
 | Lote | Contenido | Criterios |
 |---|---|---|
 | 0 Cimientos + rebanada vertical (2–3 sesiones) | Herramientas, capas y guardas, CI (`ci`, `oraculo`, `plataforma`), oráculo y regeneración binaria de los 35 goldens y de `experimentos/`, medición de `Math.pow` en x86_64, Pages + PWA mínima. Rebanada: `u3-hola-mundo` (clase + `main` + `println` de literal) atraviesa léxico → sintaxis → semántica → IR → intérprete → `Traza` → trabajador → UI (editor, Visualizar, consola, ◀ ▶) con su prueba diferencial y su E2E en los tres motores, también sin red | C12 (inicial) |
-| 1 Lenguaje (3–4) | Gramática completa, reconocimiento NO-DISP, cuatro pasadas, catálogo del JDK, errores en español, mutantes con `javax.tools` | C7, C8 |
+| 1 Lenguaje (3–4) | Gramática completa, reconocimiento NO-DISP, cinco pasadas (la quinta, límites del archivo, desde la 1.36), catálogo del JDK, errores en español, mutantes con `javax.tools` | C7, C8 |
 | 2 Ejecución y biblioteca (4–5) | Primero lo puro y verificable con datos: números, `digitosJava` (banda, empates, potencias de dos, subnormales), `printf`, fdlibm, `Random`, texto, `Scanner`, excepciones y marcos; luego IR + intérprete Normal con registro de valores, límites | C1, C3–C6, C17 |
 | 3 Traza y trabajador (1–2) | Puntos de control, prueba de escritorio, protocolo completo (entrada, detener, perro guardián, repuesto), diagnóstico de ciclo, pruebas de rendimiento | C10, C11 |
 | 4 Visualizador (3–4) | M1–M3, M5–M17 | C9 (Normal), C14 |

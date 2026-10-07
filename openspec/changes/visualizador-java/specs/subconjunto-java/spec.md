@@ -7,7 +7,7 @@ Define la gramática cerrada de Java 17 que el visualizador interpreta (currícu
 ## Requirements
 
 ### Requirement: [REQ-SUB-001] Estructura de programa aceptada
-El sistema MUST aceptar como programa ejecutable cualquier código con exactamente una clase (cualquier nombre, con o sin `public`) y un método `public static void main(String[] args)` en cualquiera de sus tres formas (`String[] args`, `String args[]`, `String... args`). MUST aceptar `import java.util.Scanner;`, `import java.util.Random;`, `import java.util.*;` e imports de `java.lang` para las clases soportadas. MUST ignorar una línea `package ...;` sin rechazarla. MUST aceptar comentarios y `return;` dentro de `main`.
+El sistema MUST aceptar como programa ejecutable cualquier código con exactamente una clase (cualquier nombre, con o sin `public`) y un método `public static void main(String[] args)` en cualquiera de sus tres formas (`String[] args`, `String args[]`, `String... args`). MUST aceptar `import java.util.Scanner;`, `import java.util.Random;`, `import java.util.*;` e imports de `java.lang` para las clases soportadas. MUST aceptar una línea `package ...;` con un nombre propio (como `package miproyecto;`, el que pone NetBeans) sin rechazarla; si el nombre es de un paquete que exporta el JDK o choca con una clase de Java, MUST dar el mismo error que `javac`, y si `javac` lo compila pero el JDK se niega a ejecutarlo (`java.*`), MUST dar un aviso en vez de ejecutar (enmienda de las tareas 1.36 a 1.38). MUST aceptar comentarios y `return;` dentro de `main`.
 
 #### Scenario: Clase con nombre propio, sin `Main`
 - GIVEN `public class Bienvenida { public static void main(String[] args) { System.out.println("Hola"); } }`
