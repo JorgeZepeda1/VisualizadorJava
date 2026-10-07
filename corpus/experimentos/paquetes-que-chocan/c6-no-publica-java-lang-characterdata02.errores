@@ -1,0 +1,4 @@
+Saludo.java:1: error: package java.lang.CharacterData02 clashes with class of same name
+package java.lang.CharacterData02;
+^
+1 error

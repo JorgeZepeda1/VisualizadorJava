@@ -36,7 +36,7 @@ import { CODIGOS_NO_SOPORTADO } from '../sintaxis/no-soportado.ts';
 import { Alcance } from './alcance.ts';
 import { construirAmbito, type AmbitoDeNombres } from './ambito-de-nombres.ts';
 import { CONSTRUCTORES_SOPORTADOS, clasificarCampo, clasificarMetodo } from './catalogo-api.ts';
-import { clasesDelPaquete, existeClaseDelJdk, existePaqueteOTipoDelJdk } from './catalogo-clases.ts';
+import { claseQueChocaComoPaquete, clasesDelPaquete, existeClaseDelJdk, existePaqueteOTipoDelJdk } from './catalogo-clases.ts';
 import { constanteDeVariable, valorConstante, valorSiSeSabe } from './constantes.ts';
 import type { ProblemaAtribucion } from './diagnostico.ts';
 import { resolverSobrecarga } from './sobrecargas.ts';
@@ -92,9 +92,15 @@ export function atribuir(programa: NodoPrograma): ProblemaAtribucion[] {
   // another module», y `package java.lang.String;` choca con una clase. Un `package` normal (`miproyecto;`, el de NetBeans) sigue sin problemas.
   if (programa.paquete !== null) {
     const { nombre, rango } = programa.paquete;
+    // Tarea 1.37 (C-6, `pkg.clashes.with.class.of.same.name`): el nombre del paquete (o un prefijo suyo) es el de una clase que el compilador ya conoce al leer el `package` —todo `java.lang`, público o
+    // no, y las pocas que javac crea de antemano—: error modelado, la lista sale del oráculo. Va DESPUÉS de `package.in.other.module`, como en javac (esa se informa al entrar las clases).
+    const claseQueChoca = claseQueChocaComoPaquete(nombre);
     if (clasesDelPaquete(nombre).size > 0) {
       problemas.push({ codigo: 'paquete-del-jdk', rango, datos: { nombre } });
+    } else if (claseQueChoca !== null) {
+      problemas.push({ codigo: 'paquete-con-nombre-de-clase', rango, datos: { nombre, clase: claseQueChoca } });
     } else if (existeClaseDelJdk(nombre)) {
+      // Una clase pública que el compilador aún NO conoce al leer el `package` (`java.util.Map`): javac lo compila, y el JDK real no deja ejecutar un paquete `java.*` (SecurityException al arrancar).
       problemas.push({ codigo: CODIGOS_NO_SOPORTADO.paqueteConNombreDeClase, categoria: 'no-disponible', rango, datos: { nombre } });
     }
   }

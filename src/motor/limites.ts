@@ -12,9 +12,44 @@
 //
 // El tope se revisa justo después del léxico (que es lineal) y ANTES del análisis sintáctico y de las pasadas semánticas: así también acota el costo de las pasadas que crecen como n² con las
 // declaraciones locales de un mismo bloque (`Alcance`; con el tope, 800 declaraciones cuestan 15 ms, en vez de los 11 s de las 20 000 que antes se aceptaban).
+import type { Rango } from './fuente/rango.ts';
 import type { Token } from './lexico/tokens.ts';
 
 export const MAXIMO_DE_TOKENS_DE_UN_PROGRAMA = 4_000;
+
+// Topes de anidamiento (tarea 1.37, W-12 de la verificación del delta del lote 1). El tope de tokens NO acota la profundidad: 4 000 tokens caben en un árbol de 2 000 niveles. El analizador es recursivo
+// y todas las pasadas que siguen recorren el árbol con recursión, así que una forma muy anidada agotaba la pila y la pantalla decía «Algo falló dentro del visualizador». Son DOS topes porque la pila se
+// agota por dos motivos distintos, a distinto costo por nivel, y no a la vez (el analizador termina y libera su pila antes de que corra la primera pasada):
+//   - `niveles`: la RECURSIÓN del analizador (un paréntesis dentro de otro, una instrucción dentro de otra, un operador prefijo o un cast sobre otro, un argumento dentro de una llamada…);
+//   - `arbol`: la PROFUNDIDAD del árbol resultante, que recorren con recursión todas las pasadas. Una cadena de `&&` o de `+` la arma el analizador con un lazo (sin recursión) y es un árbol de tantos
+//     niveles como operadores.
+export interface LimitesDeAnidamiento {
+  readonly niveles: number;
+  readonly arbol: number;
+}
+
+export const MAXIMO_DE_NIVELES_DE_ANIDAMIENTO = 100;
+export const MAXIMO_DE_PROFUNDIDAD_DEL_ARBOL = 200;
+
+export const LIMITES_DE_ANIDAMIENTO: LimitesDeAnidamiento = { niveles: MAXIMO_DE_NIVELES_DE_ANIDAMIENTO, arbol: MAXIMO_DE_PROFUNDIDAD_DEL_ARBOL };
+
+/** Sin tope: lo usan las pruebas para armar árboles hondos y medirlos o para ejercitar una pasada por separado con un programa que `compilar()` no deja pasar. Nunca el producto. */
+export const SIN_LIMITES_DE_ANIDAMIENTO: LimitesDeAnidamiento = { niveles: Number.POSITIVE_INFINITY, arbol: Number.POSITIVE_INFINITY };
+
+/**
+ * El programa tiene más niveles de anidamiento que `MAXIMO_DE_NIVELES_DE_ANIDAMIENTO` (paréntesis dentro de paréntesis, instrucciones dentro de instrucciones, cadenas larguísimas de operadores…).
+ * No es un error del alumno ni de Java —javac lo compila— sino un límite honesto de este visualizador: `compilador.ts` lo traduce al aviso `programa-demasiado-anidado`, nunca a `error-compilacion`.
+ * `rango` es donde se pasó (el primer elemento del nivel de más).
+ */
+export class ProgramaDemasiadoAnidado extends Error {
+  readonly rango: Rango;
+
+  constructor(rango: Rango) {
+    super('el programa tiene demasiados niveles de anidamiento');
+    this.name = 'ProgramaDemasiadoAnidado';
+    this.rango = rango;
+  }
+}
 
 /**
  * El primer token (de código, sin contar el de fin de archivo) que hace que el programa pase de `MAXIMO_DE_TOKENS_DE_UN_PROGRAMA`, o `null` si cabe. Con él se señala la línea donde el programa «se pasó».

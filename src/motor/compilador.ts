@@ -32,7 +32,7 @@ import { ErrorDeCompilacion } from './error-de-compilacion.ts';
 import { TablaDeLineas } from './fuente/tabla-de-lineas.ts';
 import type { Rango } from './fuente/rango.ts';
 import { normalizarFinesDeLinea } from './fuente/fines-de-linea.ts';
-import { primerTokenFueraDelLimite } from './limites.ts';
+import { primerTokenFueraDelLimite, ProgramaDemasiadoAnidado } from './limites.ts';
 
 export interface VistaPrograma {
   readonly fuente: string;
@@ -120,6 +120,11 @@ export function compilar(fuenteOriginal: string): ResultadoCompilacion {
         [{ codigo: CODIGOS_NO_SOPORTADO.ejecucionNoDisponible, rango: error.rango, datos: {} }],
         fuente,
       );
+    }
+    // Tarea 1.37 (W-12): el programa tiene más niveles de anidamiento que los que el visualizador sabe revisar (`motor/limites.ts`); el analizador lo detiene ANTES de que la recursión agote la pila.
+    // No es un error del alumno: javac compila un programa así. Es un aviso honesto, como el de tamaño. Un error de sintaxis o léxico que venga antes en el texto ya salió (el analizador no llega al anidamiento).
+    if (error instanceof ProgramaDemasiadoAnidado) {
+      return construirResultadoNoDisponible([{ codigo: CODIGOS_NO_SOPORTADO.programaDemasiadoAnidado, rango: error.rango, datos: {} }], fuente);
     }
     // Tarea 1.28 (agregada por el orquestador, D2/regla 5 de CLAUDE.md): SOLO un `ErrorDeCompilacion`
     // -- el error del ALUMNO, siempre con posición -- es un `error-compilacion`. Cualquier otra

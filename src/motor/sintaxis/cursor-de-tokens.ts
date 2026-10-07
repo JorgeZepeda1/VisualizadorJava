@@ -4,6 +4,7 @@
 // de imports entre los dos módulos de `sintaxis/`.
 import { ErrorDeCompilacion } from '../error-de-compilacion.ts';
 import type { Token, TipoToken } from '../lexico/tokens.ts';
+import { MAXIMO_DE_NIVELES_DE_ANIDAMIENTO, ProgramaDemasiadoAnidado } from '../limites.ts';
 
 // Corrección obligatoria (sub-lote 1-D2a, task_e4ca8312): los ÚNICOS dos textos de `esperarTexto`
 // verificados contra javac 17 real como "anclan al final del token anterior" — ver la nota larga
@@ -15,11 +16,28 @@ const TEXTOS_QUE_ANCLAN_EN_TOKEN_ANTERIOR: ReadonlySet<string> = new Set([';', '
 export class CursorDeTokens {
   private posicion = 0;
   private readonly tokens: readonly Token[];
+  private nivel = 0;
+  private readonly limiteDeNiveles: number;
 
   // `erasableSyntaxOnly` (design.md §9, CLAUDE.md) prohíbe el azúcar de "parameter properties":
   // el campo se declara arriba y se asigna aquí, a mano.
-  constructor(tokens: readonly Token[]) {
+  constructor(tokens: readonly Token[], limiteDeNiveles: number = MAXIMO_DE_NIVELES_DE_ANIDAMIENTO) {
     this.tokens = tokens;
+    this.limiteDeNiveles = limiteDeNiveles;
+  }
+
+  /**
+   * Tarea 1.37 (W-12): el analizador entra a UN nivel más de anidamiento (una expresión dentro de otra, un operador prefijo o un cast, una instrucción dentro de otra). Si ya pasó del tope lanza
+   * `ProgramaDemasiadoAnidado` en el token donde se pasó, ANTES de que la recursión siguiente use más pila. Cada `entrarNivel()` tiene su `salirNivel()` en la misma función; si algo lanza, el
+   * análisis entero se abandona, así que el contador no necesita restaurarse.
+   */
+  entrarNivel(): void {
+    this.nivel += 1;
+    if (this.nivel > this.limiteDeNiveles) throw new ProgramaDemasiadoAnidado(this.actual().rango);
+  }
+
+  salirNivel(): void {
+    this.nivel -= 1;
   }
 
   actual(): Token {

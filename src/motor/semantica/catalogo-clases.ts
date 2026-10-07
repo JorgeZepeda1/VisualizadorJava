@@ -10,6 +10,7 @@
 // La lista guarda, por paquete, los nombres canónicos de sus tipos («Scanner», «Map.Entry»): es el
 // único nombre que acepta un `import` (JLS 7.5.1) y el que se resuelve tras un `import p.*;`.
 import { CLASES_JDK } from '../biblioteca/datos/clases-jdk.generado.ts';
+import { CLASES_QUE_CHOCAN_COMO_PAQUETE } from '../biblioteca/datos/clases-que-chocan.generado.ts';
 
 // Un `Map` (nunca el objeto generado directo): un "paquete" como `constructor` o `__proto__` no
 // debe encontrar nada del prototipo de `Object`.
@@ -18,6 +19,11 @@ const CLASES_POR_PAQUETE: ReadonlyMap<string, ReadonlySet<string>> = new Map(
 );
 
 const SIN_CLASES: ReadonlySet<string> = new Set();
+
+// Tarea 1.37 (C-6): los nombres PLANOS de javac (`Shutdown`, `Thread$State`) que escritos como nombre de paquete javac rechaza, por paquete. Otro `Map`, por la misma razón.
+const CLASES_QUE_CHOCAN_POR_PAQUETE: ReadonlyMap<string, ReadonlySet<string>> = new Map(
+  Object.entries(CLASES_QUE_CHOCAN_COMO_PAQUETE).map(([paquete, nombres]) => [paquete, new Set(nombres.split(','))]),
+);
 
 /** Los tipos de `paquete` por su nombre canónico dentro del paquete (`Scanner`, `Map.Entry`); vacío
  * si el paquete no existe. Es lo que un `import paquete.*;` (o `java.lang`, siempre implícito) deja
@@ -48,4 +54,25 @@ export function existeClaseDelJdk(nombreCalificado: string): boolean {
  */
 export function existePaqueteOTipoDelJdk(nombre: string): boolean {
   return clasesDelPaquete(nombre).size > 0 || existeClaseDelJdk(nombre);
+}
+
+/**
+ * Tarea 1.37 (C-6, `TypeEnter.checkClassPackageClash` de javac 17.0.18): ¿el nombre de este PAQUETE (`java.lang.Shutdown`) es el de una clase que el compilador ya conoce al leer el `package`, o
+ * empieza con uno (`java.lang.String.aula`)? Devuelve el prefijo que es la clase, el MÁS LARGO (javac recorre los prefijos del más largo al más corto y señala el primero), o `null`.
+ *
+ * Lo que el compilador ya conoce es lo que midió el oráculo (`CLASES_QUE_CHOCAN_COMO_PAQUETE`, `GenerarClasesQueChocan.java`): TODOS los archivos de `java.lang` —públicos o no, anidados como
+ * `Thread$State` o anónimos como `Class$1`—, que importa solo, y las pocas clases que él mismo crea de antemano (`java.io.Serializable`, `java.util.List`, `java.lang.runtime.SwitchBootstraps`…). El
+ * resto de las clases del JDK se carga cuando el programa las usa, ya con este chequeo hecho: `package java.util.Map;` compila. El veredicto NO depende del cuerpo del programa.
+ *
+ * Un nombre de un solo segmento nunca se compara (javac tampoco). Pura; consulta tablas `Map`, así que `constructor` o `__proto__` no encuentran nada.
+ */
+export function claseQueChocaComoPaquete(nombreDelPaquete: string): string | null {
+  let fin = nombreDelPaquete.length;
+  for (;;) {
+    const prefijo = nombreDelPaquete.slice(0, fin);
+    const ultimoPunto = prefijo.lastIndexOf('.');
+    if (ultimoPunto === -1) return null;
+    if (CLASES_QUE_CHOCAN_POR_PAQUETE.get(prefijo.slice(0, ultimoPunto))?.has(prefijo.slice(ultimoPunto + 1)) === true) return prefijo;
+    fin = ultimoPunto;
+  }
 }

@@ -1,0 +1,4 @@
+Saludo.java:1: error: package java.lang.ProcessEnvironment clashes with class of same name
+package java.lang.ProcessEnvironment;
+^
+1 error

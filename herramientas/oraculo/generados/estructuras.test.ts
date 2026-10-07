@@ -193,7 +193,7 @@ describe('FORMAS_ESTRUCTURALES — las familias de la tarea 1.36', () => {
       expect(forma(nombre).sintaxisValida, nombre).toBe(true);
       for (const semilla of SEMILLAS) {
         const fuente = texto(nombre, semilla);
-        expect(fuente, nombre).toMatch(/^package [a-z]+(\.[A-Za-z]+)*;\n/);
+        expect(fuente, nombre).toMatch(/^package [a-z]+(\.[A-Za-z0-9$]+)*;\n/);
         expect(etiquetasDe(conLaForma(forma(nombre), crearAzar(semilla), [], [])), nombre).toContain('paquete-declarado');
       }
     }
@@ -205,6 +205,19 @@ describe('FORMAS_ESTRUCTURALES — las familias de la tarea 1.36', () => {
     const programa = conLaForma(forma('paquete-propio'), crearAzar(1), [], ['import java.util.Scanner;']);
     const lineas = renderizarPrograma(programa).split('\n');
     expect(lineas.findIndex((l) => l.startsWith('package '))).toBeLessThan(lineas.findIndex((l) => l.startsWith('import ')));
+  });
+
+  // Tarea 1.37 (C-6): el generador diferencial sortea también los nombres que la verificación del delta halló aceptados y los hermanos que cierran el hueco (las no públicas de `java.lang`, las
+  // anidadas con su `$`, las que javac crea de antemano, un subpaquete de una clase) y, para que el veredicto no se escriba solo de un lado, los que javac COMPILA aunque parezcan iguales.
+  it('C-6: el `package` con nombre de clase sortea lo que javac rechaza (no públicas, anidadas, las de antemano, subpaquetes de una clase) Y lo que compila', () => {
+    const nombres = new Set(Array.from({ length: 600 }, (_, i) => /^package (.+);\n/.exec(texto('paquete-con-nombre-de-clase', i + 1))![1]!));
+    for (const rechazado of ['java.lang.Shutdown', 'java.lang.StringCoding', 'java.lang.Thread$State', 'java.lang.Class$1', 'java.io.Serializable', 'java.util.Iterator', 'java.lang.runtime.SwitchBootstraps', 'java.lang.String.aula', 'java.lang.Shutdown.a.b']) {
+      expect(nombres, rechazado).toContain(rechazado);
+    }
+    for (const compilado of ['java.util.ArraysParallelSortHelpers', 'java.io.FileSystem', 'java.util.Map$Entry', 'java.util.Map.aula', 'java.lang.reflect.Method']) expect(nombres, compilado).toContain(compilado);
+    // los de siempre siguen
+    for (const publico of ['java.util.Map', 'java.lang.String', 'java.util.Scanner', 'java.io.File']) expect(nombres, publico).toContain(publico);
+    for (const nombre of nombres) expect(nombre, nombre).toMatch(/^[a-z]+(\.[A-Za-z0-9$]+)+$/);
   });
 
   it('W-1: un nombre o una palabra clave con un carácter invisible dentro; los que javac salta y los que no', () => {

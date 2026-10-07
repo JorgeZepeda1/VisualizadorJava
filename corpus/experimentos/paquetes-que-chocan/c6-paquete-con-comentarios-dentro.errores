@@ -1,0 +1,4 @@
+Saludo.java:1: error: package java.lang.Shutdown clashes with class of same name
+package java /* uno */ . lang // dos
+^
+1 error

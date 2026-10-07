@@ -72,6 +72,8 @@ const DATOS_DE_EJEMPLO: Record<CodigoNoSoportado, Record<string, unknown>> = {
   'constante-de-texto-con-decimal-no-soportada': { linea: 1 },
   // Tarea 1.36 (C-4b): un programa que se pasa del tope de tamaño; el texto señala la línea donde se pasó, sin el marco de «construcción».
   'programa-demasiado-grande': { linea: 1 },
+  // Tarea 1.37 (W-12): un programa con demasiados niveles de anidamiento; como el de tamaño, no es una construcción sino el programa entero.
+  'programa-demasiado-anidado': { linea: 1 },
   // Tarea 1.36 (C-4a): un texto tan largo que se acerca al límite del archivo de clase y cuyo tamaño exacto no se puede calcular.
   'tamano-de-texto-no-revisable': { linea: 1 },
   'escape-no-soportado': { linea: 1 },
@@ -443,7 +445,8 @@ describe('textosNoSoportado — tarea 1.30: un aviso afirma algo de la construcc
   const codigos = Object.keys(DATOS_DE_EJEMPLO) as CodigoNoSoportado[];
   // Tarea 1.35: `archivo-sin-clase` tampoco usa el marco: no hay una construcción que nombrar, el archivo no tiene ninguna clase.
   // Tarea 1.36: ni `programa-demasiado-grande`: tampoco hay una construcción, es el programa entero el que se pasa del tope de tamaño.
-  const SIN_MARCO: ReadonlySet<CodigoNoSoportado> = new Set<CodigoNoSoportado>(['ejecucion-no-disponible', 'no-soportado', 'archivo-sin-clase', 'programa-demasiado-grande']);
+  // Tarea 1.37: ni `programa-demasiado-anidado`: es el programa entero el que se pasa de los niveles que el visualizador sabe revisar.
+  const SIN_MARCO: ReadonlySet<CodigoNoSoportado> = new Set<CodigoNoSoportado>(['ejecucion-no-disponible', 'no-soportado', 'archivo-sin-clase', 'programa-demasiado-grande', 'programa-demasiado-anidado']);
   const codigosConMarco = codigos.filter((codigo) => !SIN_MARCO.has(codigo));
   const texto = (codigo: CodigoNoSoportado): string =>
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- datos varían por código, ver DATOS_DE_EJEMPLO
@@ -581,6 +584,25 @@ describe('textosNoSoportado — un programa demasiado grande (C-4b, tarea 1.36)'
 
   it('triangulación: con otra línea la frase cambia con ella', () => {
     expect(textosNoSoportado['programa-demasiado-grande']({ linea: 5 })).toContain('a partir de la línea 5 se pasa');
+  });
+});
+
+// Tarea 1.37 (W-12): un programa con muchísimos niveles de anidamiento (cientos de paréntesis uno dentro de otro, o una cadena de cientos de `&&`) agotaba la pila del visualizador y la pantalla decía
+// «Algo falló dentro del visualizador». Ahora es un aviso: dice dónde se pasó, que el visualizador está pensado para programas de clase y qué hacer, sin afirmar que Java rechace o acepte el programa
+// y sin jerga del motor (pila, recursión, árbol, token).
+describe('textosNoSoportado — un programa demasiado anidado (W-12, tarea 1.37)', () => {
+  it('señala la línea donde se pasó, explica qué es (anidado o encadenado) y da la salida (una parte más sencilla)', () => {
+    const texto = textosNoSoportado['programa-demasiado-anidado']({ linea: 12 });
+    expect(texto).toBe(
+      'Tu programa tiene demasiadas cosas anidadas: a partir de la línea 12 hay más paréntesis, bloques o instrucciones metidos unos dentro de otros (o más operaciones encadenadas) ' +
+        'de los que este visualizador sabe revisar, y está pensado para programas de clase. Prueba con una parte más sencilla. ' +
+        'No lo ejecuto para no enseñarte un resultado que podría no ser el de Java.',
+    );
+    expect(texto).not.toMatch(/Java sí (lo |la )?(acepta|tiene)|pila|recursi|árbol|token|RangeError|undefined/);
+  });
+
+  it('triangulación: con otra línea la frase cambia con ella', () => {
+    expect(textosNoSoportado['programa-demasiado-anidado']({ linea: 3 })).toContain('a partir de la línea 3 hay');
   });
 });
 

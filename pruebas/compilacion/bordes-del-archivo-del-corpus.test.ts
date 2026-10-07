@@ -36,6 +36,10 @@ const ERRORES: ReadonlyArray<readonly [archivo: string, codigo: string]> = [
   ['c3-paquete-com-sun-net-httpserver', 'paquete-del-jdk'],
   ['c3-paquete-org-w3c-dom', 'paquete-del-jdk'],
   ['c3-paquete-del-jdk-y-un-error-de-tipos-despues', 'paquete-del-jdk'],
+  // C-3 → 1.37 — el nombre del paquete es el de una CLASE que javac ya conoce al leer el `package` (todo `java.lang`, siempre a la vista): javac `pkg.clashes.with.class.of.same.name`, en la línea del
+  // `package`. En la 1.36 era un aviso («depende de lo que cargue el programa»); la tarea 1.37 midió con el oráculo cuáles son, y es un error modelado (ver `paquetes-que-chocan-del-corpus.test.ts`).
+  ['c3-paquete-con-nombre-de-clase-java-lang-string', 'paquete-con-nombre-de-clase'],
+  ['c3-paquete-con-nombre-de-clase-java-lang-math', 'paquete-con-nombre-de-clase'],
   // C-2 — el `\r` suelto es un fin de línea (JLS 3.4): cierra mal una cadena o un `char`, no esconde el `;` que faltaba en un comentario, y la cuenta de líneas es la de javac
   // (`\r`, `\n` y la pareja `\r\n` cuentan UNO; `\n\r` y `\r\r\n` cuentan DOS).
   ['c2-retorno-de-carro-suelto-en-un-char', 'error-no-clasificado'],
@@ -56,12 +60,9 @@ const ERRORES: ReadonlyArray<readonly [archivo: string, codigo: string]> = [
   ['w2b-fin-de-archivo-de-ms-dos-a-la-mitad-de-main', 'error-no-clasificado'],
 ];
 
-// Programas que javac RECHAZA y que no se pueden revisar por completo: aviso, nunca `ok` ni «Java sí acepta tu programa».
-const AVISOS: ReadonlyArray<readonly [archivo: string, codigo: string]> = [
-  // C-3 — el nombre del paquete es el de una CLASE del JDK: javac `pkg.clashes.with.class.of.same.name` cuando el paquete de arriba ya está cargado (siempre `java.lang`).
-  ['c3-paquete-con-nombre-de-clase-java-lang-string', 'paquete-con-nombre-de-clase-no-soportado'],
-  ['c3-paquete-con-nombre-de-clase-java-lang-math', 'paquete-con-nombre-de-clase-no-soportado'],
-];
+// Programas que javac RECHAZA y que no se pueden revisar por completo: aviso, nunca `ok` ni «Java sí acepta tu programa». Desde la tarea 1.37 no queda ninguno en esta carpeta: los dos
+// que había (`package java.lang.String;` y `java.lang.Math`) son errores modelados con los nombres que midió el oráculo.
+const AVISOS: ReadonlyArray<readonly [archivo: string, codigo: string]> = [];
 
 // Controles: programas que javac COMPILA. Nunca un error: `ok` (el programa se ejecuta) o el aviso honesto de lo que usa.
 const VALIDOS: ReadonlyArray<readonly [archivo: string, resultado: 'ok' | string]> = [

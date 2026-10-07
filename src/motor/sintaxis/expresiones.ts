@@ -99,32 +99,37 @@ export function analizarExpresion(cursor: CursorDeTokens, sinLambda = false): No
   return analizarAsignacion(cursor, sinLambda);
 }
 
+// Tarea 1.37 (W-12): cada entrada a esta función es UNA expresión metida dentro de otra (un paréntesis, un argumento de una llamada, un índice, el cuerpo de una lambda, el lado derecho de una
+// asignación…), y cuenta un nivel de anidamiento (`CursorDeTokens.entrarNivel`). Tiene UNA sola salida para que el `salirNivel()` no se pueda olvidar, sin una función envolvente: cada función de
+// más en esta ruta es pila de más por nivel.
 function analizarAsignacion(cursor: CursorDeTokens, sinLambda = false): NodoExpresion {
+  cursor.entrarNivel();
   const izquierda = analizarTernario(cursor, sinLambda);
   const token = cursor.actual();
+  let resultado: NodoExpresion = izquierda;
 
   if (OPERADORES_ASIGNACION_SOPORTADOS.has(token.texto)) {
     cursor.avanzar();
     const valor = analizarAsignacion(cursor, sinLambda);
-    return {
+    resultado = {
       tipo: 'asignacion',
       operador: token.texto as '=' | '+=' | '-=' | '*=' | '/=' | '%=',
       objetivo: izquierda,
       valor,
       rango: { inicio: izquierda.rango.inicio, fin: valor.rango.fin },
     };
-  }
-  if (OPERADORES_ASIGNACION_NO_SOPORTADOS.has(token.texto)) {
+  } else if (OPERADORES_ASIGNACION_NO_SOPORTADOS.has(token.texto)) {
     cursor.avanzar();
     const valor = analizarAsignacion(cursor, sinLambda);
-    return {
+    resultado = {
       tipo: 'expresion-no-soportada',
       codigo: CODIGOS_NO_SOPORTADO.asignacionDeBits,
       datos: {},
       rango: { inicio: izquierda.rango.inicio, fin: valor.rango.fin },
     };
   }
-  return izquierda;
+  cursor.salirNivel();
+  return resultado;
 }
 
 // Nivel 2 (design.md §2.4): "? :" — SIEMPRE NO-DISP en este subconjunto; "->" (lambda) no se
@@ -136,7 +141,9 @@ function analizarTernario(cursor: CursorDeTokens, sinLambda = false): NodoExpres
   cursor.avanzar();
   analizarAsignacion(cursor, sinLambda); // rama "si verdadero" — se descarta, nunca se va a evaluar (NO-DISP)
   cursor.esperarTexto(':');
+  cursor.entrarNivel(); // tarea 1.37: `a ? 1 : b ? 2 : c ? 3 : 4` recursa por la rama «si falso»
   const siFalso = analizarTernario(cursor, sinLambda);
+  cursor.salirNivel();
   return {
     tipo: 'expresion-no-soportada',
     codigo: CODIGOS_NO_SOPORTADO.operadorTernario,
@@ -194,9 +201,12 @@ function analizarUnaria(cursor: CursorDeTokens, sinLambda = false): NodoExpresio
 
   const token = cursor.actual();
 
+  // Tarea 1.37 (W-12): `!!!!x`, `- - -x`, `++ ++ x`, `~~x` y `(int) (int) x` recursan por el operando: cada uno cuenta un nivel (`entrarNivel`/`salirNivel` alrededor de la llamada recursiva).
   if (token.texto === '~') {
     cursor.avanzar();
+    cursor.entrarNivel();
     const operando = analizarUnaria(cursor, sinLambda);
+    cursor.salirNivel();
     return {
       tipo: 'expresion-no-soportada',
       codigo: CODIGOS_NO_SOPORTADO.operadorComplementoBits,
@@ -207,7 +217,9 @@ function analizarUnaria(cursor: CursorDeTokens, sinLambda = false): NodoExpresio
 
   if (token.texto === '++' || token.texto === '--') {
     cursor.avanzar();
+    cursor.entrarNivel();
     const operando = analizarUnaria(cursor, sinLambda);
+    cursor.salirNivel();
     return {
       tipo: 'incremento-decremento',
       operador: token.texto,
@@ -223,7 +235,9 @@ function analizarUnaria(cursor: CursorDeTokens, sinLambda = false): NodoExpresio
 
   if (token.texto === '+' || token.texto === '-' || token.texto === '!') {
     cursor.avanzar();
+    cursor.entrarNivel();
     const operando = analizarUnaria(cursor, sinLambda);
+    cursor.salirNivel();
     return {
       tipo: 'unaria',
       operador: token.texto,
@@ -349,7 +363,9 @@ function intentarAnalizarCast(cursor: CursorDeTokens, sinLambda = false): NodoCo
     limites.push(consumirTipoDeUnCast(cursor));
   }
   cursor.esperarTexto(')');
+  cursor.entrarNivel(); // tarea 1.37: el operando de un cast puede ser otro cast
   const operando = analizarUnaria(cursor, sinLambda);
+  cursor.salirNivel();
   const rango = { inicio: apertura.rango.inicio, fin: operando.rango.fin };
 
   if (conAnotacion) return { tipo: 'expresion-no-soportada', codigo: CODIGOS_NO_SOPORTADO.anotacion, datos: {}, rango };

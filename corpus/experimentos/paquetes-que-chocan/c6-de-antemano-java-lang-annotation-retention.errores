@@ -1,0 +1,4 @@
+Saludo.java:1: error: package java.lang.annotation.Retention clashes with class of same name
+package java.lang.annotation.Retention;
+^
+1 error

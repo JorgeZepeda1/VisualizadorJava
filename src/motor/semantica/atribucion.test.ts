@@ -2160,16 +2160,135 @@ describe('atribuir — `package` con el nombre de un paquete del JDK (C-3, tarea
     expect(problemas[0]!.rango).toEqual({ inicio: fuente.indexOf('package'), fin: fuente.indexOf(';') + 1 });
   });
 
-  // `java.lang.String` y `java.lang.Math` los rechaza javac aunque no sean paquetes (`pkg.clashes.with.class.of.same.name`): el nombre de un paquete no puede ser el de
-  // una clase que el compilador ya conoce, y `java.lang` siempre está a la vista. Con `java.util.Map` depende de que el programa use `java.util`: no se puede revisar, y es un aviso.
-  it.each(['java.lang.String', 'java.lang.Math', 'java.util.Map', 'java.util.Scanner', 'java.util.Map.Entry'])(
-    '«package %s;» es el nombre de una CLASE del JDK: aviso honesto, nunca «ok»',
+  // Tarea 1.37 (C-6): `java.lang.String` y `java.lang.Math` dejaron de ser un aviso: javac los rechaza SIEMPRE (`java.lang` está a la vista en todo programa), así que son un error modelado
+  // (ver el bloque de abajo). Lo que sigue siendo un aviso es el nombre de una clase PÚBLICA que el compilador aún no conoce al leer el `package` (`java.util.Map`, `java.io.File`): javac lo
+  // compila, el visualizador no ejecuta un programa en un paquete `java.*` (el JDK real lo detiene al arrancar), y decirlo con un aviso es honesto.
+  it.each(['java.util.Map', 'java.util.Scanner', 'java.util.Map.Entry', 'java.io.File', 'java.lang.reflect.Method'])(
+    '«package %s;» es el nombre de una CLASE pública del JDK que javac compila: aviso honesto, nunca «ok»',
     (nombre) => {
       const problemas = atribuirPrograma(`package ${nombre};\npublic class C { public static void main(String[] a) { } }`);
       expect(problemas).toHaveLength(1);
       expect(problemas[0]).toMatchObject({ categoria: 'no-disponible', codigo: 'paquete-con-nombre-de-clase-no-soportado', datos: { nombre } });
     },
   );
+});
+
+// Tarea 1.37 (C-6 de la verificación del delta del lote 1, javac `pkg.clashes.with.class.of.same.name`): `package java.lang.Shutdown;` lo rechaza javac aunque `Shutdown` no sea una clase pública
+// (el motor solo conocía las públicas y daba `ok`). El chequeo de javac compara cada prefijo del nombre del paquete con las clases que el compilador ya conoce al leer el `package` —todos los
+// archivos de `java.lang`, públicos o no, anidados o no, y las pocas que él mismo crea de antemano— y no depende del cuerpo del programa. La lista sale del oráculo, y es un error modelado.
+// Los 34 nombres son los que `d04-package` del verificador halló aceptados (33 clases no públicas de `java.lang` y `java.lang.runtime.SwitchBootstraps`).
+const NOMBRES_DE_LA_VERIFICACION_DEL_DELTA = [
+  'java.lang.AbstractStringBuilder',
+  'java.lang.ApplicationShutdownHooks',
+  'java.lang.AssertionStatusDirectives',
+  'java.lang.CharacterData',
+  'java.lang.CharacterData00',
+  'java.lang.CharacterData01',
+  'java.lang.CharacterData02',
+  'java.lang.CharacterData03',
+  'java.lang.CharacterData0E',
+  'java.lang.CharacterDataLatin1',
+  'java.lang.CharacterDataPrivateUse',
+  'java.lang.CharacterDataUndefined',
+  'java.lang.CharacterName',
+  'java.lang.CompoundEnumeration',
+  'java.lang.ConditionalSpecialCasing',
+  'java.lang.FdLibm',
+  'java.lang.LiveStackFrame',
+  'java.lang.LiveStackFrameInfo',
+  'java.lang.NamedPackage',
+  'java.lang.ProcessEnvironment',
+  'java.lang.ProcessHandleImpl',
+  'java.lang.ProcessImpl',
+  'java.lang.PublicMethods',
+  'java.lang.Shutdown',
+  'java.lang.StackFrameInfo',
+  'java.lang.StackStreamFactory',
+  'java.lang.StringCoding',
+  'java.lang.StringConcatHelper',
+  'java.lang.StringLatin1',
+  'java.lang.StringUTF16',
+  'java.lang.Terminator',
+  'java.lang.VersionProps',
+  'java.lang.WeakPairMap',
+  'java.lang.runtime.SwitchBootstraps',
+] as const;
+
+describe('atribuir — `package` con el nombre de una clase que javac ya conoce (C-6, tarea 1.37, javac: «package X clashes with class of same name»)', () => {
+  const programaCon = (nombre: string) => `package ${nombre};\npublic class C { public static void main(String[] a) { } }`;
+
+  it('son 34 programas distintos', () => {
+    expect(new Set(NOMBRES_DE_LA_VERIFICACION_DEL_DELTA).size).toBe(34);
+  });
+
+  it.each(NOMBRES_DE_LA_VERIFICACION_DEL_DELTA)('«package %s;» → «paquete-con-nombre-de-clase», un error señalado en la línea del `package`', (nombre) => {
+    const problemas = atribuirPrograma(programaCon(nombre));
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toMatchObject({ codigo: 'paquete-con-nombre-de-clase', datos: { nombre, clase: nombre } });
+    expect(problemas[0]!.categoria).toBeUndefined(); // un error de compilación, no un aviso
+    expect(problemas[0]!.rango.inicio).toBe(0);
+  });
+
+  it.each([
+    'java.lang.String', // públicas de java.lang: antes un aviso, ahora un error (javac las rechaza siempre)
+    'java.lang.Math',
+    'java.lang.Object',
+    'java.lang.Thread$State', // anidadas de java.lang, con su nombre plano
+    'java.lang.Class$1',
+    'java.io.Serializable', // las que el compilador crea de antemano
+    'java.util.List',
+    'java.util.Iterator',
+    'java.lang.invoke.MethodHandle',
+    'java.lang.invoke.MethodHandles$Lookup',
+    'java.lang.annotation.Retention',
+    'java.lang.runtime.ObjectMethods',
+  ])('«package %s;» → error, y no un aviso', (nombre) => {
+    const problemas = atribuirPrograma(programaCon(nombre));
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toMatchObject({ codigo: 'paquete-con-nombre-de-clase', datos: { nombre, clase: nombre } });
+    expect(problemas[0]!.categoria).toBeUndefined();
+  });
+
+  // El chequeo de javac recorre los prefijos: un subpaquete de una clase (`java.lang.String.aula`) choca con la clase que es su prefijo. d04 solo agregaba `.aula` a paquetes, no a clases.
+  it.each([
+    ['java.lang.String.aula', 'java.lang.String'],
+    ['java.lang.Shutdown.a.b.c', 'java.lang.Shutdown'],
+    ['java.lang.Thread$State.x', 'java.lang.Thread$State'],
+    ['java.io.Serializable.aula', 'java.io.Serializable'],
+    ['java.lang.runtime.SwitchBootstraps.curso', 'java.lang.runtime.SwitchBootstraps'],
+  ])('«package %s;» → error: su prefijo «%s» es una clase', (nombre, clase) => {
+    const problemas = atribuirPrograma(programaCon(nombre));
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toMatchObject({ codigo: 'paquete-con-nombre-de-clase', datos: { nombre, clase } });
+  });
+
+  // Los que javac COMPILA no cambian: un paquete propio, una clase que el compilador aún no conoce (no pública fuera de java.lang, o pública pero cargada después del chequeo).
+  it.each([
+    ['miproyecto', []],
+    ['mi.proyecto', []],
+    ['aula.java.lang.String', []], // `java.lang.String` dentro de un paquete propio
+    ['java.util.ArraysParallelSortHelpers', []], // no pública, fuera de java.lang: javac la compila
+    ['java.io.FileSystem', []],
+    ['java.util.Map$Entry', []], // anidada fuera de java.lang
+    ['java.util.Map.aula', []], // el prefijo `java.util.Map` aún no está cargado
+    ['java.lang.Strin', []],
+    ['java.lang.string', []],
+    ['java.util.foo', []],
+  ])('control: «package %s;» lo compila javac y no da el error de la clase', (nombre) => {
+    expect(atribuirPrograma(programaCon(nombre)).map((p) => p.codigo)).not.toContain('paquete-con-nombre-de-clase');
+    expect(atribuirPrograma(programaCon(nombre))).toEqual([]);
+  });
+
+  it('el error va primero: antes de un import roto y antes de un error de tipos, como en javac (`compilar()` informa el primero)', () => {
+    const problemas = atribuirPrograma('package java.lang.Shutdown;\nimport java.util.Scaner;\npublic class C { public static void main(String[] a) { int x = "hola"; } }');
+    expect(problemas.length).toBeGreaterThan(1); // `atribuir` entrega la lista completa de la pasada…
+    expect(problemas[0]).toMatchObject({ codigo: 'paquete-con-nombre-de-clase' }); // …y el `package` es el primero por posición
+  });
+
+  it('el rango cubre la declaración entera (de `package` al `;`), para que la línea sea la del `package`', () => {
+    const fuente = '// aula\n\npackage java.lang.Shutdown;\npublic class C { public static void main(String[] a) { } }';
+    expect(atribuirPrograma(fuente)[0]!.rango).toEqual({ inicio: fuente.indexOf('package'), fin: fuente.indexOf(';') + 1 });
+  });
 });
 
 // Tarea 1.36 (W-10 de la verificación final del lote 1, JLS 14.11 y 15.29): `case "d" + 1.5:` es una etiqueta CONSTANTE para javac (el valor lo decide el `Double.toString` de Java) y la compila;

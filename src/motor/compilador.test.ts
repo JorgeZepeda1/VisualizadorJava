@@ -145,6 +145,7 @@ describe('compilar — solo un ErrorDeCompilacion es un error de compilación (t
     expect(resultado).toMatchObject({ ok: false, problema: { categoria: 'no-disponible', codigo: 'programa-demasiado-grande' } });
   });
 
+  // (Tarea 1.37: el comentario de abajo describía el riesgo 9 de la 1.36; ahora el anidamiento muy por encima del tope es un aviso, ver «un programa demasiado anidado» al final de este archivo.)
   // La pila que agota el analizador depende del entorno: con la de Node por omisión aguanta 1 900 niveles de paréntesis (HEAD y ahora), con la del ejecutor de pruebas se agota entre 500 y 700. Aquí solo se
   // afirma lo que vale en cualquiera: un anidamiento muy por encima del que escribe un alumno (300 niveles) compila sin lanzar nada.
   it('un anidamiento de 300 niveles de paréntesis, de llaves y de `else if` (muy por encima del de un alumno) compila sin lanzar nada', () => {
@@ -1304,5 +1305,49 @@ describe('compilar — los límites del archivo de clase de javac (C-4a, tarea 1
 
   it('un error de tipos gana también al texto largo', () => {
     expect(problemaDe(programa(`    int n = "x";\n    String s = "${'a'.repeat(65_535)}";`))).toMatchObject({ categoria: 'error-compilacion', linea: 3 });
+  });
+});
+
+// Tarea 1.37 (W-12 de la verificación del delta del lote 1): el tope de 4 000 tokens no acota la PROFUNDIDAD. Con la pila por omisión de Node, 700 paréntesis anidados lanzan `RangeError`; en Chromium,
+// desde unos 400; las cadenas de `&&` desde unos 1 000 términos — y el trabajador lo convertía en `error-interno` («Algo falló dentro del visualizador»). Ahora `analizarPrograma` cuenta los niveles
+// de su recursión y mide la profundidad exacta del árbol, y `compilar()` lo traduce a un aviso honesto, nunca a un error del alumno ni a una excepción.
+describe('compilar — un programa demasiado anidado es un aviso honesto, no un fallo interno (W-12, tarea 1.37)', () => {
+  const conCuerpo = (cuerpo: string): string => `public class P {\n    public static void main(String[] args) {\n        int a = 1;\n        boolean b = true;\n        String s = "x";\n${cuerpo}\n    }\n}\n`;
+  const LINEA_DEL_CUERPO = 6;
+
+  it.each([
+    ['700 paréntesis anidados (lanzaban RangeError con la pila por omisión de Node)', `        a = ${'('.repeat(700)}1${')'.repeat(700)};`],
+    ['1 500 llaves anidadas', `        ${'{'.repeat(1_500)}${'}'.repeat(1_500)}`],
+    ['mil términos unidos con `&&` (un árbol de mil niveles que arma un lazo)', `        b = b${' && b'.repeat(1_000)};`],
+    ['1 900 sumas seguidas', `        a = 1${' + 1'.repeat(1_900)};`],
+    ['400 `else if` seguidos (cada uno es una instrucción dentro de la anterior)', `        if (b) a = 1;${' else if (b) a = 2;'.repeat(400)}`],
+    ['mil negaciones con paréntesis', `        b = ${'!('.repeat(1_000)}true${')'.repeat(1_000)};`],
+  ])('%s: el aviso `programa-demasiado-anidado` en la línea donde está, sin lanzar nada', (_nombre, cuerpo) => {
+    const resultado = compilar(conCuerpo(cuerpo));
+    if (resultado.ok) throw new Error('se esperaba el aviso');
+    expect(resultado.problema).toMatchObject({ categoria: 'no-disponible', codigo: 'programa-demasiado-anidado', datos: {}, linea: LINEA_DEL_CUERPO });
+  });
+
+  it('un anidamiento que cabe (50 niveles de paréntesis, bloques y `else if`) NO es el aviso: se revisa como siempre', () => {
+    for (const cuerpo of [`        a = ${'('.repeat(50)}1${')'.repeat(50)};`, `        ${'{'.repeat(50)}${'}'.repeat(50)}`, `        if (b) a = 1;${' else if (b) a = 2;'.repeat(50)}`, `        b = b${' && b'.repeat(50)};`]) {
+      const resultado = compilar(conCuerpo(cuerpo));
+      if (!resultado.ok) expect(resultado.problema.codigo, cuerpo.slice(0, 40)).not.toBe('programa-demasiado-anidado');
+    }
+  });
+
+  it('un error de sintaxis ANTES de la parte profunda gana (el analizador no llega al anidamiento), y uno léxico también', () => {
+    const sintaxis = compilar(conCuerpo(`        int x = ;\n        a = ${'('.repeat(700)}1${')'.repeat(700)};`));
+    if (sintaxis.ok) throw new Error('se esperaba un error');
+    expect(sintaxis.problema).toMatchObject({ categoria: 'error-compilacion', linea: LINEA_DEL_CUERPO });
+    const lexico = compilar(conCuerpo(`        String t = "sin cerrar;\n        a = ${'('.repeat(700)}1${')'.repeat(700)};`));
+    if (lexico.ok) throw new Error('se esperaba un error');
+    expect(lexico.problema.categoria).toBe('error-compilacion');
+  });
+
+  it('el aviso se da aunque la parte profunda venga después de un aviso léxico más antiguo (un literal hexadecimal): es la misma categoría, y gana el primero en el texto', () => {
+    const resultado = compilar(conCuerpo(`        int h = 0x1F;\n        a = ${'('.repeat(700)}1${')'.repeat(700)};`));
+    if (resultado.ok) throw new Error('se esperaba un aviso');
+    expect(resultado.problema.categoria).toBe('no-disponible');
+    expect(['programa-demasiado-anidado', 'literal-hexadecimal-no-soportado']).toContain(resultado.problema.codigo);
   });
 });

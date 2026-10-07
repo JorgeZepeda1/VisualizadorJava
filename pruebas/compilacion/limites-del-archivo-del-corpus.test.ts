@@ -14,6 +14,7 @@ import { guardaDeCorpusConTablas } from './guarda-de-corpus-con-tablas.ts';
 const CARACTERES = 'texto-con-demasiados-caracteres';
 const BYTES = 'texto-con-demasiados-bytes';
 const AVISO = 'tamano-de-texto-no-revisable';
+const ANIDADO = 'programa-demasiado-anidado';
 
 // Javac rechaza y el motor da el error exacto, en la MISMA línea que javac (la línea es la del `.errores` de cada golden).
 const ERRORES: ReadonlyArray<readonly [archivo: string, codigo: string]> = [
@@ -82,7 +83,16 @@ const ERRORES: ReadonlyArray<readonly [archivo: string, codigo: string]> = [
   ['ob-receta-con-marca-u0001-excede', BYTES],
   ['ob-receta-90-operandos-65450', BYTES],
   ['ob-receta-150-operandos-65450', BYTES],
-  ['ob-receta-250-operandos-65450', BYTES],
+  // Tarea 1.37 (S-10: sabotajes que sobrevivían — la guarda faltaba, no la producción). El cuerpo de un `if` cuya condición NO es constante genera su texto como cualquier otro (S37), la
+  // actualización de un `for` también (S38), y la receta se parte cuando las ranuras llegan a 200 —un `long` o un `double` ocupa dos— (S19): 98 operandos `long` ya no caben con 65 440 de
+  // texto; con 99, sí si la constante va al final (el texto va en la última receta) y no si va al principio; 100 también, y 65 535 ya no. Son programas de los conjuntos d06b/c/d del verificador.
+  ['cx-if-sin-poda-65535-caracteres', CARACTERES],
+  ['cx-if-sin-poda-acentos-65536-bytes', BYTES],
+  ['cx-actualizacion-del-for-65535-caracteres', CARACTERES],
+  ['cx-actualizacion-del-for-acentos-65536-bytes', BYTES],
+  ['cx-receta-98-long-constante-al-final-65440', BYTES],
+  ['cx-receta-99-long-constante-al-principio-65440', BYTES],
+  ['cx-receta-100-long-constante-al-final-65535', BYTES],
   ['dec-receta-excede', BYTES],
 ];
 
@@ -92,6 +102,9 @@ const AVISOS: ReadonlyArray<readonly [archivo: string, codigo: string]> = [
   ['poda-if-true-con-texto-largo-aviso', AVISO],
   ['poda-true-y-un-texto-largo-aviso', AVISO],
   ['ob-final-con-bytes-de-mas-solo-en-una-condicion-constante', AVISO],
+  // Tarea 1.37 (W-12): 250 operandos son un árbol de 250 niveles, más del tope de profundidad del árbol (200, `motor/limites.ts`): antes de llegar a esta pasada el aviso es el de anidamiento. La pasada
+  // sigue probada sola con 250 y 400 operandos (`semantica/limites-del-archivo.test.ts`, con los topes levantados).
+  ['ob-receta-250-operandos-65450', ANIDADO],
 ];
 
 // Javac COMPILA: nunca un error. Un programa de clase sin nada que contar sale `ejecucion-no-disponible` mientras el lote 2 no baje esos `String` al IR; los que el motor no puede medir con seguridad,
@@ -121,7 +134,13 @@ const VALIDOS: ReadonlyArray<readonly [archivo: string, resultado: string]> = [
   ['ob-receta-con-marca-u0001-valida', 'ejecucion-no-disponible'],
   ['ob-receta-con-marca-u0002-valida', 'ejecucion-no-disponible'],
   ['ob-receta-150-operandos-65300-valida', 'ejecucion-no-disponible'],
-  ['ob-receta-400-operandos-valida', 'ejecucion-no-disponible'],
+  ['ob-receta-400-operandos-valida', ANIDADO], // tarea 1.37: 400 operandos pasan del tope de profundidad del árbol (200)
+  // Tarea 1.37 (S-10): un byte menos que los de arriba, y las recetas que caben. Un `if` con condición variable y la actualización de un `for` generan su texto: 65 534 caracteres caben.
+  ['cx-if-sin-poda-65534-caracteres-valido', 'ejecucion-no-disponible'],
+  ['cx-actualizacion-del-for-65534-caracteres-valida', 'ejecucion-no-disponible'],
+  ['cx-receta-99-long-constante-al-final-65440-valida', 'ejecucion-no-disponible'],
+  ['cx-receta-99-double-constante-al-final-65535-valida', 'ejecucion-no-disponible'],
+  ['cx-receta-100-long-constante-al-final-65534-valida', 'ejecucion-no-disponible'],
   ['ob-receta-con-operandos-long-ocupan-dos-ranuras', 'ejecucion-no-disponible'],
   // Lo que `Lower` poda y `Gen` no genera: la rama que no se toma de un `if` con condición constante, el lado derecho de `false && …` y de `true || …`.
   ['poda-if-false-con-texto-largo-valido', 'ejecucion-no-disponible'],
@@ -146,5 +165,5 @@ guardaDeCorpusConTablas({
   errores: ERRORES,
   avisos: AVISOS,
   validos: VALIDOS,
-  piso: 92,
+  piso: 104,
 });

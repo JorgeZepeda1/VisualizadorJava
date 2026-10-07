@@ -7,6 +7,7 @@
 // no cubre: switch con default, &&/||/!).
 import { describe, expect, it } from 'vitest';
 import { tokenizar } from '../lexico/analizador-lexico.ts';
+import { SIN_LIMITES_DE_ANIDAMIENTO } from '../limites.ts';
 import { analizarPrograma } from '../sintaxis/analizador-sintactico.ts';
 import { verificarAsignacionDefinitiva } from './asignacion-definitiva.ts';
 
@@ -318,8 +319,10 @@ describe('verificarAsignacionDefinitiva — "asignada si verdadero/si falso" en 
 // Una condición larga es rara, pero el motor no debe colgarse por escribirla: se mide con un margen de 100× sobre lo esperado, para
 // que la prueba no dependa de la velocidad de la máquina y solo falle ante una explosión de verdad.
 describe('verificarAsignacionDefinitiva — una condición larga no explota (JLS 16.1, tarea 1.29)', () => {
+  // Tarea 1.37: la pasada se prueba SOLA, con árboles más hondos de lo que `compilar()` deja pasar (el tope de profundidad es del analizador, ver `limites.ts`): lo que se vigila aquí es que la
+  // pasada no explote, no cuánto anidamiento admite el producto.
   function milisegundosDe(cuerpoDeMain: string): number {
-    const programa = analizarPrograma(tokenizar(`class C { public static void main(String[] a) { int n = 1; ${cuerpoDeMain} } }`));
+    const programa = analizarPrograma(tokenizar(`class C { public static void main(String[] a) { int n = 1; ${cuerpoDeMain} } }`), SIN_LIMITES_DE_ANIDAMIENTO);
     const inicio = Date.now();
     verificarAsignacionDefinitiva(programa);
     return Date.now() - inicio;

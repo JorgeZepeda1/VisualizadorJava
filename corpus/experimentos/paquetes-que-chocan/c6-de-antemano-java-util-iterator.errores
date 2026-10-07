@@ -1,0 +1,4 @@
+Saludo.java:1: error: package java.util.Iterator clashes with class of same name
+package java.util.Iterator;
+^
+1 error

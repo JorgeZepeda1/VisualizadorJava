@@ -150,6 +150,14 @@ const PREFIJO_TOTAL_DE_CLASES = '#total|';
  * compilación falso). Así una salida truncada revienta aquí, con un mensaje claro.
  */
 export function analizarClasesJdk(salida: string): ClasesPorPaquete {
+  return analizarListaPorPaquete(salida, 'GenerarClasesJdk.java');
+}
+
+/**
+ * Pura: el cuerpo común de las sondas que vuelcan «paquete|Nombre1,Nombre2» y cierran con «#total|N» (`GenerarClasesJdk.java`, `GenerarClasesQueChocan.java`). Exige la línea final y que N sea
+ * la cantidad de nombres realmente leídos, y nombra la `sonda` en el error.
+ */
+function analizarListaPorPaquete(salida: string, sonda: string): ClasesPorPaquete {
   const lineas = salida
     .split('\n')
     .map((linea) => linea.trim())
@@ -162,12 +170,27 @@ export function analizarClasesJdk(salida: string): ClasesPorPaquete {
   const leidas = entradas.reduce((total, [, clases]) => total + clases.length, 0);
   if (lineaTotal === undefined || Number(lineaTotal.slice(PREFIJO_TOTAL_DE_CLASES.length)) !== leidas) {
     throw new Error(
-      `La salida de GenerarClasesJdk.java está truncada o incompleta: se leyeron ${leidas} clases y la línea ` +
+      `La salida de ${sonda} está truncada o incompleta: se leyeron ${leidas} clases y la línea ` +
         `"${PREFIJO_TOTAL_DE_CLASES}N" ${lineaTotal === undefined ? 'no aparece' : `dice "${lineaTotal}"`}. ` +
         `Revisa el tope de captura del oráculo (LIMITE_BYTES_SONDAS).`,
     );
   }
   return Object.fromEntries(entradas);
+}
+
+// ---- Nombres de clase que javac rechaza como paquete (GenerarClasesQueChocan.java, tarea 1.37) ----
+
+/**
+ * Tarea 1.37 (C-6, pura): todo el stdout de `GenerarClasesQueChocan.java` → paquete → los nombres PLANOS de javac (`Shutdown`, `Thread$State`) que, escritos como nombre de paquete (`package
+ * java.lang.Shutdown;`), javac rechaza con «clashes with class of same name». Mismo formato y mismas exigencias que `analizarClasesJdk` (línea final `#total|N`), y además no admite una lista
+ * VACÍA: javac siempre conoce los archivos de `java.lang`, así que sin ningún nombre la sonda está rota y guardarla dejaría pasar `package java.lang.Shutdown;`.
+ */
+export function analizarClasesQueChocan(salida: string): ClasesPorPaquete {
+  const tabla = analizarListaPorPaquete(salida, 'GenerarClasesQueChocan.java');
+  if (Object.keys(tabla).length === 0) {
+    throw new Error('La salida de GenerarClasesQueChocan.java no trae ningún nombre: javac siempre conoce los archivos de java.lang, así que la sonda no midió nada.');
+  }
+  return tabla;
 }
 
 // ---- Identificadores (GenerarIdentificadores.java, tarea 1.29) ----
@@ -344,6 +367,8 @@ export interface DatosJdk {
   readonly firmas: readonly FirmaMiembro[];
   readonly supertipos: SupertiposPorTipo;
   readonly clases: ClasesPorPaquete;
+  /** Tarea 1.37 (C-6): paquete → nombres planos de javac (`Shutdown`, `Thread$State`) que escritos como nombre de paquete javac rechaza: públicos o no, anidados o no. */
+  readonly clasesQueChocan: ClasesPorPaquete;
   readonly identificadores: IdentificadoresJava;
   /** Tarea 1.33: las 54 palabras reservadas de Java 17 (`Tokens.TokenKind` de javac), en orden alfabético con `_` primero. */
   readonly palabrasReservadas: readonly string[];
@@ -407,6 +432,7 @@ export async function generarDatos(jdk: InfoJdk, opciones: OpcionesDeGenerarDato
   const firmas = analizarFirmasApi(await correrSonda('GenerarFirmasApi.java'));
   const supertipos = analizarSupertipos(await correrSonda('GenerarSupertipos.java'));
   const clases = analizarClasesJdk(await correrSonda('GenerarClasesJdk.java'));
+  const clasesQueChocan = analizarClasesQueChocan(await correrSonda('GenerarClasesQueChocan.java'));
   const identificadores = analizarIdentificadoresJava(await correrSonda('GenerarIdentificadores.java'));
 
   const palabrasReservadas = analizarPalabrasReservadas(
@@ -443,6 +469,7 @@ export async function generarDatos(jdk: InfoJdk, opciones: OpcionesDeGenerarDato
     firmas,
     supertipos,
     clases,
+    clasesQueChocan,
     identificadores,
     palabrasReservadas,
     regional: {
@@ -517,6 +544,22 @@ export function renderizarClasesTs(clases: ClasesPorPaquete): string {
     `${cabecera('herramientas/oraculo/java/GenerarClasesJdk.java')}` +
     `// Paquete -> tipos públicos importables (nombre canónico dentro del paquete, "Map.Entry"), separados por comas.\n` +
     `export const CLASES_JDK: Readonly<Record<string, string>> = {\n${entradas}\n};\n`
+  );
+}
+
+/**
+ * Tarea 1.37 (C-6): los nombres planos de javac (`Thread$State`) que escritos como paquete javac rechaza, una cadena por paquete como `renderizarClasesTs`. Lo consulta
+ * `motor/semantica/catalogo-clases.ts` (`claseQueChocaComoPaquete`).
+ */
+export function renderizarClasesQueChocanTs(clases: ClasesPorPaquete): string {
+  const entradas = Object.entries(clases)
+    .map(([paquete, lista]) => `  ${cadenaSimple(paquete)}: ${cadenaSimple(lista.join(','))},`)
+    .join('\n');
+  return (
+    `${cabecera('herramientas/oraculo/java/GenerarClasesQueChocan.java')}` +
+    `// Paquete -> nombres PLANOS de javac ("Thread$State", con el \`$\` de los anidados) que, escritos como nombre de paquete, javac rechaza con "clashes with class of same name",\n` +
+    `// separados por comas: todos los archivos de java.lang (públicos o no) y las pocas clases que el compilador crea de antemano.\n` +
+    `export const CLASES_QUE_CHOCAN_COMO_PAQUETE: Readonly<Record<string, string>> = {\n${entradas}\n};\n`
   );
 }
 
@@ -600,6 +643,11 @@ export function escribirDatos(raizProyecto: string, datos: DatosJdk): void {
     `${Object.entries(datos.clases).map(([paquete, clases]) => JSON.stringify({ paquete, clases })).join('\n')}\n`,
     'utf-8',
   );
+  writeFileSync(
+    resolve(corpusApi, 'clases-que-chocan.jsonl'),
+    `${Object.entries(datos.clasesQueChocan).map(([paquete, nombres]) => JSON.stringify({ paquete, nombres })).join('\n')}\n`,
+    'utf-8',
+  );
   writeFileSync(resolve(corpusApi, 'identificadores.json'), `${JSON.stringify(datos.identificadores, null, 2)}\n`, 'utf-8');
   // Tarea 1.33: el dato crudo, auditable, que el generador diferencial (`generados/vocabulario.ts`) cruza con su propia lista.
   mkdirSync(resolve(raizProyecto, 'corpus', 'datos', 'lexico'), { recursive: true });
@@ -610,6 +658,7 @@ export function escribirDatos(raizProyecto: string, datos: DatosJdk): void {
   writeFileSync(resolve(bibliotecaDatos, 'firmas-jdk.generado.ts'), renderizarFirmasTs(datos.firmas), 'utf-8');
   writeFileSync(resolve(bibliotecaDatos, 'supertipos-jdk.generado.ts'), renderizarSupertiposTs(datos.supertipos), 'utf-8');
   writeFileSync(resolve(bibliotecaDatos, 'clases-jdk.generado.ts'), renderizarClasesTs(datos.clases), 'utf-8');
+  writeFileSync(resolve(bibliotecaDatos, 'clases-que-chocan.generado.ts'), renderizarClasesQueChocanTs(datos.clasesQueChocan), 'utf-8');
   writeFileSync(resolve(bibliotecaDatos, 'identificadores-java.generado.ts'), renderizarIdentificadoresTs(datos.identificadores), 'utf-8');
   writeFileSync(resolve(bibliotecaDatos, 'palabras-reservadas-java.generado.ts'), renderizarPalabrasReservadasTs(datos.palabrasReservadas), 'utf-8');
   writeFileSync(resolve(bibliotecaDatos, 'regional.generado.ts'), renderizarRegionalTs(datos.regional), 'utf-8');
@@ -624,6 +673,7 @@ function main(): void {
       console.log(
         `Oráculo: ${datos.firmas.length} firmas, ${Object.keys(datos.supertipos).length} tipos con sus supertipos, ` +
           `${Object.values(datos.clases).reduce((total, lista) => total + lista.length, 0)} clases en ${Object.keys(datos.clases).length} paquetes, ` +
+          `${Object.values(datos.clasesQueChocan).reduce((total, lista) => total + lista.length, 0)} nombres de clase que chocan como paquete, ` +
           `tablas de identificador, ${datos.palabrasReservadas.length} palabras reservadas, ` +
           `2 locales regionales, 2 marcos de arranque ` +
           `escritos en corpus/datos/** y src/motor/biblioteca/datos/*.generado.ts (${basename(RAIZ_PROYECTO)}).`,

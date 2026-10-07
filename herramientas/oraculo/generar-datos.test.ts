@@ -9,6 +9,7 @@ import { compilarEnLote, compilarImportaciones } from './compilar-en-lote.ts';
 import {
   type DatosJdk,
   analizarClasesJdk,
+  analizarClasesQueChocan,
   analizarIdentificadoresJava,
   analizarFirmasApi,
   analizarLineaClases,
@@ -20,6 +21,7 @@ import {
   LIMITE_MS_DE_LAS_SONDAS,
   generarDatos,
   pareceLanzadorEnEspanol,
+  renderizarClasesQueChocanTs,
   renderizarClasesTs,
   renderizarFirmasTs,
   renderizarIdentificadoresTs,
@@ -182,6 +184,43 @@ describe('renderizarClasesTs (pura) — genera el .ts compacto con cabecera "no 
     expect(texto).toContain('CLASES_JDK');
     expect(texto).toContain("'java.util': 'ArrayList,Map,Map.Entry'");
     expect(texto).toContain("'javax.swing': 'JOptionPane'");
+  });
+});
+
+// Tarea 1.37 (C-6 de la verificación del delta del lote 1): `package java.lang.Shutdown;` lo rechaza javac («package java.lang.Shutdown clashes with class of same name») aunque `Shutdown` no sea una clase
+// pública, y el motor lo daba por bueno porque solo conocía los tipos PÚBLICOS importables. La lista de nombres que javac rechaza como paquete (públicos o no, anidados o no) sale del oráculo, nunca a mano.
+describe('analizarClasesQueChocan (pura) — parsea la salida de GenerarClasesQueChocan (tarea 1.37, C-6)', () => {
+  it('una línea "paquete|Nombre,Otro$Anidada" por paquete y el total: los nombres PLANOS de javac, con su `$`, por paquete', () => {
+    const tabla = analizarClasesQueChocan(['java.lang|Shutdown,StringCoding,Thread$State', 'java.util|Arrays,Iterator', '#total|5', ''].join('\n'));
+    expect(tabla['java.lang']).toEqual(['Shutdown', 'StringCoding', 'Thread$State']);
+    expect(tabla['java.util']).toEqual(['Arrays', 'Iterator']);
+    expect(Object.keys(tabla)).toEqual(['java.lang', 'java.util']);
+  });
+
+  it('una salida sin la línea "#total|N" (truncada) o con un total que no coincide lanza un error que nombra la sonda: nunca una lista a medias', () => {
+    expect(() => analizarClasesQueChocan('java.lang|Shutdown,StringCoding\n')).toThrow(/GenerarClasesQueChocan\.java está truncada/);
+    expect(() => analizarClasesQueChocan('java.lang|Shutdown,StringCoding\n#total|9\n')).toThrow(/GenerarClasesQueChocan\.java está truncada/);
+  });
+
+  it('una salida SIN ningún nombre (ni siquiera `java.lang`) tampoco es válida: javac siempre conoce java.lang, así que una lista vacía es una sonda rota', () => {
+    expect(() => analizarClasesQueChocan('#total|0\n')).toThrow(/ningún nombre/);
+  });
+
+  it('una línea mal formada (sin "|", o sin nombres) lanza un error claro', () => {
+    expect(() => analizarClasesQueChocan('java.lang\n#total|0\n')).toThrow(/línea de clases mal formada/);
+    expect(() => analizarClasesQueChocan('java.lang|\n#total|0\n')).toThrow(/línea de clases mal formada/);
+  });
+});
+
+describe('renderizarClasesQueChocanTs (pura) — genera el .ts compacto con cabecera "no editar" (tarea 1.37)', () => {
+  it('una entrada por paquete, con los nombres planos (con `$`) en una sola cadena separada por comas, y la sonda de origen', () => {
+    const texto = renderizarClasesQueChocanTs({ 'java.lang': ['Shutdown', 'Thread$State'], 'java.util': ['Iterator'] });
+    expect(texto).toContain('generado');
+    expect(texto).toContain('no editar');
+    expect(texto).toContain('GenerarClasesQueChocan.java');
+    expect(texto).toContain('CLASES_QUE_CHOCAN_COMO_PAQUETE');
+    expect(texto).toContain("'java.lang': 'Shutdown,Thread$State'");
+    expect(texto).toContain("'java.util': 'Iterator'");
   });
 });
 
@@ -530,6 +569,82 @@ describe('generarDatos — integración contra el JDK real (Temurin 17.0.18)', (
     expect(rechazadosSinRazon).toEqual([]);
     const aceptadosSinRazon = negativos.filter((nombre) => veredictos.get(nombre) !== false);
     expect(aceptadosSinRazon).toEqual([]);
+  }, LIMITE_DE_LAS_PRUEBAS_CON_JDK_MS);
+
+  // Tarea 1.37 (C-6): los nombres de clase que javac rechaza COMO PAQUETE salen del oráculo. Medido con javac 17.0.18: el chequeo (`TypeEnter.checkClassPackageClash`) corre ANTES de resolver los
+  // imports y no depende del cuerpo del programa; compara cada prefijo del nombre del paquete con las clases que el compilador YA conoce: todos los archivos de `java.lang` (públicos o no, anidados
+  // o no: lo importa implícitamente) y las pocas que el compilador crea de antemano (`Serializable`, `Iterator`, `List`, `MethodHandle`, `ObjectMethods`, `SwitchBootstraps`…).
+  it('clases que chocan (tarea 1.37): están TODOS los archivos de java.lang (públicos o no, anidados o no) y las que el compilador crea de antemano', () => {
+    const chocan = datos.clasesQueChocan;
+    // las no públicas que halló la verificación del delta (C-6) y las anidadas de java.lang
+    expect(chocan['java.lang']).toEqual(expect.arrayContaining(['Shutdown', 'StringCoding', 'CharacterData00', 'VersionProps', 'ProcessImpl', 'Thread$State', 'Class$1', 'Character$UnicodeBlock']));
+    // las públicas de siempre
+    expect(chocan['java.lang']).toEqual(expect.arrayContaining(['String', 'Math', 'Object', 'System']));
+    // cada tipo PÚBLICO de primer nivel de java.lang (lo trae el catálogo) está en la lista: java.lang lo conoce javac entero
+    const publicasDeJavaLang = datos.clases['java.lang']!.filter((clase) => !clase.includes('.'));
+    expect(publicasDeJavaLang.length).toBeGreaterThan(100);
+    expect(publicasDeJavaLang.filter((clase) => !chocan['java.lang']!.includes(clase))).toEqual([]);
+    // fuera de java.lang: solo lo que el compilador crea de antemano
+    expect(chocan['java.lang.runtime']).toEqual(['ObjectMethods', 'SwitchBootstraps']);
+    expect(chocan['java.io']).toEqual(['Serializable']);
+    expect(chocan['java.util']).toEqual(expect.arrayContaining(['Iterator', 'List', 'Arrays', 'Collections', 'Comparator', 'Objects']));
+    expect(chocan['java.lang.invoke']).toEqual(expect.arrayContaining(['MethodHandle', 'LambdaMetafactory', 'MethodHandles$Lookup']));
+    // lo que NO conoce de antemano: se carga solo si el programa lo usa, y el chequeo ya pasó
+    expect(chocan['java.util']).not.toContain('Map');
+    expect(chocan['java.util']).not.toContain('Scanner');
+    expect(chocan['java.util']).not.toContain('ArraysParallelSortHelpers');
+    expect(chocan['java.util']).not.toContain('Map$Entry');
+    expect(chocan['java.io']).not.toContain('PrintStream');
+    expect(chocan['java.io']).not.toContain('FileSystem');
+    expect(chocan['java.lang.reflect']).toBeUndefined();
+    expect(Object.values(chocan).reduce((total, nombres) => total + nombres.length, 0)).toBeGreaterThan(250);
+  });
+
+  it('clases que chocan (tarea 1.37): javac real rechaza CADA nombre de la lista como paquete (`pkg.clashes.with.class.of.same.name`) y compila cualquier otro nombre de clase del JDK (una sola JVM)', async () => {
+    const enLaLista = Object.entries(datos.clasesQueChocan).flatMap(([paquete, nombres]) => nombres.map((nombre) => `${paquete}.${nombre}`));
+    const comoPaquete = (nombre: string) => ({ id: nombre, fuente: `package ${nombre};\npublic class Sonda { public static void main(String[] args) { } }\n` });
+    // todos los tipos públicos del catálogo (con su nombre PLANO: `Map.Entry` es `Map$Entry` para javac) que no están en la lista deben COMPILAR
+    const fueraDeLaLista = Object.entries(datos.clases)
+      .flatMap(([paquete, clases]) => clases.map((clase) => `${paquete}.${clase.replace(/\./g, '$')}`))
+      .filter((nombre) => !enLaLista.includes(nombre));
+    const controles = ['java.util.ArraysParallelSortHelpers', 'java.io.FileSystem', 'java.lang.reflect.Method', 'java.util.Map$Entry', 'java.nio.charset.Charset', 'java.lang.ref.Reference'];
+    const respuestas = await compilarEnLote(jdk, [...enLaLista, ...fueraDeLaLista, ...controles].map(comoPaquete));
+    const noRechazados = enLaLista.filter((nombre) => respuestas.get(nombre)?.codigoJavac !== 'compiler.err.pkg.clashes.with.class.of.same.name');
+    expect(noRechazados).toEqual([]);
+    const rechazadosSinRazon = [...fueraDeLaLista, ...controles].filter((nombre) => respuestas.get(nombre)?.compila !== true);
+    expect(rechazadosSinRazon).toEqual([]);
+    expect(enLaLista.length + fueraDeLaLista.length).toBeGreaterThan(4500);
+  }, LIMITE_DE_LAS_PRUEBAS_CON_JDK_MS);
+
+  it('clases que chocan (tarea 1.37): el chequeo mira los PREFIJOS del paquete y no depende del cuerpo del programa (cuatro cuerpos distintos, una sola JVM)', async () => {
+    const cuerpos = [
+      'public class Sonda { public static void main(String[] args) { } }',
+      'import java.util.*;\npublic class Sonda { public static void main(String[] args) { Map<String, String> m = new HashMap<>(); m.put("a", "b"); System.out.println(m); } }',
+      'import java.util.Scanner;\npublic class Sonda extends java.util.AbstractMap<String, String> { public java.util.Set<java.util.Map.Entry<String, String>> entrySet() { return null; } public static void main(String[] a) { Scanner s = new Scanner(System.in); } }',
+      'public class Sonda { public static void main(String[] args) { int x = 1; System.out.println(Math.max(x, 2)); } }',
+    ];
+    const nombres = [
+      ['java.lang.Shutdown', true],
+      ['java.lang.Shutdown.aula', true], // un subpaquete de una clase: el prefijo `java.lang.Shutdown` es una clase
+      ['java.lang.String.aula.curso', true],
+      ['java.lang.Thread$State', true],
+      ['java.io.Serializable', true],
+      ['java.util.Map', false], // el compilador aún no la conoce, aunque el programa la use después
+      ['java.util.Map.aula', false],
+      ['java.util.Scanner', false],
+      ['java.io.FileSystem', false],
+      ['miproyecto', false],
+    ] as const;
+    const fuentes = nombres.flatMap(([nombre], i) => cuerpos.map((cuerpo, j) => ({ id: `${i}-${j}`, fuente: `package ${nombre};\n${cuerpo}\n` })));
+    const respuestas = await compilarEnLote(jdk, fuentes);
+    const desacuerdos = nombres.flatMap(([nombre, choca], i) =>
+      cuerpos.flatMap((_cuerpo, j) => {
+        const respuesta = respuestas.get(`${i}-${j}`);
+        const rechazado = respuesta?.compila === false && respuesta.codigoJavac === 'compiler.err.pkg.clashes.with.class.of.same.name';
+        return rechazado === choca && (choca || respuesta?.compila === true) ? [] : [`${nombre} con el cuerpo ${j}: ${JSON.stringify(respuesta)}`];
+      }),
+    );
+    expect(desacuerdos).toEqual([]);
   }, LIMITE_DE_LAS_PRUEBAS_CON_JDK_MS);
 
   // Tarea 1.29 (causa 8): los rangos de identificador salen del JDK y se verifican contra javac por los

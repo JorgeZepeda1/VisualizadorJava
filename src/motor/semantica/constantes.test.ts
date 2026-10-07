@@ -11,7 +11,7 @@ import { describe, expect, it } from 'vitest';
 import { tokenizar } from '../lexico/analizador-lexico.ts';
 import { analizarPrograma } from '../sintaxis/analizador-sintactico.ts';
 import { Alcance } from './alcance.ts';
-import { constanteDeVariable, valorConstante } from './constantes.ts';
+import { constanteDeVariable, valorConstante, valorSiSeSabe } from './constantes.ts';
 import type { NodoDeclaracionLocal, NodoExpresion } from '../sintaxis/ast.ts';
 
 function expresionDe(expr: string): NodoExpresion {
@@ -462,4 +462,35 @@ describe('valorConstante — variables "final" CON inicializador constante SÍ p
     const expresionR = declR.declaradores[0]!.inicializador!;
     expect(valorConstante(expresionR, alcance)).toEqual({ tipo: 'boolean', valor: true });
   });
+});
+
+// Tarea 1.37 (S-10 de la verificación del delta del lote 1: el sabotaje «`valorSiSeSabe` sin filtrar lo desconocido» sobrevivía a `npm test`). Visto desde sus dos únicos usos, el filtro es redundante
+// —lo desconocido es siempre un `String` o un `boolean`, que ni se estrechan ni entran en una etiqueta numérica—, así que el sabotaje era EQUIVALENTE para el sistema; pero `valorSiSeSabe` es una
+// función pública con un contrato —«el valor solo si se sabe; `null` si no es constante o si su valor es desconocido»— y ese contrato no tenía ninguna prueba propia. Aquí queda fijado: quien llame a
+// `valorSiSeSabe` en el futuro (con un uso donde lo desconocido SÍ importe) no recibe en silencio un objeto sin `tipo` ni `valor`.
+describe('valorSiSeSabe — el valor de una constante solo si se sabe (tarea 1.37, S-10)', () => {
+  it.each([
+    ['5', { tipo: 'int', valor: 5 }],
+    ['5L', { tipo: 'long', valor: 5n }],
+    ['"hola"', { tipo: 'String', valor: 'hola' }],
+    ['true', { tipo: 'boolean', valor: true }],
+    ["'a'", { tipo: 'char', valor: 97 }],
+  ] as const)('una constante de valor conocido (%s) devuelve su valor tal cual', (expr, esperado) => {
+    expect(valorSiSeSabe(constante(expr))).toEqual(esperado);
+  });
+
+  it('una expresión que NO es constante devuelve null', () => {
+    expect(valorSiSeSabe(null)).toBeNull();
+    expect(valorSiSeSabe(constante('x'))).toBeNull();
+  });
+
+  it.each(['"a" + 1.5', '"a" + 1.5 == "a1.5"', '"a" + (double) 2', 'true && "a" + 1.5 == "a1.5"'])(
+    'una constante de valor DESCONOCIDO (%s) devuelve null: ni `tipo` ni `valor`, aunque `valorConstante` sí la reconozca como constante',
+    (expr) => {
+      const resultado = constante(expr);
+      expect(resultado, 'valorConstante la reconoce como constante').not.toBeNull();
+      expect(resultado).toHaveProperty('valorDesconocido', true);
+      expect(valorSiSeSabe(resultado)).toBeNull();
+    },
+  );
 });

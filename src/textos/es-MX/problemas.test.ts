@@ -61,6 +61,8 @@ const DATOS_DE_EJEMPLO: Record<CodigoProblema, Record<string, unknown>> = {
   'clase-repetida-con-import': { nombre: 'Scanner', importacion: 'java.util.Scanner' },
   // Tarea 1.36 (C-3): `package java.util;` (un paquete que el JDK ya trae).
   'paquete-del-jdk': { nombre: 'java.util' },
+  // Tarea 1.37 (C-6): `package java.lang.Shutdown;` (el nombre de un paquete es el de una clase que el compilador ya conoce).
+  'paquete-con-nombre-de-clase': { nombre: 'java.lang.Shutdown', clase: 'java.lang.Shutdown' },
   // Tarea 1.36 (C-4a): un texto de 65 535 caracteres o más, y un texto (o una receta de concatenación) de más de 65 535 bytes al guardarse.
   'texto-con-demasiados-caracteres': {},
   'texto-con-demasiados-bytes': {},
@@ -396,6 +398,33 @@ describe('textosProblemas — un `package` con el nombre de un paquete que Java 
     const texto = textosProblemas['paquete-del-jdk']({ nombre: 'javax.swing' });
     expect(texto).toContain('`javax.swing`');
     expect(texto).not.toContain('java.util');
+  });
+});
+
+// Tarea 1.37 (C-6): `package java.lang.Shutdown;` o `package java.lang.String.aula;`. javac: «package java.lang.Shutdown clashes with class of same name», en la línea del `package`. La frase
+// nombra el paquete, dice con qué clase choca (él mismo, o su prefijo) y da las dos salidas; no habla de «módulos», «símbolos» ni del compilador.
+describe('textosProblemas — un `package` con el nombre de una clase de Java (C-6, tarea 1.37)', () => {
+  it('cuando el nombre del paquete ES el de la clase: lo dice una vez y da las dos salidas (un nombre propio o quitar la línea)', () => {
+    const texto = textosProblemas['paquete-con-nombre-de-clase']({ nombre: 'java.lang.Shutdown', clase: 'java.lang.Shutdown' });
+    expect(texto).toBe(
+      'El nombre de paquete `java.lang.Shutdown` es también el de una clase de Java, y Java no acepta que un paquete se llame igual que una clase. ' +
+        'Cambia la línea `package` por un nombre propio (por ejemplo, `package miproyecto;`) o quítala.',
+    );
+    expect(texto).not.toMatch(/módulo|símbolo|compilador|token|undefined/);
+  });
+
+  it('cuando el nombre del paquete solo EMPIEZA con una clase (`java.lang.String.aula`): nombra los dos', () => {
+    const texto = textosProblemas['paquete-con-nombre-de-clase']({ nombre: 'java.lang.String.aula', clase: 'java.lang.String' });
+    expect(texto).toBe(
+      'El nombre de paquete `java.lang.String.aula` empieza con `java.lang.String`, que es una clase de Java, y Java no acepta que un paquete se llame igual que una clase. ' +
+        'Cambia la línea `package` por un nombre propio (por ejemplo, `package miproyecto;`) o quítala.',
+    );
+  });
+
+  it('triangulación: con otro nombre la frase cambia con él', () => {
+    const texto = textosProblemas['paquete-con-nombre-de-clase']({ nombre: 'java.io.Serializable', clase: 'java.io.Serializable' });
+    expect(texto).toContain('`java.io.Serializable`');
+    expect(texto).not.toContain('Shutdown');
   });
 });
 

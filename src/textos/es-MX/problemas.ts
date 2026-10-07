@@ -166,6 +166,13 @@ export const textosProblemas: { readonly [K in CodigoProblema]: (datos: DatosPor
   'paquete-del-jdk': ({ nombre }) =>
     `El paquete \`${nombre}\` ya existe en Java: lo trae el propio JDK, así que no puedes usar ese nombre para tu programa. ` +
     'Cambia la línea `package` por un nombre propio (por ejemplo, `package miproyecto;`) o quítala.',
+  // Tarea 1.37 (C-6): `package java.lang.Shutdown;` o `package java.lang.String.aula;` (javac: «package … clashes with class of same name»). Se señala el `package`: dice con qué clase choca (el nombre
+  // entero, o su prefijo) y da las dos salidas.
+  'paquete-con-nombre-de-clase': ({ nombre, clase }) =>
+    (nombre === clase
+      ? `El nombre de paquete \`${nombre}\` es también el de una clase de Java, y Java no acepta que un paquete se llame igual que una clase. `
+      : `El nombre de paquete \`${nombre}\` empieza con \`${clase}\`, que es una clase de Java, y Java no acepta que un paquete se llame igual que una clase. `) +
+    'Cambia la línea `package` por un nombre propio (por ejemplo, `package miproyecto;`) o quítala.',
   // Tarea 1.36 (C-4a): javac: «constant string too long» (65 535 caracteres o más en un texto que se genera). Se señala el texto; dice el máximo y qué hacer.
   'texto-con-demasiados-caracteres': () =>
     'Este texto es demasiado largo: Java no acepta un texto de 65 535 caracteres o más escrito en el programa (el máximo son 65 534). ' +

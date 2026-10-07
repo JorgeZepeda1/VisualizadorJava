@@ -185,6 +185,14 @@ export const textosNoSoportado: { readonly [K in CodigoNoSoportado]: (datos: Dat
     `Tu programa es demasiado grande para este visualizador: a partir de la línea ${linea} se pasa del tamaño que sabe revisar (está pensado para programas de clase). ` +
     'Prueba con una parte más pequeña. No lo ejecuto para no enseñarte un resultado que podría no ser el de Java.',
 
+  // Tarea 1.37 (W-12): un programa con demasiados niveles de anidamiento (paréntesis dentro de paréntesis, bloques dentro de bloques, una cadena de cientos de operaciones). Como el de tamaño no es una
+  // construcción de Java sino el programa entero: sin el marco, con la línea donde se pasó y la salida (una parte más sencilla). Sin jerga del motor (pila, recursión, árbol): «anidado» lo conoce
+  // quien ya vio ciclos anidados en la unidad 6.
+  'programa-demasiado-anidado': ({ linea }) =>
+    `Tu programa tiene demasiadas cosas anidadas: a partir de la línea ${linea} hay más paréntesis, bloques o instrucciones metidos unos dentro de otros (o más operaciones encadenadas) ` +
+    'de los que este visualizador sabe revisar, y está pensado para programas de clase. Prueba con una parte más sencilla. ' +
+    'No lo ejecuto para no enseñarte un resultado que podría no ser el de Java.',
+
   // Tarea 1.36 (C-4a): un texto que se acerca al límite del archivo de clase (65 535 bytes) y cuyo tamaño no se puede calcular con seguridad (lleva un decimal, o hay condiciones constantes alrededor). Marco aprobado,
   // sin números exactos que no se tienen, con la salida (acortarlo o dividirlo).
   'tamano-de-texto-no-revisable': ({ linea }) =>

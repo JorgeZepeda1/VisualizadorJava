@@ -13,15 +13,19 @@
 import { describe, expect, it } from 'vitest';
 import { TablaDeLineas } from '../fuente/tabla-de-lineas.ts';
 import { tokenizar } from '../lexico/analizador-lexico.ts';
+import { SIN_LIMITES_DE_ANIDAMIENTO } from '../limites.ts';
 import { analizarPrograma } from '../sintaxis/analizador-sintactico.ts';
 import { verificarLimitesDelArchivo } from './limites-del-archivo.ts';
 
 const repetir = (n: number, caracter = 'a'): string => caracter.repeat(n);
 
-/** Lo que reporta la pasada, con la LÍNEA de cada problema: `[]` si no encuentra nada. */
+/**
+ * Lo que reporta la pasada, con la LÍNEA de cada problema: `[]` si no encuentra nada. Tarea 1.37: la pasada se prueba SOLA, con árboles más hondos de lo que `compilar()` deja pasar (una
+ * concatenación de 400 operandos es un árbol de 400 niveles; el tope de profundidad es del analizador, ver `limites.ts`): aquí se vigila lo que javac hace con la receta, no el tope del producto.
+ */
 function limitesDe(fuente: string) {
   const tabla = new TablaDeLineas(fuente);
-  return verificarLimitesDelArchivo(analizarPrograma(tokenizar(fuente))).map((problema) => ({
+  return verificarLimitesDelArchivo(analizarPrograma(tokenizar(fuente), SIN_LIMITES_DE_ANIDAMIENTO)).map((problema) => ({
     codigo: problema.codigo,
     categoria: problema.categoria ?? 'error-compilacion',
     linea: tabla.ubicar(problema.rango.inicio).linea,

@@ -124,6 +124,10 @@ export const CODIGOS_NO_SOPORTADO = {
   // Tarea 1.36 (C-4b y S-1): el programa tiene más elementos (tokens) que el tope conservador de `motor/limites.ts`. javac rechaza un método de más de 65 535 bytes de bytecode (`limit.code`) y el
   // motor no modela ese tamaño; tampoco revisa un programa tan grande (las pasadas semánticas crecían como n² con las declaraciones locales). Lo emite `compilador.ts`, justo después del léxico.
   programaDemasiadoGrande: 'programa-demasiado-grande',
+  // Tarea 1.37 (W-12): el programa tiene más niveles de anidamiento que los topes de `motor/limites.ts` (paréntesis dentro de paréntesis, instrucciones dentro de instrucciones, cadenas larguísimas de
+  // operadores…). El tope de tokens no lo acota —4 000 tokens caben en un árbol de 2 000 niveles— y la pila se agotaba en las pasadas: la pantalla decía «Algo falló dentro del visualizador». Lo
+  // emite `compilador.ts` cuando `sintaxis/analizador-sintactico.ts` lanza `ProgramaDemasiadoAnidado`.
+  programaDemasiadoAnidado: 'programa-demasiado-anidado',
   // Tarea 1.36 (C-4a): un texto tan largo que se acerca al límite del archivo de clase (65 535 bytes por texto: `limit.string` y `limit.string.overflow` de javac) y cuyo tamaño exacto el motor no puede calcular:
   // lleva un decimal (su largo lo decide `Double.toString`, que es del lote 2), o hay condiciones constantes que podrían podar el código que lo genera. Lo emite `semantica/limites-del-archivo.ts`.
   tamanoDeTextoNoRevisable: 'tamano-de-texto-no-revisable',
@@ -293,6 +297,8 @@ export interface DatosPorCodigoNoSoportado {
   'constante-de-texto-con-decimal-no-soportada': Record<never, never>;
   /** Tarea 1.36: solo la línea donde el programa se pasó del tope. */
   'programa-demasiado-grande': Record<never, never>;
+  /** Tarea 1.37: solo la línea donde el programa se pasó de los niveles de anidamiento. */
+  'programa-demasiado-anidado': Record<never, never>;
   /** Tarea 1.36 (C-4a): solo la línea del texto (o de la concatenación) que se acerca al límite. */
   'tamano-de-texto-no-revisable': Record<never, never>;
   'escape-no-soportado': Record<never, never>;

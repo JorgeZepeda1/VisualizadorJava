@@ -31,6 +31,8 @@ import {
   saltarHastaCerrar,
 } from './no-soportado.ts';
 import { ErrorDeCompilacion } from '../error-de-compilacion.ts';
+import { LIMITES_DE_ANIDAMIENTO, type LimitesDeAnidamiento, ProgramaDemasiadoAnidado } from '../limites.ts';
+import { primerNodoMasProfundoQue } from './profundidad.ts';
 import type {
   NodoBloque,
   NodoBreak,
@@ -83,8 +85,14 @@ const TIPOS_EXPRESION_SENTENCIA_VALIDOS: ReadonlySet<string> = new Set([
   'expresion-no-soportada',
 ]);
 
-export function analizarPrograma(tokens: readonly Token[]): NodoPrograma {
-  const cursor = new CursorDeTokens(tokens);
+/**
+ * Tarea 1.37 (W-12): `limites` son los topes de anidamiento (`LIMITES_DE_ANIDAMIENTO` por omisión); los vigilan DOS cosas, porque el analizador y las pasadas que siguen se agotan por motivos
+ * distintos: el contador del cursor (`niveles`: la recursión del PROPIO analizador —paréntesis, instrucciones dentro de instrucciones, operadores prefijo, argumentos…—) y la medida exacta del árbol
+ * resultante (`arbol`, `profundidad.ts`: las cadenas de operadores que el analizador arma con un lazo son árboles hondos que recorren, con recursión, todas las pasadas posteriores). Pasarse lanza
+ * `ProgramaDemasiadoAnidado` —un aviso honesto de `compilar()`, nunca un error del alumno—. Las pruebas pasan `SIN_LIMITES_DE_ANIDAMIENTO` para armar árboles hondos y medirlos.
+ */
+export function analizarPrograma(tokens: readonly Token[], limites: LimitesDeAnidamiento = LIMITES_DE_ANIDAMIENTO): NodoPrograma {
+  const cursor = new CursorDeTokens(tokens, limites.niveles);
   const paquete = consumirPackageOpcional(cursor);
   const importacionesNoSoportadas: NodoNoSoportado[] = [];
   const importaciones: NodoImportacion[] = [];
@@ -146,7 +154,7 @@ export function analizarPrograma(tokens: readonly Token[]): NodoPrograma {
     );
   }
   const finToken = cursor.avanzar();
-  return {
+  const programa: NodoPrograma = {
     tipo: 'programa',
     paquete,
     importaciones,
@@ -155,6 +163,10 @@ export function analizarPrograma(tokens: readonly Token[]): NodoPrograma {
     otrosTiposDeNivelSuperior,
     rango: { inicio: clase.rango.inicio, fin: finToken.rango.fin },
   };
+  // Tarea 1.37 (W-12): ANTES de que cualquier pasada recorra el árbol con recursión.
+  const exceso = primerNodoMasProfundoQue(programa, limites.arbol);
+  if (exceso !== null) throw new ProgramaDemasiadoAnidado(exceso.rango);
+  return programa;
 }
 
 function consumirPuntosYComasSueltos(cursor: CursorDeTokens): void {
@@ -676,6 +688,14 @@ function analizarYield(cursor: CursorDeTokens): NodoNoSoportado {
 // distinguible), salvo que la sentencia de impresión (0.12, forma especial) se intenta ANTES que la
 // sentencia de expresión general para no romper su AST ya probado desde el lote 0.
 function analizarSentencia(cursor: CursorDeTokens): NodoSentencia {
+  // Tarea 1.37 (W-12): cada sentencia metida dentro de otra (el cuerpo de un `if`/`while`/`for`/`do`, un bloque anidado, la rama de un `else if`) cuenta un nivel de anidamiento.
+  cursor.entrarNivel();
+  const sentencia = analizarSentenciaDeUnNivel(cursor);
+  cursor.salirNivel();
+  return sentencia;
+}
+
+function analizarSentenciaDeUnNivel(cursor: CursorDeTokens): NodoSentencia {
   if (cursor.coincideTexto('{')) return analizarBloque(cursor);
   // Tarea 1.33: el cuerpo de un `if`/`while`/`for` sin llaves también distingue `yield 1;` (la sentencia) de `yield = 1;` (una asignación).
   if (esSentenciaYield(cursor)) return analizarYield(cursor);

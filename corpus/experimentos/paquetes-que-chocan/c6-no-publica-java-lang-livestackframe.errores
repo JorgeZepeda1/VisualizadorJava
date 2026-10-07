@@ -1,0 +1,4 @@
+Saludo.java:1: error: package java.lang.LiveStackFrame clashes with class of same name
+package java.lang.LiveStackFrame;
+^
+1 error

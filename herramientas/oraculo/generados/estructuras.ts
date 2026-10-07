@@ -319,7 +319,17 @@ const PAQUETES_DEL_JDK: readonly string[] = [
   'java.util.function', 'java.nio.file', 'java.awt', 'javax.xml.parsers', 'java.util.concurrent',
 ];
 const PAQUETES_PROPIOS: readonly string[] = ['miproyecto', 'aula.curso.u3', 'mx.edu.escuela', 'java.utilidades', 'javax.nada', 'programa'];
-const PAQUETES_CON_NOMBRE_DE_CLASE: readonly string[] = ['java.util.Map', 'java.lang.String', 'java.util.Scanner', 'java.io.File'];
+// Tarea 1.37 (C-6): javac rechaza el nombre de una clase como paquete cuando el compilador ya la conoce al leer el `package` —todo `java.lang` (público o no, anidado o no) y las pocas que él crea
+// de antemano— o cuando un PREFIJO del nombre lo es (`java.lang.String.aula`). Se sortean de los dos lados para que el veredicto no se escriba solo de uno: los que javac rechaza y los que compila.
+const PAQUETES_CON_NOMBRE_DE_CLASE: readonly string[] = [
+  'java.util.Map', 'java.lang.String', 'java.util.Scanner', 'java.io.File',
+  // rechazados: no públicas de java.lang, una vista previa, anidadas con su `$`, las que javac crea de antemano, y subpaquetes de una clase
+  'java.lang.Shutdown', 'java.lang.StringCoding', 'java.lang.CharacterData00', 'java.lang.VersionProps', 'java.lang.ProcessImpl', 'java.lang.runtime.SwitchBootstraps',
+  'java.lang.Thread$State', 'java.lang.Class$1', 'java.io.Serializable', 'java.util.Iterator', 'java.util.List', 'java.lang.invoke.MethodHandle',
+  'java.lang.String.aula', 'java.lang.Shutdown.a.b', 'java.io.Serializable.aula',
+  // compilados: no públicas fuera de java.lang, anidadas fuera de java.lang, un prefijo que aún no está cargado y una pública de un paquete hermano
+  'java.util.ArraysParallelSortHelpers', 'java.io.FileSystem', 'java.util.Map$Entry', 'java.util.Map.aula', 'java.lang.reflect.Method', 'java.lang.Strin',
+];
 
 const paquete = (nombreDeLaForma: string, nombres: readonly string[]): FormaEstructural =>
   forma(nombreDeLaForma, ['paquete-declarado'], (azar) => ({ imports: [`package ${azar.elegir(nombres)};`] }));

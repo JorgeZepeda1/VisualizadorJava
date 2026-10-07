@@ -173,6 +173,9 @@ export type CodigoProblema =
   // Tarea 1.36 (C-3, JLS 7.4.1): `package java.util;` (o `java.lang`, `javax.swing`, `java.sql`… cualquier paquete con tipos que el JDK exporte) — verificado contra javac 17.0.18
   // real sobre 278 nombres: `compiler.err.package.in.other.module` («package exists in another module: java.base»), en la línea del `package`. Lo da la atribución.
   | 'paquete-del-jdk'
+  // Tarea 1.37 (C-6, JLS 7.1): `package java.lang.Shutdown;` (o `java.lang.String.aula`) — el nombre del paquete, o un prefijo suyo, es el de una clase que el compilador ya conoce al leer el `package` (todo `java.lang`,
+  // público o no, y las pocas que javac crea de antemano). Verificado contra javac 17.0.18 real sobre los 26 814 nombres de clase del JDK: `compiler.err.pkg.clashes.with.class.of.same.name`, en la línea del `package`. Lo da la atribución.
+  | 'paquete-con-nombre-de-clase'
   // Tarea 1.36 (C-4a, JVMS 4.4.7 y `Gen.checkStringConstant`): una constante de texto de 65 535 caracteres o más que el programa genera — verificado contra javac 17.0.18 real:
   // `compiler.err.limit.string` («constant string too long»), en la línea del árbol que `Gen` generaba (la del texto, la del último `+` de una suma, la del `switch` para una etiqueta). Lo da `semantica/limites-del-archivo.ts`.
   | 'texto-con-demasiados-caracteres'
@@ -189,6 +192,12 @@ export type CodigoProblema =
 // texto no usa ningún dato.
 interface DatosNombre {
   readonly nombre: string;
+}
+
+/** Tarea 1.37: el nombre del paquete tal como lo escribió el alumno y la clase que choca (él mismo, o el prefijo que es una clase: `java.lang.String` para `java.lang.String.aula`). */
+interface DatosPaqueteQueChoca {
+  readonly nombre: string;
+  readonly clase: string;
 }
 
 interface DatosNombreConSugerencia {
@@ -349,6 +358,7 @@ export interface DatosPorCodigoProblema {
   'sentencia-entre-parentesis': DatosMensajeCrudo;
   'clase-repetida-con-import': DatosClaseRepetidaConImport;
   'paquete-del-jdk': DatosNombre;
+  'paquete-con-nombre-de-clase': DatosPaqueteQueChoca;
   'texto-con-demasiados-caracteres': Record<never, never>;
   'texto-con-demasiados-bytes': Record<never, never>;
 }
