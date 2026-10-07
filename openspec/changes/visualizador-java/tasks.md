@@ -2,7 +2,7 @@
 
 > Fase `sdd-tasks` · 2026-09-25. Fuente: `design.md` (capas, §10 orden de construcción), `specs/*/spec.md` (73 requisitos `REQ-*`, 96 escenarios), `proposal.md` (§3 MUST, §8 C1–C20, §13 Definición de Terminado, §14 P1–P5), `exploration.md` y `exploracion/01` §6–7 (18 errores conceptuales, 26 plantillas).
 >
-> **Tamaño:** `openspec/config.yaml` pide tareas de 1-2 líneas; este cambio tiene 73 requisitos verificados contra un JDK real y sub-agentes `sdd-apply` sin más contexto que este archivo. Para que cada tarea sea autosuficiente (test-first, archivos, verificación, dependencias) sin reabrir `design.md`, el documento es largo — 122 tareas en 7 lotes (101 del plan aprobado más 21 que agregó el orquestador en los lotes 0 y 1). Es la misma compensación que ya aplicó `design.md` en su nota de tamaño.
+> **Tamaño:** `openspec/config.yaml` pide tareas de 1-2 líneas; este cambio tiene 73 requisitos verificados contra un JDK real y sub-agentes `sdd-apply` sin más contexto que este archivo. Para que cada tarea sea autosuficiente (test-first, archivos, verificación, dependencias) sin reabrir `design.md`, el documento es largo — 123 tareas en 7 lotes (101 del plan aprobado más 22 que agregó el orquestador en los lotes 0 y 1). Es la misma compensación que ya aplicó `design.md` en su nota de tamaño.
 >
 > Índice: [Convenciones](#convenciones) · [Lote 0](#lote-0--cimientos--rebanada-vertical) · [Lote 1](#lote-1--lenguaje) · [Lote 2](#lote-2--ejecución-y-biblioteca) · [Lote 3](#lote-3--traza-y-trabajador) · [Lote 4](#lote-4--visualizador) · [Lote 5](#lote-5--aula) · [Lote 6](#lote-6--paso-detallado) · [Matriz de trazabilidad](#matriz-de-trazabilidad)
 
@@ -1148,10 +1148,10 @@ Ninguna otra tarea depende de P1/P4/P5; el resto del cambio (lotes 0–4, y 6.1�
 | Lote | Objetivo | Tareas | Sesiones | Hito / `judgment-day` |
 |---|---|---|---|---|
 | 0 | Cimientos + rebanada vertical | 19 | 2–3 | — |
-| 1 | Lenguaje | 35 | 3–4 | — |
+| 1 | Lenguaje | 36 | 3–4 | — |
 | 2 | Ejecución y biblioteca | 22 | 4–5 | `judgment-day` (fidelidad numérica) |
 | 3 | Traza y trabajador | 8 | 1–2 | — |
 | 4 | Visualizador | 16 | 3–4 | — |
 | 5 | Aula | 14 | 2–3 | `judgment-day` → validación en aula (C20) |
 | 6 | Paso Detallado | 8 | 2–3 | `judgment-day` → publicación v1 |
-| **Total** | | **122** | **17–24** | |
+| **Total** | | **123** | **17–24** | |
