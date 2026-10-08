@@ -2,7 +2,7 @@
 
 > Fase `sdd-tasks` · 2026-09-25. Fuente: `design.md` (capas, §10 orden de construcción), `specs/*/spec.md` (73 requisitos `REQ-*`, 96 escenarios), `proposal.md` (§3 MUST, §8 C1–C20, §13 Definición de Terminado, §14 P1–P5), `exploration.md` y `exploracion/01` §6–7 (18 errores conceptuales, 26 plantillas).
 >
-> **Tamaño:** `openspec/config.yaml` pide tareas de 1-2 líneas; este cambio tiene 73 requisitos verificados contra un JDK real y sub-agentes `sdd-apply` sin más contexto que este archivo. Para que cada tarea sea autosuficiente (test-first, archivos, verificación, dependencias) sin reabrir `design.md`, el documento es largo — 123 tareas en 7 lotes (101 del plan aprobado más 22 que agregó el orquestador en los lotes 0 y 1). Es la misma compensación que ya aplicó `design.md` en su nota de tamaño.
+> **Tamaño:** `openspec/config.yaml` pide tareas de 1-2 líneas; este cambio tiene 73 requisitos verificados contra un JDK real y sub-agentes `sdd-apply` sin más contexto que este archivo. Para que cada tarea sea autosuficiente (test-first, archivos, verificación, dependencias) sin reabrir `design.md`, el documento es largo — 125 tareas en 7 lotes (101 del plan aprobado más 24 que agregó el orquestador en los lotes 0 y 1). Es la misma compensación que ya aplicó `design.md` en su nota de tamaño.
 >
 > Índice: [Convenciones](#convenciones) · [Lote 0](#lote-0--cimientos--rebanada-vertical) · [Lote 1](#lote-1--lenguaje) · [Lote 2](#lote-2--ejecución-y-biblioteca) · [Lote 3](#lote-3--traza-y-trabajador) · [Lote 4](#lote-4--visualizador) · [Lote 5](#lote-5--aula) · [Lote 6](#lote-6--paso-detallado) · [Matriz de trazabilidad](#matriz-de-trazabilidad)
 
@@ -75,6 +75,8 @@
 - GREEN: `herramientas/oraculo/java/MedirPow.java` + `medir-plataforma.ts` + `.github/workflows/plataforma.yml` (matriz `ubuntu-latest`/`windows-latest`, Temurin 17.0.18, `continue-on-error`, semanal+manual). El CSV completo (`corpus/datos/pow/pares.csv`) llega en 2.1.
 - REFACTOR: ninguno relevante.
 - Verif: `herramientas/oraculo/medir-plataforma` (requiere Docker Desktop corriendo)
+
+- Seguimiento (orquestador, 2026-10-07, hallazgo de la 1.39): la lista de paquetes internos del JDK que el lanzador no carga (`paquetes-internos-del-jdk.generado.ts`) se midió en macOS arm64. Linux y Windows traen paquetes de módulos propios (`sun.awt.X11`, `sun.awt.windows`…) que aquí dan `ok`. Correr `GenerarPaquetesDeModulos` en `plataforma.yml` (ubuntu y windows x86_64) y unir las listas que difieran.
 
 **0.11 `desplegar.yml` + PWA mínima** — REQ-PLAT-008(scaffold) · depende: 0.1 — ✅ hecha (2026-09-25)
 - RED `src/interfaz/pwa/registro.test.ts` (jsdom): el *service worker* se registra y existe manifiesto con `name`/`icons`; falla sin `vite-plugin-pwa`.
@@ -1188,10 +1190,10 @@ Ninguna otra tarea depende de P1/P4/P5; el resto del cambio (lotes 0–4, y 6.1�
 | Lote | Objetivo | Tareas | Sesiones | Hito / `judgment-day` |
 |---|---|---|---|---|
 | 0 | Cimientos + rebanada vertical | 19 | 2–3 | — |
-| 1 | Lenguaje | 36 | 3–4 | — |
+| 1 | Lenguaje | 38 | 3–4 | — |
 | 2 | Ejecución y biblioteca | 22 | 4–5 | `judgment-day` (fidelidad numérica) |
 | 3 | Traza y trabajador | 8 | 1–2 | — |
 | 4 | Visualizador | 16 | 3–4 | — |
 | 5 | Aula | 14 | 2–3 | `judgment-day` → validación en aula (C20) |
 | 6 | Paso Detallado | 8 | 2–3 | `judgment-day` → publicación v1 |
-| **Total** | | **123** | **17–24** | |
+| **Total** | | **125** | **17–24** | |
