@@ -181,6 +181,16 @@ export const textosNoSoportado: { readonly [K in CodigoNoSoportado]: (datos: Dat
     'Usa un nombre de paquete propio, como `package miproyecto;`, o quita la línea `package`. ' +
     'No lo ejecuto para no enseñarte un resultado que Java nunca daría.',
 
+  // Tarea 1.39 (W-16 de la tarea 1.38): `package jdk.internal.misc;`. Javac lo compila (el paquete existe en un módulo del JDK que no lo exporta), pero el lanzador de Java no encuentra la clase y se detiene
+  // con «no se ha encontrado o cargado la clase principal» (el mensaje en español que el alumno vería en NetBeans) antes de correr una sola instrucción. La razón es otra que la del aviso de `java`: no es
+  // que el nombre esté reservado, es que el paquete ya existe dentro de una parte de Java que no se abre a programas externos. Tampoco lleva el marco de «es parte de Java, pero…» (es lo que Java mismo
+  // hace), ni afirma que Java acepte el programa (1.30: «aunque el programa se pueda compilar»). Da la salida: un nombre propio o quitar la línea.
+  'paquete-interno-del-jdk': ({ linea, nombre }) =>
+    `Tu programa declara el paquete \`${nombre}\` en la línea ${linea}, y ese paquete pertenece a una parte interna de Java (un módulo del propio JDK) que no se abre a programas externos. ` +
+    'Aunque el programa se pueda compilar, al arrancarlo Java se detiene con el error «no se ha encontrado o cargado la clase principal» antes de correr una sola instrucción. ' +
+    'Usa un nombre de paquete propio, como `package miproyecto;`, o quita la línea `package`. ' +
+    'No lo ejecuto para no enseñarte un resultado que Java nunca daría.',
+
   // Tarea 1.36 (C-5 y W-10): `while ("a" + 1.5 == "a1.5") { }`, `case "d" + 1.5:`. El valor de esa constante lo decide cómo convierte Java un decimal a texto, y eso todavía no está.
   'constante-de-texto-con-decimal-no-soportada': ({ linea }) =>
     marco(

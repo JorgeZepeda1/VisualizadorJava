@@ -73,6 +73,8 @@ const VALIDOS: ReadonlyArray<readonly [archivo: string, resultado: 'ok' | string
   ['c1-varargs-con-comentarios-alrededor-valido', 'ok'],
   // C-3 — el `package` de NetBeans y los nombres que se parecen a uno del JDK sin serlo: javac los compila. Tarea 1.38 (W-15): los que están DENTRO de `java` (`java`, `java.utils`, `java.util.foo`,
   // `java.util.Map`) son `paquete-reservado-por-java` —el lanzador real se detiene con «Prohibited package name», está en el `.errores` de cada golden—; los demás (`javax`, `Java.util`, `aula.java`…) siguen en `ok`.
+  // Tarea 1.39 (W-16): los dos paquetes de un módulo del JDK que el módulo no exporta (`jdk.internal.misc`, `sun.nio.ch`) los compila javac y el lanzador real tampoco los arranca —el `.errores` de cada golden
+  // guardaba el «no se ha encontrado o cargado la clase principal» desde la 1.36, y aquí figuraban como `ok`—: son `paquete-interno-del-jdk`.
   ['c3-paquete-miproyecto-valido', 'ok'],
   ['c3-paquete-con-subpaquetes-valido', 'ok'],
   ['c3-paquete-java-valido', 'paquete-reservado-por-java'],
@@ -81,8 +83,8 @@ const VALIDOS: ReadonlyArray<readonly [archivo: string, resultado: 'ok' | string
   ['c3-paquete-java-utils-valido', 'paquete-reservado-por-java'],
   ['c3-paquete-java-util-con-mayuscula-valido', 'ok'],
   ['c3-paquete-java-util-foo-valido', 'paquete-reservado-por-java'],
-  ['c3-paquete-interno-no-exportado-valido', 'ok'],
-  ['c3-paquete-sun-no-exportado-valido', 'ok'],
+  ['c3-paquete-interno-no-exportado-valido', 'paquete-interno-del-jdk'],
+  ['c3-paquete-sun-no-exportado-valido', 'paquete-interno-del-jdk'],
   ['c3-paquete-con-nombre-de-clase-java-util-map-valido', 'paquete-reservado-por-java'],
   // C-2/W-2a — el `\r` cierra el comentario `//` (no se traga la línea siguiente), y el programa entero con parejas de Windows, con `\r` solos o con los tres mezclados compila.
   ['c2-comentario-cerrado-por-un-retorno-de-carro-valido', 'ejecucion-no-disponible'],

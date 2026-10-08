@@ -6,17 +6,19 @@
 //   1. `corpus/experimentos/paquetes-prohibidos/` (14 programas): los que el lanzador no arranca son un AVISO (`paquete-reservado-por-java`, nunca `ok`), un error del cuerpo que javac rechaza se informa
 //      primero y con la línea de javac (como en NetBeans: primero el error de compilación, después el del lanzador) y los nombres que se parecen —`javax`, `jdk`, `sun`, `com.sun`, `Java`,
 //      `javafoo`— siguen siendo `ok`, y el golden de cada uno corre y escribe «hola».
-//   2. TODO el corpus: la regla `esPaqueteReservadoPorJava` coincide con lo que el lanzador real hizo en cada programa con paquete que javac compiló (39: 22 se negaron con la excepción, 2 no
-//      encontraron la clase —ver abajo— y 15 corrieron), en las dos direcciones, y ninguno de los que el lanzador se negó a arrancar termina en `ok`.
+//   2. TODO el corpus: la regla `esPaqueteReservadoPorJava` (salvo los paquetes de módulos, ver abajo) coincide con lo que el lanzador real hizo en cada programa con paquete que javac compiló (en la 1.38
+//      eran 39: 22 se negaron con la excepción, 2 no encontraron la clase y 15 corrieron; con los 15 programas compilados de `paquetes-de-modulos/` de la 1.39, 54), en las dos direcciones, y ninguno de los
+//      que el lanzador se negó a arrancar termina en `ok`.
 //
-// Lo que NO cubre (hallazgo W-16 de esta tarea, tarea aparte): los dos goldens `c3-paquete-interno-no-exportado-valido` (`jdk.internal.misc`) y `c3-paquete-sun-no-exportado-valido` (`sun.nio.ch`) también
-// los compila javac y el lanzador tampoco los arranca, pero con OTRO mecanismo —`ClassNotFoundException`: el paquete existe en un módulo del JDK y el cargador no busca la clase en el classpath— y para
-// otros 514 nombres de paquetes de módulos. `compilar()` los da por `ok`; aquí el barrido los ve como «el lanzador no se negó con `SecurityException`» y la regla de `java` no los toca.
+// Tarea 1.39 (W-16, la otra familia): los dos goldens `c3-paquete-interno-no-exportado-valido` (`jdk.internal.misc`) y `c3-paquete-sun-no-exportado-valido` (`sun.nio.ch`) también los compila javac y el
+// lanzador tampoco los arranca, pero con OTRO mecanismo —`ClassNotFoundException`: el paquete existe en un módulo del JDK y el cargador no busca la clase en el classpath—, para 516 nombres de paquetes de
+// módulos; los vigila `paquetes-de-modulos-del-corpus.test.ts` y la guarda de todo el corpus, `lanzador-del-corpus.test.ts`. Dos de esos 516 están DENTRO de `java` (`java.awt.peer`, `java.awt.dnd.peer`) y
+// el lanzador real NO se niega con la `SecurityException` en ellos: el módulo gana y da `ClassNotFoundException`. Por eso el barrido de abajo dice «reservado por su nombre Y no es el de un módulo».
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { compilar } from '../../src/motor/index.ts';
-import { esPaqueteReservadoPorJava } from '../../src/motor/semantica/paquete-del-lanzador.ts';
+import { esPaqueteInternoDelJdk, esPaqueteReservadoPorJava } from '../../src/motor/semantica/paquete-del-lanzador.ts';
 import { guardaDeCorpusConTablas, leerGolden } from './guarda-de-corpus-con-tablas.ts';
 
 const AVISO = 'paquete-reservado-por-java';
@@ -92,15 +94,19 @@ describe('el corpus entero — lo que el lanzador real hizo con cada programa co
   const queSeNegaron = programas.filter((programa) => SE_NEGO.test(programa.errores));
 
   it('el barrido encuentra los programas (nunca un barrido vacío): los hay que el lanzador arrancó y los hay que no', () => {
-    expect(programas.length).toBeGreaterThanOrEqual(39);
-    expect(queSeNegaron.length).toBeGreaterThanOrEqual(22);
-    expect(programas.length - queSeNegaron.length).toBeGreaterThanOrEqual(17);
+    expect(programas.length).toBeGreaterThanOrEqual(54);
+    expect(queSeNegaron.length).toBeGreaterThanOrEqual(23);
+    expect(programas.length - queSeNegaron.length).toBeGreaterThanOrEqual(31);
   });
 
-  it('el lanzador se negó con «Prohibited package name: <paquete>» SI Y SOLO SI el motor dice `esPaqueteReservadoPorJava(<paquete>)` — en los dos sentidos, para cada programa', () => {
+  // Tarea 1.39: «reservado por su nombre» no basta. Si el paquete es además el de un módulo del JDK (`java.awt.peer`), el cargador de aplicaciones lo busca en su módulo y falla ANTES de definir la clase:
+  // `ClassNotFoundException`, no `SecurityException`. La 1.38 dio el biconditional por bueno con 39 programas y ninguno era de esos dos nombres.
+  const elMotorLoReserva = (paquete: string): boolean => esPaqueteReservadoPorJava(paquete) && !esPaqueteInternoDelJdk(paquete);
+
+  it('el lanzador se negó con «Prohibited package name: <paquete>» SI Y SOLO SI el motor dice `esPaqueteReservadoPorJava(<paquete>)` y no es el de un módulo (`esPaqueteInternoDelJdk`) — en los dos sentidos, para cada programa', () => {
     const desacuerdos = programas
-      .filter((programa) => (SE_NEGO.exec(programa.errores)?.[1] ?? null) !== (esPaqueteReservadoPorJava(programa.paquete) ? programa.paquete : null))
-      .map((programa) => `${programa.programa}: paquete «${programa.paquete}», el lanzador ${SE_NEGO.test(programa.errores) ? 'se negó' : 'arrancó'} y el motor ${esPaqueteReservadoPorJava(programa.paquete) ? 'lo reserva' : 'no lo reserva'}`);
+      .filter((programa) => (SE_NEGO.exec(programa.errores)?.[1] ?? null) !== (elMotorLoReserva(programa.paquete) ? programa.paquete : null))
+      .map((programa) => `${programa.programa}: paquete «${programa.paquete}», el lanzador ${SE_NEGO.test(programa.errores) ? 'se negó' : 'arrancó'} y el motor ${elMotorLoReserva(programa.paquete) ? 'lo reserva' : 'no lo reserva'}`);
     expect(desacuerdos).toEqual([]);
   });
 

@@ -2,6 +2,8 @@
 // (y falsos aceptos hallados al revisarlos) en lo que rodea a `main`: un campo sin su `;`, un `main` con otra firma que la del lanzador, una clase sellada, un archivo sin ninguna clase,
 // un `import` de un paquete que no existe, un escape Unicode con significado sintáctico. Cada forma de `FORMAS_ESTRUCTURALES` es UNA idea de esas, con los rasgos que el programa
 // debe mostrar (para que su familia no salga «sin rasgos») y si javac acepta su sintaxis. Aquí no hay JDK: el veredicto de javac sobre ellas lo mide `generador-javac.test.ts`.
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { crearAzar } from './azar.ts';
 import { conLaForma, FASE_DE_LAS_ESTRUCTURAS, FORMAS_ESTRUCTURALES, PERIODO_DE_LAS_ESTRUCTURAS } from './estructuras.ts';
@@ -238,6 +240,32 @@ describe('FORMAS_ESTRUCTURALES — las familias de la tarea 1.36', () => {
     const propios = new Set(Array.from({ length: 300 }, (_, i) => /^package (.+);\n/.exec(texto('paquete-propio', i + 1))![1]!));
     expect(propios.size).toBeGreaterThanOrEqual(5);
     for (const nombre of propios) expect(nombre, nombre).not.toMatch(/^java(\.|$)/);
+  });
+
+  // Tarea 1.39 (W-16 de la tarea 1.38): `package jdk.internal.misc;` lo compila javac (el módulo del JDK no exporta el paquete) y el lanzador real no lo carga. La campaña no tenía ninguna forma con esos
+  // nombres. Sale de lo que midió el oráculo (`corpus/datos/api/paquetes-de-modulos.jsonl`): ningún nombre escrito a mano. OJO: el generador solo compara veredictos de COMPILACIÓN (javac compila y el
+  // motor da un aviso, no una discrepancia), así que esta forma vigila falsos rechazos y fallos internos con `package` de módulo; lo que impide el `ok` es la guarda de todo el corpus (`lanzador-del-corpus.test.ts`).
+  it('W-16: el `package` de un módulo del JDK que no lo exporta va ANTES de los imports, con el rasgo `paquete-declarado`, y sortea SOLO nombres que el oráculo midió como «no-carga» (cientos, de varios niveles)', () => {
+    expect(forma('paquete-de-modulo-no-exportado').sintaxisValida).toBe(true);
+    const delOraculo = new Set(
+      readFileSync(fileURLToPath(new URL('../../../corpus/datos/api/paquetes-de-modulos.jsonl', import.meta.url)), 'utf-8')
+        .split('\n')
+        .filter((linea) => linea !== '')
+        .map((linea) => JSON.parse(linea) as { paquete: string; desenlace: string })
+        .filter((medido) => medido.desenlace === 'no-carga')
+        .map((medido) => medido.paquete),
+    );
+    expect(delOraculo.size).toBeGreaterThan(400);
+    const nombres = new Set(Array.from({ length: 600 }, (_, i) => /^package (.+);\n/.exec(texto('paquete-de-modulo-no-exportado', i + 1))![1]!));
+    expect(nombres.size).toBeGreaterThan(150);
+    for (const nombre of nombres) expect(delOraculo, nombre).toContain(nombre);
+    const niveles = new Set([...nombres].map((nombre) => nombre.split('.').length));
+    expect(niveles.size).toBeGreaterThanOrEqual(4);
+    for (const semilla of SEMILLAS) {
+      expect(etiquetasDe(conLaForma(forma('paquete-de-modulo-no-exportado'), crearAzar(semilla), [], [])), 'paquete-de-modulo-no-exportado').toContain('paquete-declarado');
+    }
+    const lineas = renderizarPrograma(conLaForma(forma('paquete-de-modulo-no-exportado'), crearAzar(1), [], ['import java.util.Scanner;'])).split('\n');
+    expect(lineas.findIndex((l) => l.startsWith('package '))).toBeLessThan(lineas.findIndex((l) => l.startsWith('import ')));
   });
 
   it('W-1: un nombre o una palabra clave con un carácter invisible dentro; los que javac salta y los que no', () => {

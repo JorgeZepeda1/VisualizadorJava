@@ -123,6 +123,11 @@ export const CODIGOS_NO_SOPORTADO = {
   // programa (`java.lang.SecurityException: Prohibited package name: java.miapp`, `ClassLoader.preDefineClass`: el nombre de la CLASE empieza con `java.`), y `compilar()` daba `ok`: el lote 0 ejecutaba el
   // `println`. Es lo que rechaza el LANZADOR, no javac (ADR 004): lo emite `semantica/paquete-del-lanzador.ts` cuando las pasadas de javac ya aceptaron el programa.
   paqueteReservadoPorJava: 'paquete-reservado-por-java',
+  // Tarea 1.39 (W-16 de la tarea 1.38): `package jdk.internal.misc;` o `package sun.nio.ch;` — el nombre EXACTO de un paquete de un módulo del JDK que javac compila porque el módulo no lo exporta (no
+  // hay `package.in.other.module`) y que el lanzador no carga (`ClassNotFoundException`: el cargador de aplicaciones busca el paquete en su módulo y no mira el classpath). La lista sale del oráculo
+  // (`GenerarPaquetesDeModulos.java`, 516 de los 871 paquetes de los módulos del sistema del JDK 17.0.18); un subpaquete (`jdk.internal.misc.aula`) sí arranca. Es otra razón que `paqueteReservadoPorJava`
+  // (el nombre no está reservado: el paquete ya existe dentro de Java), con su propio texto. Lo emite `semantica/paquete-del-lanzador.ts`, en la misma pasada y antes que el de `java`.
+  paqueteInternoDelJdk: 'paquete-interno-del-jdk',
   // Tarea 1.36 (C-5 y W-10): una expresión constante de texto con un número decimal (`"a" + 1.5`, `"a" + 1.5 == "a1.5"`, una `final` que la guarda) usada donde Java decide con su VALOR —la condición
   // de un ciclo, la asignación definitiva, una etiqueta de `case`—. Su valor depende de cómo Java convierte un `double` a texto (`Double.toString`, lote 2): hasta entonces es un aviso, nunca una
   // respuesta inventada. Lo emiten `semantica/alcanzabilidad.ts`, `asignacion-definitiva.ts` y `switch.ts` (vía `semantica/diagnostico.ts`).
@@ -301,6 +306,8 @@ export interface DatosPorCodigoNoSoportado {
   'paquete-con-nombre-de-clase-no-soportado': { readonly nombre: string };
   /** Tarea 1.38: el nombre del paquete tal como lo lee javac, sin comentarios ni espacios (`java.miapp`). */
   'paquete-reservado-por-java': { readonly nombre: string };
+  /** Tarea 1.39: el nombre del paquete tal como lo lee javac, sin comentarios ni espacios (`jdk.internal.misc`). */
+  'paquete-interno-del-jdk': { readonly nombre: string };
   /** Tarea 1.36: solo la línea; el texto da el ejemplo (`"a" + 1.5`). */
   'constante-de-texto-con-decimal-no-soportada': Record<never, never>;
   /** Tarea 1.36: solo la línea donde el programa se pasó del tope. */

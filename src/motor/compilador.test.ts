@@ -1431,3 +1431,79 @@ describe('compilar — un paquete dentro de `java` es un aviso honesto: el lanza
     expect(resultadoDe(programa('package java.lang.Shutdown;')).problema).toMatchObject({ categoria: 'error-compilacion', codigo: 'paquete-con-nombre-de-clase' });
   });
 });
+
+// Tarea 1.39 (W-16 de la tarea 1.38): `package jdk.internal.misc;` y `package sun.nio.ch;` los compila javac y el lanzador real no los carga (`ClassNotFoundException`: el paquete es de un módulo del
+// JDK que no lo exporta); `compilar()` daba `ok` y el visualizador ejecutaba el `println`. Los nombres salen del oráculo (`GenerarPaquetesDeModulos.java`; los goldens están en
+// `corpus/experimentos/paquetes-de-modulos/` y en `bordes-del-archivo/`). Como el de la 1.38, es lo que rechaza el LANZADOR: el aviso solo sale cuando las pasadas de javac aceptaron el programa.
+describe('compilar — un paquete de un módulo del JDK que el lanzador no carga es un aviso honesto (W-16, tarea 1.39)', () => {
+  const programa = (paquete: string, cuerpoDeMain = '        System.out.println("hola");'): string =>
+    `${paquete}\n\npublic class Saludo {\n    public static void main(String[] args) {\n${cuerpoDeMain}\n    }\n}\n`;
+  const resultadoDe = (fuente: string) => {
+    const resultado = compilar(fuente);
+    if (resultado.ok) throw new Error('se esperaba ok:false');
+    return resultado;
+  };
+
+  it('«package jdk.internal.misc;» con un println: el aviso `paquete-interno-del-jdk` en la línea del `package`, con el nombre del paquete; nunca `ok`', () => {
+    const resultado = resultadoDe(programa('package jdk.internal.misc;'));
+    expect(resultado.problema).toMatchObject({ categoria: 'no-disponible', codigo: 'paquete-interno-del-jdk', datos: { nombre: 'jdk.internal.misc' }, linea: 1 });
+    expect(resultado.adicionales).toBe(0);
+  });
+
+  it.each([
+    ['sun.nio.ch', 3, '// ejercicio de la unidad 3\n\npackage sun.nio.ch;'],
+    ['com.sun.crypto.provider', 1, 'package com.sun.crypto.provider;'],
+    ['javax.swing.plaf.metal.icons', 2, '\npackage javax.swing.plaf.metal.icons;'],
+    ['java.awt.peer', 1, 'package java.awt.peer;'],
+  ])('triangulación: «%s» en la línea %i: el nombre y la línea cambian con el programa', (nombre, linea, paquete) => {
+    expect(resultadoDe(programa(paquete)).problema).toMatchObject({ categoria: 'no-disponible', codigo: 'paquete-interno-del-jdk', datos: { nombre }, linea });
+  });
+
+  it('el nombre se lee como lo lee javac: con comentarios o un salto de línea dentro es el mismo `jdk.internal.misc`', () => {
+    expect(resultadoDe(programa('package jdk /* uno */ . internal . misc;')).problema).toMatchObject({ codigo: 'paquete-interno-del-jdk', datos: { nombre: 'jdk.internal.misc' }, linea: 1 });
+    expect(resultadoDe(programa('package jdk.internal\n    .misc;')).problema).toMatchObject({ codigo: 'paquete-interno-del-jdk', datos: { nombre: 'jdk.internal.misc' }, linea: 1 });
+  });
+
+  it('el lanzador no encuentra la clase, antes de buscar `main`: una clase sin `main` tiene el aviso del paquete, no un «sin main» de arranque', () => {
+    expect(resultadoDe('package sun.nio.ch;\n\npublic class Vacia {\n}\n').problema).toMatchObject({ categoria: 'no-disponible', codigo: 'paquete-interno-del-jdk' });
+  });
+
+  it('gana a `ejecucion-no-disponible`: lo que el lote 0 todavía no sabe ejecutar da igual, el lanzador no arranca el programa', () => {
+    const cuerpo = '        Scanner teclado = new Scanner(System.in);\n        int n = teclado.nextInt();\n        System.out.println(n * 2);';
+    const conScanner = (paquete: string) => `${paquete}\n\nimport java.util.Scanner;\n\npublic class Doble {\n    public static void main(String[] args) {\n${cuerpo}\n    }\n}\n`;
+    expect(resultadoDe(conScanner('package jdk.internal.misc;')).problema).toMatchObject({ categoria: 'no-disponible', codigo: 'paquete-interno-del-jdk', linea: 1 });
+  });
+
+  it('un nombre de `java` que además es un paquete de módulo (`java.awt.peer`) es el aviso NUEVO (el lanzador da `ClassNotFoundException`), y un subpaquete suyo sigue siendo el de la 1.38 (`SecurityException`)', () => {
+    expect(resultadoDe(programa('package java.awt.dnd.peer;')).problema).toMatchObject({ categoria: 'no-disponible', codigo: 'paquete-interno-del-jdk', datos: { nombre: 'java.awt.dnd.peer' } });
+    expect(resultadoDe(programa('package java.awt.peer.aula;')).problema).toMatchObject({ categoria: 'no-disponible', codigo: 'paquete-reservado-por-java', datos: { nombre: 'java.awt.peer.aula' } });
+  });
+
+  // El orden de javac: primero sus errores (cada pasada en su turno), después el del lanzador.
+  it('un error del cuerpo (tipos, alcanzabilidad, asignación definitiva, sintaxis) se informa primero, con la línea de javac: el lanzador no cuenta si javac no compila', () => {
+    expect(resultadoDe(programa('package jdk.internal.misc;', '        int x = "hola";')).problema).toMatchObject({ categoria: 'error-compilacion', codigo: 'tipos-incompatibles-en-asignacion', linea: 5 });
+    expect(resultadoDe(programa('package sun.nio.ch;', '        return;\n        System.out.println("x");')).problema).toMatchObject({ categoria: 'error-compilacion', codigo: 'sentencia-inalcanzable', linea: 6 });
+    expect(resultadoDe(programa('package sun.nio.ch;', '        int y;\n        System.out.println(y);')).problema).toMatchObject({ categoria: 'error-compilacion', codigo: 'variable-posiblemente-no-asignada', linea: 6 });
+    expect(resultadoDe(programa('package sun.nio.ch;', '        System.out.println("hola")')).problema).toMatchObject({ categoria: 'error-compilacion', codigo: 'falta-punto-y-coma', linea: 5 });
+  });
+
+  it.each([
+    'package jdk.internal.misc.aula;',
+    'package sun.nio.ch.aula;',
+    'package com.sun.crypto.provider.aula;',
+    'package com.sun.crypto;',
+    'package jdk.incubator.vector;',
+    'package sun.jvm.hotspot.debugger;',
+    'package javax.miapp;',
+    'package miproyecto;',
+    '',
+  ])('control: «%s» lo arranca el lanzador y el programa se compila sin avisos (ok), igual que antes', (paquete) => {
+    const resultado = compilar(paquete === '' ? 'public class Saludo {\n    public static void main(String[] args) {\n        System.out.println("hola");\n    }\n}\n' : programa(paquete));
+    expect(resultado.ok, paquete).toBe(true);
+  });
+
+  it('control: los errores del propio `package` siguen siendo errores de javac, no el aviso (`java.util` lo exporta un módulo: `paquete-del-jdk`)', () => {
+    expect(resultadoDe(programa('package java.util;')).problema).toMatchObject({ categoria: 'error-compilacion', codigo: 'paquete-del-jdk' });
+    expect(resultadoDe(programa('package javax.swing;')).problema).toMatchObject({ categoria: 'error-compilacion', codigo: 'paquete-del-jdk' });
+  });
+});

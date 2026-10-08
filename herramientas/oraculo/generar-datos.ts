@@ -6,11 +6,12 @@
 // tiempo de ejecución (design.md §1.1: `motor` no importa nada fuera de sí mismo); `corpus/datos/`
 // es el conjunto crudo, auditable, del que salen esos archivos.
 import { spawn } from 'node:child_process';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { basename, dirname, resolve } from 'node:path';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { type InfoJdk, localizarJdk, verificarVersionJdk } from './jdk.ts';
-import { type ResultadoEjecucion, ejecutarPrograma } from './ejecutar.ts';
+import { FLAGS_LOCALE, LIMITE_BYTES_CAPTURA_POR_OMISION, type ResultadoEjecucion, ejecutarPrograma, ejecutarProcesoSeparado } from './ejecutar.ts';
 
 const AQUI = dirname(fileURLToPath(import.meta.url));
 const RAIZ_PROYECTO = resolve(AQUI, '..', '..');
@@ -193,6 +194,167 @@ export function analizarClasesQueChocan(salida: string): ClasesPorPaquete {
   return tabla;
 }
 
+// ---- Paquetes de los módulos del sistema y qué hace el lanzador con cada uno (GenerarPaquetesDeModulos.java, tarea 1.39) ----
+
+/**
+ * Tarea 1.39 (W-16 de la tarea 1.38): qué pasa con `package <p>; public class Saludo { … println("hola") … }` para un paquete `p` que existe en un módulo del JDK. Tres desenlaces, todos medidos
+ * con el `java` real: `javac-rechaza` (el módulo EXPORTA el paquete: «package exists in another module», un error de compilación), `arranca` (javac lo compila y el lanzador escribe «hola»: el módulo
+ * ni siquiera está en el arranque, como las incubadoras) y `no-carga` (javac lo compila porque el módulo no lo exporta, y el lanzador no encuentra la clase: `ClassNotFoundException`).
+ */
+export type DesenlaceDelPaquete = 'javac-rechaza' | 'arranca' | 'no-carga';
+
+const DESENLACES_DEL_PAQUETE: readonly DesenlaceDelPaquete[] = ['javac-rechaza', 'arranca', 'no-carga'];
+
+export interface PaqueteDeModulo {
+  readonly paquete: string;
+  readonly desenlace: DesenlaceDelPaquete;
+}
+
+/** Lo que dijo javac de un paquete en la sonda, antes de arrancarlo. */
+export interface VeredictoDeJavacDelPaquete {
+  readonly paquete: string;
+  readonly javacLoRechaza: boolean;
+}
+
+function analizarLineaDePaqueteDeModulo(linea: string): VeredictoDeJavacDelPaquete {
+  const partes = linea.split('|');
+  if (partes.length !== 2 || partes[0] === '') {
+    throw new Error(`línea de paquete mal formada (se esperaba "paquete|javac-rechaza" o "paquete|compila"): "${linea}"`);
+  }
+  const [paquete, veredicto] = partes as [string, string];
+  if (veredicto !== 'javac-rechaza' && veredicto !== 'compila') {
+    throw new Error(`veredicto de javac desconocido ("javac-rechaza"/"compila" esperado): "${veredicto}" en "${linea}"`);
+  }
+  return { paquete, javacLoRechaza: veredicto === 'javac-rechaza' };
+}
+
+/**
+ * Tarea 1.39 (pura): todo el stdout de `GenerarPaquetesDeModulos.java` (`paquete|javac-rechaza` o `paquete|compila` por paquete de los módulos del sistema, y `#total|N`) → el veredicto de javac de
+ * cada uno, en el orden de la sonda. Mismas exigencias que las demás sondas: la línea final y que N sea la cantidad de paquetes realmente leídos (una lista CORTADA se guardaría como si fuera
+ * completa), y además que no venga vacía (todo JDK trae módulos) ni con un paquete repetido.
+ */
+export function analizarSondaDePaquetesDeModulos(salida: string): VeredictoDeJavacDelPaquete[] {
+  const lineas = salida
+    .split('\n')
+    .map((linea) => linea.trim())
+    .filter((linea) => linea.length > 0);
+  const lineaTotal = lineas.find((linea) => linea.startsWith(PREFIJO_TOTAL_DE_CLASES));
+  const paquetes = lineas.filter((linea) => !linea.startsWith(PREFIJO_TOTAL_DE_CLASES)).map(analizarLineaDePaqueteDeModulo);
+  const vistos = new Set<string>();
+  for (const { paquete } of paquetes) {
+    if (vistos.has(paquete)) throw new Error(`paquete repetido: ${paquete}`);
+    vistos.add(paquete);
+  }
+  if (lineaTotal === undefined || Number(lineaTotal.slice(PREFIJO_TOTAL_DE_CLASES.length)) !== paquetes.length) {
+    throw new Error(
+      `La salida de GenerarPaquetesDeModulos.java está truncada o incompleta: se leyeron ${paquetes.length} paquetes y la línea ` +
+        `"${PREFIJO_TOTAL_DE_CLASES}N" ${lineaTotal === undefined ? 'no aparece' : `dice "${lineaTotal}"`}. Revisa el tope de captura del oráculo (LIMITE_BYTES_SONDAS).`,
+    );
+  }
+  if (paquetes.length === 0) {
+    throw new Error('La salida de GenerarPaquetesDeModulos.java no trae ningún paquete: todo JDK trae módulos, así que la sonda no midió nada.');
+  }
+  return paquetes;
+}
+
+/** Lo que el lanzador real (`java -cp <directorio> <clase>`) hizo con la clase de un paquete que javac compiló. */
+export interface CorridaDelLanzador {
+  /** El nombre completo de la clase que se le pidió al lanzador (`jdk.internal.misc.Saludo`). */
+  readonly clase: string;
+  readonly codigoSalida: number | null;
+  readonly agotoTiempo: boolean;
+  readonly stdout: string;
+  readonly stderr: string;
+}
+
+/** Lo que escribe el programa de la sonda (`Saludo`) cuando el lanzador sí lo arranca. */
+const SALIDA_DEL_SALUDO = 'hola\n';
+
+/**
+ * Tarea 1.39 (pura): ¿el lanzador arrancó la clase o no la cargó? Solo conoce los dos desenlaces que ya se vieron con el `java` 17.0.18: código 0 y «hola», o código 1, nada escrito y la
+ * `ClassNotFoundException` DE ESA CLASE (en la traza del lanzador, en español o en inglés: la JVM en frío a veces habla inglés pese a `-Duser.language=es`). Cualquier otra cosa —otra excepción,
+ * otra clase, otra salida, un tiempo agotado, una señal— LANZA con lo que pasó: clasificar a ciegas dejaría pasar (o rechazaría) un programa por un paquete mal medido.
+ */
+export function clasificarElArranqueDelPaquete(corrida: CorridaDelLanzador): 'arranca' | 'no-carga' {
+  const { clase, codigoSalida, agotoTiempo, stdout, stderr } = corrida;
+  if (agotoTiempo) {
+    throw new Error(`El lanzador no terminó a tiempo con la clase ${clase} (máquina cargada, JVM en frío o poca memoria): no se puede saber si la arranca. Vuelve a correr "npm run oraculo:datos" con la máquina más libre.`);
+  }
+  if (codigoSalida === 0 && stdout === SALIDA_DEL_SALUDO) return 'arranca';
+  const noEncontroLaClase = stderr.split('\n').some((linea) => linea.trim().endsWith(`java.lang.ClassNotFoundException: ${clase}`));
+  if (codigoSalida === 1 && stdout === '' && noEncontroLaClase) return 'no-carga';
+  throw new Error(
+    `El lanzador hizo algo que la sonda no esperaba con la clase ${clase}: código de salida ${codigoSalida}, stdout ${JSON.stringify(stdout.slice(0, 200))}, stderr ${JSON.stringify(stderr.slice(0, 400))}. ` +
+      'Solo se conocen dos desenlaces —«hola» con código 0, o ClassNotFoundException de esa clase con código 1—; clasificarlo a ciegas dejaría pasar un programa que Java no ejecuta.',
+  );
+}
+
+/**
+ * Tarea 1.39 (pura): la medición completa es utilizable. Un JDK al que le falte un desenlace entero (ningún paquete «no-carga», por ejemplo) es una sonda rota —el motor dejaría pasar
+ * `package sun.nio.ch;`—, y un paquete medido dos veces es un error de la sonda.
+ */
+export function verificarLosPaquetesDeModulos(paquetes: readonly PaqueteDeModulo[]): void {
+  const vistos = new Set<string>();
+  for (const { paquete } of paquetes) {
+    if (vistos.has(paquete)) throw new Error(`paquete repetido: ${paquete}`);
+    vistos.add(paquete);
+  }
+  for (const desenlace of DESENLACES_DEL_PAQUETE) {
+    if (!paquetes.some((medido) => medido.desenlace === desenlace)) {
+      throw new Error(`La medición de los paquetes de módulos no trae ningún paquete «${desenlace}»: la sonda midió mal y guardarla dejaría pasar programas que Java no ejecuta.`);
+    }
+  }
+}
+
+/** Cuántos `java` arranca a la vez la medición de los paquetes de módulos: pocos, para no saturar la máquina (cada uno es una JVM entera) y que el tiempo agotado de uno no dependa de los demás. */
+const CONCURRENCIA_DEL_LANZADOR = 4;
+
+/** Arranca con el `java` real la clase `Saludo` de `paquete` (ya compilada en `directorio`) y dice qué hizo el lanzador. Los mismos parámetros que el oráculo da a cada programa del corpus. */
+async function arrancarElPaquete(jdk: InfoJdk, directorio: string, paquete: string, limiteMs: number): Promise<'arranca' | 'no-carga'> {
+  const clase = `${paquete}.Saludo`;
+  const corrida = await ejecutarProcesoSeparado(jdk.rutaJava, [...FLAGS_LOCALE['es-MX'], '-cp', directorio, clase], directorio, undefined, limiteMs, LIMITE_BYTES_CAPTURA_POR_OMISION, undefined);
+  return clasificarElArranqueDelPaquete({
+    clase,
+    codigoSalida: corrida.codigo,
+    agotoTiempo: corrida.agotoTiempo,
+    stdout: corrida.stdout.toString('utf-8'),
+    stderr: corrida.stderr.toString('utf-8'),
+  });
+}
+
+/**
+ * Tarea 1.39 (W-16): mide TODOS los paquetes de los módulos del sistema con el JDK real. La sonda Java compila `package <p>; public class Saludo { … }` de todos juntos (unos segundos) y deja las clases
+ * de los que javac aceptó en un directorio temporal; aquí se arranca con el `java` real cada una (unos 650 procesos, de a `CONCURRENCIA_DEL_LANZADOR`) y se clasifica qué hizo el lanzador. `limiteMs` es
+ * el tope de CADA corrida de `java`, como en las demás sondas. Devuelve la medición ordenada por nombre; cualquier desenlace que no sea de los conocidos lanza.
+ */
+export async function medirLosPaquetesDeModulos(jdk: InfoJdk, limiteMs: number): Promise<PaqueteDeModulo[]> {
+  const directorio = mkdtempSync(join(tmpdir(), 'oraculo-paquetes-de-modulos-'));
+  try {
+    const salidaDeLaSonda = await ejecutarSondaConExports(jdk, resolve(AQUI, 'java', 'GenerarPaquetesDeModulos.java'), [], limiteMs, [directorio]);
+    const veredictos = analizarSondaDePaquetesDeModulos(salidaDeLaSonda);
+    const desenlacesDelLanzador = new Map<string, 'arranca' | 'no-carga'>();
+    const pendientes = veredictos.filter((veredicto) => !veredicto.javacLoRechaza).map((veredicto) => veredicto.paquete);
+    const trabajador = async (): Promise<void> => {
+      for (let paquete = pendientes.shift(); paquete !== undefined; paquete = pendientes.shift()) {
+        try {
+          desenlacesDelLanzador.set(paquete, await arrancarElPaquete(jdk, directorio, paquete, limiteMs));
+        } catch (causa) {
+          pendientes.length = 0; // nadie más arranca nada: ya hay un desenlace que la sonda no entiende
+          throw causa;
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: CONCURRENCIA_DEL_LANZADOR }, trabajador));
+    const medidos = veredictos
+      .map(({ paquete, javacLoRechaza }): PaqueteDeModulo => ({ paquete, desenlace: javacLoRechaza ? 'javac-rechaza' : desenlacesDelLanzador.get(paquete)! }))
+      .sort((a, b) => (a.paquete < b.paquete ? -1 : a.paquete > b.paquete ? 1 : 0));
+    verificarLosPaquetesDeModulos(medidos);
+    return medidos;
+  } finally {
+    rmSync(directorio, { recursive: true, force: true });
+  }
+}
+
 // ---- Identificadores (GenerarIdentificadores.java, tarea 1.29) ----
 
 /** Rangos de puntos de código (hexadecimal, "41-5a" o "5f", separados por comas) de un identificador. */
@@ -267,12 +429,13 @@ const EXPORTS_DE_LA_SONDA_DE_PALABRAS = ['jdk.compiler/com.sun.tools.javac.parse
 
 /**
  * Corre una sonda `.java` en modo de archivo fuente (`java Archivo.java`) con `--add-exports` (para leer APIs internas de javac) y
- * devuelve su stdout. Solo la usa la sonda de palabras reservadas: `ejecutarPrograma` (`ejecutar.ts`) compila con `javac` y corre con
- * `java -cp`, sin los `--add-exports` que necesita leer `TokenKind`. Falla con el stderr de la sonda si sale con un código distinto de 0.
+ * devuelve su stdout. La usan la sonda de palabras reservadas (`ejecutarPrograma`, `ejecutar.ts`, compila con `javac` y corre con `java -cp`, sin los `--add-exports` que necesita para leer
+ * `TokenKind`) y, desde la tarea 1.39, la de paquetes de módulos, que además recibe `argumentosDelPrograma` (el directorio donde dejar las clases) y no necesita que se corra DOS veces, como
+ * hace `ejecutarPrograma` con cada programa. Falla con el stderr de la sonda si sale con un código distinto de 0.
  */
-function ejecutarSondaConExports(jdk: InfoJdk, rutaFuente: string, exports: readonly string[], limiteMs: number): Promise<string> {
+function ejecutarSondaConExports(jdk: InfoJdk, rutaFuente: string, exports: readonly string[], limiteMs: number, argumentosDelPrograma: readonly string[] = []): Promise<string> {
   return new Promise((resolverPromesa, rechazarPromesa) => {
-    const argumentos = [...exports.flatMap((e) => ['--add-exports', e]), rutaFuente];
+    const argumentos = [...exports.flatMap((e) => ['--add-exports', e]), rutaFuente, ...argumentosDelPrograma];
     const proceso = spawn(jdk.rutaJava, argumentos, { stdio: ['ignore', 'pipe', 'pipe'] });
     let salida = '';
     let error = '';
@@ -369,6 +532,8 @@ export interface DatosJdk {
   readonly clases: ClasesPorPaquete;
   /** Tarea 1.37 (C-6): paquete → nombres planos de javac (`Shutdown`, `Thread$State`) que escritos como nombre de paquete javac rechaza: públicos o no, anidados o no. */
   readonly clasesQueChocan: ClasesPorPaquete;
+  /** Tarea 1.39 (W-16): cada paquete de los módulos del sistema, ordenado, con lo que pasa si un programa lo declara: javac lo rechaza, el lanzador lo arranca o el lanzador no lo carga. */
+  readonly paquetesDeModulos: readonly PaqueteDeModulo[];
   readonly identificadores: IdentificadoresJava;
   /** Tarea 1.33: las 54 palabras reservadas de Java 17 (`Tokens.TokenKind` de javac), en orden alfabético con `_` primero. */
   readonly palabrasReservadas: readonly string[];
@@ -433,6 +598,7 @@ export async function generarDatos(jdk: InfoJdk, opciones: OpcionesDeGenerarDato
   const supertipos = analizarSupertipos(await correrSonda('GenerarSupertipos.java'));
   const clases = analizarClasesJdk(await correrSonda('GenerarClasesJdk.java'));
   const clasesQueChocan = analizarClasesQueChocan(await correrSonda('GenerarClasesQueChocan.java'));
+  const paquetesDeModulos = await medirLosPaquetesDeModulos(jdk, limiteMs);
   const identificadores = analizarIdentificadoresJava(await correrSonda('GenerarIdentificadores.java'));
 
   const palabrasReservadas = analizarPalabrasReservadas(
@@ -470,6 +636,7 @@ export async function generarDatos(jdk: InfoJdk, opciones: OpcionesDeGenerarDato
     supertipos,
     clases,
     clasesQueChocan,
+    paquetesDeModulos,
     identificadores,
     palabrasReservadas,
     regional: {
@@ -563,6 +730,25 @@ export function renderizarClasesQueChocanTs(clases: ClasesPorPaquete): string {
   );
 }
 
+/**
+ * Tarea 1.39 (W-16): los paquetes de módulos que javac compila y el lanzador no carga (`no-carga`), una sola cadena separada por comas (un nombre de paquete nunca lleva coma). Es lo único que consulta
+ * `motor/semantica/paquete-del-lanzador.ts` (`esPaqueteInternoDelJdk`): el motor no necesita los que javac rechaza (ya son el error `paquete-del-jdk`) ni los que arrancan.
+ */
+export function renderizarPaquetesInternosDelJdkTs(paquetes: readonly PaqueteDeModulo[]): string {
+  const noCargan = paquetes.filter((medido) => medido.desenlace === 'no-carga').map((medido) => medido.paquete);
+  return (
+    `${cabecera('herramientas/oraculo/java/GenerarPaquetesDeModulos.java')}` +
+    `// Los paquetes de los módulos del sistema que javac COMPILA porque el módulo no los exporta (\`package jdk.internal.misc;\`) y que el lanzador \`java\` no carga: \`ClassNotFoundException\`.\n` +
+    `// El nombre EXACTO: un subpaquete (\`jdk.internal.misc.aula\`) sí arranca. Cada uno se arrancó con el \`java\` real; separados por comas.\n` +
+    `export const PAQUETES_INTERNOS_DEL_JDK: string = ${cadenaSimple(noCargan.join(','))};\n`
+  );
+}
+
+/** Tarea 1.39 (W-16): una línea de `corpus/datos/api/paquetes-de-modulos.jsonl` por paquete medido, con su desenlace (el dato crudo, auditable, del que sale el `.ts`). */
+export function lineasDeLosPaquetesDeModulos(paquetes: readonly PaqueteDeModulo[]): string[] {
+  return paquetes.map((medido) => JSON.stringify({ paquete: medido.paquete, desenlace: medido.desenlace }));
+}
+
 export function renderizarIdentificadoresTs(identificadores: IdentificadoresJava): string {
   return (
     `${cabecera('herramientas/oraculo/java/GenerarIdentificadores.java')}` +
@@ -648,6 +834,7 @@ export function escribirDatos(raizProyecto: string, datos: DatosJdk): void {
     `${Object.entries(datos.clasesQueChocan).map(([paquete, nombres]) => JSON.stringify({ paquete, nombres })).join('\n')}\n`,
     'utf-8',
   );
+  writeFileSync(resolve(corpusApi, 'paquetes-de-modulos.jsonl'), `${lineasDeLosPaquetesDeModulos(datos.paquetesDeModulos).join('\n')}\n`, 'utf-8');
   writeFileSync(resolve(corpusApi, 'identificadores.json'), `${JSON.stringify(datos.identificadores, null, 2)}\n`, 'utf-8');
   // Tarea 1.33: el dato crudo, auditable, que el generador diferencial (`generados/vocabulario.ts`) cruza con su propia lista.
   mkdirSync(resolve(raizProyecto, 'corpus', 'datos', 'lexico'), { recursive: true });
@@ -659,6 +846,7 @@ export function escribirDatos(raizProyecto: string, datos: DatosJdk): void {
   writeFileSync(resolve(bibliotecaDatos, 'supertipos-jdk.generado.ts'), renderizarSupertiposTs(datos.supertipos), 'utf-8');
   writeFileSync(resolve(bibliotecaDatos, 'clases-jdk.generado.ts'), renderizarClasesTs(datos.clases), 'utf-8');
   writeFileSync(resolve(bibliotecaDatos, 'clases-que-chocan.generado.ts'), renderizarClasesQueChocanTs(datos.clasesQueChocan), 'utf-8');
+  writeFileSync(resolve(bibliotecaDatos, 'paquetes-internos-del-jdk.generado.ts'), renderizarPaquetesInternosDelJdkTs(datos.paquetesDeModulos), 'utf-8');
   writeFileSync(resolve(bibliotecaDatos, 'identificadores-java.generado.ts'), renderizarIdentificadoresTs(datos.identificadores), 'utf-8');
   writeFileSync(resolve(bibliotecaDatos, 'palabras-reservadas-java.generado.ts'), renderizarPalabrasReservadasTs(datos.palabrasReservadas), 'utf-8');
   writeFileSync(resolve(bibliotecaDatos, 'regional.generado.ts'), renderizarRegionalTs(datos.regional), 'utf-8');
@@ -674,6 +862,7 @@ function main(): void {
         `Oráculo: ${datos.firmas.length} firmas, ${Object.keys(datos.supertipos).length} tipos con sus supertipos, ` +
           `${Object.values(datos.clases).reduce((total, lista) => total + lista.length, 0)} clases en ${Object.keys(datos.clases).length} paquetes, ` +
           `${Object.values(datos.clasesQueChocan).reduce((total, lista) => total + lista.length, 0)} nombres de clase que chocan como paquete, ` +
+          `${datos.paquetesDeModulos.length} paquetes de módulos (${datos.paquetesDeModulos.filter((medido) => medido.desenlace === 'no-carga').length} que el lanzador no carga), ` +
           `tablas de identificador, ${datos.palabrasReservadas.length} palabras reservadas, ` +
           `2 locales regionales, 2 marcos de arranque ` +
           `escritos en corpus/datos/** y src/motor/biblioteca/datos/*.generado.ts (${basename(RAIZ_PROYECTO)}).`,

@@ -1,0 +1,4 @@
+Saludo.java:6: error: variable y might not have been initialized
+        System.out.println(y);
+                           ^
+1 error

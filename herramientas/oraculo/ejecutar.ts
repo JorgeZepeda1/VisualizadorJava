@@ -84,7 +84,7 @@ export function derivarNombreDeArchivo(fuente: string): { paquete: string | null
   return { paquete, nombreArchivo: `${nombreClase}.java` };
 }
 
-interface ResultadoProceso {
+export interface ResultadoProceso {
   readonly stdout: Buffer;
   readonly stderr: Buffer;
   readonly codigo: number | null;
@@ -106,8 +106,8 @@ function crearAcumuladorAcotado(limiteBytes: number): { agregar: (fragmento: Buf
   };
 }
 
-/** Un proceso con stdout/stderr en pipes independientes (para goldens `.salida` / `.errores`). */
-function ejecutarProcesoSeparado(
+/** Un proceso con stdout/stderr en pipes independientes (para goldens `.salida` / `.errores`). Tarea 1.39: también lo usa la medición de los paquetes de módulos (`generar-datos.ts`). */
+export function ejecutarProcesoSeparado(
   comando: string,
   argumentos: string[],
   cwd: string,

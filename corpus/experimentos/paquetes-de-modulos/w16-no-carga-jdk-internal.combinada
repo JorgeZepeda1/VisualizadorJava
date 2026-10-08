@@ -1,0 +1,2 @@
+Error: no se ha encontrado o cargado la clase principal jdk.internal.Saludo
+Causado por: java.lang.ClassNotFoundException: jdk.internal.Saludo

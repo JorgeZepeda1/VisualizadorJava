@@ -70,6 +70,8 @@ const DATOS_DE_EJEMPLO: Record<CodigoNoSoportado, Record<string, unknown>> = {
   'paquete-con-nombre-de-clase-no-soportado': { linea: 1, nombre: 'java.util.Map' },
   // Tarea 1.38 (W-15): `package java.miapp;`, un paquete dentro de `java`: javac lo compila y el lanzador del JDK real se niega a arrancarlo.
   'paquete-reservado-por-java': { linea: 1, nombre: 'java.miapp' },
+  // Tarea 1.39 (W-16): `package jdk.internal.misc;`, el paquete de un módulo del JDK que javac compila y el lanzador no carga.
+  'paquete-interno-del-jdk': { linea: 1, nombre: 'jdk.internal.misc' },
   // Tarea 1.36 (C-5 y W-10): una constante de texto con un número decimal (`"a" + 1.5`) donde Java necesita su valor al compilar.
   'constante-de-texto-con-decimal-no-soportada': { linea: 1 },
   // Tarea 1.36 (C-4b): un programa que se pasa del tope de tamaño; el texto señala la línea donde se pasó, sin el marco de «construcción».
@@ -448,8 +450,8 @@ describe('textosNoSoportado — tarea 1.30: un aviso afirma algo de la construcc
   // Tarea 1.35: `archivo-sin-clase` tampoco usa el marco: no hay una construcción que nombrar, el archivo no tiene ninguna clase.
   // Tarea 1.36: ni `programa-demasiado-grande`: tampoco hay una construcción, es el programa entero el que se pasa del tope de tamaño.
   // Tarea 1.37: ni `programa-demasiado-anidado`: es el programa entero el que se pasa de los niveles que el visualizador sabe revisar.
-  // Tarea 1.38: ni `paquete-reservado-por-java`: no es algo que el visualizador deje de cubrir sino lo que Java mismo se niega a hacer con ese paquete.
-  const SIN_MARCO: ReadonlySet<CodigoNoSoportado> = new Set<CodigoNoSoportado>(['ejecucion-no-disponible', 'no-soportado', 'archivo-sin-clase', 'programa-demasiado-grande', 'programa-demasiado-anidado', 'paquete-reservado-por-java']);
+  // Tarea 1.38: ni `paquete-reservado-por-java`: no es algo que el visualizador deje de cubrir sino lo que Java mismo se niega a hacer con ese paquete. Tarea 1.39: ni `paquete-interno-del-jdk`, por lo mismo.
+  const SIN_MARCO: ReadonlySet<CodigoNoSoportado> = new Set<CodigoNoSoportado>(['ejecucion-no-disponible', 'no-soportado', 'archivo-sin-clase', 'programa-demasiado-grande', 'programa-demasiado-anidado', 'paquete-reservado-por-java', 'paquete-interno-del-jdk']);
   const codigosConMarco = codigos.filter((codigo) => !SIN_MARCO.has(codigo));
   const texto = (codigo: CodigoNoSoportado): string =>
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- datos varían por código, ver DATOS_DE_EJEMPLO
@@ -572,6 +574,36 @@ describe('textosNoSoportado — un paquete dentro de `java` que el lanzador no a
   it('triangulación: con otro nombre y otra línea la frase cambia con ellos (el paquete a secas también)', () => {
     expect(textosNoSoportado['paquete-reservado-por-java']({ linea: 3, nombre: 'java' })).toContain('declara el paquete `java` en la línea 3, y Java no deja ejecutar');
     expect(textosNoSoportado['paquete-reservado-por-java']({ linea: 12, nombre: 'java.util.aula' })).toContain('declara el paquete `java.util.aula` en la línea 12,');
+  });
+});
+
+// Tarea 1.39 (W-16 de la tarea 1.38): `package jdk.internal.misc;`. Javac lo compila (el paquete existe en un módulo del JDK que no lo exporta) y el lanzador del JDK real no encuentra la clase: se detiene con
+// «no se ha encontrado o cargado la clase principal» (`ClassNotFoundException`) antes de correr una sola instrucción. La razón es OTRA que la de `paquete-reservado-por-java` (no es que el nombre esté reservado: es
+// que el paquete ya existe, dentro de una parte de Java que no se abre a programas externos), así que el texto es otro. Tampoco lleva el marco de «es parte de Java, pero…» (es lo que Java mismo hace), no afirma
+// que Java acepte el programa (1.30: «aunque el programa se pueda compilar»), cita el mensaje que el alumno vería en NetBeans —en español, como lo escribe el lanzador— y da la salida.
+describe('textosNoSoportado — un paquete de un módulo de Java que el lanzador no carga (W-16, tarea 1.39)', () => {
+  it('nombra el paquete y la línea, explica que es una parte interna de Java que no se abre a programas externos, cita el error que vería en NetBeans y da la salida (un nombre propio o quitar la línea)', () => {
+    const texto = textosNoSoportado['paquete-interno-del-jdk']({ linea: 1, nombre: 'jdk.internal.misc' });
+    expect(texto).toBe(
+      'Tu programa declara el paquete `jdk.internal.misc` en la línea 1, y ese paquete pertenece a una parte interna de Java (un módulo del propio JDK) que no se abre a programas externos. ' +
+        'Aunque el programa se pueda compilar, al arrancarlo Java se detiene con el error «no se ha encontrado o cargado la clase principal» antes de correr una sola instrucción. ' +
+        'Usa un nombre de paquete propio, como `package miproyecto;`, o quita la línea `package`. ' +
+        'No lo ejecuto para no enseñarte un resultado que Java nunca daría.',
+    );
+    expect(texto).not.toMatch(/Java sí (lo |la )?(acepta|tiene)|undefined|\bpila\b|\btoken\b|reservado|Prohibited/);
+  });
+
+  it('triangulación: con otro nombre y otra línea la frase cambia con ellos', () => {
+    expect(textosNoSoportado['paquete-interno-del-jdk']({ linea: 3, nombre: 'sun.nio.ch' })).toContain('declara el paquete `sun.nio.ch` en la línea 3, y ese paquete pertenece');
+    expect(textosNoSoportado['paquete-interno-del-jdk']({ linea: 12, nombre: 'java.awt.peer' })).toContain('declara el paquete `java.awt.peer` en la línea 12,');
+  });
+
+  it('no es el texto de `paquete-reservado-por-java`: la razón es otra (no habla de «reservado» ni de «Prohibited package name»)', () => {
+    const interno = textosNoSoportado['paquete-interno-del-jdk']({ linea: 1, nombre: 'java.awt.peer' });
+    const reservado = textosNoSoportado['paquete-reservado-por-java']({ linea: 1, nombre: 'java.awt.peer' });
+    expect(interno).not.toBe(reservado);
+    expect(reservado).toContain('Prohibited package name');
+    expect(interno).not.toContain('Prohibited package name');
   });
 });
 

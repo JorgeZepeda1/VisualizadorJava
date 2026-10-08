@@ -3,6 +3,8 @@
 // mensajes exactos del lanzador (design.md §2.2) NUNCA se escriben a mano — este archivo prueba
 // primero el análisis PURO (sin JDK) del formato de línea que produce `GenerarFirmasApi.java`, y
 // después (describe aparte, JDK real) que `generarDatos` obtiene hechos reales del oráculo.
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { localizarJdk } from './jdk.ts';
 import { compilarEnLote, compilarImportaciones } from './compilar-en-lote.ts';
@@ -17,9 +19,12 @@ import {
   analizarLineaSupertipos,
   analizarPalabrasReservadas,
   analizarSalidaRegional,
+  analizarSondaDePaquetesDeModulos,
   analizarSupertipos,
   LIMITE_MS_DE_LAS_SONDAS,
+  clasificarElArranqueDelPaquete,
   generarDatos,
+  lineasDeLosPaquetesDeModulos,
   pareceLanzadorEnEspanol,
   renderizarClasesQueChocanTs,
   renderizarClasesTs,
@@ -27,14 +32,18 @@ import {
   renderizarIdentificadoresTs,
   renderizarMarcosTs,
   renderizarPalabrasReservadasTs,
+  renderizarPaquetesInternosDelJdkTs,
   renderizarRegionalTs,
   renderizarSupertiposTs,
+  verificarLosPaquetesDeModulos,
   verificarMarcoEnEspanol,
   verificarQueLaSondaTermino,
+  type PaqueteDeModulo,
 } from './generar-datos.ts';
 import { ejecutarPrograma, type ResultadoEjecucion } from './ejecutar.ts';
 import { LIMITE_DE_LAS_PRUEBAS_CON_JDK_MS } from './limites-de-pruebas.ts';
-import { esPaqueteReservadoPorJava } from '../../src/motor/semantica/paquete-del-lanzador.ts';
+import { compilar } from '../../src/motor/index.ts';
+import { esPaqueteInternoDelJdk, esPaqueteReservadoPorJava } from '../../src/motor/semantica/paquete-del-lanzador.ts';
 
 describe('analizarLineaFirma (pura) — parsea una línea de GenerarFirmasApi.java', () => {
   it('un método estático con un parámetro (Math.round(double))', () => {
@@ -223,6 +232,102 @@ describe('renderizarClasesQueChocanTs (pura) — genera el .ts compacto con cabe
     expect(texto).toContain('CLASES_QUE_CHOCAN_COMO_PAQUETE');
     expect(texto).toContain("'java.lang': 'Shutdown,Thread$State'");
     expect(texto).toContain("'java.util': 'Iterator'");
+  });
+});
+
+// Tarea 1.39 (W-16 de la tarea 1.38): un paquete que ya existe en un módulo del JDK y que javac compila porque ese módulo no lo exporta (`package jdk.internal.misc;`, `package sun.nio.ch;`) no lo
+// arranca el lanzador: `java.lang.ClassNotFoundException` (el cargador de aplicaciones busca el paquete en su módulo y no mira el classpath). La lista de esos nombres sale del oráculo, nunca a
+// mano: para CADA paquete de los módulos del sistema se compila `package <p>; public class Saludo { … }` y se arranca con el `java` real. `GenerarPaquetesDeModulos.java` compila todos de una vez
+// (javac rechaza los que otro módulo exporta) y el oráculo lanza un `java` por cada paquete que javac compiló.
+describe('analizarSondaDePaquetesDeModulos (pura) — parsea la salida de GenerarPaquetesDeModulos (tarea 1.39, W-16)', () => {
+  it('una línea "paquete|javac-rechaza" o "paquete|compila" por paquete y el total: el veredicto de javac de cada uno, en el orden de la sonda', () => {
+    const paquetes = analizarSondaDePaquetesDeModulos(['java.util|javac-rechaza', 'jdk.internal.misc|compila', 'jdk.incubator.vector|compila', '#total|3', ''].join('\n'));
+    expect(paquetes).toEqual([
+      { paquete: 'java.util', javacLoRechaza: true },
+      { paquete: 'jdk.internal.misc', javacLoRechaza: false },
+      { paquete: 'jdk.incubator.vector', javacLoRechaza: false },
+    ]);
+  });
+
+  it('una salida sin la línea "#total|N" (truncada) o con un total que no coincide lanza un error que nombra la sonda: nunca una lista a medias', () => {
+    expect(() => analizarSondaDePaquetesDeModulos('java.util|javac-rechaza\njdk.internal.misc|compila\n')).toThrow(/GenerarPaquetesDeModulos\.java está truncada/);
+    expect(() => analizarSondaDePaquetesDeModulos('java.util|javac-rechaza\njdk.internal.misc|compila\n#total|9\n')).toThrow(/GenerarPaquetesDeModulos\.java está truncada/);
+  });
+
+  it('una salida sin ningún paquete es una sonda rota (todo JDK trae módulos), y una línea mal formada, un veredicto desconocido o un paquete repetido lanzan un error claro', () => {
+    expect(() => analizarSondaDePaquetesDeModulos('#total|0\n')).toThrow(/ningún paquete/);
+    expect(() => analizarSondaDePaquetesDeModulos('java.util\n#total|1\n')).toThrow(/línea de paquete mal formada/);
+    expect(() => analizarSondaDePaquetesDeModulos('java.util|quizas\n#total|1\n')).toThrow(/veredicto de javac desconocido/);
+    expect(() => analizarSondaDePaquetesDeModulos('sun.nio.ch|compila\nsun.nio.ch|compila\n#total|2\n')).toThrow(/paquete repetido: sun\.nio\.ch/);
+  });
+});
+
+describe('clasificarElArranqueDelPaquete (pura) — qué hizo el lanzador real con la clase de un paquete que javac compiló (tarea 1.39, W-16)', () => {
+  const CLASE = 'jdk.internal.misc.Saludo';
+  const noEncontro = (clase: string) => `Error: no se ha encontrado o cargado la clase principal ${clase}\nCausado por: java.lang.ClassNotFoundException: ${clase}\n`;
+  const corrida = (cambios: Partial<Parameters<typeof clasificarElArranqueDelPaquete>[0]>) => ({ clase: CLASE, codigoSalida: 1, agotoTiempo: false, stdout: '', stderr: noEncontro(CLASE), ...cambios });
+
+  it('código 0 y «hola»: el lanzador arrancó el programa', () => {
+    expect(clasificarElArranqueDelPaquete(corrida({ codigoSalida: 0, stdout: 'hola\n', stderr: '' }))).toBe('arranca');
+  });
+
+  it('código 1, nada en la salida y `ClassNotFoundException` de ESA clase: el lanzador no la cargó — en español y también en inglés (la JVM en frío a veces habla inglés)', () => {
+    expect(clasificarElArranqueDelPaquete(corrida({}))).toBe('no-carga');
+    expect(
+      clasificarElArranqueDelPaquete(corrida({ stderr: `Error: Could not find or load main class ${CLASE}\nCaused by: java.lang.ClassNotFoundException: ${CLASE}\n` })),
+    ).toBe('no-carga');
+  });
+
+  it('cualquier OTRO desenlace lanza un error que dice la clase y lo que pasó: nunca se clasifica a ciegas (un paquete mal medido dejaría pasar —o rechazaría— un programa)', () => {
+    // el lanzador se negó por otra razón (el paquete es de `java`)
+    expect(() => clasificarElArranqueDelPaquete(corrida({ stderr: 'Error: A JNI error has occurred\nException in thread "main" java.lang.SecurityException: Prohibited package name: java.awt.peer.aula\n' }))).toThrow(
+      /jdk\.internal\.misc\.Saludo.*SecurityException/s,
+    );
+    // no encontró OTRA clase
+    expect(() => clasificarElArranqueDelPaquete(corrida({ stderr: noEncontro('sun.nio.ch.Saludo') }))).toThrow(/jdk\.internal\.misc\.Saludo/);
+    // código 0 pero con otra salida; código 1 pero con salida; el tiempo se agotó; una señal (código nulo)
+    expect(() => clasificarElArranqueDelPaquete(corrida({ codigoSalida: 0, stdout: 'adios\n', stderr: '' }))).toThrow(/jdk\.internal\.misc\.Saludo/);
+    expect(() => clasificarElArranqueDelPaquete(corrida({ stdout: 'hola\n' }))).toThrow(/jdk\.internal\.misc\.Saludo/);
+    expect(() => clasificarElArranqueDelPaquete(corrida({ agotoTiempo: true }))).toThrow(/no terminó a tiempo/);
+    expect(() => clasificarElArranqueDelPaquete(corrida({ codigoSalida: null }))).toThrow(/jdk\.internal\.misc\.Saludo/);
+  });
+});
+
+describe('verificarLosPaquetesDeModulos / renderizarPaquetesInternosDelJdkTs / lineasDeLosPaquetesDeModulos (puras) — la medición completa y sus dos archivos (tarea 1.39, W-16)', () => {
+  const medidos: readonly PaqueteDeModulo[] = [
+    { paquete: 'java.util', desenlace: 'javac-rechaza' },
+    { paquete: 'jdk.incubator.vector', desenlace: 'arranca' },
+    { paquete: 'jdk.internal.misc', desenlace: 'no-carga' },
+    { paquete: 'sun.nio.ch', desenlace: 'no-carga' },
+  ];
+
+  it('una medición con los tres desenlaces y sin paquetes repetidos es válida', () => {
+    expect(() => verificarLosPaquetesDeModulos(medidos)).not.toThrow();
+  });
+
+  it('a la medición le falta un desenlace entero, o un paquete se repite: lanza (un JDK sin ningún paquete que «no carga» es una sonda rota, y guardarla dejaría pasar `package sun.nio.ch;`)', () => {
+    expect(() => verificarLosPaquetesDeModulos(medidos.filter((p) => p.desenlace !== 'no-carga'))).toThrow(/ningún paquete «no-carga»/);
+    expect(() => verificarLosPaquetesDeModulos(medidos.filter((p) => p.desenlace !== 'javac-rechaza'))).toThrow(/ningún paquete «javac-rechaza»/);
+    expect(() => verificarLosPaquetesDeModulos(medidos.filter((p) => p.desenlace !== 'arranca'))).toThrow(/ningún paquete «arranca»/);
+    expect(() => verificarLosPaquetesDeModulos([...medidos, { paquete: 'sun.nio.ch', desenlace: 'no-carga' }])).toThrow(/paquete repetido: sun\.nio\.ch/);
+  });
+
+  it('el .ts generado guarda SOLO los que «no cargan» (el motor no necesita los demás), en una sola cadena separada por comas, con la cabecera «no editar» y la sonda de origen', () => {
+    const texto = renderizarPaquetesInternosDelJdkTs(medidos);
+    expect(texto).toContain('generado');
+    expect(texto).toContain('no editar');
+    expect(texto).toContain('GenerarPaquetesDeModulos.java');
+    expect(texto).toContain("export const PAQUETES_INTERNOS_DEL_JDK: string = 'jdk.internal.misc,sun.nio.ch';");
+    expect(texto).not.toContain('jdk.incubator.vector');
+  });
+
+  it('el .jsonl crudo guarda TODOS los paquetes medidos, una línea por paquete, con su desenlace', () => {
+    expect(lineasDeLosPaquetesDeModulos(medidos)).toEqual([
+      '{"paquete":"java.util","desenlace":"javac-rechaza"}',
+      '{"paquete":"jdk.incubator.vector","desenlace":"arranca"}',
+      '{"paquete":"jdk.internal.misc","desenlace":"no-carga"}',
+      '{"paquete":"sun.nio.ch","desenlace":"no-carga"}',
+    ]);
   });
 });
 
@@ -526,6 +631,7 @@ describe('generarDatos — integración contra el JDK real (Temurin 17.0.18)', (
     expect(segunda.firmas).toEqual(datos.firmas);
     expect(segunda.clases).toEqual(datos.clases);
     expect(segunda.supertipos).toEqual(datos.supertipos);
+    expect(segunda.paquetesDeModulos).toEqual(datos.paquetesDeModulos);
     const deRandom = datos.firmas.filter((f) => f.clase === 'Random' && f.genero === 'metodo').map((f) => f.nombre);
     expect(deRandom).toEqual([...deRandom].sort());
   }, LIMITE_DE_LAS_PRUEBAS_CON_JDK_MS);
@@ -647,6 +753,48 @@ describe('generarDatos — integración contra el JDK real (Temurin 17.0.18)', (
       }),
     );
     expect(desacuerdos).toEqual([]);
+  }, LIMITE_DE_LAS_PRUEBAS_CON_JDK_MS);
+
+  // Tarea 1.39 (W-16 de la tarea 1.38): los paquetes de los módulos del sistema y qué pasa con cada uno. `GenerarPaquetesDeModulos.java` compila `package <p>; public class Saludo { … }` de todos juntos
+  // y el oráculo arranca con el `java` real los que javac compiló. Hechos que ya se habían visto uno por uno con el `java` 17.0.18 (herramientas de la 1.38: 871 paquetes, 226 que javac rechaza,
+  // 645 que compila, de ellos 516 que el lanzador no carga y 129 que arranca): el JDK exporta `java.util` y `javax.swing` (javac: «package exists in another module»), no exporta `jdk.internal.misc`
+  // ni `sun.nio.ch` (javac compila y el lanzador no encuentra la clase), y los módulos que ni siquiera están en el arranque (`jdk.incubator.vector`, `jdk.hotspot.agent`) no estorban.
+  it('paquetes de módulos (tarea 1.39): `jdk.internal.misc`, `sun.nio.ch`, `java.awt.peer` y otros NO cargan; `java.util` y `javax.swing` los rechaza javac; `jdk.incubator.vector` arranca', () => {
+    const desenlaceDe = new Map(datos.paquetesDeModulos.map((medido) => [medido.paquete, medido.desenlace]));
+    for (const nombre of ['jdk.internal.misc', 'sun.nio.ch', 'com.sun.crypto.provider', 'sun.security.provider', 'java.awt.peer', 'java.awt.dnd.peer', 'javax.swing.plaf.metal.icons']) {
+      expect(desenlaceDe.get(nombre), nombre).toBe('no-carga');
+    }
+    for (const nombre of ['java.lang', 'java.util', 'java.io', 'java.awt', 'javax.swing']) expect(desenlaceDe.get(nombre), nombre).toBe('javac-rechaza');
+    for (const nombre of ['jdk.incubator.vector', 'sun.jvm.hotspot', 'sun.jvm.hotspot.debugger', 'com.sun.java.swing.action']) expect(desenlaceDe.get(nombre), nombre).toBe('arranca');
+    // lo que NO es el nombre exacto de un paquete de un módulo no se mide (el lanzador lo arranca): subpaquetes de uno que no carga, y los nombres propios
+    for (const nombre of ['jdk.internal.misc.aula', 'sun.nio.ch.aula', 'com.sun.crypto.provider.aula', 'miproyecto', 'javax.miapp', 'java']) expect(desenlaceDe.has(nombre), nombre).toBe(false);
+    const cuantos = (desenlace: string) => datos.paquetesDeModulos.filter((medido) => medido.desenlace === desenlace).length;
+    expect(cuantos('javac-rechaza')).toBeGreaterThan(200);
+    expect(cuantos('no-carga')).toBeGreaterThan(400);
+    expect(cuantos('arranca')).toBeGreaterThan(100);
+  });
+
+  it('paquetes de módulos (tarea 1.39): los que javac rechaza son EXACTAMENTE los paquetes del catálogo de clases (los que el JDK exporta), y la medición viene ordenada y sin repetidos', () => {
+    const rechazados = datos.paquetesDeModulos.filter((medido) => medido.desenlace === 'javac-rechaza').map((medido) => medido.paquete);
+    expect(rechazados).toEqual(Object.keys(datos.clases).sort());
+    const nombres = datos.paquetesDeModulos.map((medido) => medido.paquete);
+    expect(nombres).toEqual([...nombres].sort());
+    expect(new Set(nombres).size).toBe(nombres.length);
+  });
+
+  it('paquetes de módulos (tarea 1.39): javac real (cada fuente por separado, una sola JVM) rechaza CADA paquete «javac-rechaza» con `package.in.other.module` y compila todos los demás', async () => {
+    const respuestas = await compilarEnLote(
+      jdk,
+      datos.paquetesDeModulos.map((medido) => ({ id: medido.paquete, fuente: fuenteDelPaquete(medido.paquete) })),
+    );
+    const desacuerdos = datos.paquetesDeModulos
+      .filter((medido) => {
+        const respuesta = respuestas.get(medido.paquete);
+        return medido.desenlace === 'javac-rechaza' ? respuesta?.codigoJavac !== 'compiler.err.package.in.other.module' : respuesta?.compila !== true;
+      })
+      .map((medido) => `${medido.paquete} (${medido.desenlace}): ${JSON.stringify(respuestas.get(medido.paquete))}`);
+    expect(desacuerdos).toEqual([]);
+    expect(respuestas.size).toBe(datos.paquetesDeModulos.length);
   }, LIMITE_DE_LAS_PRUEBAS_CON_JDK_MS);
 
   // Tarea 1.29 (causa 8): los rangos de identificador salen del JDK y se verifican contra javac por los
@@ -866,11 +1014,12 @@ describe('java 17 real — el lanzador no arranca un programa cuyo paquete es `j
   );
 
   it(
-    'hallazgo W-16 (fuera de alcance de la 1.38, tarea aparte): un paquete que ya existe en un módulo del JDK que javac compila TAMPOCO lo arranca el lanzador, pero con otro mecanismo (ClassNotFoundException, no SecurityException)',
+    'hallazgo W-16 (lo cierra la tarea 1.39): un paquete que ya existe en un módulo del JDK que javac compila TAMPOCO lo arranca el lanzador, pero con otro mecanismo (ClassNotFoundException, no SecurityException)',
     async () => {
       // El cargador de clases encuentra el paquete en un módulo del sistema (`java.base`…) y no busca la clase en el classpath. Solo importa el nombre EXACTO del paquete (`sun.nio.ch.aula` corre,
       // arriba). De los 871 paquetes de los módulos del sistema, 226 los rechaza javac (`paquete-del-jdk`), 645 los compila y de esos 516 el lanzador no encuentra la clase principal (129 corren:
-      // los módulos que no están en el arranque, como las incubadoras). `compilar()` los da por `ok` todavía; esta prueba solo FIJA el hecho del JDK para quien tome esa tarea.
+      // los módulos que no están en el arranque, como las incubadoras). Los dos casos con nombre de abajo son los de la 1.38 (los de los goldens `c3-*`); la lista completa de la 1.39 sale de
+      // `GenerarPaquetesDeModulos.java` y se vuelve a medir, con una muestra repartida, en la batería de más abajo. La regla de `java` no los toca (y sí la de módulos).
       const medidos = await medirElLanzador(['jdk.internal.misc', 'sun.nio.ch']);
       for (const [nombre, resultado] of medidos) {
         expect(resultado.compilo, `${nombre}: javac lo compila (no es un paquete que el JDK exporte)`).toBe(true);
@@ -878,7 +1027,100 @@ describe('java 17 real — el lanzador no arranca un programa cuyo paquete es `j
         expect(resultado.stdout.toString('utf-8'), nombre).toBe('');
         expect(resultado.stderr.toString('utf-8'), nombre).toContain(`java.lang.ClassNotFoundException: ${nombre}.Saludo`);
         expect(resultado.stderr.toString('utf-8'), nombre).not.toMatch(/SecurityException/);
-        expect(esPaqueteReservadoPorJava(nombre), `${nombre}: la regla de la 1.38 es solo la de \`java\``).toBe(false);
+        expect(esPaqueteReservadoPorJava(nombre), `${nombre}: la regla de \`java\` no los toca`).toBe(false);
+        expect(esPaqueteInternoDelJdk(nombre), `${nombre}: la regla de los paquetes de módulos sí`).toBe(true);
+      }
+    },
+    LIMITE_DE_LAS_PRUEBAS_CON_JDK_MS,
+  );
+});
+
+// Tarea 1.39 (W-16 de la tarea 1.38): la medición completa de los paquetes de módulos (`corpus/datos/api/paquetes-de-modulos.jsonl`, la que acaba de hacer `generarDatos` y se guardó con `npm run oraculo:datos`)
+// contra el flujo COMPLETO del oráculo —`javac` por línea de comandos y `java` real, uno por uno, el mismo que escribe los goldens del corpus—, que es otro camino que el de la sonda (javax.tools, de
+// todos juntos): una muestra repartida de cada desenlace, más los casos con nombre, y siempre el motor de acuerdo con el lanzador real. Vive también al final por la misma razón que la 1.38: una JVM a la vez.
+const leerLosPaquetesDeModulosGuardados = (): { paquete: string; desenlace: string }[] =>
+  readFileSync(fileURLToPath(new URL('../../corpus/datos/api/paquetes-de-modulos.jsonl', import.meta.url)), 'utf-8')
+    .split('\n')
+    .filter((linea) => linea !== '')
+    .map((linea) => JSON.parse(linea) as { paquete: string; desenlace: string });
+
+/** Una muestra repartida de toda la lista (siempre el primero y el último), sin azar: el mismo `n` da los mismos nombres. */
+const repartidos = (lista: readonly string[], cuantos: number): string[] => {
+  const paso = Math.max(1, Math.floor(lista.length / cuantos));
+  return [...new Set([...lista.filter((_nombre, indice) => indice % paso === 0), ...lista.slice(-1)])];
+};
+
+describe('java 17 real — el lanzador no carga el paquete de un módulo del JDK que javac compila, y el motor dice lo mismo (tarea 1.39, W-16)', () => {
+  it(
+    'una muestra repartida de cada desenlace: los «no-carga» dan `ClassNotFoundException`, los «arranca» escriben «hola», los «javac-rechaza» no compilan; `esPaqueteInternoDelJdk` y `compilar()` coinciden con el lanzador real en cada uno',
+    async () => {
+      const medidos = leerLosPaquetesDeModulosGuardados();
+      const de = (desenlace: string) => medidos.filter((medido) => medido.desenlace === desenlace).map((medido) => medido.paquete);
+      const noCargan = [...new Set([...repartidos(de('no-carga'), 14), 'jdk.internal.misc', 'sun.nio.ch', 'java.awt.peer', 'java.awt.dnd.peer', 'javax.swing.plaf.metal.icons'])];
+      const arrancan = repartidos(de('arranca'), 8);
+      const javacRechaza = [...new Set([...repartidos(de('javac-rechaza'), 4), 'java.util'])];
+      expect(noCargan.every((nombre) => de('no-carga').includes(nombre)), 'los casos con nombre están en la lista guardada').toBe(true);
+      expect(arrancan.length).toBeGreaterThanOrEqual(8);
+
+      const medidosPorElLanzador = await medirElLanzador([...noCargan, ...arrancan, ...javacRechaza]);
+      for (const nombre of noCargan) {
+        const resultado = medidosPorElLanzador.get(nombre)!;
+        expect(resultado.compilo, `${nombre}: javac lo compila (el módulo no lo exporta)`).toBe(true);
+        expect(resultado.codigoSalida, nombre).toBe(1);
+        expect(resultado.stdout.toString('utf-8'), `${nombre}: no corre ni una línea`).toBe('');
+        expect(resultado.stderr.toString('utf-8'), nombre).toContain(`java.lang.ClassNotFoundException: ${nombre}.Saludo`);
+        expect(resultado.stderr.toString('utf-8'), nombre).not.toMatch(/SecurityException/);
+        expect(esPaqueteInternoDelJdk(nombre), `${nombre}: el lanzador real no lo carga y el motor no lo marca`).toBe(true);
+        const compilacion = compilar(fuenteDelPaquete(nombre));
+        expect(compilacion.ok, `${nombre}: el motor lo da por bueno y el lanzador real no lo arranca`).toBe(false);
+        expect(!compilacion.ok && compilacion.problema.codigo, nombre).toBe('paquete-interno-del-jdk');
+      }
+      for (const nombre of arrancan) {
+        const resultado = medidosPorElLanzador.get(nombre)!;
+        expect(resultado.compilo, `${nombre}: javac lo compila`).toBe(true);
+        expect(resultado.stdout.toString('utf-8'), `${nombre}: el lanzador real lo arranca y escribe «hola»`).toBe('hola\n');
+        expect(resultado.codigoSalida, nombre).toBe(0);
+        expect(esPaqueteInternoDelJdk(nombre), `${nombre}: el lanzador real lo arranca y el motor lo marca`).toBe(false);
+        expect(compilar(fuenteDelPaquete(nombre)).ok, `${nombre}: el motor no debe rechazar lo que el lanzador real arranca`).toBe(true);
+      }
+      for (const nombre of javacRechaza) {
+        const resultado = medidosPorElLanzador.get(nombre)!;
+        expect(resultado.compilo, `${nombre}: javac lo rechaza («package exists in another module»)`).toBe(false);
+        expect(resultado.erroresCompilacion.toString('utf-8'), nombre).toContain('package exists in another module');
+        const compilacion = compilar(fuenteDelPaquete(nombre));
+        expect(!compilacion.ok && compilacion.problema.codigo, nombre).toBe('paquete-del-jdk');
+      }
+    },
+    LIMITE_DE_LAS_PRUEBAS_CON_JDK_MS,
+  );
+
+  it(
+    'solo cuenta el nombre EXACTO del paquete: un subpaquete de uno que no carga SÍ arranca (`jdk.internal.misc.aula` escribe «hola»), y el paquete de arriba cuando no es de módulo (`com.sun.crypto`), salvo dentro de `java` (`java.awt.peer.aula`: «Prohibited package name»)',
+    async () => {
+      const subpaquetes = ['jdk.internal.misc', 'sun.nio.ch', 'com.sun.crypto.provider', 'javax.swing.plaf.metal.icons', 'org.jcp.xml.dsig.internal', 'java.awt.peer', 'java.awt.dnd.peer'].map((nombre) => `${nombre}.aula`);
+      // el paquete de ARRIBA de uno que no carga: `com.sun.crypto` y `org.jcp.xml.dsig` no son paquetes de ningún módulo (`jdk.internal` y `sun.nio`, en cambio, sí lo son y NO cargan: están en la lista)
+      const deArriba = ['com.sun.crypto', 'org.jcp.xml.dsig'];
+      const medidosPorElLanzador = await medirElLanzador([...subpaquetes, ...deArriba]);
+      for (const nombre of deArriba) {
+        const resultado = medidosPorElLanzador.get(nombre)!;
+        expect(resultado.compilo, `${nombre}: javac lo compila`).toBe(true);
+        expect(resultado.stdout.toString('utf-8'), `${nombre}: el lanzador real lo arranca y escribe «hola»`).toBe('hola\n');
+        expect(esPaqueteInternoDelJdk(nombre), `${nombre}: no es el nombre de un paquete de un módulo`).toBe(false);
+        expect(compilar(fuenteDelPaquete(nombre)).ok, `${nombre}: el motor no debe rechazar lo que el lanzador real arranca`).toBe(true);
+      }
+      for (const nombre of subpaquetes) {
+        const resultado = medidosPorElLanzador.get(nombre)!;
+        expect(resultado.compilo, `${nombre}: javac lo compila`).toBe(true);
+        expect(esPaqueteInternoDelJdk(nombre), `${nombre}: no es el nombre de un paquete de un módulo`).toBe(false);
+        if (nombre.startsWith('java.')) {
+          expect(resultado.stderr.toString('utf-8'), nombre).toMatch(seNego(nombre));
+          expect(resultado.codigoSalida, nombre).toBe(1);
+          expect(esPaqueteReservadoPorJava(nombre), nombre).toBe(true);
+        } else {
+          expect(resultado.stdout.toString('utf-8'), `${nombre}: el lanzador real lo arranca y escribe «hola»`).toBe('hola\n');
+          expect(resultado.codigoSalida, nombre).toBe(0);
+          expect(compilar(fuenteDelPaquete(nombre)).ok, `${nombre}: el motor no debe rechazar lo que el lanzador real arranca`).toBe(true);
+        }
       }
     },
     LIMITE_DE_LAS_PRUEBAS_CON_JDK_MS,

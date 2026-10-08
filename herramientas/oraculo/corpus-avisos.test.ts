@@ -26,7 +26,7 @@ describe('corpus/compilacion/avisos — cada muestra de "no soportado" compila c
   const archivos = archivosJava(RUTA_AVISOS);
 
   it('el corpus de avisos no está vacío (guarda contra un directorio mal armado)', () => {
-    expect(archivos.length).toBeGreaterThanOrEqual(73); // 61 + las 6 de la tarea 1.35 + las 4 de la 1.36 + la de la 1.37 + la de la 1.38
+    expect(archivos.length).toBeGreaterThanOrEqual(74); // 61 + las 6 de la tarea 1.35 + las 4 de la 1.36 + la de la 1.37 + la de la 1.38 + la de la 1.39
   });
 
   it.each(archivos)('%s: compila limpio con javac 17 real (es Java válido fuera del subconjunto)', async (nombre) => {

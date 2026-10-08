@@ -8,6 +8,7 @@
 // `FASE + PERIODO · i`, así que cada forma aparece cada `PERIODO · FORMAS.length` programas con cualquier semilla y no depende de la suerte. El residuo 5 módulo 12 nunca coincide
 // con los de los casts (0 módulo 8), los literales (3 módulo 16) ni las clases con nombre del JDK (7 módulo 20): los cuatro son distintos módulo 4.
 import type { Azar } from './azar.ts';
+import { paquetesDeModulosConDesenlace } from './paquetes-de-modulos.ts';
 import {
   CLASE_POR_OMISION,
   declaracion,
@@ -337,11 +338,17 @@ const PAQUETES_CON_NOMBRE_DE_CLASE: readonly string[] = [
 const paquete = (nombreDeLaForma: string, nombres: readonly string[]): FormaEstructural =>
   forma(nombreDeLaForma, ['paquete-declarado'], (azar) => ({ imports: [`package ${azar.elegir(nombres)};`] }));
 
+// Tarea 1.39 (W-16): el nombre EXACTO de un paquete de un módulo del JDK que el módulo no exporta (`jdk.internal.misc`, `sun.nio.ch`). javac lo compila y el lanzador real no carga la clase
+// (`ClassNotFoundException`), y el compilador lo avisa en vez de darlo por bueno. Los nombres salen del oráculo (`paquetes-de-modulos.ts`), no de esta lista. Como el generador solo compara veredictos de
+// COMPILACIÓN, esta forma vigila falsos rechazos y fallos internos con ese `package`; que el compilador no lo dé por `ok` lo impide la guarda de todo el corpus.
+const paqueteDeModuloNoExportado: FormaEstructural = forma('paquete-de-modulo-no-exportado', ['paquete-declarado'], (azar) => ({ imports: [`package ${azar.elegir(paquetesDeModulosConDesenlace('no-carga'))};`] }));
+
 const PAQUETES: readonly FormaEstructural[] = [
   paquete('paquete-del-jdk', PAQUETES_DEL_JDK),
   paquete('paquete-propio', PAQUETES_PROPIOS),
   paquete('paquete-con-nombre-de-clase', PAQUETES_CON_NOMBRE_DE_CLASE),
   paquete('paquete-dentro-de-java', PAQUETES_DENTRO_DE_JAVA),
+  paqueteDeModuloNoExportado,
 ];
 
 // W-1: un carácter invisible (de los que `Character.isIdentifierIgnorable` da por ignorables) DENTRO de un nombre o de una palabra clave: javac lo salta, así que `in\u200bt` es `int` y `a\u200bb` es `ab`.
