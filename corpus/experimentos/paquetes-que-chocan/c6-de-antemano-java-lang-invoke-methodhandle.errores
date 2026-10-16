@@ -1,0 +1,4 @@
+Saludo.java:1: error: package java.lang.invoke.MethodHandle clashes with class of same name
+package java.lang.invoke.MethodHandle;
+^
+1 error

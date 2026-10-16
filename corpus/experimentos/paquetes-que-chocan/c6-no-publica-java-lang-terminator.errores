@@ -1,0 +1,4 @@
+Saludo.java:1: error: package java.lang.Terminator clashes with class of same name
+package java.lang.Terminator;
+^
+1 error

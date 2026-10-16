@@ -1,0 +1,395 @@
+// Catálogo es-MX — mensajes de "No disponible en el visualizador" (ADR 015; tarea 1.24; ADR 003;
+// REQ-SUB-006/REQ-SUB-007; proposal.md §2.3 "Cómo se comporta el aviso"). El motor SOLO emite
+// `codigo` (unión cerrada `CodigoNoSoportado`, `src/motor/no-soportado.ts`) + los datos mínimos que
+// ya calcula `compilador.ts` (la línea); este catálogo es el ÚNICO lugar que arma la frase en
+// español de México — TypeScript exige, por el tipo `Record<CodigoNoSoportado, ...>`, que existan
+// TODAS las claves de la unión cerrada, así que agregar un código nuevo sin darle texto aquí deja
+// de compilar (mismo mecanismo que `textosProblemas` ya usa para `CodigoProblema` desde 1.11).
+//
+// Formato (REQ-SUB-006, proposal.md §2.3): cada mensaje señala la línea y la construcción, dice que
+// la construcción es parte de Java, aclara que el visualizador cubre las unidades 3 a 7 y admite que
+// por eso no puede revisar si esa parte está bien escrita, y ofrece una alternativa dentro de alcance
+// cuando existe una razonable — nunca inventa una si no la hay (D2). Tono (exploracion/01 §7,
+// revisado por el PO): tuteo, amable, preciso, sin infantilizar; nunca deja al alumno sin una pista
+// de qué hacer cuando hay una.
+//
+// Tarea 1.30 (decisión explícita del PO, 2026-09-29): un aviso afirma algo de la CONSTRUCCIÓN («es
+// parte de Java»), NUNCA del PROGRAMA. Reconocer una construcción fuera del subconjunto no permite
+// revisar la validez de lo que queda dentro de ella, y hay programas que javac rechaza y que llegan
+// aquí (un método propio sin `return`, `byte c = a + b;`, un `break` a una etiqueta que no existe…):
+// decirles «Java sí lo acepta» era FALSO (D2). Tarea 1.34 (decisión del PO, 2026-10-02): ya no hay excepción — ni
+// `ejecucion-no-disponible`, que solo se emite DESPUÉS de que todas las pasadas de compilación aceptaron el programa,
+// lo afirma: dice lo que SE REVISÓ («pasó todas mis revisiones»). Lo fijan
+// `pruebas/compilacion/programas-invalidos.test.ts` (corpus real, veredictos de javac) y `no-soportado.test.ts`.
+//
+// Solo puede importar tipos de `motor/vista` (matriz de capas, herramientas/eslint/matriz-capas.ts).
+import type { CodigoNoSoportado, DatosPorCodigoNoSoportado } from '../../motor/vista.ts';
+
+interface DatosLinea {
+  readonly linea: number;
+}
+
+// El mapeo código → forma de sus datos: línea (siempre, la calcula `compilador.ts`) MÁS los datos
+// EXTRA que cada código exige. Tarea 1.25: la forma extra YA NO se duplica aquí — se deriva de
+// `DatosPorCodigoNoSoportado` (motor/no-soportado.ts vía motor/vista.ts), la MISMA forma que el
+// motor ya exige a cada emisor (léxico/sintaxis/expresiones/atribución de biblioteca). Antes de esta
+// tarea esta interfaz repetía la forma de cada código A MANO, sin que nada obligara al MOTOR a
+// mandar esos datos de verdad — 5 códigos reales lo incumplían en silencio (el alumno veía
+// "undefined" en vez del literal/tipo/miembro real, ver `motor/no-soportado.ts` para el hallazgo
+// completo). Si `CodigoNoSoportado` agrega o quita un código sin actualizar `DatosPorCodigoNoSoportado`
+// (motor), `textosNoSoportado` de abajo deja de compilar — mecanismo sin cambios desde la tarea 1.24.
+//
+// Tarea 1.28: es un alias GENÉRICO (`DatosDe<K>`) y no un mapa `{ [K in …]: … }[K]`, a propósito: con
+// el alias, indexar el catálogo con un código genérico (`textosNoSoportado[codigo]`, en
+// `presentacion/texto-del-problema.ts`) deja el parámetro como `DatosLinea &
+// DatosPorCodigoNoSoportado[C]` y TypeScript correlaciona el código con SUS datos sin ningún cast;
+// con el mapa, el parámetro quedaba como un acceso indexado sin resolver y exigía la intersección de
+// los datos de los 45 códigos.
+type DatosDe<K extends CodigoNoSoportado> = DatosLinea & DatosPorCodigoNoSoportado[K];
+
+// Tarea 1.30: el tipo del subconjunto que más se parece a cada uno de los tres que Java tiene y el
+// visualizador no simula (`float` → `double`; `byte` y `short` → `int`). Tipado por el MISMO `tipo` que el
+// motor manda en los datos del aviso: agregar un tipo allá deja este mapa sin su entrada y `npm run tipos` falla.
+const TIPO_DEL_SUBCONJUNTO_EN_SU_LUGAR: Record<DatosPorCodigoNoSoportado['tipo-primitivo-no-soportado']['tipo'], 'int' | 'double'> = {
+  float: 'double',
+  byte: 'int',
+  short: 'int',
+};
+
+// Marco común a (casi) todos los avisos (REQ-SUB-006): "Tu programa usa QUÉ en la línea N. Es parte de
+// Java, pero este visualizador cubre las unidades 3 a 7 y todavía TODAVÍA, así que no puedo revisar si
+// esa parte está bien escrita.[ ALTERNATIVA] No lo ejecuto para no enseñarte un resultado que podría no
+// ser el de Java." Tarea 1.30 (frase aprobada por el PO el 2026-09-29): "Es parte de Java" afirma la
+// CONSTRUCCIÓN (sujeto: QUÉ, que la oración anterior acaba de nombrar), nunca el programa entero, y "no
+// puedo revisar si esa parte está bien escrita" admite lo que el reconocimiento de lo no soportado no
+// ve. Antes decía "Java sí lo acepta", que para un programa que javac rechaza era FALSO (D2). El
+// ejemplo literal del escenario de arreglos vive en no-soportado.test.ts. Tarea 1.34: ya ningún texto de este catálogo afirma que Java acepta el programa (tampoco
+// `ejecucion-no-disponible`, ver abajo).
+function marco(linea: number, que: string, todavia: string, alternativa?: string): string {
+  const sufijoAlternativa = alternativa === undefined ? '' : ` ${alternativa}`;
+  return (
+    `Tu programa usa ${que} en la línea ${linea}. Es parte de Java, pero este visualizador cubre ` +
+    `las unidades 3 a 7 y todavía ${todavia}, así que no puedo revisar si esa parte está bien ` +
+    `escrita.${sufijoAlternativa} No lo ejecuto para no enseñarte un resultado que podría no ser el de Java.`
+  );
+}
+
+// Tarea 1.34: la salida que SÍ existe para los tres flujos estándar (`undefined`: ninguna, nunca una inventada).
+function alternativaParaUnValorSinTipo(valor: string | null): string | undefined {
+  if (valor === 'System.in') return 'Para leer lo que escribe el usuario, crea un `Scanner` con `new Scanner(System.in)` y usa sus métodos, como `nextInt()`.';
+  if (valor === 'System.out' || valor === 'System.err') return `Para mostrar algo en pantalla, usa \`${valor}.println(...)\`.`;
+  return undefined;
+}
+
+export const textosNoSoportado: { readonly [K in CodigoNoSoportado]: (datos: DatosDe<K>) => string } = {
+  'otro-tipo-de-nivel-superior-no-soportado': ({ linea }) =>
+    marco(linea, 'otra clase, interfaz, enum o record además de la principal', 'no ejecuta programas con más de un tipo de nivel superior'),
+
+  'miembro-de-clase-no-soportado': ({ linea }) =>
+    marco(
+      linea,
+      'un miembro propio de la clase (un campo, un constructor, un método distinto de `main`, una clase interna o un bloque inicializador)',
+      'no ejecuta nada fuera de `main`',
+      'Si necesitas repetir código, cópialo dentro de `main` por ahora.',
+    ),
+
+  'throws-no-soportado': ({ linea }) => marco(linea, 'una cláusula `throws` en `main`', 'no interpreta el manejo de excepciones'),
+
+  'arreglo-no-soportado': ({ linea, tipoArreglo }) =>
+    marco(linea, `un arreglo (\`${tipoArreglo}\`)`, 'no muestra arreglos'),
+
+  'var-no-soportado': ({ linea }) =>
+    marco(linea, '`var` para declarar una variable', 'no infiere tipos con `var`', 'Escribe el tipo explícito (`int`, `double`, `String`…) en su lugar.'),
+
+  'generico-no-soportado': ({ linea }) => marco(linea, 'un tipo genérico (como `ArrayList<Integer>`)', 'no muestra colecciones ni tipos genéricos'),
+
+  // Tarea 1.30 (decisión del PO, 2026-09-29): nombra el tipo CONCRETO que escribió el alumno y sugiere la
+  // alternativa de ESE tipo (antes: una lista de los tres, «Java sí tiene», y «en la línea N» a media oración).
+  'tipo-primitivo-no-soportado': ({ linea, tipo }) =>
+    marco(
+      linea,
+      `el tipo \`${tipo}\``,
+      'no simula ese tipo',
+      `Si tu programa lo permite, usa \`${TIPO_DEL_SUBCONJUNTO_EN_SU_LUGAR[tipo]}\` en vez de \`${tipo}\`.`,
+    ),
+
+  'final-sin-inicializador-no-soportado': ({ linea }) =>
+    marco(linea, 'una variable `final` sin valor inicial', 'solo admite `final` cuando ya trae su valor', 'Agrégale un valor al declararla, por ejemplo `final int MAX = 10;`.'),
+
+  'for-mejorado-no-soportado': ({ linea }) =>
+    marco(linea, 'un ciclo `for` mejorado (`for-each`)', 'no ejecuta el `for` mejorado', 'Usa un `for` clásico con índice para recorrer el arreglo.'),
+
+  'etiqueta-no-soportada': ({ linea }) => marco(linea, 'una sentencia con etiqueta (`nombre:`)', 'no interpreta etiquetas'),
+
+  'break-con-etiqueta-no-soportado': ({ linea }) =>
+    marco(linea, 'un `break` con etiqueta', 'solo ejecuta `break` sin etiqueta', 'Reestructura el ciclo para poder usar un `break` simple.'),
+
+  'continue-con-etiqueta-no-soportado': ({ linea }) =>
+    marco(linea, 'un `continue` con etiqueta', 'solo ejecuta `continue` sin etiqueta', 'Reestructura el ciclo para poder usar un `continue` simple.'),
+
+  'try-catch-no-soportado': ({ linea }) => marco(linea, 'un bloque `try`/`catch`', 'no ejecuta el manejo de excepciones'),
+
+  'throw-no-soportado': ({ linea }) => marco(linea, 'una sentencia `throw`', 'no ejecuta el manejo de excepciones'),
+
+  'switch-flecha-no-soportado': ({ linea }) =>
+    marco(linea, 'un `switch` con flecha (`case valor -> …`)', 'solo ejecuta la forma clásica de `switch`', 'Usa `case valor:` seguido de `break;`, la forma clásica.'),
+
+  // Tarea 1.29: `case 1, 2:` (Java 14+). Ofrece la forma que sí ejecuta el subconjunto: un `case` por valor.
+  'case-con-varias-etiquetas-no-soportado': ({ linea }) =>
+    marco(
+      linea,
+      'un `case` con varios valores separados por coma (`case 1, 2:`)',
+      'solo ejecuta un valor por cada `case`',
+      'Escribe un `case` por cada valor, uno debajo del otro: `case 1:` y luego `case 2:`.',
+    ),
+
+  // Tarea 1.29: una anotación. Casi siempre solo silencia un aviso del editor; quitarla no cambia el programa.
+  'anotacion-no-soportada': ({ linea }) =>
+    marco(
+      linea,
+      'una anotación (como `@Override` o `@SuppressWarnings`)',
+      'no interpreta anotaciones',
+      'Si solo silencia un aviso del editor, puedes quitarla.',
+    ),
+
+  // Tarea 1.29: el nombre COMPLETO de una clase (sin `import`). Se explica cómo escribirlo: el `import` y el
+  // nombre corto, que salen del propio nombre completo (el último segmento).
+  'nombre-calificado-no-soportado': ({ linea, nombre }) =>
+    marco(
+      linea,
+      `el nombre completo de una clase (\`${nombre}\`)`,
+      'solo entiende las clases por su nombre corto',
+      `Escribe \`import ${nombre};\` al principio del programa y usa solo \`${nombre.slice(nombre.lastIndexOf('.') + 1)}\`.`,
+    ),
+
+  // Tarea 1.36 (C-3): `package javax.swing.JFrame;`, el nombre de una clase pública del JDK que javac compila. El visualizador no comprueba los paquetes que se llaman como una clase, así que es un aviso;
+  // se dan las dos salidas que sí valen. (Tarea 1.38: solo para las que están fuera de `java`; dentro de `java` el aviso es `paquete-reservado-por-java`.)
+  'paquete-con-nombre-de-clase-no-soportado': ({ linea, nombre }) =>
+    marco(
+      linea,
+      `un nombre de paquete (\`${nombre}\`) que también es el de una clase de Java`,
+      'no comprueba los paquetes que se llaman como una clase',
+      'Usa un nombre de paquete propio, como `package miproyecto;`, o quita la línea `package`.',
+    ),
+
+  // Tarea 1.38 (W-15): `package java.miapp;`. Javac lo compila, pero el lanzador de Java se niega a arrancar un programa cuyo paquete es `java` o está dentro de `java`: se detiene con la
+  // `SecurityException` «Prohibited package name» antes de correr una sola instrucción (el mensaje que el alumno vería en NetBeans). No es algo que el visualizador deje de cubrir sino lo que Java mismo
+  // hace, así que no lleva el marco de «es parte de Java, pero…». Tampoco afirma que Java acepte el programa (1.30): dice «aunque el programa se pueda compilar». Da la salida: un nombre propio o quitar la línea.
+  'paquete-reservado-por-java': ({ linea, nombre }) =>
+    `Tu programa declara el paquete \`${nombre}\` en la línea ${linea}, y Java no deja ejecutar nada que esté dentro del paquete \`java\`: ese nombre está reservado para el propio Java. ` +
+    'Aunque el programa se pueda compilar, al arrancarlo Java se detiene con el error «Prohibited package name» antes de correr una sola instrucción. ' +
+    'Usa un nombre de paquete propio, como `package miproyecto;`, o quita la línea `package`. ' +
+    'No lo ejecuto para no enseñarte un resultado que Java nunca daría.',
+
+  // Tarea 1.39 (W-16 de la tarea 1.38): `package jdk.internal.misc;`. Javac lo compila (el paquete existe en un módulo del JDK que no lo exporta), pero el lanzador de Java no encuentra la clase y se detiene
+  // con «no se ha encontrado o cargado la clase principal» (el mensaje en español que el alumno vería en NetBeans) antes de correr una sola instrucción. La razón es otra que la del aviso de `java`: no es
+  // que el nombre esté reservado, es que el paquete ya existe dentro de una parte de Java que no se abre a programas externos. Tampoco lleva el marco de «es parte de Java, pero…» (es lo que Java mismo
+  // hace), ni afirma que Java acepte el programa (1.30: «aunque el programa se pueda compilar»). Da la salida: un nombre propio o quitar la línea.
+  'paquete-interno-del-jdk': ({ linea, nombre }) =>
+    `Tu programa declara el paquete \`${nombre}\` en la línea ${linea}, y ese paquete pertenece a una parte interna de Java (un módulo del propio JDK) que no se abre a programas externos. ` +
+    'Aunque el programa se pueda compilar, al arrancarlo Java se detiene con el error «no se ha encontrado o cargado la clase principal» antes de correr una sola instrucción. ' +
+    'Usa un nombre de paquete propio, como `package miproyecto;`, o quita la línea `package`. ' +
+    'No lo ejecuto para no enseñarte un resultado que Java nunca daría.',
+
+  // Tarea 1.36 (C-5 y W-10): `while ("a" + 1.5 == "a1.5") { }`, `case "d" + 1.5:`. El valor de esa constante lo decide cómo convierte Java un decimal a texto, y eso todavía no está.
+  'constante-de-texto-con-decimal-no-soportada': ({ linea }) =>
+    marco(
+      linea,
+      'una constante de texto con un número decimal (como `"a" + 1.5`)',
+      'no sabe convertir un número decimal a texto como lo hace Java',
+      'Java necesita conocer ese valor al compilar para decidir cosas como si un ciclo termina; si puedes, escribe el texto ya completo (por ejemplo, `"a1.5"`).',
+    ),
+
+  // Tarea 1.36 (C-4b y S-1): un programa que se pasa del tope de tamaño. No es una construcción de Java sino el programa entero: sin el marco, con la línea donde se pasó y la salida (una parte más pequeña).
+  'programa-demasiado-grande': ({ linea }) =>
+    `Tu programa es demasiado grande para este visualizador: a partir de la línea ${linea} se pasa del tamaño que sabe revisar (está pensado para programas de clase). ` +
+    'Prueba con una parte más pequeña. No lo ejecuto para no enseñarte un resultado que podría no ser el de Java.',
+
+  // Tarea 1.37 (W-12): un programa con demasiados niveles de anidamiento (paréntesis dentro de paréntesis, bloques dentro de bloques, una cadena de cientos de operaciones). Como el de tamaño no es una
+  // construcción de Java sino el programa entero: sin el marco, con la línea donde se pasó y la salida (una parte más sencilla). Sin jerga del motor (pila, recursión, árbol): «anidado» lo conoce
+  // quien ya vio ciclos anidados en la unidad 6.
+  'programa-demasiado-anidado': ({ linea }) =>
+    `Tu programa tiene demasiadas cosas anidadas: a partir de la línea ${linea} hay más paréntesis, bloques o instrucciones metidos unos dentro de otros (o más operaciones encadenadas) ` +
+    'de los que este visualizador sabe revisar, y está pensado para programas de clase. Prueba con una parte más sencilla. ' +
+    'No lo ejecuto para no enseñarte un resultado que podría no ser el de Java.',
+
+  // Tarea 1.36 (C-4a): un texto que se acerca al límite del archivo de clase (65 535 bytes) y cuyo tamaño no se puede calcular con seguridad (lleva un decimal, o hay condiciones constantes alrededor). Marco aprobado,
+  // sin números exactos que no se tienen, con la salida (acortarlo o dividirlo).
+  'tamano-de-texto-no-revisable': ({ linea }) =>
+    marco(
+      linea,
+      'un texto tan largo que se acerca al límite de tamaño que Java permite (65 535 bytes por texto)',
+      'no sabe comprobar con seguridad si Java lo aceptaría',
+      'Acórtalo, o divídelo en varias instrucciones `System.out.print`.',
+    ),
+
+  'yield-no-soportado': ({ linea }) =>
+    marco(linea, 'la palabra `yield` dentro de un `switch`', 'no interpreta `yield`', 'Usa la forma clásica de `switch`, asignando el valor directamente dentro de cada `case`.'),
+
+  'import-static-no-soportado': ({ linea }) =>
+    marco(linea, 'un `import static`', 'no interpreta los imports estáticos', 'Usa el import normal y escribe el nombre completo, por ejemplo `Math.PI` en vez de `PI`.'),
+
+  'lambda-no-soportada': ({ linea }) => marco(linea, 'una expresión lambda (`->`)', 'no ejecuta lambdas'),
+
+  // Tarea 1.26 (agregada por el orquestador): el código único anterior, "miembro-de-biblioteca-no-
+  // soportado", usaba "miembro" (jerga que un alumno de U3-U7 no conoce — conoce "método") y, para
+  // un constructor, inventaba `nombre: 'new ' + clase` porque un constructor no tiene "nombre" propio
+  // en JLS — el texto resultante ("el miembro `new Scanner` de `Scanner`... `Scanner.new Scanner`")
+  // describía una sintaxis que Java no tiene. Divididos en 3 textos, cada uno con la palabra que el
+  // alumno SÍ reconoce.
+  'metodo-de-biblioteca-no-soportado': ({ linea, clase, nombre }) =>
+    marco(linea, `el método \`${nombre}\` de \`${clase}\``, 'no simula ese método'),
+
+  'campo-de-biblioteca-no-soportado': ({ linea, clase, nombre }) =>
+    marco(linea, `\`${clase}.${nombre}\``, 'no simula ese valor'),
+
+  // Un constructor no tiene "nombre" propio en JLS (`DatosPorCodigoNoSoportado` solo manda `clase`)
+  // — el texto arma la sintaxis real de la llamada ("new Scanner") él mismo, en vez de que el motor
+  // tenga que fingir un identificador que Java no usa.
+  'constructor-de-biblioteca-no-soportado': ({ linea, clase }) =>
+    marco(linea, `\`new ${clase}\` con esos argumentos`, `no simula esa forma de crear un \`${clase}\``),
+
+  // Tarea 1.29: la clase existe en Java (un import correcto ya no se lee como «no reconozco…, revisa que
+  // esté bien escrito»); el visualizador solo no la simula. El nombre es el que escribió el alumno.
+  'clase-no-soportada': ({ linea, nombre }) => marco(linea, `la clase \`${nombre}\``, 'no simula esa clase'),
+
+  // Tarea 1.29: la cabecera de la clase con `extends` (hereda de otra clase) o `implements` (cumple una interfaz). Tarea 1.35: y `sealed`/`non-sealed`/`permits` (clases selladas).
+  'herencia-no-soportada': ({ linea }) =>
+    marco(linea, 'una clase con herencia, interfaces o clases selladas (`extends`, `implements`, `sealed` o `permits`)', 'no simula herencia, interfaces ni clases selladas'),
+
+  // Tarea 1.29: `assert`, un tipo declarado dentro de un método y un bloque `synchronized`.
+  'assert-no-soportado': ({ linea }) => marco(linea, 'una instrucción `assert`', 'no comprueba aserciones'),
+
+  // Tarea 1.33: `printf` devuelve un `PrintStream`, un tipo que el subconjunto no modela; usar su resultado como valor no se puede revisar.
+  'valor-de-tipo-no-soportado': ({ linea, llamada }) =>
+    marco(
+      linea,
+      `el resultado de \`${llamada}(...)\` como un valor`,
+      'no maneja el tipo de ese resultado',
+      `Escribe \`${llamada}(...)\` como una sentencia aparte, sin usar lo que devuelve.`,
+    ),
+
+  // Tarea 1.34 (cierre por defecto): `System.in`/`System.out`/`System.err` usados como VALOR. Para los tres que un alumno de U3–U7 confunde se da la salida que sí existe:
+  // leer es con un `Scanner` y mostrar es con `println`; ningún otro valor inventa una alternativa (D2).
+  'valor-de-tipo-no-modelado': ({ linea, valor }) =>
+    marco(
+      linea,
+      valor === null ? 'un valor de un tipo que este visualizador no simula' : `\`${valor}\` como un valor`,
+      'no maneja el tipo de ese valor',
+      alternativaParaUnValorSinTipo(valor),
+    ),
+
+  'clase-local-no-soportada': ({ linea }) =>
+    marco(linea, 'un tipo declarado dentro de un método (una clase, interfaz, enum o record local)', 'no simula clases propias'),
+
+  'sincronizado-no-soportado': ({ linea }) =>
+    marco(linea, 'un bloque `synchronized`', 'no simula hilos ni sincronización'),
+
+  // Tarea 1.35: `new Tipo() { … }`. Mismo «no simula clases propias» que el tipo local: el cuerpo es una clase que el alumno escribió.
+  'clase-anonima-no-soportada': ({ linea }) =>
+    marco(linea, 'una clase anónima (`new Tipo() { … }`)', 'no simula clases propias'),
+
+  // Tarea 1.35 (decisión del PO, 2026-10-02): un archivo vacío, o con solo un comentario, un `package` o imports, no declara ninguna clase. javac lo compila sin error y no
+  // hay nada que ejecutar. Como `ejecucion-no-disponible`, NO usa el marco («Es parte de Java…»: no hay una construcción que nombrar) ni habla de una línea: es del archivo entero.
+  'archivo-sin-clase': () =>
+    'Tu programa no tiene ninguna clase, así que no hay nada que ejecutar. Un programa de Java empieza en una clase con un método `main`; por ejemplo: ' +
+    '`public class MiPrograma { public static void main(String[] args) { … } }`.',
+
+  // Tarea 1.35: `main(args);` — la recursión de `main`, el único método propio que llega a la atribución (los demás avisan en su declaración).
+  'llamada-a-metodo-propio-no-soportada': ({ linea, nombre }) =>
+    marco(linea, `una llamada a un método propio (\`${nombre}(...)\`)`, 'no ejecuta llamadas a métodos de tu propia clase'),
+
+  // Tarea 1.35: `String.class`, `int[].class` — un literal de clase. Java lo acepta como una construcción más (JLS 15.8.2); el visualizador no maneja los objetos `Class`.
+  'literal-de-clase-no-soportado': ({ linea, literal }) =>
+    marco(linea, `un literal de clase (\`${literal}\`)`, 'no maneja los objetos que representan a una clase (`Class`)'),
+
+  'escape-no-soportado': ({ linea }) =>
+    marco(linea, 'una secuencia de escape que Java reconoce pero este visualizador todavía no simula (como `\\r`, `\\b`, `\\f` o `\\s`)', 'no decodifica ese escape'),
+
+  'escape-octal-no-soportado': ({ linea }) => marco(linea, 'un escape octal dentro de un texto o carácter (como `\\101`)', 'no decodifica escapes octales'),
+
+  'escape-unicode-no-soportado': ({ linea }) => marco(linea, 'un escape Unicode (`\\uXXXX`)', 'no decodifica escapes Unicode'),
+
+  // Tarea 1.35: `char c = '<un emoji>';` — javac lo acepta (el valor del `char` es la primera de las dos unidades UTF-16 del carácter); el visualizador no simula ese literal.
+  'caracter-suplementario-no-soportado': ({ linea, caracter }) =>
+    marco(linea, `el carácter \`${caracter}\` dentro de un literal \`char\``, 'no simula un carácter que Java guarda en dos `char` (como un emoji)'),
+
+  'bloque-de-texto-no-soportado': ({ linea }) =>
+    marco(linea, 'un bloque de texto (`""" … """`)', 'no interpreta bloques de texto', 'Usa comillas dobles normales, con `\\n` para los saltos de línea.'),
+
+  'literal-float-no-soportado': ({ linea }) =>
+    marco(linea, 'un literal `float` (el sufijo `f`)', 'solo trabaja con `double` para los números con punto decimal', 'Quita el sufijo `f` (o cámbialo por `d`) para que sea un `double`.'),
+
+  'literal-octal-no-soportado': ({ linea, textoOriginal, valorDecimal }) =>
+    marco(
+      linea,
+      `el número \`${textoOriginal}\``,
+      'no simula literales octales',
+      `Cuidado: Java no lee "${textoOriginal}" en base diez — lo interpreta como octal (base 8), así que su valor real es ${valorDecimal}. Si querías escribir ese número en decimal, quita el "0" inicial.`,
+    ),
+
+  'literal-hexadecimal-no-soportado': ({ linea }) =>
+    marco(linea, 'un literal hexadecimal (`0x…`)', 'solo trabaja con literales en base diez', 'Escribe el valor equivalente en decimal.'),
+
+  'literal-binario-no-soportado': ({ linea }) =>
+    marco(linea, 'un literal binario (`0b…`)', 'solo trabaja con literales en base diez', 'Escribe el valor equivalente en decimal.'),
+
+  'asignacion-de-bits': ({ linea }) =>
+    marco(linea, 'una asignación compuesta de bits (`&=`, `|=`, `^=`, `<<=`, `>>=` o `>>>=`)', 'no ejecuta operaciones de bits'),
+
+  'operador-ternario': ({ linea }) => marco(linea, 'el operador ternario (`?:`)', 'no evalúa el operador ternario', 'Usa un `if`/`else` equivalente.'),
+
+  instanceof: ({ linea }) => marco(linea, '`instanceof`', 'no evalúa `instanceof`'),
+
+  'operador-complemento-bits': ({ linea }) => marco(linea, 'el operador de complemento de bits (`~`)', 'no ejecuta operaciones de bits'),
+
+  'acceso-arreglo': ({ linea }) => marco(linea, 'un acceso a un arreglo con `[ ]`', 'no muestra arreglos'),
+
+  'referencia-metodo': ({ linea }) => marco(linea, 'una referencia a método (`::`)', 'no interpreta referencias a método'),
+
+  'this-super-no-soportado': ({ linea }) => marco(linea, '`this` o `super`', 'no simula referencias a la propia instancia'),
+
+  'null-no-soportado': ({ linea }) => marco(linea, '`null`', 'no simula referencias nulas'),
+
+  'switch-expresion-no-soportado': ({ linea }) =>
+    marco(
+      linea,
+      'un `switch` usado como expresión (con `yield` o con flecha, para obtener un valor)',
+      'solo ejecuta el `switch` como sentencia clásica',
+      'Usa la forma clásica de `switch` y asigna el valor dentro de cada `case`.',
+    ),
+
+  'operador-bits-or': ({ linea }) =>
+    marco(linea, 'el operador de bits `|`', 'no ejecuta operaciones de bits', 'Si buscabas la versión lógica de corto-circuito, en este subconjunto sí existe `||`.'),
+
+  'operador-bits-xor': ({ linea }) => marco(linea, 'el operador de bits `^`', 'no ejecuta operaciones de bits'),
+
+  'operador-bits-and': ({ linea }) =>
+    marco(linea, 'el operador de bits `&`', 'no ejecuta operaciones de bits', 'Si buscabas la versión lógica de corto-circuito, en este subconjunto sí existe `&&`.'),
+
+  'operador-desplazamiento': ({ linea }) => marco(linea, 'un operador de desplazamiento de bits (`<<`, `>>` o `>>>`)', 'no ejecuta operaciones de bits'),
+
+  // Tarea 1.27 (agregada por el orquestador, D2/regla 5 de CLAUDE.md): a diferencia de TODO el
+  // resto de este catálogo, esta construcción SÍ está dentro del subconjunto U3-U7 (por eso el texto
+  // NUNCA dice "este visualizador cubre las unidades 3 a 7" — sería engañoso, `marco()` no aplica
+  // aquí) — el hueco es que `generarIr` todavía no sabe EJECUTARLA (lote 2, tareas 1.5/2.16). Texto
+  // deliberadamente genérico, sin nombrar el elemento AST interno: "declaracion-local", "lote" y
+  // "tarea" son jerga de desarrollo que un alumno nunca debe leer.
+  //
+  // Tarea 1.30 lo dejó como el ÚNICO texto que afirmaba «Java sí acepta tu programa», porque solo se emite DESPUÉS de que TODAS las pasadas de compilación (léxico+sintaxis,
+  // atribución, alcanzabilidad y asignación definitiva) aceptaron el programa entero. Tarea 1.34 (decisión del PO, 2026-10-02: defensa en profundidad): eso solo es cierto si TODAS
+  // las reglas de javac están modeladas, y la re-verificación del lote 1 encontró programas que javac rechaza y que llegaban aquí (las familias A–D). Ahora dice lo que SÍ se revisó:
+  // el programa «pasó todas mis revisiones» (no «Java lo acepta»), y lo que no se sabe hacer todavía: ejecutar esa línea.
+  'ejecucion-no-disponible': ({ linea }) =>
+    `Tu programa pasó todas mis revisiones, pero todavía no sé ejecutar lo que escribiste ` +
+    `en la línea ${linea}. No lo ejecuto para no enseñarte un resultado que podría no ser el de Java.`,
+
+  // Respaldo defensivo (`motor/no-soportado.ts` → `sinClasificar`): en la práctica nunca debería
+  // alcanzarse (todo token `no-soportado` fija su código al crearse) — a diferencia del resto del
+  // catálogo, este texto NO usa el marco («Es parte de Java…») porque, si de verdad se llega aquí, no hay
+  // certeza de qué construcción es, así que ni siquiera afirma que sea parte de Java (D2: nunca un
+  // resultado inventado, ni siquiera en el mensaje).
+  'no-soportado': ({ linea }) =>
+    `Tu programa usa, en la línea ${linea}, una construcción que este visualizador no alcanza a identificar con precisión. ` +
+    `Por seguridad, no la ejecuto: podría no coincidir con lo que Java realmente hace.`,
+};

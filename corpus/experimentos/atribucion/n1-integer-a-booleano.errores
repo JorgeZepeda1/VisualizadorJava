@@ -1,0 +1,4 @@
+N1IntegerABooleano.java:5: error: incompatible types: Integer cannot be converted to boolean
+        boolean b = k;
+                    ^
+1 error

@@ -1,0 +1,4 @@
+OCampoConLlaveTrasElNombre.java:3: error: ';' expected
+    int x { }
+         ^
+1 error

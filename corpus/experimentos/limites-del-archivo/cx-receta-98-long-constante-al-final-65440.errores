@@ -1,0 +1,4 @@
+P.java:1: error: UTF8 representation for string "..." is too long for the constant pool
+public class P {
+       ^
+1 error

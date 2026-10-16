@@ -1,0 +1,6 @@
+NParametroDeMainTapaASystem.java:4: error: cannot find symbol
+        System.out.println("hola");
+              ^
+  symbol:   variable out
+  location: variable System of type String[]
+1 error

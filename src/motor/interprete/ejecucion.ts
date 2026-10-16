@@ -42,6 +42,15 @@ export function crearEjecucion(programa: ProgramaCompilado, config: ConfigEjecuc
       if (terminado) {
         return { estado: 'fin', pasos: [], fin: { causa: 'terminado' } };
       }
+      // Tarea 1.15 (REQ-COMP-007/008, ADR 004 pasada 5): "main" sin "static" o sin ningún "main"
+      // COMPILA limpio (`compilar()` ya devolvió ok:true) -- el problema real es del LANZADOR, al
+      // intentar EJECUTAR (design.md §2.2: "se presenta como una excepción en ejecución"). Se
+      // reporta ANTES de tocar cualquier sentencia de `programa.ir` (que, en este caso, siempre
+      // viene vacía -- generar-ir.ts).
+      if (programa.arranque !== null) {
+        terminado = true;
+        return { estado: 'fin', pasos: [], fin: { causa: 'error-arranque', arranque: programa.arranque } };
+      }
       const pasos: Paso[] = [];
       while (indice < programa.ir.sentencias.length && pasos.length < maxPasos) {
         pasos.push(ejecutarSentencia(programa.ir.sentencias[indice], indice));

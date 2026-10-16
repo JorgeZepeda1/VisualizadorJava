@@ -1,0 +1,22 @@
+ASwitchBloqueAntesDelCase.java:6: error: case, default, or '}' expected
+            { x = 2; }
+            ^
+ASwitchBloqueAntesDelCase.java:6: error: case, default, or '}' expected
+            { x = 2; }
+              ^
+ASwitchBloqueAntesDelCase.java:6: error: case, default, or '}' expected
+            { x = 2; }
+                ^
+ASwitchBloqueAntesDelCase.java:6: error: case, default, or '}' expected
+            { x = 2; }
+                  ^
+ASwitchBloqueAntesDelCase.java:6: error: case, default, or '}' expected
+            { x = 2; }
+                   ^
+ASwitchBloqueAntesDelCase.java:7: error: orphaned case
+            case 1:
+            ^
+ASwitchBloqueAntesDelCase.java:11: error: class, interface, enum, or record expected
+}
+^
+7 errors

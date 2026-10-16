@@ -1,0 +1,4 @@
+N6VariableEnSuPropioInicializador.java:4: error: variable x might not have been initialized
+        int x = x + 1;
+                ^
+1 error

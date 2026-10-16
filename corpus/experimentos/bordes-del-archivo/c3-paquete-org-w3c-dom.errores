@@ -1,0 +1,4 @@
+Saludo.java:1: error: package exists in another module: java.xml
+package org.w3c.dom;
+^
+1 error

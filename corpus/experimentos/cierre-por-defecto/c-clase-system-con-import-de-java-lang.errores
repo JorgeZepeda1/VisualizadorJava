@@ -1,0 +1,4 @@
+System.java:2: error: System is already defined in this compilation unit
+import java.lang.System;
+^
+1 error

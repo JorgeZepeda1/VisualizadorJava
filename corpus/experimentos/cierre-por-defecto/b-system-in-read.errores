@@ -1,0 +1,4 @@
+BSystemInRead.java:4: error: unreported exception IOException; must be caught or declared to be thrown
+        int c = System.in.read();
+                              ^
+1 error

@@ -1,0 +1,4 @@
+F5VoidEnDeclaracion.java:4: error: incompatible types: void cannot be converted to int
+        int resultado = System.out.print(7);
+                                        ^
+1 error

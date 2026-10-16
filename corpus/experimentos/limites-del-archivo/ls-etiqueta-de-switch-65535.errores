@@ -1,0 +1,4 @@
+Saludo.java:20: error: constant string too long
+        switch
+        ^
+1 error

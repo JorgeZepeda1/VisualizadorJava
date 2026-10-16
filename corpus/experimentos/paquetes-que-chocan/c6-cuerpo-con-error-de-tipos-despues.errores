@@ -1,0 +1,7 @@
+Saludo.java:1: error: package java.lang.Shutdown clashes with class of same name
+package java.lang.Shutdown;
+^
+Saludo.java:5: error: incompatible types: String cannot be converted to int
+        int x = "hola";
+                ^
+2 errors

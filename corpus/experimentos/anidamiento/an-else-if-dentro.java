@@ -1,0 +1,9 @@
+public class P {
+    public static void main(String[] args) {
+        int a = 1;
+        boolean b = true;
+        String s = "x";
+        if (b) a = 1; else if (b) a = 2; else if (b) a = 2; else if (b) a = 2; else if (b) a = 2; else if (b) a = 2; else if (b) a = 2; else if (b) a = 2; else if (b) a = 2; else if (b) a = 2; else if (b) a = 2; else if (b) a = 2; else if (b) a = 2; else if (b) a = 2; else if (b) a = 2; else if (b) a = 2; else if (b) a = 2; else if (b) a = 2; else if (b) a = 2; else if (b) a = 2; else if (b) a = 2; else if (b) a = 2; else if (b) a = 2; else if (b) a = 2; else if (b) a = 2; else if (b) a = 2; else if (b) a = 2; else if (b) a = 2; else if (b) a = 2; else if (b) a = 2; else if (b) a = 2;
+        System.out.println("fin");
+    }
+}

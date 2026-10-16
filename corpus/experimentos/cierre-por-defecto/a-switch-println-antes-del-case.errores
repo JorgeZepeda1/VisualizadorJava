@@ -1,0 +1,28 @@
+ASwitchPrintlnAntesDelCase.java:6: error: case, default, or '}' expected
+            System.out.println("Elige una opcion:");
+            ^
+ASwitchPrintlnAntesDelCase.java:6: error: case, default, or '}' expected
+            System.out.println("Elige una opcion:");
+                  ^
+ASwitchPrintlnAntesDelCase.java:6: error: case, default, or '}' expected
+            System.out.println("Elige una opcion:");
+                   ^
+ASwitchPrintlnAntesDelCase.java:6: error: case, default, or '}' expected
+            System.out.println("Elige una opcion:");
+                      ^
+ASwitchPrintlnAntesDelCase.java:6: error: case, default, or '}' expected
+            System.out.println("Elige una opcion:");
+                       ^
+ASwitchPrintlnAntesDelCase.java:6: error: case, default, or '}' expected
+            System.out.println("Elige una opcion:");
+                              ^
+ASwitchPrintlnAntesDelCase.java:6: error: case, default, or '}' expected
+            System.out.println("Elige una opcion:");
+                               ^
+ASwitchPrintlnAntesDelCase.java:6: error: case, default, or '}' expected
+            System.out.println("Elige una opcion:");
+                                                  ^
+ASwitchPrintlnAntesDelCase.java:6: error: case, default, or '}' expected
+            System.out.println("Elige una opcion:");
+                                                   ^
+9 errors

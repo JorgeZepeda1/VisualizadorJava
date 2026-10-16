@@ -1,0 +1,4 @@
+Saludo.java:1: error: package java.lang.Character$UnicodeBlock clashes with class of same name
+package java.lang.Character$UnicodeBlock;
+^
+1 error

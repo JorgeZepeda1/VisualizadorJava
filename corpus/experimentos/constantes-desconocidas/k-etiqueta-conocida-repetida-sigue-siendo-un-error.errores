@@ -1,0 +1,4 @@
+Saludo.java:7: error: duplicate case label
+            case "d1":
+            ^
+1 error

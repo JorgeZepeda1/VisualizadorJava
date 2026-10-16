@@ -1,0 +1,6 @@
+Math.java:4: error: cannot find symbol
+        double r = Math.sqrt(4.0);
+                       ^
+  symbol:   method sqrt(double)
+  location: class Math
+1 error

@@ -1,0 +1,7 @@
+N2GotoComoNombre.java:4: error: not a statement
+        int goto;
+        ^
+N2GotoComoNombre.java:4: error: ';' expected
+        int goto;
+           ^
+2 errors

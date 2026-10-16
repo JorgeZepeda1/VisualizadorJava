@@ -1,0 +1,7 @@
+Saludo.java:1: error: package exists in another module: java.base
+package java.util;
+^
+Saludo.java:5: error: incompatible types: String cannot be converted to int
+        int numero = "hola";
+                     ^
+2 errors

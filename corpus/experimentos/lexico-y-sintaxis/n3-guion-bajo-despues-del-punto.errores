@@ -1,0 +1,4 @@
+N3GuionBajoDespuesDelPunto.java:4: error: illegal underscore
+        double t = 1._0;
+                     ^
+1 error

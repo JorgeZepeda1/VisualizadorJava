@@ -7,11 +7,16 @@ name: Oráculo
 # el disparo es solo por cambios relevantes, nocturno, o manual — nunca en cada push a cualquier
 # archivo.
 #
-# "CI al día con lo que existe" (orquestador, 2026-09-25 — tasks.md → Convenciones): al cerrar el
-# lote 0 (sub-lote 0-C), `oraculo:generados` (fuzzing nocturno contra el JDK, tarea 2.21) y
-# `oraculo:mutantes` (veredictos de mutantes, tarea 1.16) TODAVÍA no existen como scripts reales —
-# solo `oraculo:verificar` (tarea 0.6) corre hoy. Los pasos nocturnos se agregan de vuelta cuando
-# esas tareas creen sus scripts.
+# "CI al día con lo que existe" (orquestador, 2026-09-25 — tasks.md → Convenciones):
+# - `oraculo:mutantes` (veredictos de mutantes, tarea 1.16, sub-lote 1-D3): su paso nocturno regenera y
+#   compara bytes, mismo patrón que "Catálogo de datos del JDK" de abajo.
+# - `oraculo:generados` (generador diferencial de programas contra javac 17, tarea 1.31): en PR y en
+#   push corre con SEMILLA FIJA y pocos programas (cabe en pocos minutos, y es reproducible: si falla, la
+#   misma semilla y cantidad lo reproducen en cualquier máquina); de noche y a mano corre con MÁS programas y
+#   una semilla que cambia cada día (la fecha), para explorar programas nuevos. Sale con código ≠ 0 ante
+#   cualquier discrepancia entre `compilar()` y javac; el informe JSON (familias y programas mínimos) se
+#   sube como artefacto cuando falla. La tarea 2.21 lo extiende a la EJECUCIÓN (salida y excepciones).
+#   Como compara EL COMPILADOR con javac, cualquier cambio en `src/motor/**` dispara este flujo (ver `paths`).
 #
 # Tarea 0.18 (tras el primer CI remoto): `ci.yml` (ubuntu-latest, SIN JDK) fallaba porque `npm
 # test` corría también las pruebas de `herramientas/oraculo/**`, que SIEMPRE requieren el JDK real
@@ -24,16 +29,23 @@ on:
     paths:
       - 'corpus/**'
       - 'herramientas/oraculo/**'
-      - 'src/motor/biblioteca/datos/**'
+      - 'src/motor/**'
   pull_request:
     paths:
       - 'corpus/**'
       - 'herramientas/oraculo/**'
-      - 'src/motor/biblioteca/datos/**'
+      - 'src/motor/**'
   schedule:
     # 08:00 UTC ≈ 02:00 hora del centro de México (sin horario de verano) — corrida nocturna.
     - cron: '0 8 * * *'
   workflow_dispatch:
+    inputs:
+      semilla:
+        description: 'Semilla del generador diferencial (vacío: la fecha de hoy, AAAAMMDD)'
+        required: false
+      cantidad:
+        description: 'Programas que genera el generador diferencial (vacío: 40000)'
+        required: false
 
 jobs:
   oraculo:
@@ -68,6 +80,64 @@ jobs:
           JDK17_HOME: ${{ steps.jdk.outputs.path }}
         run: npm run oraculo:verificar
 
-      # Pasos nocturnos pendientes — se agregan cuando sus tareas creen los scripts reales:
-      #   - Fuzzing contra el JDK real (C3): npm run oraculo:generados — tarea 2.21.
-      #   - Regenerar veredictos de mutantes (C7): npm run oraculo:mutantes — tarea 1.16.
+      - name: Catálogo de datos del JDK contra una regeneración real (bytes idénticos, ADR 010 punto 3; tarea 1.9)
+        env:
+          JDK17_HOME: ${{ steps.jdk.outputs.path }}
+        run: |
+          npm run oraculo:datos
+          git diff --exit-code -- corpus/datos src/motor/biblioteca/datos || {
+            echo '::error::corpus/datos/** o src/motor/biblioteca/datos/**.generado.ts no coinciden con una regeneración real contra el JDK (ADR 010). Corre "npm run oraculo:datos" localmente y confirma los cambios.' >&2
+            exit 1
+          }
+
+      # Nocturno (design.md §9: "de noche, oraculo:generados y oraculo:mutantes") — semilla FIJA
+      # (mutantes.ts), así que una regeneración real de una noche sin cambios en corpus/curso ni en
+      # el generador debe dar BYTES IDÉNTICOS (mismo criterio que "Catálogo de datos del JDK"
+      # arriba, ADR 010 punto 3) — si difiere, alguien cambió el corpus o el generador sin
+      # regenerar `corpus/mutantes/veredictos.jsonl` localmente primero.
+      - name: 'Nocturno: regenerar veredictos de mutantes contra una regeneración real (C7, tarea 1.16)'
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        env:
+          JDK17_HOME: ${{ steps.jdk.outputs.path }}
+        run: |
+          npm run oraculo:mutantes
+          git diff --exit-code -- corpus/mutantes || {
+            echo '::error::corpus/mutantes/veredictos.jsonl no coincide con una regeneración real contra el JDK (ADR 010, semilla fija de mutantes.ts). Corre "npm run oraculo:mutantes" localmente y confirma los cambios.' >&2
+            exit 1
+          }
+
+      # Generador diferencial (tarea 1.31, design.md §9): programas generados del subconjunto, compilados
+      # con javac 17 real y con `compilar()`; cualquier discrepancia falla el paso. En PR y en push: semilla
+      # FIJA y 3 000 programas (unos 30 s cuando no hay discrepancias; `--max-reducir` acota el tiempo si
+      # las hay). Cada familia de discrepancia se reduce al programa mínimo que la conserva.
+      - name: 'Generador diferencial (PR y push): 3 000 programas con semilla fija contra javac (tarea 1.31)'
+        if: github.event_name == 'push' || github.event_name == 'pull_request'
+        timeout-minutes: 15
+        env:
+          JDK17_HOME: ${{ steps.jdk.outputs.path }}
+        run: npm run oraculo:generados -- --semilla 20260929 --cantidad 3000 --max-reducir 100 --salida test-results/oraculo-generados-pr.json
+
+      # De noche y a mano: más programas y una semilla que cambia cada día (o la que se pida al lanzarlo).
+      - name: 'Nocturno: generador diferencial con más programas y semilla del día (tarea 1.31)'
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        timeout-minutes: 45
+        env:
+          JDK17_HOME: ${{ steps.jdk.outputs.path }}
+          SEMILLA_PEDIDA: ${{ inputs.semilla }}
+          CANTIDAD_PEDIDA: ${{ inputs.cantidad }}
+        run: |
+          SEMILLA="${SEMILLA_PEDIDA:-$(date -u +%Y%m%d)}"
+          CANTIDAD="${CANTIDAD_PEDIDA:-40000}"
+          echo "Semilla $SEMILLA, $CANTIDAD programas (reproducible: npm run oraculo:generados -- --semilla $SEMILLA --cantidad $CANTIDAD)"
+          npm run oraculo:generados -- --semilla "$SEMILLA" --cantidad "$CANTIDAD" --max-reducir 300 --salida test-results/oraculo-generados-noche.json
+
+      # Diagnóstico permanente: el informe JSON trae cada familia con su programa mínimo, el mensaje de
+      # javac y lo que respondió nuestro compilador; sin él, un fallo remoto solo deja el resumen del log.
+      - name: Publicar el informe del generador diferencial (solo si el job falla)
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: oraculo-generados-intento-${{ github.run_attempt }}
+          path: test-results/oraculo-generados-*.json
+          if-no-files-found: ignore
+          retention-days: 14

@@ -1,0 +1,4 @@
+Saludo.java:4: error: unreachable statement
+        System.out.println("x");
+        ^
+1 error

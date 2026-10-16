@@ -1,0 +1,7 @@
+Saludo.java:3: error: unclosed string literal
+        String s = "a
+                   ^
+Saludo.java:4: error: unclosed string literal
+";
+^
+2 errors

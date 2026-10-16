@@ -1,0 +1,4 @@
+F4SwitchDefaultRepetido.java:9: error: duplicate default label
+            default:
+                   ^
+1 error

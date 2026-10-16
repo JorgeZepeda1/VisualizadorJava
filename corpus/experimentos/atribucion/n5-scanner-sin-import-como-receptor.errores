@@ -1,0 +1,6 @@
+N5ScannerSinImportComoReceptor.java:4: error: cannot find symbol
+        int edad = Scanner.nextInt();
+                   ^
+  symbol:   variable Scanner
+  location: class N5ScannerSinImportComoReceptor
+1 error

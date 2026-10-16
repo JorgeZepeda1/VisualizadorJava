@@ -8,6 +8,7 @@ import {
   GLOBALES_DOM_PROHIBIDOS,
   patronesProhibidosPara,
 } from './herramientas/eslint/matriz-capas.ts';
+import { REGLAS_DE_TABLAS_SIN_PROTOTIPO } from './herramientas/eslint/reglas-de-tablas.ts';
 import { REGLAS_DE_TEXTOS_EN_CATALOGO } from './herramientas/eslint/reglas-de-textos.ts';
 
 // Un bloque de configuración por capa, generado desde la matriz de datos de
@@ -80,6 +81,13 @@ export default tseslint.config(
     // bloque de arriba, que también cubre `.ts` para los hooks de React).
     files: ['src/interfaz/**/*.tsx'],
     rules: REGLAS_DE_TEXTOS_EN_CATALOGO,
+  },
+  {
+    // Tarea 1.34: ninguna tabla del motor es un objeto plano indexado por texto (hereda `Object.prototype`); los datos que genera el oráculo
+    // (`*.generado.ts`) se convierten a `Map` al cargarse, así que quedan fuera.
+    files: ['src/motor/**/*.ts'],
+    ignores: ['src/motor/**/*.generado.ts'],
+    rules: REGLAS_DE_TABLAS_SIN_PROTOTIPO,
   },
   ...configuracionesDeFrontera,
 );

@@ -1,0 +1,4 @@
+Saludo.java:1: error: package java.util.List clashes with class of same name
+package java.util.List;
+^
+1 error

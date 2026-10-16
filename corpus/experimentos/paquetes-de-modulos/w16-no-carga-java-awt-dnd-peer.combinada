@@ -1,0 +1,2 @@
+Error: no se ha encontrado o cargado la clase principal java.awt.dnd.peer.Saludo
+Causado por: java.lang.ClassNotFoundException: java.awt.dnd.peer.Saludo

@@ -1,0 +1,4 @@
+GRutaDeWindowsEnUnComentario.java:1: error: illegal unicode escape
+// Ruta pegada en un comentario: C:\users\juan\datos.txt
+                                     ^
+1 error

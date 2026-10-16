@@ -1,0 +1,6 @@
+N5ScannerSinImportEnCast.java:7: error: cannot find symbol
+        System.out.println((Scanner) azar);
+                            ^
+  symbol:   class Scanner
+  location: class N5ScannerSinImportEnCast
+1 error

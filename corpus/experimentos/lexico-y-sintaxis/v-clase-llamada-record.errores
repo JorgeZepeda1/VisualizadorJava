@@ -1,0 +1,5 @@
+record.java:2: error: 'record' not allowed here
+public class record {
+             ^
+  as of release 14, 'record' is a restricted type name and cannot be used for type declarations
+1 error

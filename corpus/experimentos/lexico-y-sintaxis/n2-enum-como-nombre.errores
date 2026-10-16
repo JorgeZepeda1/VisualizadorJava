@@ -1,0 +1,4 @@
+N2EnumComoNombre.java:4: error: as of release 5, 'enum' is a keyword, and may not be used as an identifier
+        int enum = 5;
+            ^
+1 error

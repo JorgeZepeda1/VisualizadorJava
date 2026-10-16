@@ -1,0 +1,6 @@
+N5ImportJavaLangInexistente.java:1: error: cannot find symbol
+import java.lang.PrintStream;
+                ^
+  symbol:   class PrintStream
+  location: package java.lang
+1 error

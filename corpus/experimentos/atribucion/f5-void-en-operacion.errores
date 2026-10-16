@@ -1,0 +1,4 @@
+F5VoidEnOperacion.java:4: error: 'void' type not allowed here
+        int total = 1 + System.out.println();
+                                          ^
+1 error

@@ -1,0 +1,4 @@
+Saludo.java:6: error: constant string expression required
+            case "a" + d:
+                     ^
+1 error

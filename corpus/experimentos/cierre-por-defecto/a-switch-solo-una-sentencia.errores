@@ -1,0 +1,10 @@
+ASwitchSoloUnaSentencia.java:6: error: case, default, or '}' expected
+            x++;
+            ^
+ASwitchSoloUnaSentencia.java:6: error: case, default, or '}' expected
+            x++;
+             ^
+ASwitchSoloUnaSentencia.java:6: error: case, default, or '}' expected
+            x++;
+               ^
+3 errors

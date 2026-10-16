@@ -1,0 +1,4 @@
+F6TextoTrimPorClase.java:5: error: non-static method trim() cannot be referenced from a static context
+        String limpio = String.trim();
+                              ^
+1 error

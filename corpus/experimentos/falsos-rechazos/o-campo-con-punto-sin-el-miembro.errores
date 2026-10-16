@@ -1,0 +1,4 @@
+OCampoConPuntoSinElMiembro.java:3: error: <identifier> expected
+    int x = Math.
+                 ^
+1 error

@@ -1,0 +1,4 @@
+F5VoidDeScannerClose.java:7: error: incompatible types: void cannot be converted to int
+        int r = teclado.close();
+                             ^
+1 error

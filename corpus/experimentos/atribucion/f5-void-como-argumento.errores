@@ -1,0 +1,4 @@
+F5VoidComoArgumento.java:4: error: 'void' type not allowed here
+        System.out.print(System.out.print(0));
+                                         ^
+1 error

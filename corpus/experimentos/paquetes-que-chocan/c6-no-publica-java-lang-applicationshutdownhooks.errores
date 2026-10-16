@@ -1,0 +1,4 @@
+Saludo.java:1: error: package java.lang.ApplicationShutdownHooks clashes with class of same name
+package java.lang.ApplicationShutdownHooks;
+^
+1 error

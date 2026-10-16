@@ -1,0 +1,16 @@
+ASwitchDeclaracionAntesDelCase.java:6: error: case, default, or '}' expected
+            int y = 2;
+            ^
+ASwitchDeclaracionAntesDelCase.java:6: error: case, default, or '}' expected
+            int y = 2;
+                ^
+ASwitchDeclaracionAntesDelCase.java:6: error: case, default, or '}' expected
+            int y = 2;
+                  ^
+ASwitchDeclaracionAntesDelCase.java:6: error: case, default, or '}' expected
+            int y = 2;
+                    ^
+ASwitchDeclaracionAntesDelCase.java:6: error: case, default, or '}' expected
+            int y = 2;
+                     ^
+5 errors

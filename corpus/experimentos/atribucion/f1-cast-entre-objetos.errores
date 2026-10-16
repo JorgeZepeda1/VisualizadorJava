@@ -1,0 +1,4 @@
+F1CastEntreObjetos.java:8: error: incompatible types: Scanner cannot be converted to Random
+        Random azar = (Random) teclado;
+                               ^
+1 error

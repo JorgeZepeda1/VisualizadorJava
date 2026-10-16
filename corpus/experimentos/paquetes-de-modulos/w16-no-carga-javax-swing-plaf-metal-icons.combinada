@@ -1,0 +1,2 @@
+Error: no se ha encontrado o cargado la clase principal javax.swing.plaf.metal.icons.Saludo
+Causado por: java.lang.ClassNotFoundException: javax.swing.plaf.metal.icons.Saludo

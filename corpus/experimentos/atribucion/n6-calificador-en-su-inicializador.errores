@@ -1,0 +1,4 @@
+N6CalificadorEnSuInicializador.java:4: error: variable String might not have been initialized
+        String String = String.valueOf(5);
+                        ^
+1 error

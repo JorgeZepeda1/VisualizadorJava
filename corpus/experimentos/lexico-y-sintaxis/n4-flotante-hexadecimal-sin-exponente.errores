@@ -1,0 +1,4 @@
+N4FlotanteHexadecimalSinExponente.java:4: error: malformed floating-point literal
+        double a = 0x1.8;
+                   ^
+1 error

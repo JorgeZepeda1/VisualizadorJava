@@ -1,0 +1,4 @@
+F6ScannerNextintPorClase.java:7: error: non-static method nextInt() cannot be referenced from a static context
+        int edad = Scanner.nextInt();
+                          ^
+1 error

@@ -1,0 +1,4 @@
+W2ReturnConValorEnUnCiclo.java:7: error: incompatible types: unexpected return value
+            return i;
+                   ^
+1 error

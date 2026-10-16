@@ -1,0 +1,16 @@
+N2NativeComoNombre.java:4: error: not a statement
+        int native = 1;
+        ^
+N2NativeComoNombre.java:4: error: ';' expected
+        int native = 1;
+           ^
+N2NativeComoNombre.java:4: error: illegal start of expression
+        int native = 1;
+            ^
+N2NativeComoNombre.java:4: error: illegal start of type
+        int native = 1;
+                   ^
+N2NativeComoNombre.java:6: error: class, interface, enum, or record expected
+}
+^
+5 errors

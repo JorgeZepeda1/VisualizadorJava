@@ -1,0 +1,4 @@
+Saludo.java:1: error: package java.lang.ProcessHandleImpl clashes with class of same name
+package java.lang.ProcessHandleImpl;
+^
+1 error

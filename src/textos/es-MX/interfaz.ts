@@ -14,7 +14,8 @@ export const textosInterfaz = {
   botonAnterior: (): string => '◀ Anterior',
   botonSiguiente: (): string => 'Siguiente ▶',
   pasoActualDeTotal: (paso: number, total: number): string => `Paso ${paso} de ${total}`,
-  noCompilaTodavia: (): string =>
-    'El programa no compila todavía (el catálogo completo de errores en español llega en el lote 1).',
   errorInterno: (): string => 'Algo falló dentro del visualizador.',
+  // Tarea 1.28 (decisión del PO 2026-09-29): el texto de un error de compilación va con su línea
+  // antepuesta; los avisos de "no disponible" ya la traen dentro de su propio texto.
+  errorEnLinea: (linea: number, texto: string): string => `Línea ${linea}: ${texto}`,
 };

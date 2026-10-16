@@ -1,0 +1,160 @@
+// Familias de discrepancias (tarea 1.31). Una discrepancia REDUCIDA es un programa mínimo; una FAMILIA
+// agrupa los que fallan por lo mismo: el tipo de discrepancia, la clave de error de javac, lo que
+// respondió nuestro compilador y las construcciones que quedaron en el programa mínimo. Es la unidad de
+// trabajo de quien corrige el compilador (tarea 1.32): «falta la regla del cast», no «el programa 4 137».
+// Puro: no lanza procesos ni toca el motor.
+import { claveDeNuestroVeredicto, type TipoDeDiscrepancia, type VeredictoJavac, type VeredictoNuestro } from './clasificador.ts';
+import { etiquetasDe, renderizarCuerpo, renderizarPrograma, type Etiqueta, type Programa } from './programa.ts';
+
+/** Dónde rechaza javac el programa mínimo: al analizar la sintaxis, o después (tipos, símbolos, flujo). */
+export type FaseDeJavac = 'sintaxis' | 'semantica' | 'javac-compila';
+
+export interface DiscrepanciaReducida {
+  /** Posición del programa original en la campaña (con la semilla se regenera). */
+  readonly indice: number;
+  readonly tipo: TipoDeDiscrepancia;
+  /** Veredicto de javac sobre el programa MÍNIMO. */
+  readonly javac: VeredictoJavac;
+  /** Veredicto de nuestro compilador sobre el programa MÍNIMO. */
+  readonly nuestro: VeredictoNuestro;
+  readonly programa: Programa;
+  readonly fase: FaseDeJavac;
+}
+
+export interface VarianteDeFamilia {
+  readonly fuente: string;
+  readonly cuerpo: readonly string[];
+  readonly veces: number;
+}
+
+export interface Familia {
+  readonly clave: string;
+  readonly tipo: TipoDeDiscrepancia;
+  readonly codigoJavac: string;
+  /** El mensaje de javac del programa de ejemplo. */
+  readonly mensajeJavac: string;
+  readonly nuestraClave: string;
+  readonly etiquetas: readonly Etiqueta[];
+  readonly fase: FaseDeJavac;
+  readonly cantidad: number;
+  readonly minimo: { readonly fuente: string; readonly cuerpo: readonly string[] };
+  /** Los índices más bajos de la campaña donde salió: `generarPrograma(semilla, indice)` regenera el original. */
+  readonly indicesDeEjemplo: readonly number[];
+  /** Los programas mínimos distintos, del que más salió al que menos. */
+  readonly variantes: readonly VarianteDeFamilia[];
+}
+
+/**
+ * Las etiquetas que identifican a la familia: las del programa mínimo sin las de CONTEXTO. Un `println`
+ * alrededor de la expresión no es la regla que falla, y el nombre de una variable (`sealed`, `var`…) solo
+ * es la regla en un falso rechazo (el analizador lo trata como palabra reservada); en un falso acepto es
+ * incidental.
+ */
+function etiquetasDeLaFamilia(programa: Programa, tipo: TipoDeDiscrepancia): readonly Etiqueta[] {
+  return etiquetasDe(programa).filter((etiqueta) => etiqueta !== 'impresion' && (etiqueta !== 'nombre-contextual' || tipo === 'falso-rechazo'));
+}
+
+const MAXIMO_DE_INDICES_DE_EJEMPLO = 5;
+const MAXIMO_DE_VARIANTES = 12;
+
+function claveDeFamilia(discrepancia: DiscrepanciaReducida, etiquetas: readonly Etiqueta[]): string {
+  return [discrepancia.tipo, discrepancia.javac.codigoJavac || 'javac-compila', claveDeNuestroVeredicto(discrepancia.nuestro), etiquetas.join('+') || 'sin-rasgos'].join(' | ');
+}
+
+function agruparVariantes(miembros: readonly DiscrepanciaReducida[]): VarianteDeFamilia[] {
+  const porFuente = new Map<string, { programa: Programa; veces: number }>();
+  for (const { programa } of miembros) {
+    const fuente = renderizarPrograma(programa);
+    const previa = porFuente.get(fuente);
+    porFuente.set(fuente, { programa, veces: (previa?.veces ?? 0) + 1 });
+  }
+  return [...porFuente.entries()]
+    .map(([fuente, { programa, veces }]) => ({ fuente, cuerpo: renderizarCuerpo(programa), veces }))
+    .sort((a, b) => b.veces - a.veces || a.fuente.length - b.fuente.length || (a.fuente < b.fuente ? -1 : 1))
+    .slice(0, MAXIMO_DE_VARIANTES);
+}
+
+/** Agrupa las discrepancias reducidas en familias, de la más frecuente a la menos; el orden es determinista. */
+export function agruparEnFamilias(discrepancias: readonly DiscrepanciaReducida[]): Familia[] {
+  const grupos = new Map<string, { etiquetas: readonly Etiqueta[]; miembros: DiscrepanciaReducida[] }>();
+  for (const discrepancia of discrepancias) {
+    const etiquetas = etiquetasDeLaFamilia(discrepancia.programa, discrepancia.tipo);
+    const clave = claveDeFamilia(discrepancia, etiquetas);
+    const grupo = grupos.get(clave) ?? { etiquetas, miembros: [] };
+    grupo.miembros.push(discrepancia);
+    grupos.set(clave, grupo);
+  }
+  return [...grupos.entries()]
+    .map(([clave, { etiquetas, miembros }]): Familia => {
+      const ordenados = [...miembros].sort((a, b) => a.indice - b.indice);
+      const ejemplo = [...miembros].sort((a, b) => renderizarPrograma(a.programa).length - renderizarPrograma(b.programa).length || a.indice - b.indice)[0]!;
+      return {
+        clave,
+        tipo: ejemplo.tipo,
+        codigoJavac: ejemplo.javac.codigoJavac,
+        mensajeJavac: ejemplo.javac.mensajeJavac,
+        nuestraClave: claveDeNuestroVeredicto(ejemplo.nuestro),
+        etiquetas,
+        fase: ejemplo.fase,
+        cantidad: miembros.length,
+        minimo: { fuente: renderizarPrograma(ejemplo.programa), cuerpo: renderizarCuerpo(ejemplo.programa) },
+        indicesDeEjemplo: ordenados.slice(0, MAXIMO_DE_INDICES_DE_EJEMPLO).map((m) => m.indice),
+        variantes: agruparVariantes(miembros),
+      };
+    })
+    .sort((a, b) => b.cantidad - a.cantidad || (a.clave < b.clave ? -1 : 1));
+}
+
+// ---- Las familias conocidas: las de la re-verificación del lote 1 (F1–F6, V), las que la 1.32 dejó abiertas (N2, N3, N4, P) y las de la 1.34 (A–E) ----
+
+export interface FamiliaConocida {
+  readonly id: string;
+  readonly nombre: string;
+}
+
+interface Reconocedor extends FamiliaConocida {
+  readonly reconoce: (familia: Pick<Familia, 'tipo' | 'codigoJavac' | 'mensajeJavac' | 'etiquetas'>) => boolean;
+}
+
+const CLAVES_DE_SWITCH = new Set([
+  'compiler.err.prob.found.req',
+  'compiler.err.duplicate.default.label',
+  'compiler.err.duplicate.case.label',
+  'compiler.err.constant.label.not.compatible',
+  'compiler.err.selector.type.not.allowed',
+  'compiler.err.preview.feature.disabled.plural',
+]);
+
+// El orden importa: primero las que se distinguen por su clave de javac o por un rasgo propio, y al final
+// las que comparten clave (`incompatible types`) con otras.
+const RECONOCEDORES: readonly Reconocedor[] = [
+  // Tarea 1.34: A–E van PRIMERO. Su rasgo (la clase con nombre del JDK, la sentencia antes del `case`, el paréntesis, el valor sin modelar, el nombre de
+  // JavaScript) es la CAUSA, y las claves de javac que comparten con F2, F4 o F1 (`incompatible types`, `cant.deref`, `duplicate.default.label`) no la distinguen.
+  { id: 'C', nombre: 'la clase del programa se llama como una clase del JDK (`class System`, `class Scanner` con su import…)', reconoce: (f) => f.etiquetas.includes('clase-con-nombre-del-jdk') },
+  { id: 'A', nombre: 'sentencia dentro del `switch` antes del primer `case` o `default`', reconoce: (f) => f.tipo === 'falso-acepto' && f.etiquetas.includes('sentencia-antes-del-primer-case') },
+  { id: 'D', nombre: 'expresión entre paréntesis usada como sentencia (`(x = 2);`, `(x++);`)', reconoce: (f) => f.tipo === 'falso-acepto' && f.etiquetas.includes('sentencia-entre-parentesis') },
+  { id: 'B', nombre: '`args` o `System.in`/`System.out`/`System.err` usados como valor (un tipo que el subconjunto no modela)', reconoce: (f) => f.tipo === 'falso-acepto' && f.etiquetas.includes('valor-de-tipo-no-modelado') },
+  { id: 'E', nombre: 'un nombre de `Object.prototype` (`constructor`, `toString`, `__proto__`…) hace LANZAR al compilador', reconoce: (f) => f.tipo === 'fallo-interno' && f.etiquetas.includes('nombre-de-javascript') },
+  { id: 'F2', nombre: 'miembro de un primitivo (`int cannot be dereferenced`)', reconoce: (f) => f.tipo === 'falso-acepto' && f.codigoJavac === 'compiler.err.cant.deref' },
+  { id: 'F3', nombre: '`final` con `++`, `--` o asignación', reconoce: (f) => f.tipo === 'falso-acepto' && f.codigoJavac === 'compiler.err.cant.assign.val.to.final.var' },
+  { id: 'F5', nombre: '`void` usado como valor', reconoce: (f) => f.tipo === 'falso-acepto' && f.etiquetas.includes('void-como-valor') },
+  { id: 'F6', nombre: 'método de instancia llamado por el nombre de la clase', reconoce: (f) => f.tipo === 'falso-acepto' && f.codigoJavac === 'compiler.err.non-static.cant.be.ref' },
+  { id: 'F4', nombre: '`switch` con etiqueta de otro tipo o `default` repetido', reconoce: (f) => f.tipo === 'falso-acepto' && f.etiquetas.includes('switch') && CLAVES_DE_SWITCH.has(f.codigoJavac) },
+  { id: 'F1', nombre: 'cast inválido (JLS 5.5)', reconoce: (f) => f.tipo === 'falso-acepto' && f.codigoJavac === 'compiler.err.prob.found.req' && f.etiquetas.includes('cast') },
+  // Tarea 1.33: N4 va ANTES de V — un `double with = 0x1p3;` falla por el flotante hexadecimal, no por el nombre.
+  {
+    id: 'N4',
+    nombre: 'flotante hexadecimal, o `case` con una variable constante y flecha (javac compila y se rechaza: falsos rechazos)',
+    reconoce: (f) => f.tipo === 'falso-rechazo' && (f.etiquetas.includes('flotante-hexadecimal') || f.etiquetas.includes('switch-flecha')),
+  },
+  { id: 'V', nombre: '`var`/`yield` (y otras palabras clave contextuales) como nombre de variable', reconoce: (f) => f.tipo === 'falso-rechazo' && f.etiquetas.includes('nombre-contextual') },
+  { id: 'N2', nombre: 'palabra reservada como nombre de variable (`native`, `enum`, `goto`, `_`…)', reconoce: (f) => f.tipo === 'falso-acepto' && f.etiquetas.includes('palabra-reservada-como-nombre') },
+  { id: 'N3', nombre: 'guion bajo mal puesto en un literal (`1_`, `1_L`, `1_.0`, `1_e1`…)', reconoce: (f) => f.tipo === 'falso-acepto' && f.etiquetas.includes('guion-bajo-en-literal') },
+  { id: 'P', nombre: 'el resultado de `printf` (un `PrintStream`) usado como valor', reconoce: (f) => f.tipo === 'falso-acepto' && f.etiquetas.includes('printf-como-valor') },
+];
+
+/** La familia conocida (F1–F6, V, las de la tarea 1.33: N2, N3, N4, P, y las de la 1.34: A–E) a la que pertenece esta familia, o `null` si es NUEVA. */
+export function identificarFamiliaConocida(familia: Pick<Familia, 'tipo' | 'codigoJavac' | 'mensajeJavac' | 'etiquetas'>): FamiliaConocida | null {
+  const reconocedor = RECONOCEDORES.find((r) => r.reconoce(familia));
+  return reconocedor === undefined ? null : { id: reconocedor.id, nombre: reconocedor.nombre };
+}

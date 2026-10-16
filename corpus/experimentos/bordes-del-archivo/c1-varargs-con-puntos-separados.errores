@@ -1,0 +1,10 @@
+Saludo.java:2: error: <identifier> expected
+    public static void main(String . . . args) {
+                                    ^
+Saludo.java:2: error: <identifier> expected
+    public static void main(String . . . args) {
+                                      ^
+Saludo.java:2: error: <identifier> expected
+    public static void main(String . . . args) {
+                                             ^
+3 errors

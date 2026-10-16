@@ -1,0 +1,4 @@
+Saludo.java:1: error: package java.lang.StringUTF16 clashes with class of same name
+package java.lang.StringUTF16;
+^
+1 error

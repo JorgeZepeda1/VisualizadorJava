@@ -6,7 +6,7 @@
 // con `declare const self`) para que este archivo compile igual bajo cualquier tsconfig que lo
 // incluya transitivamente (p. ej. `interfaz`, vía `cliente.ts`, con lib DOM y sin lib WebWorker).
 // El trabajador de repuesto y el perro guardián (ADR 007) llegan en el lote 3.
-import { compilar, crearEjecucion, type Ejecucion } from '../motor/index.ts';
+import { compilar, crearEjecucion, type Ejecucion, type ResultadoCompilacion } from '../motor/index.ts';
 import type { MensajeTrabajadorAUi, MensajeUiATrabajador } from './protocolo.ts';
 
 const ejecucionesActivas = new Map<number, Ejecucion>();
@@ -17,7 +17,19 @@ export function manejarMensaje(
 ): void {
   switch (mensaje.tipo) {
     case 'ejecutar': {
-      const resultado = compilar(mensaje.fuente);
+      // Tarea 1.28: `compilar()` solo devuelve `Problema` para el error del ALUMNO
+      // (`ErrorDeCompilacion`); cualquier otra excepción es un fallo interno del motor y sale de
+      // ahí. Aquí, en el borde del trabajador, se convierte en el mensaje de protocolo
+      // `error-interno` (design.md §5) que la interfaz ya sabe mostrar. Solo cubre la COMPILACIÓN:
+      // las excepciones durante la ejecución (`crearEjecucion`/`avanzarYEmitir`) son del perro
+      // guardián (ADR 007, lote 3).
+      let resultado: ResultadoCompilacion;
+      try {
+        resultado = compilar(mensaje.fuente);
+      } catch (error) {
+        emitir({ tipo: 'error-interno', id: mensaje.id, mensaje: describirFalloInterno(error) });
+        return;
+      }
       if (!resultado.ok) {
         emitir({
           tipo: 'compilado',
@@ -50,6 +62,11 @@ export function manejarMensaje(
       return;
     }
   }
+}
+
+/** Detalle del fallo para quien depure (`MensajeErrorInterno.mensaje`); la interfaz nunca lo muestra. */
+function describirFalloInterno(error: unknown): string {
+  return error instanceof Error ? `${error.name}: ${error.message}` : String(error);
 }
 
 function avanzarYEmitir(

@@ -1,0 +1,4 @@
+BSystemInComoEntero.java:4: error: incompatible types: InputStream cannot be converted to int
+        int x = System.in;
+                      ^
+1 error

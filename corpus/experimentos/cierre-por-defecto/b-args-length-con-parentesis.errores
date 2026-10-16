@@ -1,0 +1,6 @@
+BArgsLengthConParentesis.java:4: error: cannot find symbol
+        int n = args.length();
+                    ^
+  symbol:   method length()
+  location: variable args of type String[]
+1 error

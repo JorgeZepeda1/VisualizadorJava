@@ -1,0 +1,10 @@
+{
+  "sinMain": {
+    "mensaje": "Error: no se ha encontrado el método principal en la clase SinMain, defina el método principal del siguiente modo:\\n   public static void main(String[] args)\\nde lo contrario, se deberá ampliar una clase de aplicación JavaFX javafx.application.Application\n",
+    "codigoSalida": 1
+  },
+  "mainNoStatic": {
+    "mensaje": "Error: el método principal no es static en la clase MainNoStatic, defina el método principal del siguiente modo:\n   public static void main(String[] args)\n",
+    "codigoSalida": 1
+  }
+}

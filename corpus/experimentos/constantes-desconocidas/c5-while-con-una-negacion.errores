@@ -1,0 +1,4 @@
+Saludo.java:3: error: unreachable statement
+        while (!("a" + 1.5 == "a1.5")) {
+                                       ^
+1 error

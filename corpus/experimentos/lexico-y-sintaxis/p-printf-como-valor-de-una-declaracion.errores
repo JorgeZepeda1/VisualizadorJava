@@ -1,0 +1,4 @@
+PPrintfComoValorDeUnaDeclaracion.java:4: error: incompatible types: PrintStream cannot be converted to int
+        int b = System.out.printf("a");
+                                 ^
+1 error

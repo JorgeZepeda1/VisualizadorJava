@@ -1,0 +1,4 @@
+Saludo.java:1: error: package java.lang.FdLibm clashes with class of same name
+package java.lang.FdLibm;
+^
+1 error

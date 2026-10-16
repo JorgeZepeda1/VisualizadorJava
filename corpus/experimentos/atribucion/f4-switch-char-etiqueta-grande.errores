@@ -1,0 +1,4 @@
+F4SwitchCharEtiquetaGrande.java:6: error: incompatible types: possible lossy conversion from int to char
+            case 70000:
+                 ^
+1 error

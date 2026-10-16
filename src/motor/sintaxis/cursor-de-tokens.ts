@@ -4,15 +4,40 @@
 // de imports entre los dos módulos de `sintaxis/`.
 import { ErrorDeCompilacion } from '../error-de-compilacion.ts';
 import type { Token, TipoToken } from '../lexico/tokens.ts';
+import { MAXIMO_DE_NIVELES_DE_ANIDAMIENTO, ProgramaDemasiadoAnidado } from '../limites.ts';
+
+// Corrección obligatoria (sub-lote 1-D2a, task_e4ca8312): los ÚNICOS dos textos de `esperarTexto`
+// verificados contra javac 17 real como "anclan al final del token anterior" — ver la nota larga
+// dentro de `esperarTexto` más abajo. Cualquier otro texto (p. ej. "{"/"}", que ya tienen su propio
+// chequeo bespoke con la regla que corresponda en cada punto) sigue con la regla por omisión
+// (ancla en el token inesperado que SÍ encontró).
+const TEXTOS_QUE_ANCLAN_EN_TOKEN_ANTERIOR: ReadonlySet<string> = new Set([';', ')']);
 
 export class CursorDeTokens {
   private posicion = 0;
   private readonly tokens: readonly Token[];
+  private nivel = 0;
+  private readonly limiteDeNiveles: number;
 
   // `erasableSyntaxOnly` (design.md §9, CLAUDE.md) prohíbe el azúcar de "parameter properties":
   // el campo se declara arriba y se asigna aquí, a mano.
-  constructor(tokens: readonly Token[]) {
+  constructor(tokens: readonly Token[], limiteDeNiveles: number = MAXIMO_DE_NIVELES_DE_ANIDAMIENTO) {
     this.tokens = tokens;
+    this.limiteDeNiveles = limiteDeNiveles;
+  }
+
+  /**
+   * Tarea 1.37 (W-12): el analizador entra a UN nivel más de anidamiento (una expresión dentro de otra, un operador prefijo o un cast, una instrucción dentro de otra). Si ya pasó del tope lanza
+   * `ProgramaDemasiadoAnidado` en el token donde se pasó, ANTES de que la recursión siguiente use más pila. Cada `entrarNivel()` tiene su `salirNivel()` en la misma función; si algo lanza, el
+   * análisis entero se abandona, así que el contador no necesita restaurarse.
+   */
+  entrarNivel(): void {
+    this.nivel += 1;
+    if (this.nivel > this.limiteDeNiveles) throw new ProgramaDemasiadoAnidado(this.actual().rango);
+  }
+
+  salirNivel(): void {
+    this.nivel -= 1;
   }
 
   actual(): Token {
@@ -36,12 +61,38 @@ export class CursorDeTokens {
     return this.actual().texto === texto;
   }
 
+  /** Fin (offset) del ÚLTIMO token ya consumido antes de la posición actual (0 si el cursor sigue
+   * al principio) — la posición donde `javac` ancla ciertos diagnósticos de recuperación ("reached
+   * end of file while parsing", el "';' expected" que da cuando falta el bloque "{ }" de un
+   * método) en vez de la posición del token inesperado que sigue, que puede caer en otra línea
+   * (verificado con javac 17 real: err16_eof_inesperado.java termina en "}\n" y javac reporta la
+   * línea de esa "}", nunca la línea vacía que seguiría al salto de línea final —
+   * corpus/experimentos/texto/). Úsala SOLO en los puntos donde YA SE SABE, por construcción de la
+   * gramática, que este es el ancla correcta — no es el comportamiento por omisión de
+   * `esperarTexto`/`esperarTipo` (que anclan en el token inesperado que SÍ encontraron). */
+  finDelTokenAnterior(): number {
+    if (this.posicion === 0) return 0;
+    return this.tokens[this.posicion - 1]!.rango.fin;
+  }
+
   esperarTexto(texto: string): Token {
     const token = this.actual();
     if (token.texto !== texto) {
+      // Corrección obligatoria (sub-lote 1-D2a, task_e4ca8312): ";" y ")" anclan en el FIN del
+      // token anterior, NUNCA en el token inesperado que sigue (que puede caer en otra línea) —
+      // verificado contra javac 17 real, multi-línea, en las dos fuentes reales/ad-hoc de
+      // compilador.test.ts (err01_falta_punto_coma.java del catálogo para ";"; una fuente
+      // compilada ad-hoc en una carpeta temporal, ya borrada, para ")"). NO es una regla universal
+      // para CUALQUIER texto esperado — la nota de `finDelTokenAnterior()` de arriba ya documenta
+      // que "}" sobrante (err17) usa la regla contraria (el token inesperado mismo); por eso este
+      // ancla especial se limita a los DOS textos ya verificados, no a todo `esperarTexto`.
+      const rango = TEXTOS_QUE_ANCLAN_EN_TOKEN_ANTERIOR.has(texto)
+        ? { inicio: this.finDelTokenAnterior(), fin: this.finDelTokenAnterior() }
+        : token.rango;
       throw new ErrorDeCompilacion(
         `se esperaba "${texto}" y se encontró "${token.texto || '<fin de archivo>'}"`,
-        token.rango,
+        rango,
+        texto, // tarea 1.11: compilador.ts lo usa para elegir un CodigoProblema real
       );
     }
     return this.avanzar();

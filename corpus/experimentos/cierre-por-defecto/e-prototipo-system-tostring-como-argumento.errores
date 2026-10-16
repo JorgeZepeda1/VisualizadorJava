@@ -1,0 +1,6 @@
+EPrototipoSystemToStringComoArgumento.java:5: error: cannot find symbol
+        Scanner sc = new Scanner(System.toString);
+                                       ^
+  symbol:   variable toString
+  location: class System
+1 error

@@ -1,0 +1,4 @@
+OCampoSinInicializadorSinPuntoYComa.java:3: error: ';' expected
+    private int edad
+                    ^
+1 error

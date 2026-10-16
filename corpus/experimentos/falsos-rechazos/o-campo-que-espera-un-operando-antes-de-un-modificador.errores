@@ -1,0 +1,4 @@
+OCampoQueEsperaUnOperandoAntesDeUnModificador.java:4: error: illegal start of expression
+    public static void main(String[] args) {
+    ^
+1 error

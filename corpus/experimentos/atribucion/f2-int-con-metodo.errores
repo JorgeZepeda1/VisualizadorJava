@@ -1,0 +1,4 @@
+F2IntConMetodo.java:5: error: int cannot be dereferenced
+        int cifras = numero.length();
+                           ^
+1 error

@@ -1,0 +1,4 @@
+F6RandomNextintPorClase.java:7: error: non-static method nextInt(int) cannot be referenced from a static context
+        int dado = Random.nextInt(10);
+                         ^
+1 error

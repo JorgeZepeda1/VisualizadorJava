@@ -1,0 +1,4 @@
+Saludo.java:1: error: package java.lang.StringCoding clashes with class of same name
+package java.lang.StringCoding;
+^
+1 error

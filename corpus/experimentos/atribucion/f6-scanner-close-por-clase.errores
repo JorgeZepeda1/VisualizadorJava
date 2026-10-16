@@ -1,0 +1,4 @@
+F6ScannerClosePorClase.java:7: error: non-static method close() cannot be referenced from a static context
+        Scanner.close();
+               ^
+1 error

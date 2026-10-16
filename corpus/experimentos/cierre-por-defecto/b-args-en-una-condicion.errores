@@ -1,0 +1,6 @@
+BArgsEnUnaCondicion.java:4: error: bad operand types for binary operator '=='
+        if (args == 5) {
+                 ^
+  first type:  String[]
+  second type: int
+1 error

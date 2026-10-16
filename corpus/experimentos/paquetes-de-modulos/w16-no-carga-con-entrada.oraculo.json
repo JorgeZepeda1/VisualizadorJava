@@ -1,0 +1,9 @@
+{
+  "nombreArchivo": "Doble.java",
+  "paquete": "sun.security.provider",
+  "compilo": true,
+  "codigoSalida": 1,
+  "agotoTiempo": false,
+  "desenlace": "excepcion",
+  "version": "17.0.18"
+}

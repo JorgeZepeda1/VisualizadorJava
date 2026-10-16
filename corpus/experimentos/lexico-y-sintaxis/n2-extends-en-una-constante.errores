@@ -1,0 +1,4 @@
+N2ExtendsEnUnaConstante.java:4: error: <identifier> expected
+        final int extends = 7;
+                 ^
+1 error

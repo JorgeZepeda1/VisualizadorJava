@@ -2,7 +2,7 @@
 // el intérprete mínimo de esta tarea solo produzca la clase 'impresion' con 'salida': el resto de
 // campos (valores, cambios, control, entrada) los llenan las tareas 2.17-2.19 sin cambiar la
 // forma. Definición de tipos — se ejercita en traza.test.ts, ejecucion.test.ts y compilador.test.ts.
-import type { CausaFin } from '../problemas.ts';
+import type { CausaFin, ProblemaArranque } from '../problemas.ts';
 
 export type ClasePaso =
   | 'declaracion'
@@ -43,6 +43,9 @@ export interface Segmento {
 
 export interface FinEjecucion {
   readonly causa: CausaFin;
+  /** Presente sii `causa === 'error-arranque'` (tarea 1.15, ADR 004 pasada 5) — el detalle que
+   * `crearEjecucion` copia de `ProgramaCompilado.arranque` al reportarlo en el primer `avanzar()`. */
+  readonly arranque?: ProblemaArranque;
 }
 
 export interface Paso {

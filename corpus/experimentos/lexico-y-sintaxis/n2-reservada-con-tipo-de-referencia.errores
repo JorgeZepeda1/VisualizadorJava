@@ -1,0 +1,16 @@
+N2ReservadaConTipoDeReferencia.java:4: error: not a statement
+        String private = "a";
+        ^
+N2ReservadaConTipoDeReferencia.java:4: error: ';' expected
+        String private = "a";
+              ^
+N2ReservadaConTipoDeReferencia.java:4: error: illegal start of expression
+        String private = "a";
+               ^
+N2ReservadaConTipoDeReferencia.java:4: error: illegal start of type
+        String private = "a";
+                       ^
+N2ReservadaConTipoDeReferencia.java:6: error: class, interface, enum, or record expected
+}
+^
+5 errors

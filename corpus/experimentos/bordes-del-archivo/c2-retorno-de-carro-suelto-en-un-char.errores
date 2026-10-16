@@ -1,0 +1,4 @@
+Saludo.java:3: error: illegal line end in character literal
+        char c = '
+                 ^
+1 error

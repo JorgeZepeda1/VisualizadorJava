@@ -4,10 +4,10 @@ schema: spec-driven
 context: |
   Producto: visualizador de ejecucion paso a paso de Java para bachillerato (sin experiencia previa), en espanol de Mexico.
   Stack: Vite 8 + React 19 + TypeScript 6 estricto; SPA estatica publicable en GitHub Pages; cero CDNs en runtime.
-  Motor: interprete de subconjunto de Java (curriculo U3-U7) en TypeScript puro, corre en un Web Worker del navegador.
-  Fidelidad: comportamiento identico a Java 17; JDK 17 real (Temurin 17.0.18+8) en /Library/Java/JavaVirtualMachines/temurin-17.jdk/Contents/Home/bin/ para el oraculo diferencial.
-  Pruebas instaladas y en uso: Vitest 5 + Testing Library + jsdom (unit/integration, proyectos motor/interfaz), Playwright 1.63 (E2E Chromium/Firefox/WebKit), oraculo diferencial contra JDK 17 real.
-  Estado: lote 0 (cimientos + rebanada vertical) en cierre — tareas 0.1-0.15 hechas, commits reales en main, sdd-init refrescado en 0.16.
+  Motor: interprete de un subconjunto de Java (curriculo U3-U7) en TypeScript puro, corre en un Web Worker del navegador (nunca en el hilo principal). Compila en pasadas que reproducen el orden de javac (ADR 004): lexico+sintaxis, atribucion, alcanzabilidad, asignacion definitiva, limites del archivo de clase y arranque; lo que no puede revisar es un aviso honesto, nunca un resultado inventado (topes de tamano y de anidamiento en src/motor/limites.ts).
+  Fidelidad: comportamiento identico a Java 17; JDK 17 real (Temurin 17.0.18+8) en /Library/Java/JavaVirtualMachines/temurin-17.jdk/Contents/Home/bin/ para el oraculo diferencial; todo dato del JDK (firmas, clases, nombres que chocan como paquete, identificadores) lo genera el oraculo, nunca se escribe a mano.
+  Pruebas instaladas y en uso: Vitest 5 + Testing Library + jsdom (unit/integration, proyectos motor/interfaz), Playwright 1.63 (E2E Chromium/Firefox/WebKit, incluida la medicion del tope de anidamiento en el trabajador real), oraculo diferencial contra JDK 17 real (goldens, datos, mutantes y generador diferencial de veredictos de compilacion).
+  Estado: el lote 0 (cimientos + rebanada vertical) esta cerrado y el lote 1 (Lenguaje: compilacion completa en espanol con el catalogo del JDK real) esta implementado hasta la tarea 1.37 y pendiente de su cierre formal (verificacion, commit con confirmacion del PO, fusion del PR); el avance real de cada tarea son las marcas [x]/[ ] de tasks.md y state.yaml (no hay otro tablero). Lotes 2-6 pendientes (ejecucion y biblioteca, traza y trabajador, visualizador, aula, paso detallado).
 
 strict_tdd: true
 

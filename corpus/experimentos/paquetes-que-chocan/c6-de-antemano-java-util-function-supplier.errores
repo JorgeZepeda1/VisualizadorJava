@@ -1,0 +1,4 @@
+Saludo.java:1: error: package java.util.function.Supplier clashes with class of same name
+package java.util.function.Supplier;
+^
+1 error

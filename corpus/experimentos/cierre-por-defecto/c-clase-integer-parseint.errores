@@ -1,0 +1,6 @@
+Integer.java:4: error: cannot find symbol
+        int x = Integer.parseInt("5");
+                       ^
+  symbol:   method parseInt(String)
+  location: class Integer
+1 error

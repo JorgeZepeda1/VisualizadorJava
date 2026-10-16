@@ -1,0 +1,4 @@
+Saludo.java:1: error: UTF8 representation for string "€€€€€€€€€€€€€€€€€€€€..." is too long for the constant pool
+public class Saludo {
+       ^
+1 error

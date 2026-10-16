@@ -1,0 +1,4 @@
+OComaSinElNombreDelSiguienteCampo.java:3: error: <identifier> expected
+    int a = 1,
+              ^
+1 error

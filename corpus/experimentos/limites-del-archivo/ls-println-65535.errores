@@ -1,0 +1,4 @@
+Saludo.java:19: error: constant string too long
+        System.out.println(A15 + A14 + A13 + A12 + A11 + A10 + A9 + A8 + A7 + A6 + A5 + A4 + A3 + A2 + A1 + A0);
+                                                                                                          ^
+1 error

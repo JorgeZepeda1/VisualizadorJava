@@ -1,0 +1,4 @@
+PLiteralDeClaseDeUnaLlamada.java:4: error: <identifier> expected
+        Object o = f().class;
+                       ^
+1 error

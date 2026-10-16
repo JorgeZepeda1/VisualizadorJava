@@ -1,0 +1,4 @@
+Saludo.java:1: error: package java.lang.ConditionalSpecialCasing clashes with class of same name
+package java.lang.ConditionalSpecialCasing;
+^
+1 error

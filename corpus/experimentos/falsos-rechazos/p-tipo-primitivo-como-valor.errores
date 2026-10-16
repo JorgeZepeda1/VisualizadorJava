@@ -1,0 +1,4 @@
+PTipoPrimitivoComoValor.java:4: error: '.class' expected
+        Object o = int;
+                      ^
+1 error

@@ -1,0 +1,2 @@
+Error: no se ha encontrado o cargado la clase principal Programa
+Causado por: java.lang.ClassNotFoundException: Programa

@@ -7,7 +7,7 @@ Define la gramática cerrada de Java 17 que el visualizador interpreta (currícu
 ## Requirements
 
 ### Requirement: [REQ-SUB-001] Estructura de programa aceptada
-El sistema MUST aceptar como programa ejecutable cualquier código con exactamente una clase (cualquier nombre, con o sin `public`) y un método `public static void main(String[] args)` en cualquiera de sus tres formas (`String[] args`, `String args[]`, `String... args`). MUST aceptar `import java.util.Scanner;`, `import java.util.Random;`, `import java.util.*;` e imports de `java.lang` para las clases soportadas. MUST ignorar una línea `package ...;` sin rechazarla. MUST aceptar comentarios y `return;` dentro de `main`.
+El sistema MUST aceptar como programa ejecutable cualquier código con exactamente una clase (cualquier nombre, con o sin `public`) y un método `public static void main(String[] args)` en cualquiera de sus tres formas (`String[] args`, `String args[]`, `String... args`). MUST aceptar `import java.util.Scanner;`, `import java.util.Random;`, `import java.util.*;` e imports de `java.lang` para las clases soportadas. MUST aceptar una línea `package ...;` con un nombre propio (como `package miproyecto;`, el que pone NetBeans) sin rechazarla; si el nombre es de un paquete que exporta el JDK o choca con una clase de Java, MUST dar el mismo error que `javac`, y si `javac` lo compila pero el JDK se niega a ejecutarlo (`java.*`), MUST dar un aviso en vez de ejecutar (enmienda de las tareas 1.36 a 1.38). MUST aceptar comentarios y `return;` dentro de `main`.
 
 #### Scenario: Clase con nombre propio, sin `Main`
 - GIVEN `public class Bienvenida { public static void main(String[] args) { System.out.println("Hola"); } }`
@@ -52,12 +52,12 @@ El sistema MUST reconocer sintácticamente (semántica exacta en `biblioteca-jav
 - THEN el sistema la reconoce como llamada válida y continúa el análisis; el resultado exacto de evaluarla se rige por `biblioteca-java`
 
 ### Requirement: [REQ-SUB-006] Momento y formato del aviso de fuera de alcance
-Cuando un programa usa una construcción fuera de los requisitos anteriores, el sistema MUST detectarlo en el análisis previo a la ejecución (cero pasos ejecutados, cero salida) y MUST mostrar un mensaje de tipo **"No disponible en el visualizador"**, visualmente distinguible por ícono y título de los otros tres tipos de mensaje (error de compilación, excepción, límite de pasos). El mensaje MUST señalar la línea y la construcción, decir que Java sí la acepta (cuando aplica), aclarar que el visualizador cubre U3–U7, y ofrecer una alternativa dentro de alcance si existe. Si hay más de un problema, MUST mostrar solo el primero según su orden en el texto, seguido de "y N más".
+Cuando un programa usa una construcción fuera de los requisitos anteriores, el sistema MUST detectarlo en el análisis previo a la ejecución (cero pasos ejecutados, cero salida) y MUST mostrar un mensaje de tipo **"No disponible en el visualizador"**, visualmente distinguible por ícono y título de los otros tres tipos de mensaje (error de compilación, excepción, límite de pasos). El mensaje MUST señalar la línea y la construcción, decir que la construcción es parte de Java (cuando aplica) sin afirmar que el programa compila, admitir que por eso esa parte no se revisa, aclarar que el visualizador cubre U3–U7, y ofrecer una alternativa dentro de alcance si existe. Si hay más de un problema, MUST mostrar solo el primero según su orden en el texto, seguido de "y N más".
 
 #### Scenario: arreglo fuera de alcance
 - GIVEN `int[] datos = {1, 2, 3};` en la línea 4 de un programa por lo demás válido
 - WHEN se analiza
-- THEN no se ejecuta ningún paso y se muestra: «Tu programa usa un arreglo (`int[]`) en la línea 4. Java sí lo acepta, pero este visualizador cubre las unidades 3 a 7 y todavía no muestra arreglos. No lo ejecuto para no enseñarte un resultado que podría no ser el de Java.»
+- THEN no se ejecuta ningún paso y se muestra: «Tu programa usa un arreglo (`int[]`) en la línea 4. Es parte de Java, pero este visualizador cubre las unidades 3 a 7 y todavía no muestra arreglos, así que no puedo revisar si esa parte está bien escrita. No lo ejecuto para no enseñarte un resultado que podría no ser el de Java.»
 
 #### Scenario: literal octal se explica, no se malinterpreta
 - GIVEN `int n = 010;`
@@ -72,7 +72,7 @@ El sistema MUST tratar cada fila de la siguiente tabla con el aviso de REQ-SUB-0
 | `nextLong`, `Long.parseLong` | `sc.nextLong()` | `long` sí soportado; estos miembros no |
 | `float`, `byte`, `short` | `float f = 3.5f;` | nunca se reinterpretan como `double`/`int` |
 | `switch` flecha/expresión, `yield` | `case 1 -> ...` | 0 usos en el currículo |
-| Métodos propios, recursión, clases/campos/objetos propios | `static int cuadrado(int n)` | "Java sí lo acepta…" |
+| Métodos propios, recursión, clases/campos/objetos propios | `static int cuadrado(int n)` | "Es parte de Java…" |
 | Arreglos (salvo `String[] args`), `for` mejorado | `int[] a; for (int x : a)` | — |
 | `try/catch/throw/throws`, `System.exit`, `null` | `catch (Exception e)` | sin `null` no hay NPE fuera del currículo |
 | `?:`, bits/desplazamientos, `&`/`\|` lógicos, `instanceof` | `a & b`, `x << 2` | para `&`/`\|` sugiere `&&`/`\|\|` |

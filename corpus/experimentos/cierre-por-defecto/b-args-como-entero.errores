@@ -1,0 +1,4 @@
+BArgsComoEntero.java:4: error: incompatible types: String[] cannot be converted to int
+        int n = args;
+                ^
+1 error

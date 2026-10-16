@@ -34,3 +34,35 @@ describe('generarIr', () => {
     expect(ir.sentencias).toEqual([{ tipo: 'impresion', texto: 'a\nb' }]);
   });
 });
+
+// Tarea 1.8 (pendiente heredado): `sintaxis` ahora acepta `print` y cualquier expresión como
+// argumento de impresión (no solo `println` de un literal-cadena), pero la EJECUCIÓN real de esos
+// casos sigue perteneciendo al lote 2 (2.16+) — igual que if/while/for/declaraciones desde 1.5.
+// `generarIr` debe seguir fallando limpio (D2: nunca un resultado inventado), nunca producir una
+// IR silenciosamente incorrecta para lo que todavía no ejecuta de verdad.
+describe('generarIr — print/println generalizados (1.8): solo println(literal-cadena) tiene IR real todavía', () => {
+  it('"System.out.print(...)" (con literal) NO tiene IR real todavía: falla limpio, no produce una impresión sin salto silenciosa', () => {
+    expect(() => irDe('class C { public static void main(String[] a) { System.out.print("x"); } }')).toThrow();
+  });
+
+  it('"System.out.println(x)" con una VARIABLE como argumento tampoco tiene IR real todavía', () => {
+    expect(() =>
+      irDe('class C { public static void main(String[] a) { int x = 5; System.out.println(x); } }'),
+    ).toThrow();
+  });
+
+  it('control: "System.out.println("literal")" (el único caso real) sigue bajando a IR exactamente igual que antes', () => {
+    const ir = irDe('class C { public static void main(String[] a) { System.out.println("sigue igual"); } }');
+    expect(ir.sentencias).toEqual([{ tipo: 'impresion', texto: 'sigue igual' }]);
+  });
+});
+
+// Corrección obligatoria (sub-lote 1-C2): "println()" sin argumentos SÍ tiene IR real desde ahora
+// (a diferencia de print/println con variable, que siguen honestamente sin IR hasta el lote 2) —
+// PrintStream.println() real solo emite el salto de línea, así que su texto es la cadena vacía.
+describe('generarIr — "println()" sin argumentos (corrección obligatoria, sub-lote 1-C2)', () => {
+  it('"System.out.println();" baja a una ImpresionIr con texto vacío', () => {
+    const ir = irDe('class C { public static void main(String[] a) { System.out.println(); } }');
+    expect(ir.sentencias).toEqual([{ tipo: 'impresion', texto: '' }]);
+  });
+});

@@ -1,0 +1,10 @@
+GLiteralMalFormadoConUnEscapeSeparado.java:4: error: malformed floating-point literal
+        double d = 0x1.8 \u0041;
+                   ^
+GLiteralMalFormadoConUnEscapeSeparado.java:4: error: ';' expected
+        double d = 0x1.8 \u0041;
+                        ^
+GLiteralMalFormadoConUnEscapeSeparado.java:4: error: not a statement
+        double d = 0x1.8 \u0041;
+                         ^
+3 errors
