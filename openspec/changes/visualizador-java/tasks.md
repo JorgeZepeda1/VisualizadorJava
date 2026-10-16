@@ -639,70 +639,101 @@
 - REFACTOR: función de saturación y función de wraparound compartidas.
 - Verif: `motor/biblioteca/numeros`
 
-**2.3 `digitosJava` — 5 clases** — REQ-BIB-002(parte 1) · depende: 2.1
+**2.3 `digitosJava` — 5 clases** — REQ-BIB-002(parte 1) · depende: 2.1 — ✅ hecha (2026-10-16)
 - RED `biblioteca/formato/digitos-java.test.ts` contra `corpus/datos/double-tostring/`: subnormales (`MIN_VALUE`→`4.9E-324` exacto, resto por regla o aviso "No disponible"), banda `[2^53,2^63)` (0–2 dígitos HALF_UP según exponente), potencias de dos (`x±2^(e−54)`), empates exactos (HALF_UP, nunca a par: `1e23→9.999999999999999E22`), resto de normales (dígitos cortos corregidos con vecinos ±1 en `BigInt`); falla.
 - GREEN: `src/motor/biblioteca/formato/digitos-java.ts`.
 - REFACTOR: cada clase como función pura con su propio conjunto.
 - Verif: `motor/biblioteca/formato/digitos-java`
+- RED ejecutado (1): `npm test -- src/motor/biblioteca/formato/digitos-java` → `Error: Cannot find module './digitos-java.ts'` (sin pruebas que correr); y `pruebas/diferencial/biblioteca/double-tostring.test.ts` → `Cannot find module '…/double-a-texto.ts'`.
+- RED ejecutado (2), con el primer GREEN (generador exacto): quedaron 3 fallos reales contra el JDK — `0000000000000002: Java imprime 1.0E-323, el motor 9.9E-324`, `0000000000000014: Java imprime 1.0E-322, el motor 9.9E-323` y `453d04ffce09b504: Java 3.5082457001091195E25, motor …196E25`. Se agregaron como pruebas unitarias (`digitos-java.test.ts`) y se llevó a GREEN con la estimación del exponente decimal del JDK y la emulación del `long` de 64 bits.
+- GREEN: `src/motor/biblioteca/formato/digitos-java.ts` — **un solo generador de dígitos exacto en `BigInt`** (Steele-White: extremos excluidos, hueco simétrico en potencias de dos, camino de enteros < 2⁶³ con 0–2 dígitos HALF_UP) en vez de cinco reglas empíricas; ver design.md §4.9 (no se leyó ni copió código de OpenJDK, ADR 016). Verificado: ≈ 3 millones de `double` del JDK (todos los exponentes, subnormales, vecinos de 10ⁿ, banda, empates, potencias de dos, literales cortos) + 200 000 frescos por corrida de `test:oraculo`: **100 %**.
+- Hallazgo: el «residual» `0x453d04ffce09b504` NO es un caso aislado sino la CLASE completa de exponente binario 84 (2,6 % de sus valores): el JDK calcula con `long` y la suma `b + m` pasa de 2⁶³ → trunca. Se reproduce emulando el `long`; ya no hay residual conocido.
+- Datos (2.1 acotada): `corpus/datos/double-tostring/{especiales,salon,aleatorios,banda,potencias-de-dos,potencias-de-diez,subnormales,grandes,empates}.csv` (≈ 80 000 casos, generados por `npm run oraculo:conjuntos` con `herramientas/oraculo/{generar-conjuntos,azar-determinista}.ts` y la sonda `java/EvaluarBiblioteca.java`); el conjunto DENSO se genera fresco en `herramientas/oraculo/generar-conjuntos.test.ts` en vez de guardarse. Más acotado que design.md §7.3 por la instrucción de ir rápido.
+- REFACTOR: `digitosGenerados` separada en `estimarExponenteDecimal`, `calcularCotas` (con la emulación de 64 bits) y el camino de enteros; `potenciaDeDos` exacta (`numeros/potencia-de-dos.ts`) para cumplir la regla de `**`.
 
-**2.4 `Double.toString`, `println(double)`, concatenación (cierre)** — REQ-BIB-002 · depende: 2.3
+**2.4 `Double.toString`, `println(double)`, concatenación (cierre)** — REQ-BIB-002 · depende: 2.3 — ✅ hecha (2026-10-16)
 - RED `biblioteca/formato/double-a-texto.test.ts`: casos especiales (`NaN`/`Infinity`/`-Infinity`/`0.0`/`-0.0` por bit de signo), umbral científico (`1e7→1.0E7`), residual documentado (`0x453d04ffce09b504→3.5082457001091195E25`); 45292/45293 del salón + 100% por conjunto denso o aviso; falla.
 - GREEN: `src/motor/biblioteca/formato/double-a-texto.ts`; retira el stub numérico de 1.10.
 - Verif: `motor/biblioteca/formato/double-a-texto`
+- RED ejecutado: igual que 2.3 — `pruebas/diferencial/biblioteca/double-tostring.test.ts` falló por `Cannot find module '…/double-a-texto.ts'`; con el módulo, los fallos reales fueron los de 2.3.
+- GREEN: `src/motor/biblioteca/formato/double-a-texto.ts` — `doubleATexto(x)`: `NaN`/`Infinity`/`-Infinity`/`0.0`/`-0.0` (signo por el bit, no por comparación), umbral científico en 10⁻³ y 10⁷, al menos un dígito tras el punto, exponente sin `+`. Pasan los 9 conjuntos (`especiales` incluye `0x453d04ffce09b504 → 3.5082457001091195E25`). Rendimiento medido: ≈ 1 µs por conversión (no hizo falta un camino rápido).
+- Nota: «retira el stub numérico de 1.10» queda para quien conecte la biblioteca al intérprete (no está en el alcance de este hito).
 
 **2.5 `Math.pow` (fdlibm)** — REQ-BIB-004(parte pow) · depende: 2.1
 - RED `biblioteca/matematicas/fdlibm-pow.test.ts` contra `corpus/datos/pow/`: `Math.pow(10,-4)=1.0E-4` (no `9.999999999999999E-5` de V8); 100% de ≥26000 pares; falla.
 - GREEN: `src/motor/biblioteca/matematicas/fdlibm-pow.ts` (puerto de `e_pow.c` fdlibm 5.3, `DataView` 32 bits, aviso de Sun en `AVISOS-DE-TERCEROS.md`; nunca `FdLibm.java` de OpenJDK).
 - Verif: `motor/biblioteca/matematicas/fdlibm-pow`
 
-**2.6 `Math` — resto (cierre)** — REQ-BIB-004 · depende: 2.5
+**2.6 `Math` — resto (cierre)** — REQ-BIB-004 · depende: 2.5 — ✅ hecha (2026-10-16)
 - RED `biblioteca/matematicas/math.test.ts`: `round(-2.5)=-2`, `round(0.49999999999999994)=0`, `round(long)` usa sobrecarga `float` (`123456789L→123456792`, `int`), `abs(Integer.MIN_VALUE)` negativo, `sqrt(-1)=NaN`; regla ESLint prohíbe `Math.pow/exp/log*/sin/cos/tan/cbrt/hypot` y `**` en `src/motor`; falla.
 - GREEN: `src/motor/biblioteca/matematicas/math.ts` + regla en `herramientas/eslint/`.
 - Verif: `motor/biblioteca/matematicas/math`
+- RED ejecutado: `src/motor/biblioteca/matematicas/math.test.ts` y `pruebas/diferencial/biblioteca/matematicas.test.ts` → `Cannot find module './math.ts'`; y la regla de ESLint: `pruebas/arquitectura/matematicas-prohibidas.test.ts` → `AssertionError: expected [] to have a length of 1 but got +0` (3 fallos) hasta crear `herramientas/eslint/reglas-de-matematicas.ts`.
+- GREEN: `src/motor/biblioteca/matematicas/math.ts` — `MathJava.{abs,max,min}{Int,Long,Double}`, `sqrt`, `floor`, `ceil`, `roundDouble` (→ `long`, sin sumar 0.5: `0.49999999999999994 → 0`), `roundInt/roundLong/roundChar/roundFloat` (→ `int`, vía `round(float)`; `longAFloat` con un solo redondeo, nunca `Math.fround(Number(l))`), `PI`, `E`, `random(fuente)`. 3 138 operaciones contra el JDK (`corpus/datos/matematicas/operaciones.tsv`): 100 %. La regla de ESLint (`herramientas/eslint/reglas-de-matematicas.ts`, junto a la de tablas en `eslint.config.js`) prohíbe `Math.pow/exp/log*/sin/cos/tan/…/cbrt/hypot` y `**` entre números en `src/motor` (se permite entre `BigInt`).
+- **Pendiente: `pow` queda «No disponible»** (`NoDisponibleEnEjecucion('math-pow')`) hasta la tarea 2.5 (fdlibm): ningún programa del corpus lo usa; jamás se usa el `pow` de JS.
 
-**2.7 `Random` y semilla visible** — REQ-BIB-005, REQ-EJEC-008 · depende: 2.1
+**2.7 `Random` y semilla visible** — REQ-BIB-005, REQ-EJEC-008 · depende: 2.1 — ✅ hecha (2026-10-16)
 - RED `biblioteca/aleatorio/{random,semillas}.test.ts` contra `corpus/datos/random/`: LCG 48 bits (`0x5DEECE66D`/`0xB`), `new Random(0)`≡`new Random(Long.MIN_VALUE)`, rechazo en `nextInt(bound)` no potencia de 2, secuencia `52,81,42,29,56` con semilla `12345L`; semilla visible (k-ésima instancia sin semilla usa la k-ésima `nextLong()` de `new Random(S)`); falla.
 - GREEN: `src/motor/biblioteca/aleatorio/{random,semillas}.ts`.
 - Verif: `motor/biblioteca/aleatorio`
+- RED ejecutado: `src/motor/biblioteca/aleatorio/random.test.ts` y `pruebas/diferencial/biblioteca/random.test.ts` → `Cannot find module './random.ts'`.
+- GREEN: `src/motor/biblioteca/aleatorio/{random,semillas}.ts` — LCG de 48 bits en `BigInt` (`nextInt()`, `nextInt(n)` con el rechazo, `nextLong()` con extensión de signo, `nextDouble()`, `nextBoolean()`), `FuenteDeAleatorios(semillaVisible)` (la k-ésima instancia sin semilla usa la k-ésima `nextLong()` de `new Random(S)`; `Math.random()` toma la siguiente en su primera llamada) y `semillaVisibleNueva(azar)` (6 dígitos). Contra el JDK: 17 semillas (0, `Long.MIN_VALUE`/`MAX_VALUE`, 2⁴⁸, 2⁴⁸−1…) × todos los métodos × 14 cotas, ≈ 35 000 valores: 100 %; `12345L` → `52,81,42,29,56`.
 
-**2.8 `printf`/`String.format` + modelo regional** — REQ-BIB-003, REQ-BIB-010 · depende: 2.4
+**2.8 `printf`/`String.format` + modelo regional** — REQ-BIB-003, REQ-BIB-010 · depende: 2.4 — ✅ hecha (2026-10-16)
 - RED `biblioteca/formato/{formateador,regional}.test.ts` contra `corpus/datos/printf/`: `%.2f` de `2.675→2.68` (HALF_UP sobre dígitos cortos, no `toFixed`), `%.20f` de `0.1` rellena con ceros, excepciones exactas (`UnknownFormatConversionException`, `IllegalFormatConversionException: f != java.lang.Integer`…), `es_MX` punto / `es_ES` coma en entrada Y salida (P2); falla.
 - GREEN: `src/motor/biblioteca/formato/{formateador,regional}.ts`.
 - REFACTOR: piezas del formato (literal/especificador→texto) reusables por la plantilla 21 (4.11).
 - Verif: `motor/biblioteca/formato/formateador`
+- RED ejecutado: `formateador.test.ts` y `pruebas/diferencial/biblioteca/printf.test.ts` → `Cannot find module './formateador.ts'`; con el módulo, un fallo real: `"%tY": Java EX:IllegalFormatConversionException:Y != java.lang.Double, motor EX:UnknownFormatConversionException:Conversion = 'Y'` (fecha y hora → «No disponible»).
+- GREEN: `src/motor/biblioteca/formato/{formateador,regional}.ts` — `formatear`, `formatearEnPiezas` (literal/especificador para la plantilla 21), `formatoSoportado(patron)` (para el aviso honesto del compilador con patrones literales), `simbolosRegionales`. `%d %s %f %.Nf %c %b %n %%`, ancho, precisión y banderas `- 0 ,`; `%f` sobre los dígitos de `Double.toString` con HALF_UP de un dígito (`2.675 → 2.68`), jamás `toFixed`; es-MX/es-ES; todos los errores de patrón y de tipo con su excepción, mensaje y marcos (38 sitios de `Formatter` medidos); lo fuera del alcance (`%e %x`, `+ ( # espacio`, `1$`, `%S`, `%t`) → `NoDisponibleEnEjecucion`. 12 456 casos es-MX + 2 556 es-ES contra el JDK: 100 % (los «fuera de alcance» dan «No disponible» o exactamente lo de Java).
 
-**2.9 `String` — identidad y métodos** — REQ-BIB-006 · depende: 2.2
+**2.9 `String` — identidad y métodos** — REQ-BIB-006 · depende: 2.2 — ✅ hecha (2026-10-16)
 - RED `biblioteca/texto/{cadena-java,string}.test.ts`: `"ho"+"la"=="hola"` true, `sc.next()=="si"` false, `charAt` fuera de rango difiere por *coder* (Latin-1 `StringLatin1.charAt`; UTF-16 `String.checkIndex`), `trim` no recorta U+00A0 pero sí `\u0000`; falla.
 - GREEN: `src/motor/biblioteca/texto/{cadena-java,string}.ts` (`CadenaJava{texto,latin1}`, pool internado).
 - REFACTOR: chequeo de límites compartido entre `substring`/`charAt`.
 - Verif: `motor/biblioteca/texto/cadena-java`
+- RED ejecutado: `string.test.ts` y `pruebas/diferencial/biblioteca/cadenas.test.ts` → `Cannot find module './cadena-java.ts'`; con el módulo, 3 fallos reales de identidad: `toUpperCaseMismo(["😀"]): Java "OK:false", motor "OK:true"` (con sustitutos Java siempre arma una cadena nueva).
+- GREEN: `src/motor/biblioteca/texto/{cadena-java,string}.ts` — `CadenaJava` (identidad por referencia; `latin1` deducido del contenido), `PoolDeCadenas`, `StringJava.{length,charAt,substring,indexOf,indexOfChar,equals,equalsIgnoreCase,compareTo,toUpperCase,toLowerCase,trim,isEmpty,contains,startsWith,endsWith,replace,replaceChar,valueOf,nueva}`; `charAt` fuera de rango por *coder*; `trim` ≤ U+0020 sin U+00A0; mayúsculas/minúsculas con los casos especiales del JDK (`ß → SS`, `İ → i̇`, plano 1, sigma final); devuelve la MISMA instancia donde Java lo hace. 17 690 operaciones + 131 070 puntos de código: 100 %.
+- Datos: `corpus/datos/cadenas/operaciones.tsv`, `corpus/datos/caracteres/{mayusculas,minusculas}-especiales.csv`, `src/motor/biblioteca/datos/mayusculas.generado.ts`.
 
-**2.10 `Character` — 65536 valores** — REQ-BIB-007 · depende: 2.1
+**2.10 `Character` — 65536 valores** — REQ-BIB-007 · depende: 2.1 — ✅ hecha (2026-10-16)
 - RED `biblioteca/texto/character.test.ts` contra `corpus/datos/caracteres/`: `isDigit`/`isLetter`/.../`toUpperCase`/`toLowerCase` exactos para los 65536 `char`; falla.
 - GREEN: `src/motor/biblioteca/texto/character.ts` + `datos/caracteres.generado.ts`.
 - Verif: `motor/biblioteca/texto/character`
+- RED ejecutado: `character.test.ts` y `pruebas/diferencial/biblioteca/character.test.ts` → `Cannot find module './character.ts'`; después, `TypeError: digitoDecimal is not a function` (el valor de un dígito Unicode, necesario para `parseInt`).
+- GREEN: `src/motor/biblioteca/texto/character.ts` + `datos/caracteres.generado.ts` (2 186 tramos de los 65 536 `char`, Unicode 13; la sonda comprueba además que todo dígito va en rachas de diez alineadas, y por eso `digitoDecimal` no necesita otra columna). Los 65 536 `char` × 8 métodos: 100 %.
 
-**2.11 `Integer`/`Double`/`Long` — envoltorios** — REQ-BIB-008 · depende: 2.4
+**2.11 `Integer`/`Double`/`Long` — envoltorios** — REQ-BIB-008 · depende: 2.4 — ✅ hecha (2026-10-16)
 - RED `biblioteca/texto/envoltorios.test.ts`: `parseInt(" 5 ")` → `NumberFormatException: For input string: " 5 "` (sin recortar); `parseInt("٣٤")=34` (dígitos Unicode); `parseDouble` gramática Java (`NaN`/`Infinity`/`f`/`d`, hex→NO-DISP); `MAX_VALUE`/`MIN_VALUE` de los 3 tipos; falla.
 - GREEN: `src/motor/biblioteca/texto/envoltorios.ts`.
 - Verif: `motor/biblioteca/texto/envoltorios`
+- RED ejecutado: `envoltorios.test.ts` y `pruebas/diferencial/biblioteca/parseo.test.ts` → `Cannot find module '../no-disponible.ts'`; con el módulo, un fallo real que corrigió el diseño: `parseDouble(" F6f\t"): Java …"F6f"…, motor …" F6f\t"…` (el mensaje cita el texto RECORTADO).
+- GREEN: `src/motor/biblioteca/texto/envoltorios.ts` — `Integer.{parseInt,MAX_VALUE,MIN_VALUE}`, `Double.{parseDouble,MAX_VALUE,MIN_VALUE}`, `Long.{MAX_VALUE,MIN_VALUE}`; `parseInt` acumula en negativo y distingue DÓNDE falla (cada línea de `Integer.parseInt` en los marcos); `parseDouble`: `trim` de Java, gramática de literal, `multiple points`, `empty String`. 3 294 entradas contra el JDK: 100 %. **Los literales hexadecimales de `double` son «No disponible»** (nunca un valor inventado).
+- Nota: `Number()` hasta 20 dígitos del diseño no se reimplementó en `BigInt`: los 30 dígitos del conjunto coinciden en V8; falta confirmarlo en los otros dos motores con `test:navegadores` (tarea 2.22).
 
-**2.12 `Scanner` — tokenización y excepciones** — REQ-BIB-009, REQ-BIB-010(scanner), REQ-EJEC-010 · depende: 2.8, 2.11
+**2.12 `Scanner` — tokenización y excepciones** — REQ-BIB-009, REQ-BIB-010(scanner), REQ-EJEC-010 · depende: 2.8, 2.11 — ✅ hecha (2026-10-16)
 - RED `biblioteca/entrada/{scanner,tokens-scanner}.test.ts` contra `corpus/datos/scanner/`: delimitador `Character.isWhitespace` del JDK; `nextInt()` deja `\n` pendiente (`nextLine()` inmediato → `""`); `InputMismatchException` no consume; `NoSuchElementException` al agotar; `close()`+lectura→`IllegalStateException: Scanner closed`; `"3,5"` rechazado por omisión, aceptado con opción coma; falla.
 - GREEN: `src/motor/biblioteca/entrada/{scanner,tokens-scanner}.ts`.
 - REFACTOR: tokenizador de delimitadores compartido con `parseo/`.
 - Verif: `motor/biblioteca/entrada/scanner`
+- RED ejecutado: `entrada/scanner.test.ts` y `pruebas/diferencial/biblioteca/scanner.test.ts` → `Cannot find module './scanner.ts'`; con el módulo, 4 fallos reales: `nextDouble("∞"): Java EX:java.util.InputMismatchException:For input string: "∞", motor OK:7ff0000000000000` y `"3.5\n true -2.25 …" hasNextLine,close,hasNextInt,nextLine,nextDouble: Java OK:true | OK:cerrado | EX:…closed | OK:3.5 | EX:…closed, motor … EX:…closed | EX:…closed`.
+- GREEN: `src/motor/biblioteca/entrada/{scanner,tokens-scanner}.ts` — `ScannerJava(regional)` con `agregarEntrada`, `cerrarEntrada` (EOF), `capturar/restaurar`, `nextInt/nextDouble/nextBoolean/next/nextLine/hasNext/hasNextInt/hasNextDouble/hasNextLine/close`; `FaltaEntrada` (no bloquea: el intérprete reintenta). Gramáticas reescritas de la documentación pública (delimitador `Character.isWhitespace`, agrupación de miles, separador decimal por región). 8 340 casos de token + 2 500 secuencias × (es-MX, es-ES): 100 %.
+- Hallazgos medidos: tras un `InputMismatchException` se consumen los separadores previos al token; `hasNextLine()` guarda su resultado y `nextLine()` lo usa aunque el `Scanner` se haya cerrado; `nextDouble` sobre `∞` falla. `nextDouble` sobre un literal hexadecimal con `.` → «No disponible».
 
-**2.13 `System.out`/`System.err`** — REQ-BIB-011 · depende: 2.9
+**2.13 `System.out`/`System.err`** — REQ-BIB-011 · depende: 2.9 — ✅ hecha (2026-10-16)
 - RED `biblioteca/salida/{print-stream,codificacion-jvm}.test.ts`: `print` sin `\n` final; sobrecarga por tipo estático (`print('A')` vs `print(65)`, `'A'+1` imprime `66`); sustitutos sueltos → `?`; `out`/`err` intercalados en orden real; falla.
 - GREEN: `src/motor/biblioteca/salida/{print-stream,codificacion-jvm}.ts`.
 - Verif: `motor/biblioteca/salida`
+- RED ejecutado: `salida/print-stream.test.ts` → `Cannot find module './print-stream.ts'`.
+- GREEN: `src/motor/biblioteca/salida/{print-stream,codificacion-jvm}.ts` — `valorATexto(tipo, valor)` (= `String.valueOf`, también para `+`), `FlujoDeSalida.print/println(tipo, valor)` (uno por `System.out` y por `System.err`), `CodificadorDeSalida` (sustituto suelto → `?`; un sustituto alto al final de un `print` espera al siguiente, medido en el JDK). La sobrecarga la elige el intérprete por el tipo estático (`print('A')` vs `print(65)`); el orden `out`/`err` es el del intérprete. 9 pruebas con valores de un programa real.
 
-**2.14 Excepciones y marcos de pila** — REQ-EJEC-006(biblioteca) · depende: 1.9, 2.9
+**2.14 Excepciones y marcos de pila** — REQ-EJEC-006(biblioteca) · depende: 1.9, 2.9 — ✅ hecha (2026-10-16)
 - RED `biblioteca/excepciones/{excepcion-java,traza-de-pila}.test.ts` contra `corpus/datos/marcos/`: `"abc".charAt(5)`→`StringIndexOutOfBoundsException: String index out of range: 5` con `StringLatin1.charAt(StringLatin1.java:48)`; `"€bc".charAt(5)`→`index 5, length 3` con `StringUTF16`; `ArithmeticException` sin marcos de `java.base`; marco del alumno calificado si hay `package`; falla.
 - GREEN: `src/motor/biblioteca/excepciones/{excepcion-java,traza-de-pila}.ts`.
 - REFACTOR: tabla (operación, modo de falla, *coder*)→marcos como dato.
 - Verif: `motor/biblioteca/excepciones`
+- RED ejecutado: `excepciones/excepcion-java.test.ts` → `Cannot find module './excepcion-java.ts'`; después `TypeError: existeSitio is not a function` y `TypeError: divisionEntreCero is not a function`.
+- GREEN: `src/motor/biblioteca/excepciones/{excepcion-java,traza-de-pila}.ts` + `datos/marcos-de-pila.generado.ts` — `ExcepcionJava`, `crearExcepcion(sitio, mensaje)`, `divisionEntreCero()`, `formatearTrazaDePila(excepcion, marcosDelAlumno)` (con `package` el marco lleva el nombre calificado; varios marcos del alumno). La tabla `sitio → (clase, marcos)` sale de **127 programas reales** (`herramientas/oraculo/escenarios-de-excepciones.ts` → `corpus/datos/marcos/excepciones.jsonl`) y el generador exige que dos escenarios con el mismo sitio den los mismos marcos. `pruebas/diferencial/biblioteca/excepciones.test.ts` compara el `stderr` COMPLETO de los 127 escenarios byte a byte: 100 %. Cubre `ArithmeticException`, `InputMismatchException`, `NoSuchElementException`, `IllegalStateException: Scanner closed`, `StringIndexOutOfBoundsException` (Latin-1/UTF-16), `NumberFormatException` (cada camino de `parseInt`), `IllegalArgumentException` de `Random` y las 9 excepciones de `Formatter` por las dos puertas (38 sitios).
 
 **2.15 Catálogo API (soportado / existe-no-soportado / no-existe)** — REQ-SUB-008 · depende: 1.9, 2.2–2.14
 - RED `biblioteca/catalogo/catalogo-api.test.ts`: cada miembro de REQ-SUB-005 clasifica `soportado`; cada fila de REQ-SUB-007 clasifica `existe-no-soportado`; símbolo inventado → `no-existe`; formato no literal en `printf` detiene en ejecución con el mismo aviso, traza previa navegable; falla.

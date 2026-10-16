@@ -13,16 +13,18 @@ import type { Linter } from 'eslint';
 const MENSAJE =
   'Tabla de objeto plano indexada por texto: hereda las propiedades de `Object.prototype` (`constructor`, `toString`…) y un nombre del alumno puede encontrar una función en vez de «no está». Usa un `Map` (tarea 1.34).';
 
+/** Los selectores sueltos: `eslint.config.js` los junta con los de otras reglas de `no-restricted-syntax` sobre `src/motor` (ESLint solo admite UNA entrada por regla y bloque). */
+export const SELECTORES_DE_TABLAS_SIN_PROTOTIPO: readonly { readonly selector: string; readonly message: string }[] = [
+  {
+    selector: 'TSTypeReference[typeName.name="Record"] > TSTypeParameterInstantiation[params.0.type="TSStringKeyword"][params.1.type!="TSUnknownKeyword"]',
+    message: MENSAJE,
+  },
+  {
+    selector: 'TSIndexSignature[parameters.0.typeAnnotation.typeAnnotation.type="TSStringKeyword"]',
+    message: MENSAJE,
+  },
+];
+
 export const REGLAS_DE_TABLAS_SIN_PROTOTIPO: Linter.RulesRecord = {
-  'no-restricted-syntax': [
-    'error',
-    {
-      selector: 'TSTypeReference[typeName.name="Record"] > TSTypeParameterInstantiation[params.0.type="TSStringKeyword"][params.1.type!="TSUnknownKeyword"]',
-      message: MENSAJE,
-    },
-    {
-      selector: 'TSIndexSignature[parameters.0.typeAnnotation.typeAnnotation.type="TSStringKeyword"]',
-      message: MENSAJE,
-    },
-  ],
+  'no-restricted-syntax': ['error', ...SELECTORES_DE_TABLAS_SIN_PROTOTIPO],
 };

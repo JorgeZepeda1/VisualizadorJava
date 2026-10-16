@@ -31,6 +31,7 @@
     "oraculo:goldens": "node herramientas/oraculo/generar-goldens.ts",
     "oraculo:verificar": "node herramientas/oraculo/verificar-goldens.ts",
     "oraculo:datos": "node herramientas/oraculo/generar-datos.ts",
+    "oraculo:conjuntos": "node herramientas/oraculo/generar-conjuntos.ts",
     "oraculo:mutantes": "node herramientas/oraculo/mutantes.ts",
     "oraculo:generados": "node herramientas/oraculo/programas-generados.ts",
     "medir:plataforma": "node herramientas/oraculo/medir-plataforma.ts"

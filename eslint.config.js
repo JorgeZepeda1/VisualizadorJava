@@ -8,7 +8,8 @@ import {
   GLOBALES_DOM_PROHIBIDOS,
   patronesProhibidosPara,
 } from './herramientas/eslint/matriz-capas.ts';
-import { REGLAS_DE_TABLAS_SIN_PROTOTIPO } from './herramientas/eslint/reglas-de-tablas.ts';
+import { SELECTORES_DE_TABLAS_SIN_PROTOTIPO } from './herramientas/eslint/reglas-de-tablas.ts';
+import { REGLA_DE_FUNCIONES_APROXIMADAS, SELECTORES_DE_OPERADOR_DE_POTENCIA } from './herramientas/eslint/reglas-de-matematicas.ts';
 import { REGLAS_DE_TEXTOS_EN_CATALOGO } from './herramientas/eslint/reglas-de-textos.ts';
 
 // Un bloque de configuración por capa, generado desde la matriz de datos de
@@ -85,9 +86,14 @@ export default tseslint.config(
   {
     // Tarea 1.34: ninguna tabla del motor es un objeto plano indexado por texto (hereda `Object.prototype`); los datos que genera el oráculo
     // (`*.generado.ts`) se convierten a `Map` al cargarse, así que quedan fuera.
+    // Tarea 2.6 (ADR 009): tampoco las funciones de `Math` «aproximadas por la implementación» ni `**` entre números. Las dos reglas comparten `no-restricted-syntax` (ESLint solo admite una
+    // entrada por regla y bloque), así que los selectores se juntan aquí.
     files: ['src/motor/**/*.ts'],
     ignores: ['src/motor/**/*.generado.ts'],
-    rules: REGLAS_DE_TABLAS_SIN_PROTOTIPO,
+    rules: {
+      'no-restricted-syntax': ['error', ...SELECTORES_DE_TABLAS_SIN_PROTOTIPO, ...SELECTORES_DE_OPERADOR_DE_POTENCIA],
+      'no-restricted-properties': REGLA_DE_FUNCIONES_APROXIMADAS,
+    },
   },
   ...configuracionesDeFrontera,
 );
