@@ -25,14 +25,6 @@ export class LimiteDePasosExcedido extends Error {
   }
 }
 
-/** Algo que el motor aceptó al compilar pero no sabe ejecutar con certeza (D2): se detiene con el aviso, nunca con un resultado inventado. */
-export class NoDisponibleEnEjecucion extends Error {
-  constructor(detalle: string) {
-    super(detalle);
-    this.name = 'NoDisponibleEnEjecucion';
-  }
-}
-
 /** La consola cabe cuatro veces lo que una cadena (design.md §3.5: 4 194 304 contra 1 048 576). */
 const FACTOR_DE_LA_CONSOLA = 4;
 

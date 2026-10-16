@@ -42,7 +42,7 @@ describe('corpus/compilacion/avisos — cada muestra real produce, vía compilar
   const archivos = archivosJava(RUTA_AVISOS);
 
   it('el corpus de avisos no está vacío (guarda contra un directorio mal armado)', () => {
-    expect(archivos.length).toBeGreaterThanOrEqual(74); // 61 + las 6 de la tarea 1.35 + las 4 de la 1.36 + la de la 1.37 + la de la 1.38 + la de la 1.39
+    expect(archivos.length).toBeGreaterThanOrEqual(73); // 61 + las 6 de la tarea 1.35 + las 3 de la 1.36 (la de la constante con decimal se retiró en la 2.4: ya se pliega) + la de la 1.37 + la de la 1.38 + la de la 1.39
   });
 
   it.each(archivos)('%s: el texto renderizado con los datos REALES de compilar() no tiene restos sin resolver', (nombre) => {

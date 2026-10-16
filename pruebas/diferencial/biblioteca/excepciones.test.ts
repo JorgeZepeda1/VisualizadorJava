@@ -5,6 +5,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { EntradaDelPrograma } from '../../../src/motor/biblioteca/entrada/entrada-del-programa.ts';
 import { ScannerJava } from '../../../src/motor/biblioteca/entrada/scanner.ts';
 import { divisionEntreCero, ExcepcionJava } from '../../../src/motor/biblioteca/excepciones/excepcion-java.ts';
 import { formatearTrazaDePila } from '../../../src/motor/biblioteca/excepciones/traza-de-pila.ts';
@@ -54,9 +55,10 @@ function provocar(escenario: ResultadoDeEscenario): void {
   const { cuerpo, entrada } = escenario;
   let m: RegExpExecArray | null;
   if ((m = /^Scanner sc = new Scanner\(System\.in\); (sc\.close\(\); )?(?:\w+ \w+ = )?sc\.(\w+)\(\);$/.exec(cuerpo))) {
-    const scanner = new ScannerJava('es-MX');
-    scanner.agregarEntrada(entrada);
-    scanner.cerrarEntrada();
+    const entradaDelPrograma = new EntradaDelPrograma();
+    entradaDelPrograma.agregar(entrada);
+    entradaDelPrograma.cerrar();
+    const scanner = new ScannerJava('es-MX', entradaDelPrograma);
     if (m[1] !== undefined) scanner.close();
     (scanner as unknown as Record<string, () => unknown>)[m[2] as string]!();
   } else if ((m = /^String s = "(.*)"; (?:\w+ \w+ = )s\.(charAt|substring)\((-?\d+)(?:, (-?\d+))?\);$/.exec(cuerpo))) {

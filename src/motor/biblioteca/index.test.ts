@@ -7,7 +7,7 @@ describe('contrato de la biblioteca (design.md §4)', () => {
   it('exporta cada pieza con el nombre acordado', () => {
     const esperados = [
       'digitosJava', 'doubleATexto', 'formatear', 'formatearEnPiezas', 'formatoSoportado', 'simbolosRegionales', 'valorATexto', 'FlujoDeSalida', 'CodificadorDeSalida', 'FIN_DE_LINEA',
-      'ScannerJava', 'FaltaEntrada', 'CadenaJava', 'nuevaCadena', 'PoolDeCadenas', 'StringJava', 'isDigit', 'isLetter', 'isLetterOrDigit', 'isUpperCase', 'isLowerCase', 'isWhitespace',
+      'ScannerJava', 'FaltaEntrada', 'EntradaDelPrograma', 'CadenaJava', 'nuevaCadena', 'PoolDeCadenas', 'StringJava', 'isDigit', 'isLetter', 'isLetterOrDigit', 'isUpperCase', 'isLowerCase', 'isWhitespace',
       'toUpperCase', 'toLowerCase', 'digitoDecimal', 'Integer', 'Double', 'Long', 'MathJava', 'longAFloat', 'RandomJava', 'FuenteDeAleatorios', 'ExcepcionJava', 'crearExcepcion',
       'divisionEntreCero', 'existeSitio', 'formatearTrazaDePila', 'formatearMarcos', 'textoDeLaExcepcion', 'NoDisponibleEnEjecucion', 'potenciaDeDos',
     ];
@@ -15,13 +15,14 @@ describe('contrato de la biblioteca (design.md §4)', () => {
   });
 
   it('un recorrido de aula: leer dos notas con Scanner, promediar y mostrar con printf y println (la salida que daría Java)', () => {
-    const scanner = new biblioteca.ScannerJava('es-MX');
-    scanner.agregarEntrada('9 8\n');
-    scanner.cerrarEntrada();
+    const entrada = new biblioteca.EntradaDelPrograma();
+    entrada.agregar('9 8\n');
+    entrada.cerrar();
+    const scanner = new biblioteca.ScannerJava('es-MX', entrada);
     const a = scanner.nextInt();
     const b = scanner.nextInt();
     const promedio = (a + b) / 2;
-    const salida = new biblioteca.FlujoDeSalida();
+    const salida = new biblioteca.FlujoDeSalida('out');
     const texto =
       salida.println('String', `Promedio: ${biblioteca.valorATexto('double', promedio)}`) +
       biblioteca.formatear('Redondeado: %.2f y %d%n', [{ tipo: 'double', valor: 8.675 }, { tipo: 'int', valor: a }], 'es-MX', 'printf');
@@ -29,9 +30,10 @@ describe('contrato de la biblioteca (design.md §4)', () => {
   });
 
   it('una excepción de la biblioteca se imprime con el stderr exacto de Java', () => {
-    const scanner = new biblioteca.ScannerJava('es-MX');
-    scanner.agregarEntrada('hola\n');
-    scanner.cerrarEntrada();
+    const entrada = new biblioteca.EntradaDelPrograma();
+    entrada.agregar('hola\n');
+    entrada.cerrar();
+    const scanner = new biblioteca.ScannerJava('es-MX', entrada);
     let capturada: unknown;
     try {
       scanner.nextInt();

@@ -19,9 +19,9 @@
 // el lado derecho de `false && …` y de `true || …`.
 //
 // El motor NO modela el bytecode. Donde no puede decidir da un aviso honesto (`tamano-de-texto-no-revisable`), nunca `ok` ni un error inventado:
-//   - un texto con un decimal (`"a" + 1.5`): su largo lo decide `Double.toString` (lote 2) y se sabe solo que mide entre 3 y 25; si el límite cae dentro de ese margen, no se sabe;
 //   - una condición constante (`if (true)`, `if (DEBUG)`, `false && …`) en un programa donde un texto pasa el límite: javac poda código que el motor no sigue más allá de la rama que se descarta —por ejemplo, lo
 //     que viene tras un `if (true) return;` tampoco se genera, aunque Flow lo ve alcanzable—, así que un error en el código restante podría no ser el primero de javac, ni existir. Sin textos largos no cambia nada.
+// Un decimal convertido a texto (`"a" + 1.5`) ya no es una incertidumbre (tarea 2.4, cierre de la 1.36): su largo es el de `Double.toString`, exacto, como el de cualquier otra constante.
 // El límite del código de un método (`limit.code`, 64 KB de bytecode) lo cubre el tope de tamaño de `limites.ts`, que se revisa antes de todo esto.
 import type { Rango } from '../fuente/rango.ts';
 import type {
@@ -39,18 +39,7 @@ import type {
   NodoSwitch,
 } from '../sintaxis/ast.ts';
 import { Alcance } from './alcance.ts';
-import {
-  bytesEnUtf8Modificado,
-  constanteDeVariable,
-  esDeValorDesconocido,
-  MAXIMO_DE_UNA_PARTE_DESCONOCIDA,
-  medidaDelTexto,
-  MINIMO_DE_UNA_PARTE_DESCONOCIDA,
-  textoSiSeSabe,
-  valorConstante,
-  type ConstanteDeValorDesconocido,
-  type ValorConstante,
-} from './constantes.ts';
+import { bytesEnUtf8Modificado, constanteDeVariable, textoJavaDeConstante, valorConstante, type ValorConstante } from './constantes.ts';
 import { avisoDeTamanoDeTexto, type ProblemaAtribucion } from './diagnostico.ts';
 import { posicionDeJavac } from './posiciones-de-javac.ts';
 import { tipoDeExpresion } from './tipos.ts';
@@ -62,31 +51,13 @@ const BYTES_MAXIMOS_DE_UNA_ENTRADA = 65_535;
 /** `StringConcat.MAX_INDY_CONCAT_ARG_SLOTS`: javac parte una concatenación en recetas cuando las ranuras de los operandos llegan a este número. */
 const RANURAS_DE_UNA_RECETA = 200;
 
-type Constante = ValorConstante | ConstanteDeValorDesconocido;
-
-/** Un valor que no se sabe con exactitud, entre dos cotas (un decimal convertido a texto mide entre 3 y 25 caracteres). */
-interface Cota {
-  readonly minimo: number;
-  readonly maximo: number;
-}
-
-const exacta = (valor: number): Cota => ({ minimo: valor, maximo: valor });
-
 /** El largo en caracteres y en bytes de la constante de texto `constante`; `null` si no es un texto. */
-function medirTexto(constante: Constante): { readonly unidades: Cota; readonly bytes: Cota } | null {
-  if (esDeValorDesconocido(constante)) {
-    if (constante.tipoJava !== 'String') return null;
-    const { unidades, bytes, partesDeLargoDesconocido: partes } = constante.medida;
-    return {
-      unidades: { minimo: unidades + MINIMO_DE_UNA_PARTE_DESCONOCIDA * partes, maximo: unidades + MAXIMO_DE_UNA_PARTE_DESCONOCIDA * partes },
-      bytes: { minimo: bytes + MINIMO_DE_UNA_PARTE_DESCONOCIDA * partes, maximo: bytes + MAXIMO_DE_UNA_PARTE_DESCONOCIDA * partes },
-    };
-  }
+function medirTexto(constante: ValorConstante): { readonly unidades: number; readonly bytes: number } | null {
   if (constante.tipo !== 'String') return null;
-  return { unidades: exacta(constante.valor.length), bytes: exacta(bytesEnUtf8Modificado(constante.valor)) };
+  return { unidades: constante.valor.length, bytes: bytesEnUtf8Modificado(constante.valor) };
 }
 
-/** Lo que encontró la revisión: SEGURO (se sabe que pasa del límite) o INCIERTO (depende de lo que el motor no calcula). */
+/** Lo que encontró la revisión: SEGURO (se sabe que pasa del límite) o INCIERTO (depende de lo que el motor no sabe: el reparto en recetas de una concatenación con un operando de tipo desconocido). */
 interface Hallazgo {
   readonly certeza: 'seguro' | 'incierto';
   /** Donde javac ancla el error. */
@@ -103,7 +74,7 @@ interface Revision {
   readonly deGeneracion: Hallazgo[];
   /** `limit.string.overflow`, que `ClassWriter` revisa después de `Gen`: todos se anclan en la clase. */
   readonly deArchivo: Hallazgo[];
-  /** ¿Hay una condición constante (conocida o no) que podría podar código de `Lower` o de `Gen`? */
+  /** ¿Hay una condición constante que podría podar código de `Lower` o de `Gen`? */
   hayPodaPosible: boolean;
 }
 
@@ -152,14 +123,11 @@ function rangoDeJavac(expresion: NodoExpresion, esRaizDeLaExpresion: boolean): R
  * Una constante de texto que javac revisa: `limit.string` si mide 65 535 caracteres o más (`Gen.checkStringConstant`), y, si además se GENERA (`ldc`), `limit.string.overflow` si su entrada pasa de 65 535 bytes.
  * `rango` es el que ancla el error de `Gen`. Una constante que no es un texto no tiene nada que revisar.
  */
-function revisarTextoConstante(constante: Constante, rango: Rango, seGenera: boolean, revision: Revision): void {
+function revisarTextoConstante(constante: ValorConstante, rango: Rango, seGenera: boolean, revision: Revision): void {
   const medida = medirTexto(constante);
   if (medida === null) return;
-  if (medida.unidades.minimo >= LARGO_DE_TEXTO_QUE_YA_NO_SE_GENERA) revision.deGeneracion.push({ certeza: 'seguro', rango, rangoDelTexto: rango });
-  else if (medida.unidades.maximo >= LARGO_DE_TEXTO_QUE_YA_NO_SE_GENERA) revision.deGeneracion.push({ certeza: 'incierto', rango, rangoDelTexto: rango });
-  if (!seGenera) return;
-  if (medida.bytes.minimo > BYTES_MAXIMOS_DE_UNA_ENTRADA) revision.deArchivo.push({ certeza: 'seguro', rango: revision.rangoDeLaClase, rangoDelTexto: rango });
-  else if (medida.bytes.maximo > BYTES_MAXIMOS_DE_UNA_ENTRADA) revision.deArchivo.push({ certeza: 'incierto', rango: revision.rangoDeLaClase, rangoDelTexto: rango });
+  if (medida.unidades >= LARGO_DE_TEXTO_QUE_YA_NO_SE_GENERA) revision.deGeneracion.push({ certeza: 'seguro', rango, rangoDelTexto: rango });
+  if (seGenera && medida.bytes > BYTES_MAXIMOS_DE_UNA_ENTRADA) revision.deArchivo.push({ certeza: 'seguro', rango: revision.rangoDeLaClase, rangoDelTexto: rango });
 }
 
 // ---- Sentencias, en el orden en que `Gen` las genera ----
@@ -226,7 +194,7 @@ function visitarSentencia(sentencia: NodoSentencia, revision: Revision): void {
   }
 }
 
-/** `Lower.visitIf`: con una condición constante el `if` entero se reemplaza por la rama que se toma (la otra no llega a `Gen`); con una de valor desconocido no se sabe cuál. */
+/** `Lower.visitIf`: con una condición constante el `if` entero se reemplaza por la rama que se toma (la otra no llega a `Gen`). */
 function visitarIf(sentencia: NodoIf, revision: Revision): void {
   const condicion = valorConstante(sentencia.condicion, revision.alcance);
   if (condicion === null) {
@@ -236,9 +204,8 @@ function visitarIf(sentencia: NodoIf, revision: Revision): void {
     return;
   }
   revision.hayPodaPosible = true;
-  const rama = esDeValorDesconocido(condicion) ? 'cualquiera' : condicion.tipo === 'boolean' && condicion.valor ? 'entonces' : 'sino';
-  if (rama !== 'sino') visitarSentencia(sentencia.entonces, revision);
-  if (rama !== 'entonces' && sentencia.sino !== null) visitarSentencia(sentencia.sino, revision);
+  if (condicion.tipo === 'boolean' && condicion.valor) visitarSentencia(sentencia.entonces, revision);
+  else if (sentencia.sino !== null) visitarSentencia(sentencia.sino, revision);
 }
 
 /** `Gen.genLoop` genera la inicialización, la condición, el CUERPO y, al final, el paso. */
@@ -330,8 +297,8 @@ function generarBinaria(expresion: NodoBinaria, esRaizDeLaExpresion: boolean, re
 }
 
 /**
- * `Lower.visitBinary`: con el lado IZQUIERDO constante, `false && …` y `true || …` valen su lado izquierdo y el derecho se descarta; `true && x` y `false || x` valen `x`. Con el lado izquierdo de valor
- * desconocido no se sabe si se descarta (se genera para no perder un texto largo, y la poda posible vuelve un error en aviso). Un lado izquierdo que no es constante genera los dos.
+ * `Lower.visitBinary`: con el lado IZQUIERDO constante, `false && …` y `true || …` valen su lado izquierdo y el derecho se descarta; `true && x` y `false || x` valen `x`. Un lado izquierdo que no
+ * es constante genera los dos.
  */
 function generarCortocircuito(expresion: NodoBinaria, revision: Revision): void {
   const izquierda = valorConstante(expresion.izquierda, revision.alcance);
@@ -341,10 +308,6 @@ function generarCortocircuito(expresion: NodoBinaria, revision: Revision): void 
     return;
   }
   revision.hayPodaPosible = true;
-  if (esDeValorDesconocido(izquierda)) {
-    generar(expresion.derecha, false, revision);
-    return;
-  }
   const seGeneraElDerecho = izquierda.tipo === 'boolean' && (expresion.operador === '&&' ? izquierda.valor : !izquierda.valor);
   if (seGeneraElDerecho) generar(expresion.derecha, false, revision);
 }
@@ -393,7 +356,7 @@ function aplanarConcatenacion(expresion: NodoExpresion, operandos: NodoExpresion
 /** Un operando de la receta: las ranuras que ocupa (`long` y `double`, 2), lo que aporta a la receta y, si trae las marcas `\u0001`/`\u0002`, su propia entrada aparte. */
 interface Pieza {
   readonly ranuras: 1 | 2;
-  readonly bytes: Cota;
+  readonly bytes: number;
 }
 
 const esMarcaDeLaReceta = (texto: string): boolean => texto.includes('\u0001') || texto.includes('\u0002');
@@ -411,34 +374,23 @@ function generarConcatenacion(operandos: readonly NodoExpresion[], rangoDeLaConc
       generar(operando, false, revision);
       const tipo = tipoDeExpresion(operando, revision.alcance);
       if (tipo === 'desconocido') ranurasDesconocidas = true;
-      piezas.push({ ranuras: tipo === 'long' || tipo === 'double' ? 2 : 1, bytes: exacta(1) });
+      piezas.push({ ranuras: tipo === 'long' || tipo === 'double' ? 2 : 1, bytes: 1 });
       continue;
     }
-    const ranuras = !esDeValorDesconocido(constante) && (constante.tipo === 'long' || constante.tipo === 'double') ? 2 : 1;
-    const texto = textoSiSeSabe(constante);
-    if (texto !== null && esMarcaDeLaReceta(texto)) {
+    const ranuras = constante.tipo === 'long' || constante.tipo === 'double' ? 2 : 1;
+    const texto = textoJavaDeConstante(constante);
+    if (esMarcaDeLaReceta(texto)) {
       // Una constante con una marca no entra a la receta: la receta guarda su propia marca (1 byte) y el texto va como una entrada más.
-      piezas.push({ ranuras, bytes: exacta(1) });
-      registrarEntradaDeArchivo(exacta(bytesEnUtf8Modificado(texto)), rangoDeLaConcatenacion, false, revision);
+      piezas.push({ ranuras, bytes: 1 });
+      registrarEntradaDeArchivo(bytesEnUtf8Modificado(texto), rangoDeLaConcatenacion, false, revision);
       continue;
     }
-    const medida = medidaDelTexto(constante);
-    piezas.push({
-      ranuras,
-      bytes: {
-        minimo: medida.bytes + MINIMO_DE_UNA_PARTE_DESCONOCIDA * medida.partesDeLargoDesconocido,
-        maximo: medida.bytes + MAXIMO_DE_UNA_PARTE_DESCONOCIDA * medida.partesDeLargoDesconocido,
-      },
-    });
+    piezas.push({ ranuras, bytes: bytesEnUtf8Modificado(texto) });
   }
   // Sin conocer el tipo de algún operando no se sabe cómo se reparte en recetas: si son pocos operandos no hay reparto posible; con muchos, lo que salga es incierto.
   const incierto = ranurasDesconocidas && piezas.length >= RANURAS_DE_UNA_RECETA / 2;
   for (const grupo of repartirEnRecetas(piezas)) {
-    const bytes: Cota = {
-      minimo: grupo.reduce((suma, pieza) => suma + pieza.bytes.minimo, 0),
-      maximo: grupo.reduce((suma, pieza) => suma + pieza.bytes.maximo, 0),
-    };
-    registrarEntradaDeArchivo(bytes, rangoDeLaConcatenacion, incierto, revision);
+    registrarEntradaDeArchivo(grupo.reduce((suma, pieza) => suma + pieza.bytes, 0), rangoDeLaConcatenacion, incierto, revision);
   }
 }
 
@@ -461,10 +413,6 @@ function repartirEnRecetas(piezas: readonly Pieza[]): Pieza[][] {
 }
 
 /** Una entrada `CONSTANT_Utf8` del archivo de clase de `bytes` bytes (`incierto`: el reparto en recetas que la produce no se sabe). */
-function registrarEntradaDeArchivo(bytes: Cota, rangoDelTexto: Rango, incierto: boolean, revision: Revision): void {
-  if (bytes.minimo > BYTES_MAXIMOS_DE_UNA_ENTRADA) {
-    revision.deArchivo.push({ certeza: incierto ? 'incierto' : 'seguro', rango: revision.rangoDeLaClase, rangoDelTexto });
-  } else if (bytes.maximo > BYTES_MAXIMOS_DE_UNA_ENTRADA) {
-    revision.deArchivo.push({ certeza: 'incierto', rango: revision.rangoDeLaClase, rangoDelTexto });
-  }
+function registrarEntradaDeArchivo(bytes: number, rangoDelTexto: Rango, incierto: boolean, revision: Revision): void {
+  if (bytes > BYTES_MAXIMOS_DE_UNA_ENTRADA) revision.deArchivo.push({ certeza: incierto ? 'incierto' : 'seguro', rango: revision.rangoDeLaClase, rangoDelTexto });
 }

@@ -69,11 +69,11 @@ export const LITERALES_RECHAZADOS: readonly LiteralRechazado[] = [
   { texto: '0b12', codigoJavac: 'compiler.err.expected' },
 ];
 
-/** El código con que `compilar()` responde a un literal que javac acepta: los decimales llegan hasta el hueco de la IR; los demás son un aviso. */
+/** El código con que `compilar()` responde a un literal que javac acepta: los decimales, los largos y los `double` se ejecutan (`ok`); los demás son un aviso. */
 export const CODIGO_POR_CLASE_DE_LITERAL: Readonly<Record<ClaseDeLiteral, string>> = {
-  decimal: 'ejecucion-no-disponible',
-  largo: 'ejecucion-no-disponible',
-  doble: 'ejecucion-no-disponible',
+  decimal: 'ok',
+  largo: 'ok',
+  doble: 'ok',
   float: 'literal-float-no-soportado',
   octal: 'literal-octal-no-soportado',
   hexadecimal: 'literal-hexadecimal-no-soportado',

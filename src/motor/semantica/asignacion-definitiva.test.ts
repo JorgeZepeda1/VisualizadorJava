@@ -507,47 +507,43 @@ describe('verificarAsignacionDefinitiva — un cast constante a `boolean` es una
   });
 });
 
-// Tarea 1.36 (W-10 de la verificación final del lote 1, JLS 16.1.1): una condición CONSTANTE decide qué variables quedan asignadas («V is DA after any constant expression whose value is true when
-// false»). Con `"a" + 1.5 == "a1.5"` la condición es constante para javac y su valor lo decide un `Double.toString` que todavía no está: el motor la tomaba por «no constante» y rechazaba programas
-// válidos («La variable "x" podría no tener un valor asignado»; javac compila, porque la condición vale `true`). Ahora es un aviso honesto: no se puede decidir, y no se inventa un error.
-describe('verificarAsignacionDefinitiva — una condición constante de valor desconocido: aviso, nunca un error inventado (W-10, tarea 1.36)', () => {
-  const AVISO = { categoria: 'no-disponible', codigo: 'constante-de-texto-con-decimal-no-soportada', datos: {} } as const;
-
+// Tarea 2.4 (cierre del W-10 de la 1.36, JLS 16.1.1; verificado con javac 17.0.18, `corpus/experimentos/constantes-desconocidas/w10-*`): una condición CONSTANTE decide qué variables quedan asignadas
+// («V is DA after any constant expression whose value is true when false»). Con `"a" + 1.5 == "a1.5"` la condición es constante para javac (vale `true`), y el motor la tomaba por «no constante» y
+// rechazaba programas válidos («La variable "x" podría no tener un valor asignado»); la 1.36 lo cambió por un aviso porque no sabía convertir un `double` a texto. Con `Double.toString` exacto la
+// condición vale lo que vale en Java y la asignación definitiva usa ese valor.
+describe('verificarAsignacionDefinitiva — una condición constante con un texto con decimales decide con su valor real (W-10, cierre de la 1.36)', () => {
   it.each([
     ['if', 'int x; if ("a" + 1.5 == "a1.5") x = 1; System.out.println(x);'],
-    ['if con != y else', 'int x; if ("a" + 1.5 != "a1.5") x = 1; else x = 2; System.out.println(x);'],
+    ['if con != y else (vale false: las dos ramas asignan)', 'int x; if ("a" + 1.5 != "a1.5") x = 1; else x = 2; System.out.println(x);'],
     ['while con break', 'int x; while ("a" + 1.5 == "a1.5") { x = 1; break; } System.out.println(x);'],
     ['una variable `final boolean`', 'final boolean B = "a" + 1.5 == "a1.5"; int x; if (B) x = 1; System.out.println(x);'],
     ['una variable `final String` comparada', 'final String K = "a" + 1.5; int x; if (K == "a1.5") x = 1; System.out.println(x);'],
-    ['una negación', 'int x; if (!("a" + 1.5 == "a1.5")) x = 1; System.out.println(x);'],
     ['un && con una constante', 'int x; if (("a" + 1.5 == "a1.5") && true) x = 1; System.out.println(x);'],
     ['una || con una constante', 'int x; if (true || ("a" + 1.5 == "a1.5")) x = 1; System.out.println(x);'],
     ['el valor de un && usado en una declaración', 'boolean r = ("a" + 1.5 == "a1.5") && true; System.out.println(r);'],
     ['for', 'int x; for (; "a" + 1.5 == "a1.5"; ) { x = 1; break; } System.out.println(x);'],
-  ])('%s: un solo aviso, no «variable-posiblemente-no-asignada»', (_nombre, cuerpo) => {
-    const problemas = asignacionDefinitivaDeCuerpo(cuerpo);
+  ])('%s: javac compila (la condición vale `true`) y el motor también, sin problemas', (_nombre, cuerpo) => {
+    expect(asignacionDefinitivaDeCuerpo(cuerpo)).toEqual([]);
+  });
+
+  it('una condición que vale `false` NO deja asignada la variable: `if (!("a" + 1.5 == "a1.5")) x = 1;` es el error de siempre, en `x`', () => {
+    const problemas = asignacionDefinitivaDeCuerpo('int x; if (!("a" + 1.5 == "a1.5")) x = 1; System.out.println(x);');
     expect(problemas).toHaveLength(1);
-    expect(problemas[0]).toMatchObject(AVISO);
+    expect(problemas[0]).toMatchObject({ codigo: 'variable-posiblemente-no-asignada', datos: { nombre: 'x' } });
   });
 
-  it('si no queda ninguna variable por asignar en ese punto (la condición de un `do-while` ve lo que el cuerpo ya asignó) no hay nada que decidir: ni aviso ni error', () => {
-    expect(asignacionDefinitivaDeCuerpo('int x; do { x = 1; } while ("a" + 1.5 == "a1.5"); System.out.println(x);')).toEqual([]);
-    expect(asignacionDefinitivaDeCuerpo('int x = 0; if ("a" + 1.5 == "a1.5") x = 1; System.out.println(x);')).toEqual([]);
+  it('un texto distinto cambia la respuesta (triangulación): `"a" + 1.5 == "a1.50"` vale false y `x` queda sin asignar', () => {
+    expect(asignacionDefinitivaDeCuerpo('int x; if ("a" + 1.5 == "a1.50") x = 1; System.out.println(x);').map((p) => p.codigo)).toEqual(['variable-posiblemente-no-asignada']);
+    expect(asignacionDefinitivaDeCuerpo('int x; if ("a" + 1.5 == "a1.5") x = 1; System.out.println(x);')).toEqual([]);
   });
 
-  it('el aviso se señala en la condición de valor desconocido', () => {
-    const cuerpo = 'int x; if ("a" + 1.5 == "a1.5") x = 1; System.out.println(x);';
-    const [problema] = asignacionDefinitivaDeCuerpo(cuerpo);
-    expect(problema!.rango.inicio).toBe(`class C { public static void main(String[] a) { ${cuerpo} } }`.indexOf('"a" + 1.5 == "a1.5"'));
-  });
-
-  it('control: sin una constante desconocida nada cambia (una constante CONOCIDA decide, y una variable posiblemente sin asignar sigue siendo un error)', () => {
+  it('control: una constante de enteros decide igual que antes, y una variable posiblemente sin asignar sigue siendo un error', () => {
     expect(asignacionDefinitivaDeCuerpo('int x; if ("a" + 1 == "a1") x = 1; System.out.println(x);')).toEqual([]);
     expect(asignacionDefinitivaDeCuerpo('int x; if ("a" + 1 != "a1") x = 1; System.out.println(x);').map((p) => p.codigo)).toEqual(['variable-posiblemente-no-asignada']);
     expect(asignacionDefinitivaDeCuerpo('int n = 1; int x; if (n > 0) x = 1; System.out.println(x);').map((p) => p.codigo)).toEqual(['variable-posiblemente-no-asignada']);
   });
 
-  it('control: un texto con decimales que no decide nada (una declaración, un argumento, una comparación suelta) no da aviso', () => {
+  it('control: un texto con decimales que no decide nada (una declaración, un argumento, una comparación suelta) no da problemas', () => {
     expect(asignacionDefinitivaDeCuerpo('String s = "a" + 1.5; boolean b = "a" + 1.5 == "a1.5"; System.out.println("a" + 2.5); System.out.println(s); System.out.println(b);')).toEqual([]);
     expect(asignacionDefinitivaDeCuerpo('final String K = "a" + 1.5; System.out.println(K);')).toEqual([]);
   });

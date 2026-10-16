@@ -191,15 +191,6 @@ export const textosNoSoportado: { readonly [K in CodigoNoSoportado]: (datos: Dat
     'Usa un nombre de paquete propio, como `package miproyecto;`, o quita la línea `package`. ' +
     'No lo ejecuto para no enseñarte un resultado que Java nunca daría.',
 
-  // Tarea 1.36 (C-5 y W-10): `while ("a" + 1.5 == "a1.5") { }`, `case "d" + 1.5:`. El valor de esa constante lo decide cómo convierte Java un decimal a texto, y eso todavía no está.
-  'constante-de-texto-con-decimal-no-soportada': ({ linea }) =>
-    marco(
-      linea,
-      'una constante de texto con un número decimal (como `"a" + 1.5`)',
-      'no sabe convertir un número decimal a texto como lo hace Java',
-      'Java necesita conocer ese valor al compilar para decidir cosas como si un ciclo termina; si puedes, escribe el texto ya completo (por ejemplo, `"a1.5"`).',
-    ),
-
   // Tarea 1.36 (C-4b y S-1): un programa que se pasa del tope de tamaño. No es una construcción de Java sino el programa entero: sin el marco, con la línea donde se pasó y la salida (una parte más pequeña).
   'programa-demasiado-grande': ({ linea }) =>
     `Tu programa es demasiado grande para este visualizador: a partir de la línea ${linea} se pasa del tamaño que sabe revisar (está pensado para programas de clase). ` +
@@ -213,8 +204,8 @@ export const textosNoSoportado: { readonly [K in CodigoNoSoportado]: (datos: Dat
     'de los que este visualizador sabe revisar, y está pensado para programas de clase. Prueba con una parte más sencilla. ' +
     'No lo ejecuto para no enseñarte un resultado que podría no ser el de Java.',
 
-  // Tarea 1.36 (C-4a): un texto que se acerca al límite del archivo de clase (65 535 bytes) y cuyo tamaño no se puede calcular con seguridad (lleva un decimal, o hay condiciones constantes alrededor). Marco aprobado,
-  // sin números exactos que no se tienen, con la salida (acortarlo o dividirlo).
+  // Tarea 1.36 (C-4a): un texto que se acerca al límite del archivo de clase (65 535 bytes) y cuyo tamaño no se puede decidir con seguridad (hay condiciones constantes alrededor que podrían podar el código que lo
+  // genera). Marco aprobado, sin números exactos que no se tienen, con la salida (acortarlo o dividirlo).
   'tamano-de-texto-no-revisable': ({ linea }) =>
     marco(
       linea,

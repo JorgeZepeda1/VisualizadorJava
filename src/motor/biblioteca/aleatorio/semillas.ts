@@ -4,12 +4,36 @@
 // toma la siguiente en su PRIMERA llamada. El oráculo verifica esos programas transformándolos con la misma derivación (design.md §7.2, `transformar-semilla.ts`).
 import { RandomJava } from './random.ts';
 
+/** Lo que cambia en la fuente entre una sentencia y otra: el estado del generador maestro y, si ya nació, el del `Random` oculto de `Math.random()`. */
+export interface EstadoDeLaFuente {
+  readonly maestro: bigint;
+  readonly oculto: bigint | null;
+}
+
 export class FuenteDeAleatorios {
+  /** La fuente también cuenta como objeto de la biblioteca con estado (hito 1, parte C): la instantánea del reintento la captura junto con los `Random` de las variables. */
+  readonly claseJava = 'Random' as const;
   private readonly maestro: RandomJava;
   private ocultoDeMath: RandomJava | null = null;
 
   constructor(semillaVisible: bigint) {
     this.maestro = new RandomJava(semillaVisible);
+  }
+
+  capturar(): EstadoDeLaFuente {
+    return { maestro: this.maestro.capturar(), oculto: this.ocultoDeMath === null ? null : this.ocultoDeMath.capturar() };
+  }
+
+  /** Un `Random` oculto que nació DESPUÉS de capturar vuelve a no existir (y renacerá con la misma semilla, porque el maestro también retrocede). */
+  restaurar(estado: EstadoDeLaFuente): void {
+    this.maestro.restaurar(estado.maestro);
+    if (estado.oculto === null) {
+      this.ocultoDeMath = null;
+      return;
+    }
+    const oculto = this.ocultoDeMath ?? new RandomJava(0n);
+    oculto.restaurar(estado.oculto);
+    this.ocultoDeMath = oculto;
   }
 
   /** `new Random()` sin semilla: la siguiente semilla derivada de la visible. */

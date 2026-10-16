@@ -10,7 +10,13 @@ export type MotivoNoDisponible =
   /** `Math.pow` sin el puerto de fdlibm verificado contra el oráculo (ADR 009). */
   | 'math-pow'
   /** `toUpperCase`/`toLowerCase` con texto que sale del plano básico multilingüe, donde `Character` de un solo `char` no basta. */
-  | 'mayusculas-fuera-del-plano-basico';
+  | 'mayusculas-fuera-del-plano-basico'
+  /** `Character.isDigit(int)` y compañeras con un punto de código fuera del plano básico (o negativo): las tablas de `Character` son de un `char`. */
+  | 'punto-de-codigo-fuera-del-plano-basico'
+  /** Rutas defensivas del intérprete: `generarIr` ya decidió en la compilación qué se puede ejecutar, así que un programa que llega aquí es un hueco entre lo que el puerto prometió y lo que sabe hacer. */
+  | 'operacion-sin-conectar'
+  | 'double-sin-conversion-a-texto'
+  | 'texto-de-un-objeto-de-la-biblioteca';
 
 export class NoDisponibleEnEjecucion extends Error {
   readonly motivo: MotivoNoDisponible;

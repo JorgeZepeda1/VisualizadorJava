@@ -1,0 +1,14 @@
+127
+2147483647 -2147483648
+-992.5
+NaN Infinity -Infinity Infinity 2.5
+-2147483648
+2147483647
+-9223372036854775808
+Infinity
+0.0
+Exception in thread "main" java.lang.NumberFormatException: For input string: "12abc"
+	at java.base/java.lang.NumberFormatException.forInputString(NumberFormatException.java:67)
+	at java.base/java.lang.Integer.parseInt(Integer.java:668)
+	at java.base/java.lang.Integer.parseInt(Integer.java:786)
+	at Prueba.main(Prueba.java:12)

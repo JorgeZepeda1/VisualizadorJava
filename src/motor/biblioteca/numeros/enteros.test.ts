@@ -2,6 +2,7 @@
 // Cada valor esperado es lo que imprime el JDK 17 real (Test01Int del oráculo y los programas de `corpus/experimentos/ejecucion/`).
 import { describe, expect, it } from 'vitest';
 import { ExcepcionDeEjecucion } from '../../interprete/excepcion-de-ejecucion.ts';
+import { ExcepcionJava } from '../excepciones/excepcion-java.ts';
 import { dividirInt, INT_MAXIMO, INT_MINIMO, modInt, multiplicarInt, negarInt, restarInt, sumarInt } from './enteros.ts';
 
 describe('enteros: suma, resta y producto dan la vuelta en 32 bits', () => {
@@ -59,7 +60,9 @@ describe('enteros: división y módulo de Java (truncan hacia cero; el módulo t
         expect.unreachable('debía lanzar');
       } catch (error) {
         expect(error).toBeInstanceOf(ExcepcionDeEjecucion);
-        expect(error).toMatchObject({ claseCalificada: 'java.lang.ArithmeticException', mensajeJava: '/ by zero', marcosDeJdk: [] });
+        // La misma `ArithmeticException` que arma la biblioteca (una sola `divisionEntreCero`), con su sitio de la tabla del oráculo.
+        expect(error).toBeInstanceOf(ExcepcionJava);
+        expect(error).toMatchObject({ clase: 'java.lang.ArithmeticException', mensaje: '/ by zero', marcos: [], sitio: 'Aritmetica/division-entera' });
       }
     }
   });

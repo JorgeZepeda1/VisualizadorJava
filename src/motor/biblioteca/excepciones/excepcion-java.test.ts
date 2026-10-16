@@ -2,6 +2,7 @@
 // `.errores` que el oráculo capturó del JDK 17.0.18 real (`corpus/experimentos/texto/*.errores`); la comparación de TODOS los escenarios contra la biblioteca real está en
 // `pruebas/diferencial/biblioteca/excepciones.test.ts`.
 import { describe, expect, it } from 'vitest';
+import { ExcepcionDeEjecucion } from '../../interprete/excepcion-de-ejecucion.ts';
 import { crearExcepcion, divisionEntreCero, existeSitio, ExcepcionJava } from './excepcion-java.ts';
 import { formatearTrazaDePila } from './traza-de-pila.ts';
 
@@ -32,6 +33,21 @@ describe('crearExcepcion — la clase y los marcos de java.base salen de la tabl
     expect(latin1.marcos[0]).toBe('java.base/java.lang.StringLatin1.charAt(StringLatin1.java:48)');
     expect(utf16.marcos[0]).toBe('java.base/java.lang.String.checkIndex(String.java:4565)');
     expect(latin1.clase).toBe(utf16.clase);
+  });
+});
+
+describe('ExcepcionJava es una ExcepcionDeEjecucion (hito 1, parte C: una sola jerarquía de excepciones de Java)', () => {
+  it('lo que lanza la biblioteca lo reconoce el director del intérprete, que atrapa ExcepcionDeEjecucion y arma el stderr', () => {
+    const excepcion = crearExcepcion('Scanner.nextInt/sin-token', null);
+    expect(excepcion).toBeInstanceOf(ExcepcionDeEjecucion);
+    expect(excepcion).toBeInstanceOf(Error);
+    expect(excepcion.sitio).toBe('Scanner.nextInt/sin-token');
+    expect(excepcion.clase).toBe('java.util.NoSuchElementException');
+    expect(excepcion.message).toBe('java.util.NoSuchElementException');
+  });
+
+  it('el texto del Error lleva el mensaje de Java cuando lo hay', () => {
+    expect(crearExcepcion('Aritmetica/division-entera', '/ by zero').message).toBe('java.lang.ArithmeticException: / by zero');
   });
 });
 

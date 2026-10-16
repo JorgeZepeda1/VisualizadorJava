@@ -97,7 +97,7 @@ const AVISOS: ReadonlyArray<readonly [archivo: string, codigo: string]> = [
 // todas las revisiones, solo espera a que el lote 2 lo ejecute.
 const VALIDOS: ReadonlyArray<readonly [archivo: string, codigo: string]> = [
   ['a-switch-sentencias-despues-del-case-valido', 'ok'],
-  ['b-flujos-estandar-validos', 'ejecucion-no-disponible'],
+  ['b-flujos-estandar-validos', 'ok'],
   ['b-args-length-valido', 'arreglo-no-soportado'],
   ['c-clase-math-sin-usar-valido', 'ok'],
   ['c-clase-scanner-con-comodin-valido', 'ok'],

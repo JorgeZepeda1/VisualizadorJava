@@ -4,7 +4,8 @@
 import type { CondicionIr, DeclaracionIr, ExpresionSentenciaIr, LlamadaIr, RaizIr, TipoIr } from '../ir/ir.ts';
 import type { DatosPorClave, ExplicacionPaso, LecturaExplicada, TipoDeCiclo } from '../traza/explicacion.ts';
 import type { ContextoDeEjecucion } from './contexto.ts';
-import { CadenaJava, type ValorEjecucion } from './puerto-biblioteca.ts';
+import { CadenaJava } from '../biblioteca/index.ts';
+import type { ValorEjecucion } from './puerto-biblioteca.ts';
 
 const ESCAPES_DE_CARACTER: ReadonlyMap<string, string> = new Map([
   ['\n', '\\n'],

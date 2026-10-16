@@ -47,6 +47,65 @@ describe('RandomJava — el LCG de java.util.Random', () => {
   });
 });
 
+describe('RandomJava — instantánea para el reintento (hito 1, parte C)', () => {
+  it('es un objeto de la biblioteca de clase Random (así viaja en la traza: { objeto: "Random" })', () => {
+    expect(new RandomJava(1n).claseJava).toBe('Random');
+  });
+
+  it('restaurar devuelve el generador a lo que valía al capturar: una sentencia que se reintenta no gasta números al azar', () => {
+    const azar = new RandomJava(12345n);
+    const estado = azar.capturar();
+    const primeros = [azar.nextInt(100), azar.nextInt(100), azar.nextInt(100)];
+    azar.restaurar(estado);
+    expect([azar.nextInt(100), azar.nextInt(100), azar.nextInt(100)]).toEqual(primeros);
+    expect(primeros).toEqual([51, 80, 41]);
+  });
+
+  it('lo capturado no cambia aunque el generador siga avanzando (el estado es una copia)', () => {
+    const azar = new RandomJava(7n);
+    azar.nextLong();
+    const estado = azar.capturar();
+    const siguiente = azar.nextLong();
+    azar.nextLong();
+    azar.restaurar(estado);
+    expect(azar.nextLong()).toBe(siguiente);
+  });
+});
+
+describe('FuenteDeAleatorios — instantánea para el reintento (hito 1, parte C)', () => {
+  it('es un objeto de la biblioteca de clase Random', () => {
+    expect(new FuenteDeAleatorios(1n).claseJava).toBe('Random');
+  });
+
+  it('restaurar deshace las semillas que se derivaron: el new Random() de una sentencia reintentada vuelve a recibir la misma', () => {
+    const fuente = new FuenteDeAleatorios(555n);
+    const estado = fuente.capturar();
+    const primera = fuente.nuevoSinSemilla().nextInt();
+    fuente.restaurar(estado);
+    expect(fuente.nuevoSinSemilla().nextInt()).toBe(primera);
+  });
+
+  it('restaurar deshace también el nacimiento del Random oculto de Math.random(): si no existía al capturar, vuelve a nacer con la misma semilla', () => {
+    const fuente = new FuenteDeAleatorios(321n);
+    const estado = fuente.capturar();
+    const primero = fuente.mathRandom();
+    const segundo = fuente.mathRandom();
+    fuente.restaurar(estado);
+    expect(fuente.mathRandom()).toBe(primero);
+    expect(fuente.mathRandom()).toBe(segundo);
+  });
+
+  it('si el Random oculto ya existía al capturar, restaurar lo regresa a donde iba (no a su nacimiento)', () => {
+    const fuente = new FuenteDeAleatorios(321n);
+    fuente.mathRandom();
+    const estado = fuente.capturar();
+    const siguiente = fuente.mathRandom();
+    fuente.mathRandom();
+    fuente.restaurar(estado);
+    expect(fuente.mathRandom()).toBe(siguiente);
+  });
+});
+
 describe('FuenteDeAleatorios — la semilla visible (design.md §3.7)', () => {
   it('la k-ésima instancia sin semilla usa la k-ésima nextLong() de new Random(S)', () => {
     const fuente = new FuenteDeAleatorios(123456n);

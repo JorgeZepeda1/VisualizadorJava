@@ -91,19 +91,19 @@ const AVISOS: ReadonlyArray<readonly [archivo: string, codigo: string]> = [
 // Controles: programas que javac COMPILA. Todas las pasadas los aceptan (solo falta ejecutarlos) o, si usan algo fuera del
 // subconjunto, dan el aviso honesto de esa construcción.
 const VALIDOS: ReadonlyArray<readonly [archivo: string, codigo: string]> = [
-  ['v-var-y-yield-como-nombre-de-variable', 'ejecucion-no-disponible'],
+  ['v-var-y-yield-como-nombre-de-variable', 'ok'],
   ['v-yield-con-incremento-y-asignacion-compuesta', 'ok'],
   ['v-var-y-yield-en-ciclos-y-condiciones', 'ok'],
-  ['v-var-y-yield-con-metodos-de-string', 'ejecucion-no-disponible'],
+  ['v-var-y-yield-con-metodos-de-string', 'ok'],
   ['v-nombres-contextuales-validos', 'ok'],
   ['v-var-como-tipo-es-un-aviso', 'var-no-soportado'],
   ['n2-nombres-parecidos-a-reservadas-validos', 'ok'],
-  ['n3-guiones-bajos-validos', 'ejecucion-no-disponible'],
+  ['n3-guiones-bajos-validos', 'ok'],
   ['n4-flotante-hexadecimal', 'literal-hexadecimal-no-soportado'],
   ['n4-flotante-hexadecimal-con-fraccion-y-signo', 'literal-hexadecimal-no-soportado'],
   ['n4-switch-flecha-con-constante', 'switch-flecha-no-soportado'],
   ['n4-switch-flecha-con-etiqueta-entre-parentesis', 'switch-flecha-no-soportado'],
-  ['p-printf-como-sentencia-valido', 'ejecucion-no-disponible'],
+  ['p-printf-como-sentencia-valido', 'ok'],
   ['p-printf-como-argumento-de-println-valido', 'valor-de-tipo-no-soportado'],
   ['p-printf-encadenado-valido', 'valor-de-tipo-no-soportado'],
   ['w2-return-sin-valor-valido', 'ok'],

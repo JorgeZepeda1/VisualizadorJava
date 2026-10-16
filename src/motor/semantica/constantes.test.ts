@@ -11,7 +11,7 @@ import { describe, expect, it } from 'vitest';
 import { tokenizar } from '../lexico/analizador-lexico.ts';
 import { analizarPrograma } from '../sintaxis/analizador-sintactico.ts';
 import { Alcance } from './alcance.ts';
-import { constanteDeVariable, valorConstante, valorSiSeSabe } from './constantes.ts';
+import { constanteDeVariable, valorConstante } from './constantes.ts';
 import type { NodoDeclaracionLocal, NodoExpresion } from '../sintaxis/ast.ts';
 
 function expresionDe(expr: string): NodoExpresion {
@@ -123,34 +123,39 @@ describe('valorConstante — concatenación de String (JLS 15.29: "+" con un ope
   });
 });
 
-// Deuda del commit 999a8ca (sub-lote 1-D1): el stub `textoDoubleTemporal` formateaba un `double` con reglas propias, no con el `Double.toString` real de Java (design.md §4.2) -- un resultado
-// INVENTADO (regla 5 de CLAUDE.md). Hasta que la tarea 2.4 traiga `digitosJava`/`Double.toString` real, el TEXTO de un `double` convertido no se calcula.
-//
-// Tarea 1.36 (C-5 y W-10 de la verificación final del lote 1): la solución de entonces —dar `null`, «no es constante»— era OTRO resultado inventado. Para javac `"x=" + 1.5` SÍ es una expresión constante
-// (JLS 15.29: «+» con un operando `String` y operandos constantes), y de ella dependen la alcanzabilidad de un ciclo, la asignación definitiva y las etiquetas `case`: el motor confundía «no sé
-// calcularla» con «no es constante» y respondía como si lo supiera (un `while ("a" + 1.5 == "a1.5") { }` seguido de una sentencia daba `ejecucion-no-disponible`; javac dice «unreachable statement»).
-// Ahora hay un TERCER estado, la constante de VALOR DESCONOCIDO: se sabe que es constante y de qué tipo, no cuánto vale. Quien decide con su valor (alcanzabilidad, asignación definitiva, etiquetas
-// de `case`) da un aviso honesto; el cálculo real es de la 2.3/2.4 (`Double.toString` fiel).
-describe('valorConstante — "+" con double concatenado a String: una constante de VALOR DESCONOCIDO, nunca «no es constante» (C-5, tarea 1.36)', () => {
-  it('"x=" + 1.5 (double a la derecha) es una constante String de valor desconocido, con lo que sí se sabe de su largo', () => {
-    expect(constante('"x=" + 1.5')).toEqual({ valorDesconocido: true, tipoJava: 'String', medida: { unidades: 2, bytes: 2, partesDeLargoDesconocido: 1 } });
+// Tarea 2.4 (cierre de la 1.36, hito 1 parte C): ahora que `Double.toString` es exacto (los 3 millones de `double` del JDK 17 real), `"x=" + 1.5` se PLIEGA como cualquier otra constante de texto. Antes
+// (deuda del commit 999a8ca y tarea 1.36, C-5 y W-10) el motor no sabía convertir un `double` a texto: ni daba `null` («no es constante», un resultado inventado: de que una expresión sea constante
+// dependen la alcanzabilidad de un ciclo, la asignación definitiva y las etiquetas `case`) ni un valor, sino un tercer estado «constante de valor desconocido» que obligaba a los tres a dar un aviso.
+// Ese tercer estado ya no existe: una constante es de valor conocido o no es constante.
+describe('valorConstante — "+" con double concatenado a String: se pliega con el Double.toString de Java (tarea 2.4, cierre de la 1.36)', () => {
+  it.each([
+    ['"x=" + 1.5', 'x=1.5'],
+    ['1.5 + "x="', '1.5x='],
+    ['"x=" + (1.0 + 2.0)', 'x=3.0'],
+    ['"é" + 1.5 + "ñ" + 2.5', 'é1.5ñ2.5'],
+    ['"a" + (double) 1', 'a1.0'],
+    ['"a" + (1 + 0.5)', 'a1.5'],
+    ['"a" + Math.PI', 'a3.141592653589793'],
+    ['"a" + Math.E', 'a2.718281828459045'],
+    ['"a" + Double.MAX_VALUE', 'a1.7976931348623157E308'],
+    ['"a" + Double.MIN_VALUE', 'a4.9E-324'],
+    ['"v=" + 100.0', 'v=100.0'],
+    ['"v=" + 1.0E7', 'v=1.0E7'],
+    ['"v=" + 9999999.0', 'v=9999999.0'],
+    ['"v=" + 0.001', 'v=0.001'],
+    ['"v=" + 0.0001', 'v=1.0E-4'],
+    ['"n=" + (0.1 + 0.2)', 'n=0.30000000000000004'],
+    ['"d=" + (1.0 / 0)', 'd=Infinity'],
+    ['"d=" + (0.0 / 0)', 'd=NaN'],
+    ['"d=" + -(0.0)', 'd=-0.0'],
+    ['"m=" + (double) 9007199254740993L', 'm=9.007199254740992E15'],
+  ] as const)('%s -> "%s"', (expr, texto) => {
+    expect(constante(expr)).toEqual({ tipo: 'String', valor: texto });
   });
 
-  it('triangulación: "1.5" + "x=" (double a la IZQUIERDA) también', () => {
-    expect(constante('1.5 + "x="')).toEqual({ valorDesconocido: true, tipoJava: 'String', medida: { unidades: 2, bytes: 2, partesDeLargoDesconocido: 1 } });
-  });
-
-  it('triangulación: una conversión de double a texto ANIDADA (double + double, que SÍ se calcula: 3.0) también', () => {
-    expect(constante('"x=" + (1.0 + 2.0)')).toEqual({ valorDesconocido: true, tipoJava: 'String', medida: { unidades: 2, bytes: 2, partesDeLargoDesconocido: 1 } });
-  });
-
-  it('cada operando double suma un decimal, y las partes conocidas (con acentos, de dos bytes) suman sus unidades y sus bytes', () => {
-    expect(constante('"é" + 1.5 + "ñ" + 2.5')).toEqual({ valorDesconocido: true, tipoJava: 'String', medida: { unidades: 2, bytes: 4, partesDeLargoDesconocido: 2 } });
-  });
-
-  it('un String desconocido concatenado con algo conocido sigue siendo un String desconocido, y suma lo conocido (int, char, boolean y String)', () => {
-    expect(constante('("a" + 1.5) + "bc" + 7 + \'z\' + true')).toEqual({ valorDesconocido: true, tipoJava: 'String', medida: { unidades: 1 + 2 + 1 + 1 + 4, bytes: 9, partesDeLargoDesconocido: 1 } });
-    expect(constante('7 + ("a" + 1.5)')).toMatchObject({ valorDesconocido: true, tipoJava: 'String', medida: { unidades: 2, partesDeLargoDesconocido: 1 } });
+  it('un String concatenado con algo conocido (int, char, boolean, otro decimal) sigue plegando: el texto exacto, de izquierda a derecha', () => {
+    expect(constante('("a" + 1.5) + "bc" + 7 + \'z\' + true')).toEqual({ tipo: 'String', valor: 'a1.5bc7ztrue' });
+    expect(constante('7 + ("a" + 1.5)')).toEqual({ tipo: 'String', valor: '7a1.5' });
   });
 
   it('control: concatenar con int/long/char/boolean SIGUE plegando normal (nunca se tocó su camino)', () => {
@@ -163,36 +168,39 @@ describe('valorConstante — "+" con double concatenado a String: una constante 
     expect(constante('1.5 == 1.5')).toEqual({ tipo: 'boolean', valor: true });
   });
 
-  it('control: con un operando que NO es constante (una llamada, una variable que no es `final`) NO es constante, ni siquiera desconocida', () => {
+  it('control: con un operando que NO es constante (una llamada, una variable que no es `final`) NO es constante', () => {
     expect(constante('"x=" + Math.abs(1.5)')).toBeNull();
     expect(constante('("x=" + 1.5).length()')).toBeNull();
   });
 });
 
-describe('valorConstante — lo que sale de un texto de valor desconocido sigue siendo constante, de valor desconocido (C-5 y W-10, tarea 1.36)', () => {
+describe('valorConstante — lo que sale de un texto con un decimal: comparaciones, negación, casts (C-5 y W-10, cierre de la 1.36)', () => {
   it.each([
-    ['"a" + 1.5 == "a1.5"', 'boolean'],
-    ['"a" + 1.5 != "a1.5"', 'boolean'],
-    ['"" + 1.0 == "1.0"', 'boolean'],
-    ['"a" + 1.5 == "a" + 1.5', 'boolean'],
-    ['1.5 + "a" == "1.5a"', 'boolean'],
-    ['"a1.5" == "a" + 1.5', 'boolean'],
-    ['!("a" + 1.5 == "a1.5")', 'boolean'],
-    ['("a" + 1.5 == "a1.5") == true', 'boolean'],
-    ['("a" + 1.5 == "a1.5") != ("b" + 2.5 == "b2.5")', 'boolean'],
-    ['("a" + 1.5 == "a1.5") && true', 'boolean'],
-    ['true || ("a" + 1.5 == "a1.5")', 'boolean'],
-    ['("a" + 1.5 == "a1.5") && ("a" + 1.5 != "a1.5")', 'boolean'],
-    ['(String) ("a" + 1.5)', 'String'],
-    ['(String) ("a" + 1.5) + "b"', 'String'],
-    ['(boolean) ("a" + 1.5 == "a1.5")', 'boolean'],
-    ['("a" + 1.5 == "a1.5") + "z"', 'String'],
-    ['"a" + (double) 1', 'String'],
-    ['"a" + (1 + 0.5)', 'String'],
-    ['"a" + Math.PI', 'String'],
-    ['"a" + Double.MAX_VALUE', 'String'],
-  ] as const)('%s es constante de valor desconocido, de tipo %s', (expr, tipoJava) => {
-    expect(constante(expr)).toMatchObject({ valorDesconocido: true, tipoJava });
+    ['"a" + 1.5 == "a1.5"', true],
+    ['"a" + 1.5 != "a1.5"', false],
+    ['"a" + 1.5 == "a1.50"', false],
+    ['"" + 1.0 == "1.0"', true],
+    ['"a" + 1.5 == "a" + 1.5', true],
+    ['1.5 + "a" == "1.5a"', true],
+    ['"a1.5" == "a" + 1.5', true],
+    ['"a" + (double) 2 == "a2.0"', true],
+    ['!("a" + 1.5 == "a1.5")', false],
+    ['("a" + 1.5 == "a1.5") == true', true],
+    ['("a" + 1.5 == "a1.5") != ("b" + 2.5 == "b2.5")', false],
+    ['("a" + 1.5 == "a1.5") && true', true],
+    ['true || ("a" + 1.5 == "a1.5")', true],
+    ['("a" + 1.5 == "a1.5") && ("a" + 1.5 != "a1.5")', false],
+    ['(boolean) ("a" + 1.5 == "a1.5")', true],
+  ] as const)('%s vale %s', (expr, valor) => {
+    expect(constante(expr)).toEqual({ tipo: 'boolean', valor });
+  });
+
+  it.each([
+    ['(String) ("a" + 1.5)', 'a1.5'],
+    ['(String) ("a" + 1.5) + "b"', 'a1.5b'],
+    ['("a" + 1.5 == "a1.5") + "z"', 'truez'],
+  ] as const)('%s es el texto "%s"', (expr, valor) => {
+    expect(constante(expr)).toEqual({ tipo: 'String', valor });
   });
 
   it.each(['("a" + 1.5) - 1', '("a" + 1.5) * 2', '("a" + 1.5) < "b"', '("a" + 1.5 == "a1.5") + 1', '("a" + 1.5 == "a1.5") < true', '-("a" + 1.5)', '("a" + 1.5) == 1', '("a" + 1.5 == "a1.5") && 1', '(int) ("a" + 1.5)', '(String) 5 + 1.5'])(
@@ -359,34 +367,23 @@ describe('valorConstante — lo que NO es una expresión constante da null (D2: 
   });
 });
 
-describe('una variable `final` con inicializador de valor desconocido es una constante de valor desconocido (C-5 y W-10, tarea 1.36)', () => {
-  const textoDesconocido = { valorDesconocido: true, tipoJava: 'String', medida: { unidades: 1, bytes: 1, partesDeLargoDesconocido: 1 } } as const;
-  const booleanoDesconocido = { valorDesconocido: true, tipoJava: 'boolean' } as const;
+describe('una variable `final` con inicializador "a" + 1.5 es una constante de valor conocido (C-5 y W-10, cierre de la 1.36)', () => {
+  const texto = { tipo: 'String', valor: 'a1.5' } as const;
+  const booleano = { tipo: 'boolean', valor: true } as const;
 
-  it('`constanteDeVariable` conserva un String desconocido para un `String` y un boolean desconocido para un `boolean`', () => {
-    expect(constanteDeVariable('String', textoDesconocido)).toEqual(textoDesconocido);
-    expect(constanteDeVariable('boolean', booleanoDesconocido)).toEqual(booleanoDesconocido);
+  it('`constanteDeVariable` conserva el texto plegado para un `String` y el boolean para un `boolean`', () => {
+    expect(constanteDeVariable('String', texto)).toEqual(texto);
+    expect(constanteDeVariable('boolean', booleano)).toEqual(booleano);
   });
 
-  it.each(['int', 'long', 'double', 'char'])('`constanteDeVariable` no guarda un String desconocido en una variable `%s` (la asignación no es válida: el error es de la atribución)', (tipo) => {
-    expect(constanteDeVariable(tipo, textoDesconocido)).toBeUndefined();
-    expect(constanteDeVariable(tipo, booleanoDesconocido)).toBeUndefined();
-  });
-
-  it('un boolean desconocido no cabe en un `String`, ni al revés', () => {
-    expect(constanteDeVariable('String', booleanoDesconocido)).toBeUndefined();
-    expect(constanteDeVariable('boolean', textoDesconocido)).toBeUndefined();
-  });
-
-  it('el símbolo guardado se lee de vuelta, y se compone: `K == "a1.5"` y `K + "z"` con `final String K = "a" + 1.5`', () => {
+  it('el símbolo guardado se lee de vuelta, y se compone: `K == "a1.5"` y `K + "zz"` con `final String K = "a" + 1.5`', () => {
     const alcance = new Alcance();
     alcance.entrarBloque();
-    alcance.declarar({ nombre: 'K', tipo: 'String', esFinal: true, rango: { inicio: 0, fin: 0 }, constante: textoDesconocido });
+    alcance.declarar({ nombre: 'K', tipo: 'String', esFinal: true, rango: { inicio: 0, fin: 0 }, constante: texto });
     const k: NodoExpresion = { tipo: 'nombre', nombre: 'K', rango: { inicio: 0, fin: 0 } };
-    expect(valorConstante(k, alcance)).toEqual(textoDesconocido);
-    const comparacion = expresionDe('K == "a1.5"');
-    expect(valorConstante(comparacion, alcance)).toMatchObject({ valorDesconocido: true, tipoJava: 'boolean' });
-    expect(valorConstante(expresionDe('K + "zz"'), alcance)).toEqual({ valorDesconocido: true, tipoJava: 'String', medida: { unidades: 3, bytes: 3, partesDeLargoDesconocido: 1 } });
+    expect(valorConstante(k, alcance)).toEqual(texto);
+    expect(valorConstante(expresionDe('K == "a1.5"'), alcance)).toEqual({ tipo: 'boolean', valor: true });
+    expect(valorConstante(expresionDe('K + "zz"'), alcance)).toEqual({ tipo: 'String', valor: 'a1.5zz' });
   });
 
   it('una variable que NO es `final` nunca es constante, aunque se le haya asignado un texto con decimales', () => {
@@ -462,35 +459,4 @@ describe('valorConstante — variables "final" CON inicializador constante SÍ p
     const expresionR = declR.declaradores[0]!.inicializador!;
     expect(valorConstante(expresionR, alcance)).toEqual({ tipo: 'boolean', valor: true });
   });
-});
-
-// Tarea 1.37 (S-10 de la verificación del delta del lote 1: el sabotaje «`valorSiSeSabe` sin filtrar lo desconocido» sobrevivía a `npm test`). Visto desde sus dos únicos usos, el filtro es redundante
-// —lo desconocido es siempre un `String` o un `boolean`, que ni se estrechan ni entran en una etiqueta numérica—, así que el sabotaje era EQUIVALENTE para el sistema; pero `valorSiSeSabe` es una
-// función pública con un contrato —«el valor solo si se sabe; `null` si no es constante o si su valor es desconocido»— y ese contrato no tenía ninguna prueba propia. Aquí queda fijado: quien llame a
-// `valorSiSeSabe` en el futuro (con un uso donde lo desconocido SÍ importe) no recibe en silencio un objeto sin `tipo` ni `valor`.
-describe('valorSiSeSabe — el valor de una constante solo si se sabe (tarea 1.37, S-10)', () => {
-  it.each([
-    ['5', { tipo: 'int', valor: 5 }],
-    ['5L', { tipo: 'long', valor: 5n }],
-    ['"hola"', { tipo: 'String', valor: 'hola' }],
-    ['true', { tipo: 'boolean', valor: true }],
-    ["'a'", { tipo: 'char', valor: 97 }],
-  ] as const)('una constante de valor conocido (%s) devuelve su valor tal cual', (expr, esperado) => {
-    expect(valorSiSeSabe(constante(expr))).toEqual(esperado);
-  });
-
-  it('una expresión que NO es constante devuelve null', () => {
-    expect(valorSiSeSabe(null)).toBeNull();
-    expect(valorSiSeSabe(constante('x'))).toBeNull();
-  });
-
-  it.each(['"a" + 1.5', '"a" + 1.5 == "a1.5"', '"a" + (double) 2', 'true && "a" + 1.5 == "a1.5"'])(
-    'una constante de valor DESCONOCIDO (%s) devuelve null: ni `tipo` ni `valor`, aunque `valorConstante` sí la reconozca como constante',
-    (expr) => {
-      const resultado = constante(expr);
-      expect(resultado, 'valorConstante la reconoce como constante').not.toBeNull();
-      expect(resultado).toHaveProperty('valorDesconocido', true);
-      expect(valorSiSeSabe(resultado)).toBeNull();
-    },
-  );
 });

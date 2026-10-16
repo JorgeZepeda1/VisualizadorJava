@@ -1,6 +1,6 @@
 // Aritmética de `long` de Java (tarea 2.2, REQ-BIB-001, design.md §3.1): un `long` es un `bigint` de 64 bits con signo. Cada resultado se
 // lleva otra vez a 64 bits con `BigInt.asIntN(64, ·)`. Funciones puras, sin estado.
-import { divisionEntreCero } from '../../interprete/excepcion-de-ejecucion.ts';
+import { divisionEntreCero } from '../excepciones/excepcion-java.ts';
 
 export const LONG_MAXIMO = 9223372036854775807n;
 export const LONG_MINIMO = -9223372036854775808n;

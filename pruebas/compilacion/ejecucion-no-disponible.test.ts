@@ -3,8 +3,9 @@
 // `throw new Error(...)` caía en el catch-all genérico de `compilador.ts`: `categoria:'error-compilacion'`, `codigo:'error-no-clasificado'`, `linea` SIEMPRE 1, con el MENSAJE DE DESARROLLO como único
 // detalle — un error de SINTAXIS inventado para un programa que javac 17.0.18 REAL acepta y ejecuta (D2, regla 5 de CLAUDE.md).
 //
-// Tarea 2.16 (lote 2): la IR ya baja declaraciones, `if`, ciclos, `switch`… — esos programas ahora se EJECUTAN (`ok`). La ruta defensiva sigue siendo PERMANENTE y se prueba con lo que de
-// verdad no se puede ejecutar todavía: lo que necesita la biblioteca (el puerto de `interprete/puerto-biblioteca.ts` aún no la tiene conectada) y todo `double` (necesita `Double.toString`).
+// Tarea 2.16 (lote 2): la IR ya baja declaraciones, `if`, ciclos, `switch`… — esos programas ahora se EJECUTAN (`ok`). Hito 1, parte C: la biblioteca está conectada (Scanner, Math, String, printf, `double`…),
+// así que la ruta defensiva —PERMANENTE— se prueba con lo que de verdad no se puede ejecutar con fidelidad y se decide en la compilación: `Math.pow` (espera el puerto de fdlibm, tarea 2.5), un
+// patrón de `printf` con un especificador sin medir contra el JDK y un segundo `Scanner` sobre `System.in`.
 // Vive en pruebas/ (capa sin restricción, design.md §1.1) por la misma razón que avisos-textos.test.ts: necesita compilar() (motor/index.ts completo) Y textosNoSoportado
 // (textos/es-MX) a la vez — src/textos/es-MX solo puede importar motor/vista (herramientas/eslint/matriz-capas.ts).
 import { describe, expect, it } from 'vitest';
@@ -12,13 +13,13 @@ import { compilar } from '../../src/motor/index.ts';
 import { textosNoSoportado } from '../../src/textos/es-MX/no-soportado.ts';
 import type { CodigoNoSoportado } from '../../src/motor/vista.ts';
 
-describe('generarIr no sabe ejecutar algo del subconjunto (la biblioteca no está conectada) -- "no-disponible", NUNCA "error-compilacion" (tarea 1.27)', () => {
-  it('una llamada a la biblioteca (Java válido -- javac 17.0.18 real la acepta y la ejecuta): categoria "no-disponible", código "ejecucion-no-disponible", línea REAL del elemento', () => {
+describe('generarIr no sabe ejecutar algo del subconjunto -- "no-disponible", NUNCA "error-compilacion" (tarea 1.27)', () => {
+  it('una llamada a la biblioteca que no se ejecuta con fidelidad, `Math.pow` (Java válido -- javac 17.0.18 real la acepta y la ejecuta): categoria "no-disponible", código "ejecucion-no-disponible", línea REAL del elemento', () => {
     const fuente = [
       'class C {',
       '    public static void main(String[] a) {',
       '        int x = 5;',
-      '        int y = Math.abs(x);',
+      '        double y = Math.pow(x, 2);',
       '        System.out.println(y);',
       '    }',
       '}',
@@ -28,7 +29,7 @@ describe('generarIr no sabe ejecutar algo del subconjunto (la biblioteca no est�
     if (resultado.ok) return;
     expect(resultado.problema.categoria).toBe('no-disponible');
     expect(resultado.problema.codigo).toBe('ejecucion-no-disponible');
-    // "int y = Math.abs(x);" está en la línea 4 -- NUNCA la línea 1 fija del catch-all genérico anterior.
+    // "double y = Math.pow(x, 2);" está en la línea 4 -- NUNCA la línea 1 fija del catch-all genérico anterior.
     expect(resultado.problema.linea).toBe(4);
 
     const codigo = resultado.problema.codigo as CodigoNoSoportado;
@@ -43,13 +44,13 @@ describe('generarIr no sabe ejecutar algo del subconjunto (la biblioteca no est�
     expect(texto).not.toContain('declaracion-local');
   });
 
-  it('triangulación: un `double` dentro de un `if` (otro elemento del programa, con su PROPIA línea) también da "ejecucion-no-disponible" -- el mecanismo es genérico, no un caso especial', () => {
+  it('triangulación: un `printf` con `%e` dentro de un `if` (otro elemento del programa, con su PROPIA línea) también da "ejecucion-no-disponible" -- el mecanismo es genérico, no un caso especial', () => {
     const fuente = [
       'class C {',
       '    public static void main(String[] a) {',
       '',
       '        if (true) {',
-      '            double d = 1.5;',
+      '            System.out.printf("%e", 1.5);',
       '        }',
       '    }',
       '}',
@@ -59,8 +60,38 @@ describe('generarIr no sabe ejecutar algo del subconjunto (la biblioteca no est�
     if (resultado.ok) return;
     expect(resultado.problema.categoria).toBe('no-disponible');
     expect(resultado.problema.codigo).toBe('ejecucion-no-disponible');
-    // "double d = 1.5;" está en la línea 5 (línea distinta del caso anterior, a propósito) -- calculada del rango REAL de la declaración, nunca una línea fija.
+    // "System.out.printf(...)" está en la línea 5 (línea distinta del caso anterior, a propósito) -- calculada del rango REAL de la llamada, nunca una línea fija.
     expect(resultado.problema.linea).toBe(5);
+  });
+
+  it('triangulación: un segundo `new Scanner(System.in)` (REQ-SUB-005 pide uno solo) da "ejecucion-no-disponible" en la línea del SEGUNDO', () => {
+    const fuente = [
+      'import java.util.Scanner;',
+      'class C {',
+      '    public static void main(String[] a) {',
+      '        Scanner uno = new Scanner(System.in);',
+      '        Scanner dos = new Scanner(System.in);',
+      '    }',
+      '}',
+    ].join('\n');
+    const resultado = compilar(fuente);
+    expect(resultado.ok).toBe(false);
+    if (resultado.ok) return;
+    expect(resultado.problema).toMatchObject({ categoria: 'no-disponible', codigo: 'ejecucion-no-disponible', linea: 5 });
+  });
+
+  it('control (hito 1, parte C): la biblioteca YA está conectada -- `Math.abs`, un `double`, un `Scanner` y `printf` con `%d`/`%.2f` compilan ok', () => {
+    const fuente = [
+      'import java.util.Scanner;',
+      'class C {',
+      '    public static void main(String[] a) {',
+      '        Scanner sc = new Scanner(System.in);',
+      '        double d = Math.abs(-1.5);',
+      '        System.out.printf("%d %.2f%n", sc.nextInt(), d);',
+      '    }',
+      '}',
+    ].join('\n');
+    expect(compilar(fuente).ok).toBe(true);
   });
 
   it('control (tarea 2.16): declaraciones, `if` y `println` de int YA se ejecutan -- el mismo programa que antes era "no-disponible" ahora compila ok', () => {

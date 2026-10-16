@@ -3,6 +3,7 @@
 // Reemplaza a las pruebas de la rebanada vertical (0.12/0.13), cuyo intérprete solo ejecutaba `println("literal")`; conserva su contrato
 // `Ejecucion.avanzar/darEntrada/cerrarEntrada` y la idempotencia del final.
 import { describe, expect, it } from 'vitest';
+import { NoDisponibleEnEjecucion } from '../biblioteca/index.ts';
 import { compilar } from '../compilador.ts';
 import type { ProgramaCompilado, ProgramaIr } from '../ir/ir.ts';
 import { avanzarHastaElFinal, configuracion, correr, correrPrograma, programaDe } from './ayudas-de-prueba.ts';
@@ -65,7 +66,7 @@ describe('crearEjecucion: el contrato avanzar / fin', () => {
 // EJECUCIÓN -- `compilar()` ya devolvió `ok:true`, pero el `ProgramaCompilado` trae `arranque` distinto de null. `avanzar()` lo reporta en su PRIMER
 // llamado, sin ejecutar ninguna sentencia.
 describe('crearEjecucion — arranque inválido (tarea 1.15)', () => {
-  const IR_VACIO: ProgramaIr = { sentencias: [], ranuras: [], nodos: [], nombreClase: 'Ejercicio3', nombreCalificado: 'Ejercicio3', archivo: 'Ejercicio3.java' };
+  const IR_VACIO: ProgramaIr = { sentencias: [], ranuras: [], nodos: [], nombreClase: 'Ejercicio3', paquete: null };
 
   it('avanzar() reporta "error-arranque" en el PRIMER llamado, con el detalle completo y CERO pasos', () => {
     const programa: ProgramaCompilado = {
@@ -153,6 +154,35 @@ describe('excepciones de Java: el paso final y el stderr exacto de la JVM', () =
     expect(corrida.fin?.detalle).toContain('algo se rompió');
     expect(corrida.pasos[corrida.pasos.length - 1]).toMatchObject({ clase: 'detenido', explicacion: { clave: 'detenido', datos: { causa: 'error-interno' } } });
     expect(corrida.errores).toBe('');
+  });
+});
+
+describe('lo que la biblioteca no puede ejecutar con fidelidad: un aviso honesto, nunca un resultado inventado (D2)', () => {
+  const puertoQueNoSabe = (motivo: ConstructorParameters<typeof NoDisponibleEnEjecucion>[0]): PuertoBiblioteca => ({
+    operaciones: new Map<string, OperacionDeBiblioteca>([
+      [
+        'Math.abs(int)',
+        () => {
+          throw new NoDisponibleEnEjecucion(motivo, 'detalle para quien depure');
+        },
+      ],
+    ]),
+    doubleATexto: null,
+  });
+
+  it('la NoDisponibleEnEjecucion de la biblioteca detiene con el paso `detenido` no-disponible-en-ejecucion y deja navegable lo anterior (no es un error-interno)', () => {
+    const corrida = correr('    System.out.println("antes");\n    int a = Math.abs(-5);\n    System.out.println("despues");', { puerto: puertoQueNoSabe('formato-fuera-de-alcance') });
+    expect(corrida.fin).toEqual({ causa: 'no-disponible-en-ejecucion' });
+    expect(corrida.pasos.map((p) => p.clase)).toEqual(['impresion', 'detenido']);
+    expect(corrida.pasos[1]).toMatchObject({ linea: 4, explicacion: { clave: 'detenido', datos: { causa: 'no-disponible-en-ejecucion' } } });
+    expect(corrida.salida).toBe('antes\n');
+    expect(corrida.errores).toBe('');
+  });
+
+  it('con cualquier motivo de la biblioteca el desenlace es el mismo', () => {
+    for (const motivo of ['double-hexadecimal', 'math-pow', 'mayusculas-fuera-del-plano-basico'] as const) {
+      expect(correr('    int a = Math.abs(-5);', { puerto: puertoQueNoSabe(motivo) }).fin, motivo).toEqual({ causa: 'no-disponible-en-ejecucion' });
+    }
   });
 });
 

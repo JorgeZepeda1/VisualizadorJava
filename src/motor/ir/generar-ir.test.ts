@@ -343,6 +343,137 @@ describe('generarIr: lo que la biblioteca (puerto) no sabe NO se ejecuta, con el
   });
 });
 
+describe('generarIr: lo que se puede decidir en la compilación NO se deja para la mitad de la ejecución (hito 1, parte C, D2)', () => {
+  const PRINTF = 'PrintStream.printf(java.lang.String,java.lang.Object[])';
+  const FORMAT = 'String.format(java.lang.String,java.lang.Object[])';
+  const SCANNER = 'Scanner.<init>(java.io.InputStream)';
+
+  function noDisponibleDe(cuerpo: string, puerto: PuertoBiblioteca): ErrorDeEjecucionNoDisponible {
+    try {
+      irDe(cuerpo, puerto);
+    } catch (error) {
+      if (error instanceof ErrorDeEjecucionNoDisponible) return error;
+      throw error;
+    }
+    throw new Error('se esperaba ErrorDeEjecucionNoDisponible y el programa bajó sin problema');
+  }
+
+  describe('printf y String.format con un patrón LITERAL', () => {
+    it.each([
+      ['%e', '    System.out.printf("%e%n", 1.5);'],
+      ['%x', '    System.out.printf("%x", 255);'],
+      ['%+d', '    System.out.printf("%+d", 5);'],
+      ['%1$d', '    System.out.printf("%1$d", 5);'],
+      ['%tY', '    System.out.printf("%tY", 5);'],
+    ])('el especificador %s está fuera del alcance medido: no disponible en la compilación, con el rango de la llamada', (_especificador, cuerpo) => {
+      const error = noDisponibleDe(cuerpo, puertoCon([PRINTF], true));
+      expect(error.message).toContain('printf');
+      expect(`${PREFIJO}${cuerpo}${SUFIJO}`.slice(error.rango.inicio, error.rango.fin)).toContain('System.out.printf');
+    });
+
+    it('lo mismo con String.format', () => {
+      expect(() => irDe('    String s = String.format("%e", 1.5);', puertoCon([FORMAT], true))).toThrow(ErrorDeEjecucionNoDisponible);
+    });
+
+    it('un patrón dentro del alcance baja a una llamada; uno que Java RECHAZARÍA (%i) también: la excepción es de la ejecución, no un aviso', () => {
+      const puerto = puertoCon([PRINTF], true);
+      expect(() => irDe('    System.out.printf("%d %s %.2f %c %b%n", 1, "a", 2.5, \'x\', true);', puerto)).not.toThrow();
+      expect(() => irDe('    System.out.printf("%i", 1);', puerto)).not.toThrow();
+    });
+
+    it('el patrón es una constante de compilación: una variable final o una concatenación de literales también se revisan', () => {
+      const puerto = puertoCon([PRINTF], true);
+      expect(() => irDe('    final String F = "%x";\n    System.out.printf(F, 255);', puerto)).toThrow(ErrorDeEjecucionNoDisponible);
+      expect(() => irDe('    System.out.printf("%" + "x", 255);', puerto)).toThrow(ErrorDeEjecucionNoDisponible);
+      expect(() => irDe('    final String F = "%d";\n    System.out.printf(F + "%n", 255);', puerto)).not.toThrow();
+    });
+
+    it('un patrón que NO es constante (una variable, lo que lee Scanner) se decide en ejecución: no hay forma de saberlo antes', () => {
+      expect(() => irDe('    String f = "%x";\n    System.out.printf(f, 255);', puertoCon([PRINTF], true))).not.toThrow();
+    });
+  });
+
+  describe('Double.parseDouble con un literal hexadecimal', () => {
+    const PARSE = 'Double.parseDouble(java.lang.String)';
+
+    it('un literal hexadecimal de punto flotante es no disponible en la compilación (Java lo acepta; el motor no lo ha medido)', () => {
+      expect(() => irDe('    double d = Double.parseDouble("0x1p3");', puertoCon([PARSE], true))).toThrow(ErrorDeEjecucionNoDisponible);
+      expect(() => irDe('    final String H = "0X1.8p1";\n    double d = Double.parseDouble(H);', puertoCon([PARSE], true))).toThrow(ErrorDeEjecucionNoDisponible);
+    });
+
+    it('un literal decimal baja sin problema, y uno inválido ("abc") también: la NumberFormatException es de la ejecución', () => {
+      const puerto = puertoCon([PARSE], true);
+      expect(() => irDe('    double d = Double.parseDouble("1.5");', puerto)).not.toThrow();
+      expect(() => irDe('    double d = Double.parseDouble("abc");', puerto)).not.toThrow();
+    });
+
+    it('un texto que no es constante (lo que teclea el alumno) se decide en ejecución', () => {
+      expect(() => irDe('    String t = "0x1p3";\n    double d = Double.parseDouble(t);', puertoCon([PARSE], true))).not.toThrow();
+    });
+  });
+
+  describe('un solo Scanner sobre System.in (REQ-SUB-005): con dos, Java reparte la entrada entre sus búferes y el motor no lo modela', () => {
+    it('dos `new Scanner(System.in)` en el programa: no disponible, con el rango del SEGUNDO', () => {
+      const cuerpo = '    Scanner a = new Scanner(System.in);\n    Scanner b = new Scanner(System.in);';
+      const error = noDisponibleDe(cuerpo, puertoCon([SCANNER]));
+      const fuente = `${PREFIJO}${cuerpo}${SUFIJO}`;
+      expect(fuente.slice(0, error.rango.inicio).split('\n').length).toBe(4);
+    });
+
+    it('un `new Scanner(System.in)` dentro de un ciclo se ejecuta varias veces: no disponible (while, do-while y for, en el cuerpo)', () => {
+      const puerto = puertoCon([SCANNER]);
+      expect(() => irDe('    int i = 0;\n    while (i < 3) {\n      Scanner s = new Scanner(System.in);\n      i++;\n    }', puerto)).toThrow(ErrorDeEjecucionNoDisponible);
+      expect(() => irDe('    int i = 0;\n    do {\n      Scanner s = new Scanner(System.in);\n      i++;\n    } while (i < 3);', puerto)).toThrow(ErrorDeEjecucionNoDisponible);
+      expect(() => irDe('    for (int i = 0; i < 3; i++) {\n      Scanner s = new Scanner(System.in);\n    }', puerto)).toThrow(ErrorDeEjecucionNoDisponible);
+    });
+
+    it('un solo Scanner, antes o después de los ciclos, o dentro de un if, baja sin problema', () => {
+      const puerto = puertoCon([SCANNER, 'Scanner.nextInt()']);
+      expect(() => irDe('    Scanner sc = new Scanner(System.in);\n    int i = 0;\n    while (i < 3) {\n      int n = sc.nextInt();\n      i++;\n    }', puerto)).not.toThrow();
+      expect(() => irDe('    int i = 0;\n    while (i < 3) {\n      i++;\n    }\n    Scanner sc = new Scanner(System.in);', puerto)).not.toThrow();
+      expect(() => irDe('    boolean b = true;\n    if (b) {\n      Scanner sc = new Scanner(System.in);\n    }', puerto)).not.toThrow();
+    });
+  });
+
+  describe('Math.round de un entero: se resuelve a round(float), y el subconjunto no tiene float', () => {
+    const REDONDEO = puertoCon(['Math.round(float)', 'Math.round(double)'], true);
+
+    it.each([
+      ['int', '    int n = 5;\n    long r = Math.round(n);', 'n'],
+      ['long', '    long n = 5L;\n    int r = Math.round(n);', 'n'],
+      ['char', "    char c = 'a';\n    int r = Math.round(c);", 'c'],
+    ])('Math.round(%s) baja a la clave Math.round(float) con el argumento SIN convertir (la operación sabe pasarlo a float)', (tipo, cuerpo, nombre) => {
+      // Math.round(int) e (long) no existen: Java toma round(float); el resultado es `int` (no `long`).
+      const cuerpoCorregido = tipo === 'int' ? cuerpo.replace('long r', 'int r') : cuerpo;
+      const ir = irDe(cuerpoCorregido, REDONDEO);
+      const llamada = raicesDe(ir.sentencias[1])[0].expresion;
+      expect(llamada).toMatchObject({ forma: 'llamada', clave: 'Math.round(float)', tipo: 'int' });
+      if (llamada.forma !== 'llamada') throw new Error('se esperaba llamada');
+      expect(llamada.argumentos.map(mostrar)).toEqual([nombre]);
+    });
+
+    it('Math.round de un double sigue siendo round(double), que devuelve long', () => {
+      const ir = irDe('    double d = 2.5;\n    long r = Math.round(d);', REDONDEO);
+      expect(raicesDe(ir.sentencias[1])[0].expresion).toMatchObject({ clave: 'Math.round(double)', tipo: 'long' });
+    });
+  });
+
+  describe('un Scanner o un Random no se convierte en texto: su toString lleva una dirección de memoria', () => {
+    it('como argumento variable de printf o String.format: no disponible (antes solo se revisaba la concatenación)', () => {
+      const puerto = puertoCon([PRINTF, FORMAT, SCANNER, 'Random.<init>()'], true);
+      expect(() => irDe('    Scanner sc = new Scanner(System.in);\n    System.out.printf("%s", sc);', puerto)).toThrow(ErrorDeEjecucionNoDisponible);
+      expect(() => irDe('    Random r = new Random();\n    String s = String.format("%s", r);', puerto)).toThrow(ErrorDeEjecucionNoDisponible);
+    });
+
+    it('como argumento de String.valueOf(Object): no disponible; pero String.equals(Object) con un Scanner es válido (siempre false)', () => {
+      const puerto = puertoCon(['String.valueOf(java.lang.Object)', 'String.equals(java.lang.Object)', SCANNER]);
+      expect(() => irDe('    Scanner sc = new Scanner(System.in);\n    String s = String.valueOf(sc);', puerto)).toThrow(ErrorDeEjecucionNoDisponible);
+      expect(() => irDe('    Scanner sc = new Scanner(System.in);\n    String t = "x";\n    boolean b = t.equals(sc);', puerto)).not.toThrow();
+      expect(() => irDe('    String t = "x";\n    String s = String.valueOf(t);', puerto)).not.toThrow();
+    });
+  });
+});
+
 describe('generarIr: control de flujo', () => {
   it('if / else if / else: la condición de cada `if` es su propio nodo; el `else if` es un `if` dentro de `sino`', () => {
     const ir = irDe('    int n = 5;\n    if (n < 0) {\n      n = 1;\n    } else if (n == 0) {\n      n = 2;\n    } else {\n      n = 3;\n    }');
@@ -456,15 +587,15 @@ describe('generarIr: nodos, líneas y variables vivas', () => {
     expect(nombres(ir.nodos[decC.nodo].vivas)).toEqual(['a', 'c']);
   });
 
-  it('la clase y el archivo del alumno quedan en el programa (para el marco `at MiPrograma.main(MiPrograma.java:N)`)', () => {
+  it('la clase del alumno queda en el programa, sin paquete (para el marco `at MiPrograma.main(MiPrograma.java:N)`)', () => {
     const ir = irDe('    ;');
-    expect(ir).toMatchObject({ nombreClase: 'MiPrograma', nombreCalificado: 'MiPrograma', archivo: 'MiPrograma.java' });
+    expect(ir).toMatchObject({ nombreClase: 'MiPrograma', paquete: null });
   });
 
-  it('con `package`, el nombre calificado lleva el paquete; el archivo no', () => {
+  it('con `package`, el programa recuerda el paquete (el marco lleva el nombre calificado; el archivo no)', () => {
     const fuente = 'package aula.u3;\npublic class Demo {\n  public static void main(String[] args) {\n    ;\n  }\n}\n';
     const ir = generarIr(analizarPrograma(tokenizar(fuente)), { fuente, puerto: PUERTO_VACIO });
-    expect(ir).toMatchObject({ nombreClase: 'Demo', nombreCalificado: 'aula.u3.Demo', archivo: 'Demo.java' });
+    expect(ir).toMatchObject({ nombreClase: 'Demo', paquete: 'aula.u3' });
   });
 
   it('sin `main` no hay nada que bajar: el programa queda vacío (el arranque lo reporta `crearEjecucion`)', () => {

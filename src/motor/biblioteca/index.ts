@@ -23,6 +23,7 @@ export { type Regional, type SimbolosRegionales, simbolosRegionales } from './fo
 export { CodificadorDeSalida } from './salida/codificacion-jvm.ts';
 export { FIN_DE_LINEA, FlujoDeSalida, type TipoImprimible, type ValorImprimible, valorATexto } from './salida/print-stream.ts';
 
+export { EntradaDelPrograma } from './entrada/entrada-del-programa.ts';
 export { type EstadoDelScanner, FaltaEntrada, ScannerJava } from './entrada/scanner.ts';
 
 export { CadenaJava, PoolDeCadenas, nuevaCadena } from './texto/cadena-java.ts';
@@ -34,7 +35,7 @@ export { MathJava, longAFloat } from './matematicas/math.ts';
 export { potenciaDeDos } from './numeros/potencia-de-dos.ts';
 
 export { RandomJava } from './aleatorio/random.ts';
-export { FuenteDeAleatorios } from './aleatorio/semillas.ts';
+export { type EstadoDeLaFuente, FuenteDeAleatorios } from './aleatorio/semillas.ts';
 
 export { type SitioDeExcepcion, ExcepcionJava, crearExcepcion, divisionEntreCero, existeSitio } from './excepciones/excepcion-java.ts';
 export { type MarcoDelAlumno, formatearMarcos, formatearTrazaDePila, textoDeLaExcepcion } from './excepciones/traza-de-pila.ts';

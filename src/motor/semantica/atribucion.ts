@@ -37,7 +37,7 @@ import { Alcance } from './alcance.ts';
 import { construirAmbito, type AmbitoDeNombres } from './ambito-de-nombres.ts';
 import { CONSTRUCTORES_SOPORTADOS, clasificarCampo, clasificarMetodo } from './catalogo-api.ts';
 import { claseQueChocaComoPaquete, clasesDelPaquete, existeClaseDelJdk, existePaqueteOTipoDelJdk } from './catalogo-clases.ts';
-import { constanteDeVariable, valorConstante, valorSiSeSabe } from './constantes.ts';
+import { constanteDeVariable, valorConstante } from './constantes.ts';
 import type { ProblemaAtribucion } from './diagnostico.ts';
 import { esPaqueteReservadoPorJava } from './paquete-del-lanzador.ts';
 import { resolverSobrecarga } from './sobrecargas.ts';
@@ -258,7 +258,7 @@ function visitarDeclaracionLocal(
       // ya se reportó un problema arriba — nunca dos problemas por la misma causa).
       const destino = tipoDeNombreDeTipo(declaracion.nombreTipo);
       const origen = tipoDeExpresion(declarador.inicializador, alcance);
-      if (destino !== 'desconocido' && !esAsignable(origen, destino, valorSiSeSabe(valorInicializador))) {
+      if (destino !== 'desconocido' && !esAsignable(origen, destino, valorInicializador)) {
         problemas.push({
           codigo: codigoDeAsignacionInvalida(origen, destino),
           rango: declarador.inicializador.rango,
@@ -898,7 +898,7 @@ function verificarAsignacionSimple(expresion: NodoAsignacion, alcance: Alcance, 
   const destino = tipoDeExpresion(expresion.objetivo, alcance);
   if (destino === 'desconocido') return;
   const origen = tipoDeExpresion(expresion.valor, alcance);
-  const constanteOrigen = valorSiSeSabe(valorConstante(expresion.valor, alcance)); // tarea 1.36: solo importa el valor de una constante entera (estrechamiento); lo desconocido es texto o boolean
+  const constanteOrigen = valorConstante(expresion.valor, alcance); // solo importa el valor de una constante entera (estrechamiento)
   if (esAsignable(origen, destino, constanteOrigen)) return;
   problemas.push({
     codigo: codigoDeAsignacionInvalida(origen, destino),

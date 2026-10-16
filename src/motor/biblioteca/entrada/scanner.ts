@@ -1,13 +1,14 @@
-// Tarea 2.12 (REQ-BIB-009, REQ-BIB-010, REQ-EJEC-010, design.md §4.6 y §3.2): `Scanner` sobre un búfer de entrada que puede recibir MÁS texto.
+// Tarea 2.12 (REQ-BIB-009, REQ-BIB-010, REQ-EJEC-010, design.md §4.6 y §3.2): `Scanner` sobre la entrada del programa (`EntradaDelPrograma`), un búfer que puede recibir MÁS texto.
 //
-// Modo de uso desde el intérprete:
-//   - `agregarEntrada(texto)` agrega lo que "teclea" el alumno (la entrada preparada de golpe, o un renglón a la vez si es interactivo). `cerrarEntrada()` marca el EOF.
-//   - Si para decidir el resultado hace falta más entrada, la operación lanza `FaltaEntrada` SIN cambiar el estado visible (Java se bloquearía): el intérprete restaura la instantánea
-//     (`capturar`/`restaurar`), pide el renglón y reintenta la sentencia entera.
-//   - Con EOF se comporta como `java < archivo`: sin más tokens, `NoSuchElementException`.
+// Modo de uso desde el intérprete (hito 1, parte C: el texto, el cursor y el EOF son los de la `EntradaDelPrograma` que maneja el intérprete, no un búfer propio):
+//   - El intérprete agrega a la entrada lo que "teclea" el alumno (la entrada preparada de golpe, o un renglón a la vez si es interactivo) y la cierra (`cerrar()`) al llegar el EOF.
+//   - Si para decidir el resultado hace falta más entrada, la operación lanza `FaltaEntrada` SIN cambiar el estado visible (Java se bloquearía): el intérprete restaura su instantánea
+//     (el cursor de la entrada y `capturar`/`restaurar` de cada objeto), pide el renglón y reintenta la sentencia entera.
+//   - Con la entrada cerrada se comporta como `java < archivo`: sin más tokens, `NoSuchElementException`.
 // Las excepciones son las de Java con su mensaje y sus marcos (`crearExcepcion`, tabla del oráculo). `hasNext*` nunca consumen. Una lectura que falla por `InputMismatchException` deja el
 // token sin consumir, pero sí consumió los separadores que lo precedían (así lo hace Java, y lo comprueba el conjunto de secuencias del oráculo).
 import { crearExcepcion, type ExcepcionJava } from '../excepciones/excepcion-java.ts';
+import type { EntradaDelPrograma } from './entrada-del-programa.ts';
 import { simbolosRegionales, type Regional, type SimbolosRegionales } from '../formato/regional.ts';
 import { NoDisponibleEnEjecucion } from '../no-disponible.ts';
 import { digitoDecimal } from '../texto/character.ts';
@@ -31,9 +32,8 @@ export class FaltaEntrada extends Error {
   }
 }
 
-/** Lo único que cambia entre una operación y otra (el texto del búfer solo crece y el EOF no se deshace), para tomar instantáneas baratas. */
+/** Lo único del `Scanner` mismo que cambia entre una operación y otra: si lo cerraron. El texto, el cursor y el EOF son de la entrada del programa, y su instantánea es del intérprete. */
 export interface EstadoDelScanner {
-  readonly cursor: number;
   readonly cerrado: boolean;
 }
 
@@ -41,40 +41,26 @@ type OperacionDeLectura = 'nextInt' | 'nextDouble' | 'nextBoolean' | 'next' | 'n
 type OperacionDeConsulta = 'hasNext' | 'hasNextInt' | 'hasNextDouble' | 'hasNextLine';
 
 export class ScannerJava {
+  /** Así viaja en la traza (`{ objeto: 'Scanner' }`) y así lo reconoce la instantánea del reintento. */
+  readonly claseJava = 'Scanner' as const;
   private readonly simbolos: SimbolosRegionales;
-  private texto = '';
-  private cursor = 0;
+  private readonly entrada: EntradaDelPrograma;
   private cerrado = false;
-  private eof = false;
   /** Java guarda el resultado de `hasNextLine()` y el `nextLine()` siguiente lo usa SIN revisar si el `Scanner` se cerró entre los dos. Cualquier otra operación lo borra. */
   private renglonEnCache: { readonly cursor: number; readonly fin: number; readonly siguiente: number } | null = null;
 
-  constructor(regional: Regional) {
+  constructor(regional: Regional, entrada: EntradaDelPrograma) {
     this.simbolos = simbolosRegionales(regional);
-  }
-
-  agregarEntrada(texto: string): void {
-    this.texto += texto;
-  }
-
-  /** El EOF: la entrada ya no crecerá (el alumno lo pidió, o la entrada preparada no es interactiva). */
-  cerrarEntrada(): void {
-    this.eof = true;
+    this.entrada = entrada;
   }
 
   capturar(): EstadoDelScanner {
-    return { cursor: this.cursor, cerrado: this.cerrado };
+    return { cerrado: this.cerrado };
   }
 
   restaurar(estado: EstadoDelScanner): void {
-    this.cursor = estado.cursor;
     this.cerrado = estado.cerrado;
     this.renglonEnCache = null;
-  }
-
-  /** Cuántos caracteres se han consumido (la vista de entrada de la interfaz marca hasta dónde llegó el `Scanner`). */
-  get posicion(): number {
-    return this.cursor;
   }
 
   close(): void {
@@ -86,56 +72,56 @@ export class ScannerJava {
   next(): string {
     this.asegurarAbierto('next');
     const { inicio, fin } = this.tomarToken('next');
-    this.cursor = fin;
-    return this.texto.slice(inicio, fin);
+    this.entrada.cursor = fin;
+    return this.entrada.texto.slice(inicio, fin);
   }
 
   nextInt(): number {
     this.asegurarAbierto('nextInt');
     const { inicio, fin } = this.tomarToken('nextInt');
-    const token = this.texto.slice(inicio, fin);
+    const token = this.entrada.texto.slice(inicio, fin);
     if (!coincideEntero(token, this.simbolos)) throw crearExcepcion('Scanner.nextInt/no-coincide', null);
     const valor = this.convertirEntero(token);
     if (valor === null) throw crearExcepcion('Scanner.nextInt/fuera-de-rango', `For input string: "${procesarEntero(token, this.simbolos)}"`);
-    this.cursor = fin;
+    this.entrada.cursor = fin;
     return valor;
   }
 
   nextDouble(): number {
     this.asegurarAbierto('nextDouble');
     const { inicio, fin } = this.tomarToken('nextDouble');
-    const token = this.texto.slice(inicio, fin);
+    const token = this.entrada.texto.slice(inicio, fin);
     if (clasificarDecimal(token, this.simbolos) === 'ninguno') throw crearExcepcion('Scanner.nextDouble/no-coincide', null);
     const valor = this.convertirDecimal(token);
     if (typeof valor === 'string') throw crearExcepcion('Scanner.nextDouble/no-numerico', valor);
-    this.cursor = fin;
+    this.entrada.cursor = fin;
     return valor;
   }
 
   nextBoolean(): boolean {
     this.asegurarAbierto('nextBoolean');
     const { inicio, fin } = this.tomarToken('nextBoolean');
-    const token = this.texto.slice(inicio, fin);
+    const token = this.entrada.texto.slice(inicio, fin);
     if (!coincideBooleano(token)) throw crearExcepcion('Scanner.nextBoolean/no-coincide', null);
-    this.cursor = fin;
+    this.entrada.cursor = fin;
     return token.toLowerCase() === 'true';
   }
 
   nextLine(): string {
     const guardado = this.renglonEnCache;
-    if (guardado !== null && guardado.cursor === this.cursor) {
+    if (guardado !== null && guardado.cursor === this.entrada.cursor) {
       this.renglonEnCache = null;
-      const linea = this.texto.slice(this.cursor, guardado.fin);
-      this.cursor = guardado.siguiente;
+      const linea = this.entrada.texto.slice(this.entrada.cursor, guardado.fin);
+      this.entrada.cursor = guardado.siguiente;
       return linea;
     }
     this.asegurarAbierto('nextLine');
     this.renglonEnCache = null;
-    const renglon = ubicarRenglon(this.texto, this.cursor, this.eof);
+    const renglon = ubicarRenglon(this.entrada.texto, this.entrada.cursor, this.entrada.cerrada);
     if (renglon.tipo === 'incompleto') throw new FaltaEntrada();
     if (renglon.tipo === 'ninguno') throw crearExcepcion('Scanner.nextLine/sin-linea', 'No line found');
-    const linea = this.texto.slice(this.cursor, renglon.fin);
-    this.cursor = renglon.siguiente;
+    const linea = this.entrada.texto.slice(this.entrada.cursor, renglon.fin);
+    this.entrada.cursor = renglon.siguiente;
     return linea;
   }
 
@@ -143,8 +129,8 @@ export class ScannerJava {
 
   hasNext(): boolean {
     this.asegurarAbierto('hasNext');
-    if (primerCaracterDeToken(this.texto, this.cursor) !== -1) return true;
-    if (!this.eof) throw new FaltaEntrada();
+    if (primerCaracterDeToken(this.entrada.texto, this.entrada.cursor) !== -1) return true;
+    if (!this.entrada.cerrada) throw new FaltaEntrada();
     return false;
   }
 
@@ -164,10 +150,10 @@ export class ScannerJava {
   hasNextLine(): boolean {
     this.asegurarAbierto('hasNextLine');
     this.renglonEnCache = null;
-    const renglon = ubicarRenglon(this.texto, this.cursor, this.eof);
+    const renglon = ubicarRenglon(this.entrada.texto, this.entrada.cursor, this.entrada.cerrada);
     if (renglon.tipo === 'incompleto') throw new FaltaEntrada();
     if (renglon.tipo === 'ninguno') return false;
-    this.renglonEnCache = { cursor: this.cursor, fin: renglon.fin, siguiente: renglon.siguiente };
+    this.renglonEnCache = { cursor: this.entrada.cursor, fin: renglon.fin, siguiente: renglon.siguiente };
     return true;
   }
 
@@ -183,21 +169,21 @@ export class ScannerJava {
    * (lo hace cada operación). Si no hay token y la entrada terminó, lanza `NoSuchElementException` (después de consumir los separadores).
    */
   private tomarToken(operacion: Exclude<OperacionDeLectura, 'nextLine'>): { inicio: number; fin: number } {
-    const ubicacion = ubicarToken(this.texto, this.cursor, this.eof);
+    const ubicacion = ubicarToken(this.entrada.texto, this.entrada.cursor, this.entrada.cerrada);
     if (ubicacion.tipo === 'incompleto') throw new FaltaEntrada();
     if (ubicacion.tipo === 'vacio') {
-      this.cursor = this.texto.length;
+      this.entrada.cursor = this.entrada.texto.length;
       throw crearExcepcion(`Scanner.${operacion}/sin-token`, null);
     }
-    this.cursor = ubicacion.inicio;
+    this.entrada.cursor = ubicacion.inicio;
     return ubicacion;
   }
 
   /** Para `hasNextInt`/`hasNextDouble`: el siguiente token completo SIN consumir nada, o `null` si ya no hay. */
   private espiarToken(): string | null {
-    const ubicacion = ubicarToken(this.texto, this.cursor, this.eof);
+    const ubicacion = ubicarToken(this.entrada.texto, this.entrada.cursor, this.entrada.cerrada);
     if (ubicacion.tipo === 'incompleto') throw new FaltaEntrada();
-    return ubicacion.tipo === 'token' ? this.texto.slice(ubicacion.inicio, ubicacion.fin) : null;
+    return ubicacion.tipo === 'token' ? this.entrada.texto.slice(ubicacion.inicio, ubicacion.fin) : null;
   }
 
   /** El `int` del token, o `null` si el token tiene forma de entero pero no cabe en un `int`. */

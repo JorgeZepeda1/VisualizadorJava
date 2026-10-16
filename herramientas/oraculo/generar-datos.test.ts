@@ -555,8 +555,15 @@ describe('verificarQueLaSondaTermino (pura) — una sonda detenida por el límit
     expect(() => verificarQueLaSondaTermino('GenerarClasesJdk.java', resultado({}), 5000, true)).not.toThrow();
   });
 
-  it('el límite propio de las sondas es MUCHO mayor que los 5 s por omisión de `ejecutar.ts` (el límite que sí sirve para el ciclo infinito de un programa)', () => {
+  it('el límite propio de las sondas es MUCHO mayor que los 5 s por omisión de `ejecutar.ts` (el límite que sirve para el ciclo infinito de un programa)', () => {
     expect(LIMITE_MS_DE_LAS_SONDAS).toBeGreaterThanOrEqual(60_000);
+  });
+
+  // Hito 1, parte C: `test:oraculo` volvió a fallar con la máquina cargada («no terminó a tiempo» a los 60 s: la sonda de las clases que chocan compila 26 814 candidatos y la de los paquetes de módulos
+  // arranca unas 650 JVM). 60 s era 12 veces el límite de 5 s, pero una sola JVM saturada puede tardar ese múltiplo otra vez; el tope no existe para medir velocidad sino para no esperar para siempre.
+  it('aguanta una máquina cargada: cuatro minutos por corrida de `java` (4 veces el de antes), y aun así el error CLARO de la sonda llega antes que el tope de la prueba de integración', () => {
+    expect(LIMITE_MS_DE_LAS_SONDAS).toBeGreaterThanOrEqual(240_000);
+    expect(LIMITE_MS_DE_LAS_SONDAS).toBeLessThan(LIMITE_DE_LAS_PRUEBAS_CON_JDK_MS);
   });
 });
 
@@ -962,7 +969,7 @@ describe('generarDatos — una sonda que agota el tiempo se diagnostica con clar
 // antes de buscar `main`. El motor lo daba por bueno (`ok`) y el lote 0 ejecutaba el `println`. La regla del motor (`esPaqueteReservadoPorJava`) sale de ESTA medición, con el `java` 17.0.18 real —nunca
 // escrita a ojo— y se vuelve a medir en cada `npm run test:oraculo`: si otro JDK cambiara qué prefijos prohíbe, falla aquí antes de que el visualizador ejecute un programa que Java rechaza.
 //
-// Vive AL FINAL de este archivo a propósito: las sondas de arriba (la de clases que chocan compila 26 814 candidatos y borra miles de archivos) se rinden a los 60 s si la máquina está saturada
+// Vive AL FINAL de este archivo a propósito: las sondas de arriba (la de clases que chocan compila 26 814 candidatos y borra miles de archivos) se rendían a los 60 s si la máquina estaba saturada
 // (`LIMITE_MS_DE_LAS_SONDAS`), y como archivo suelto esta prueba arrancaba a la vez que ellas y, en tres de cuatro corridas completas de `test:oraculo`, las dejaba sin tiempo. Aquí corre cuando
 // las sondas ya terminaron, y cada programa va solo: una JVM a la vez.
 const fuenteDelPaquete = (nombre: string): string => `package ${nombre};\n\npublic class Saludo {\n    public static void main(String[] args) {\n        System.out.println("hola");\n    }\n}\n`;

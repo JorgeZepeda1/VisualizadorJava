@@ -5,14 +5,15 @@
 //
 // La aritmética de `int`, `long` y `char` y las conversiones son las funciones de `biblioteca/numeros`; todo lo demás (Scanner, Math, String, printf…)
 // entra por el puerto de la biblioteca con la clave de firma que `generarIr` resolvió. `print`/`println` los resuelve el propio intérprete.
+import { CadenaJava, NoDisponibleEnEjecucion } from '../biblioteca/index.ts';
 import { caracterATexto, sumarChar } from '../biblioteca/numeros/caracter.ts';
 import { convertirNumero } from '../biblioteca/numeros/conversiones.ts';
 import { dividirInt, modInt, multiplicarInt, negarInt, restarInt, sumarInt } from '../biblioteca/numeros/enteros.ts';
 import { dividirLong, modLong, multiplicarLong, negarLong, restarLong, sumarLong } from '../biblioteca/numeros/largos.ts';
 import type { AritmeticaIr, AsignacionCompuestaIr, ComparacionIr, ExpresionIr, IncrementoIr, LlamadaIr, NuevoIr, RaizIr, TipoIr } from '../ir/ir.ts';
-import { aTrazaValor, CadenaJava, FlujoDeSalida, type ValorEjecucion, type ValorEncajado } from './puerto-biblioteca.ts';
+import { aTrazaValor, type ValorEjecucion, type ValorEncajado } from './puerto-biblioteca.ts';
 import type { ContextoDeEjecucion } from './contexto.ts';
-import { comprobarLargoDeCadena, NoDisponibleEnEjecucion } from './limites.ts';
+import { comprobarLargoDeCadena } from './limites.ts';
 
 /** Evalúa la raíz de un paso. `undefined` solo si es una llamada `void` (una sentencia de expresión). */
 export function evaluarRaiz(raiz: RaizIr, contexto: ContextoDeEjecucion): ValorEjecucion | undefined {
@@ -66,7 +67,7 @@ function evaluarNodo(expresion: ExpresionIr, contexto: ContextoDeEjecucion): Val
     case 'concatenacion': {
       const izquierda = aTexto(evaluar(expresion.izquierda, contexto), expresion.izquierda.tipo, contexto);
       const derecha = aTexto(evaluar(expresion.derecha, contexto), expresion.derecha.tipo, contexto);
-      return anotar(expresion, nuevaCadena(izquierda + derecha, contexto), contexto);
+      return anotar(expresion, cadenaConLimite(izquierda + derecha, contexto), contexto);
     }
     case 'asignacion': {
       const valor = evaluar(expresion.valor, contexto);
@@ -166,18 +167,19 @@ export function aTexto(valor: ValorEjecucion, tipo: TipoIr | null, contexto: Con
       return (valor as CadenaJava).texto;
     case 'double': {
       const aTextoDeDouble = contexto.puerto.doubleATexto;
-      if (aTextoDeDouble === null) throw new NoDisponibleEnEjecucion('Double.toString');
+      if (aTextoDeDouble === null) throw new NoDisponibleEnEjecucion('double-sin-conversion-a-texto');
       return aTextoDeDouble(valor as number);
     }
     case 'Scanner':
     case 'Random':
-      throw new NoDisponibleEnEjecucion('toString de un objeto de la biblioteca');
+      throw new NoDisponibleEnEjecucion('texto-de-un-objeto-de-la-biblioteca');
     case null:
       throw new Error('un valor sin tipo (una llamada void) no se convierte en texto');
   }
 }
 
-function nuevaCadena(texto: string, contexto: ContextoDeEjecucion): CadenaJava {
+/** Una cadena NUEVA (identidad propia) que se arma en ejecución; si pasa del tope de caracteres, la ejecución se detiene con `limite-caracteres` (design.md §3.5). */
+function cadenaConLimite(texto: string, contexto: ContextoDeEjecucion): CadenaJava {
   comprobarLargoDeCadena(texto.length, contexto.config.limiteCaracteres);
   return new CadenaJava(texto);
 }
@@ -198,7 +200,7 @@ function asignacionCompuesta(expresion: AsignacionCompuestaIr, contexto: Context
   const derecho = evaluar(expresion.valor, contexto);
   let resultado: ValorEjecucion;
   if (expresion.tipoOperacion === 'String') {
-    resultado = nuevaCadena(aTexto(leido, 'String', contexto) + aTexto(derecho, expresion.valor.tipo, contexto), contexto);
+    resultado = cadenaConLimite(aTexto(leido, 'String', contexto) + aTexto(derecho, expresion.valor.tipo, contexto), contexto);
   } else {
     const tipoVariable = expresion.tipo as 'int' | 'long' | 'double' | 'char';
     const izquierdoPromovido = convertirNumero(leido as number | bigint, tipoVariable, expresion.tipoOperacion);
@@ -243,23 +245,31 @@ function llamada(expresion: LlamadaIr, contexto: ContextoDeEjecucion): ValorEjec
     return undefined;
   }
   const operacion = contexto.puerto.operaciones.get(expresion.clave);
-  if (operacion === undefined) throw new NoDisponibleEnEjecucion(`la biblioteca no sabe ejecutar ${expresion.clave}`);
-  const objetivo = receptor ?? (expresion.flujo === null ? null : new FlujoDeSalida(expresion.flujo));
-  return operacion(objetivo, argumentos, variables, contexto.biblioteca);
+  if (operacion === undefined) throw new NoDisponibleEnEjecucion('operacion-sin-conectar', expresion.clave);
+  const objetivo = receptor ?? (expresion.flujo === null ? null : contexto.flujos[expresion.flujo]);
+  const resultado = operacion(objetivo, argumentos, variables, contexto.biblioteca);
+  // Lo que arma la biblioteca (`replace`, `format`, `toUpperCase`…) también cuenta para el tope de caracteres.
+  if (resultado instanceof CadenaJava) comprobarLargoDeCadena(resultado.texto.length, contexto.config.limiteCaracteres);
+  return resultado;
 }
 
 function nuevo(expresion: NuevoIr, contexto: ContextoDeEjecucion): ValorEjecucion {
   const argumentos = expresion.argumentos.map((argumento) => evaluar(argumento, contexto));
   const operacion = contexto.puerto.operaciones.get(expresion.clave);
-  if (operacion === undefined) throw new NoDisponibleEnEjecucion(`la biblioteca no sabe ejecutar ${expresion.clave}`);
+  if (operacion === undefined) throw new NoDisponibleEnEjecucion('operacion-sin-conectar', expresion.clave);
   const objeto = operacion(null, argumentos, null, contexto.biblioteca);
-  if (objeto === undefined) throw new NoDisponibleEnEjecucion(`${expresion.clave} no devolvió un objeto`);
+  if (objeto === undefined) throw new NoDisponibleEnEjecucion('operacion-sin-conectar', `${expresion.clave} no devolvió un objeto`);
+  if (objeto instanceof CadenaJava) comprobarLargoDeCadena(objeto.texto.length, contexto.config.limiteCaracteres);
   return objeto;
 }
 
-/** `print` y `println` de `int`, `long`, `char`, `boolean`, `double` y `String`: el texto es `String.valueOf` del tipo estático del argumento. */
+/**
+ * `print` y `println` de `int`, `long`, `char`, `boolean`, `double` y `String`: el texto es `String.valueOf` del tipo estático del argumento (`aTexto`, la misma conversión de la
+ * concatenación) y el flujo (`System.out` o `System.err`, uno por ejecución) lo codifica como la JVM: un sustituto suelto sale como `?`, el fin de línea es `\n`.
+ */
 function imprimir(expresion: LlamadaIr, argumentos: readonly ValorEjecucion[], contexto: ContextoDeEjecucion): void {
   const conSalto = expresion.clave.startsWith('PrintStream.println');
   const texto = argumentos.length === 0 ? '' : aTexto(argumentos[0], expresion.argumentos[0].tipo, contexto);
-  contexto.biblioteca.escribir(expresion.flujo ?? 'out', conSalto ? `${texto}\n` : texto);
+  const flujo = contexto.flujos[expresion.flujo ?? 'out'];
+  contexto.biblioteca.escribir(flujo.nombre, conSalto ? flujo.println('String', texto) : flujo.print('String', texto));
 }

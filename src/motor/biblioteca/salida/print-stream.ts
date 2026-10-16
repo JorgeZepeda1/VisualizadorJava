@@ -29,9 +29,14 @@ export function valorATexto(tipo: TipoImprimible, valor: ValorImprimible): strin
   }
 }
 
-/** Un `PrintStream` (`System.out` o `System.err`): cada uno recuerda su propio sustituto alto pendiente. */
+/** Un `PrintStream` (`System.out` o `System.err`): cada uno recuerda su propio sustituto alto pendiente y sabe cuál es (el receptor de `printf` escribe en el flujo de la consola que le toca). */
 export class FlujoDeSalida {
+  readonly nombre: 'out' | 'err';
   private readonly codificador = new CodificadorDeSalida();
+
+  constructor(nombre: 'out' | 'err') {
+    this.nombre = nombre;
+  }
 
   /** `print(valor)`: el texto que llega a la consola. */
   print(tipo: TipoImprimible, valor: ValorImprimible): string {

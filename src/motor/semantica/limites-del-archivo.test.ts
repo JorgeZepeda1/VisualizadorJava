@@ -8,8 +8,8 @@
 // concatenación (`invokedynamic`: las constantes más un byte por operando dinámico), y las recetas de más de 200 ranuras se parten. Lo que javac no genera (la rama de un `if` con condición
 // constante, el lado derecho de `false && …`, una `final` que nadie usa) no cuenta.
 //
-// El motor NO modela el bytecode: cuando no puede decidir (un texto con un decimal cuyo largo depende de `Double.toString`, un programa con condiciones constantes que podrían podar código) da un aviso
-// honesto, nunca `ok` ni un error inventado.
+// El motor NO modela el bytecode: cuando no puede decidir (un programa con condiciones constantes que podrían podar código) da un aviso honesto, nunca `ok` ni un error inventado. Un texto con un decimal
+// (`"a" + 1.5`) ya no es una incertidumbre desde la tarea 2.4: su largo es el de `Double.toString`, exacto.
 import { describe, expect, it } from 'vitest';
 import { TablaDeLineas } from '../fuente/tabla-de-lineas.ts';
 import { tokenizar } from '../lexico/analizador-lexico.ts';
@@ -270,24 +270,29 @@ describe('verificarLimitesDelArchivo — el código que javac NO genera no cuent
   });
 });
 
-describe('verificarLimitesDelArchivo — un texto con un decimal (`"a" + 1.5`): su largo depende de `Double.toString`, que el motor todavía no calcula', () => {
+describe('verificarLimitesDelArchivo — un texto con un decimal (`"a" + 1.5`): su largo es el de `Double.toString`, exacto (tarea 2.4, cierre de la 1.36)', () => {
   it('lejos del límite no importa: ni aviso ni error', () => {
     expect(delCuerpo(`    String s = "${repetir(60_000)}" + 1.5;`)).toEqual([]);
   });
 
-  it('si TODOS los largos posibles pasan el límite (el decimal mide al menos 3), es un error seguro', () => {
+  it('la frontera es exacta: `1.5` mide 3 caracteres, así que 65 531 + 3 caben (65 534) y 65 532 + 3 llegan a 65 535 y son un error (como javac, `corpus/.../dec-*`)', () => {
+    expect(delCuerpo(`    String s = "${repetir(65_531)}" + 1.5;`)).toEqual([]);
+    expect(delCuerpo(`    String s = "${repetir(65_520)}" + 1.5;`)).toEqual([]);
     expect(delCuerpo(`    String s = "${repetir(65_532)}" + 1.5;`)).toEqual(errorEn(CARACTERES, 3));
     expect(delCuerpo(`    final String K = "${repetir(65_540)}" + 1.5;`)).toEqual(errorEn(CARACTERES, 3));
   });
 
-  it('si el límite cae DENTRO de lo que puede medir el decimal (de 3 a 25 caracteres), no se sabe: aviso', () => {
-    expect(delCuerpo(`    String s = "${repetir(65_531)}" + 1.5;`)).toEqual(avisoEn(3));
-    expect(delCuerpo(`    String s = "${repetir(65_520)}" + 1.5;`)).toEqual(avisoEn(3));
+  it('el largo del decimal cambia la frontera: `1.0E-4` mide 6, así que 65 528 + 6 caben (65 534) y 65 529 + 6 llegan a 65 535', () => {
+    expect(delCuerpo(`    String s = "${repetir(65_528)}" + 0.0001;`)).toEqual([]);
+    expect(delCuerpo(`    String s = "${repetir(65_529)}" + 0.0001;`)).toEqual(errorEn(CARACTERES, 3));
   });
 
-  it('en la receta de una concatenación también: pasa, o se sabe que no pasa, o aviso', () => {
+  it('en la receta de una concatenación también: el decimal entra con su texto exacto (3 bytes) y el operando dinámico con 1', () => {
     expect(delCuerpo(`    int x = 1;\n    String s = "${repetir(60_000)}" + 1.5 + x;`)).toEqual([]);
-    expect(delCuerpo(`    int x = 1;\n    String s = "${repetir(65_520)}" + 1.5 + x;`)).toEqual(avisoEn(4));
+    // 65 531 + 3 + 1 = 65 535 bytes caben (`dec-receta-justa-valida` del corpus); con 65 532 son 65 536: javac da `limit.string.overflow` en la clase (`dec-receta-excede`).
+    expect(delCuerpo(`    int x = 1;\n    String s = "${repetir(65_530)}" + 1.5 + x;`)).toEqual([]);
+    expect(delCuerpo(`    int x = 1;\n    String s = "${repetir(65_531)}" + 1.5 + x;`)).toEqual([]);
+    expect(delCuerpo(`    int x = 1;\n    String s = "${repetir(65_532)}" + 1.5 + x;`)).toEqual(errorEn(BYTES, 1));
     expect(delCuerpo(`    int x = 1;\n    String s = "${repetir(65_540)}" + 1.5 + x;`)).toEqual(errorEn(BYTES, 1));
   });
 });

@@ -10,7 +10,8 @@ import type { Paso } from '../traza/paso.ts';
 import { avanzarHastaElFinal, configuracion, correrPrograma, type Corrida } from './ayudas-de-prueba.ts';
 import { crearEjecucion } from './ejecucion.ts';
 import { ExcepcionDeEjecucion } from './excepcion-de-ejecucion.ts';
-import { FaltaEntrada, type ObjetoDeBiblioteca, type OperacionDeBiblioteca, type PuertoBiblioteca } from './puerto-biblioteca.ts';
+import { FaltaEntrada } from '../biblioteca/index.ts';
+import type { ObjetoDeBiblioteca, OperacionDeBiblioteca, PuertoBiblioteca } from './puerto-biblioteca.ts';
 
 class ScannerFalso implements ObjetoDeBiblioteca {
   readonly claseJava = 'Scanner' as const;

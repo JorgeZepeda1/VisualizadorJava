@@ -6,6 +6,7 @@
 // Lectura con reintento (ADR 005 punto 4): el trabajo de un paso corre en `intentar`. Si la biblioteca lanza `FaltaEntrada`, restaura la
 // instantánea, «teclea» el siguiente renglón por teclear (con su eco) o, si no hay y la entrada es interactiva, cede una `SenalDeEntrada` al director
 // y al reanudarse vuelve a intentar. Un renglón solo entra al búfer cuando una lectura lo necesita: por eso la traza interactiva y la preparada son idénticas.
+import { CadenaJava, FaltaEntrada } from '../biblioteca/index.ts';
 import type {
   CondicionIr,
   DeclaracionIr,
@@ -18,7 +19,7 @@ import type {
 } from '../ir/ir.ts';
 import type { ClasePaso, Paso, Segmento } from '../traza/paso.ts';
 import type { ExplicacionPaso, TipoDeCiclo } from '../traza/explicacion.ts';
-import { CadenaJava, FaltaEntrada, aTrazaValor, type ValorEjecucion } from './puerto-biblioteca.ts';
+import { aTrazaValor, type ValorEjecucion } from './puerto-biblioteca.ts';
 import { nuevoPasoEnCurso, type ContextoDeEjecucion } from './contexto.ts';
 import { evaluar, evaluarRaiz } from './expresiones.ts';
 import { LimiteDePasosExcedido } from './limites.ts';

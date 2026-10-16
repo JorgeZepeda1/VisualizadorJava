@@ -2,8 +2,8 @@
 // BYTES en el archivo de clase (`limit.string.overflow`, «UTF8 representation … is too long for the constant pool»); el motor las aceptaba y las ejecutaba. Desde esta tarea la pasada
 // `semantica/limites-del-archivo.ts` modela las dos reglas, medidas al byte con javac real: la frontera (65 534 / 65 535 caracteres; 65 535 / 65 536 bytes con acentos, euros y emojis), la POSICIÓN del error
 // (el operador de una suma, el literal que junta el analizador de javac, el paréntesis, la palabra `switch`, la palabra `class`), el ORDEN en que javac genera el código, la receta de una concatenación
-// que no es constante (con operandos que ocupan dos ranuras, con marcas `\u0001`, partida cada 200 ranuras), lo que `Lower` poda y lo que el motor no puede decidir (un decimal en el texto, condiciones
-// constantes alrededor): aviso honesto, nunca `ok` ni un error inventado.
+// que no es constante (con operandos que ocupan dos ranuras, con marcas `\u0001`, partida cada 200 ranuras), lo que `Lower` poda y lo que el motor no puede decidir (condiciones constantes alrededor):
+// aviso honesto, nunca `ok` ni un error inventado. Un decimal en el texto ya no es una incertidumbre: su largo es el de `Double.toString` (tarea 2.4).
 //
 // Los goldens son del oráculo, que compila con `javac -g` (ADR 011, como NetBeans): con `-g` una `final` constante también se genera, así que una `final` de más de 65 535 bytes da el exceso aunque nadie la use.
 // Para que ningún archivo pese 64 KB, los textos largos se ARMAN plegando constantes (`final String A3 = A2 + A2;`): javac los pliega igual que un literal enorme.
@@ -56,7 +56,7 @@ const ERRORES: ReadonlyArray<readonly [archivo: string, codigo: string]> = [
   ['ls-orden-limit-string-antes-que-bytes', CARACTERES],
   // Un `&&` con el lado izquierdo NO constante genera el derecho: error normal.
   ['poda-y-con-el-lado-izquierdo-no-constante', CARACTERES],
-  // Un decimal en el texto: con 65 532 caracteres el decimal mide al menos 3 y la suma llega a 65 535 sí o sí.
+  // Un decimal en el texto: con 65 532 caracteres más los 3 de `1.5` la suma llega a 65 535 (el límite).
   ['dec-65532-mas-un-decimal-excede', CARACTERES],
   ['dec-final-65532-mas-un-decimal-excede', CARACTERES],
 
@@ -107,56 +107,55 @@ const AVISOS: ReadonlyArray<readonly [archivo: string, codigo: string]> = [
   ['ob-receta-250-operandos-65450', ANIDADO],
 ];
 
-// Javac COMPILA: nunca un error. Un programa de clase sin nada que contar sale `ejecucion-no-disponible` mientras el lote 2 no baje esos `String` al IR; los que el motor no puede medir con seguridad,
-// el aviso del tamaño del texto.
+// Javac COMPILA: nunca un error. Un programa de clase sin nada que contar se ejecuta (`ok`); los que el motor no puede medir con seguridad (la poda de código de javac), el aviso del tamaño del texto.
 const VALIDOS: ReadonlyArray<readonly [archivo: string, resultado: string]> = [
   // La frontera de limit.string: con 65 534 caracteres, en cada forma, Java lo acepta.
-  ['ls-final-sin-uso-65534-valido', 'ejecucion-no-disponible'],
-  ['ls-inicializador-65534-valido', 'ejecucion-no-disponible'],
+  ['ls-final-sin-uso-65534-valido', 'ok'],
+  ['ls-inicializador-65534-valido', 'ok'],
   ['ls-println-65534-valido', 'ok'],
-  ['ls-numero-pegado-65533-mas-1-valido', 'ejecucion-no-disponible'],
+  ['ls-numero-pegado-65533-mas-1-valido', 'ok'],
   ['ls-etiqueta-de-switch-65534-valida', 'ok'],
   ['ls-comparacion-plegada-no-genera-sus-textos-valida', 'ok'],
   // La frontera de los bytes: un byte menos, en cada alfabeto; una `final` justa; una condición plegada con finales cortas (un boolean no carga sus textos); una etiqueta justa.
-  ['ob-acentos-32767-valido', 'ejecucion-no-disponible'],
-  ['ob-euro-21845-valido', 'ejecucion-no-disponible'],
-  ['ob-emoji-10922-valido', 'ejecucion-no-disponible'],
+  ['ob-acentos-32767-valido', 'ok'],
+  ['ob-euro-21845-valido', 'ok'],
+  ['ob-emoji-10922-valido', 'ok'],
   ['ob-final-con-bytes-justos-valida', 'ok'],
   ['ob-condicion-plegada-con-finales-cortas-valida', 'ok'],
   ['ob-etiqueta-con-acentos-32767-valida', 'ok'],
   // La receta justa: un operando, dos, con acentos, con `+=`, con una `final`, con una marca (la constante con `\u0001` o `\u0002` va aparte), partida por muchos operandos y por operandos `long` (2 ranuras).
-  ['ob-receta-65534-mas-un-operando-valida', 'ejecucion-no-disponible'],
-  ['ob-receta-dos-operandos-65533-valida', 'ejecucion-no-disponible'],
-  ['ob-receta-acentos-32767-valida', 'ejecucion-no-disponible'],
-  ['ob-receta-con-mas-igual-65534-valida', 'ejecucion-no-disponible'],
-  ['ob-receta-con-una-final-de-40000-valida', 'ejecucion-no-disponible'],
-  ['ob-receta-con-una-final-y-println-valida', 'ejecucion-no-disponible'],
-  ['ob-receta-con-marca-u0001-valida', 'ejecucion-no-disponible'],
-  ['ob-receta-con-marca-u0002-valida', 'ejecucion-no-disponible'],
-  ['ob-receta-150-operandos-65300-valida', 'ejecucion-no-disponible'],
+  ['ob-receta-65534-mas-un-operando-valida', 'ok'],
+  ['ob-receta-dos-operandos-65533-valida', 'ok'],
+  ['ob-receta-acentos-32767-valida', 'ok'],
+  ['ob-receta-con-mas-igual-65534-valida', 'ok'],
+  ['ob-receta-con-una-final-de-40000-valida', 'ok'],
+  ['ob-receta-con-una-final-y-println-valida', 'ok'],
+  ['ob-receta-con-marca-u0001-valida', 'ok'],
+  ['ob-receta-con-marca-u0002-valida', 'ok'],
+  ['ob-receta-150-operandos-65300-valida', 'ok'],
   ['ob-receta-400-operandos-valida', ANIDADO], // tarea 1.37: 400 operandos pasan del tope de profundidad del árbol (200)
   // Tarea 1.37 (S-10): un byte menos que los de arriba, y las recetas que caben. Un `if` con condición variable y la actualización de un `for` generan su texto: 65 534 caracteres caben.
   ['cx-if-sin-poda-65534-caracteres-valido', 'ok'],
   ['cx-actualizacion-del-for-65534-caracteres-valida', 'ok'],
   ['cx-receta-99-long-constante-al-final-65440-valida', 'ok'],
-  ['cx-receta-99-double-constante-al-final-65535-valida', 'ejecucion-no-disponible'],
+  ['cx-receta-99-double-constante-al-final-65535-valida', 'ok'],
   ['cx-receta-100-long-constante-al-final-65534-valida', 'ok'],
-  ['ob-receta-con-operandos-long-ocupan-dos-ranuras', 'ejecucion-no-disponible'],
+  ['ob-receta-con-operandos-long-ocupan-dos-ranuras', 'ok'],
   // Lo que `Lower` poda y `Gen` no genera: la rama que no se toma de un `if` con condición constante, el lado derecho de `false && …` y de `true || …`.
   ['poda-if-false-con-texto-largo-valido', 'ok'],
   ['poda-else-de-un-if-true-valido', 'ok'],
   ['poda-final-false-valido', 'ok'],
-  ['poda-false-y-un-texto-largo-valido', 'ejecucion-no-disponible'],
-  ['poda-true-o-un-texto-largo-valido', 'ejecucion-no-disponible'],
+  ['poda-false-y-un-texto-largo-valido', 'ok'],
+  ['poda-true-o-un-texto-largo-valido', 'ok'],
   ['poda-sin-texto-largo-no-cambia-nada-valido', 'ok'],
   // Javac compila el código que `Gen` descarta tras un `if (true) return;` o tras un ciclo cuyo `break` está podado, pero el motor no sigue esa poda: con un texto largo ahí no puede decidir, avisa.
   ['poda-return-despues-de-if-true-valido-con-aviso', AVISO],
   ['poda-while-true-con-if-false-break-valido-con-aviso', AVISO],
-  // Un decimal en el texto (su largo lo decide `Double.toString`, lote 2): lejos del límite no importa; si el límite cae dentro de lo que puede medir (de 3 a 25 caracteres), avisa.
-  ['dec-lejos-del-limite-valido', 'ejecucion-no-disponible'],
-  ['dec-65520-mas-un-decimal-valido-con-aviso', AVISO],
-  ['dec-65531-mas-un-decimal-cabe-valido-con-aviso', AVISO],
-  ['dec-receta-justa-valida-con-aviso', AVISO],
+  // Un decimal en el texto (tarea 2.4, cierre de la 1.36): su largo es el de `Double.toString`, exacto (`1.5` mide 3), así que en la frontera el motor ya decide como javac: 65 531 + 3 caben, 65 532 + 3 no.
+  ['dec-lejos-del-limite-valido', 'ok'],
+  ['dec-65520-mas-un-decimal-valido-con-aviso', 'ok'],
+  ['dec-65531-mas-un-decimal-cabe-valido-con-aviso', 'ok'],
+  ['dec-receta-justa-valida-con-aviso', 'ok'],
 ];
 
 guardaDeCorpusConTablas({

@@ -36,14 +36,14 @@ import {
 
 const AQUI = dirname(fileURLToPath(import.meta.url));
 
-/** El problema de `compilar()`; falla si el programa "compiló" (falta la IR del lote 2, así que un programa aceptado por todas las pasadas da `ejecucion-no-disponible`). */
+/** El problema de `compilar()`; falla si el programa "compiló" (`ok: true`: un rechazo o un aviso es lo que esta función espera). */
 function problemaDe(fuente: string): Extract<ResultadoCompilacion, { ok: false }>['problema'] {
   const resultado = compilar(fuente);
-  if (resultado.ok) throw new Error('se esperaba un problema (falta la IR del lote 2, un aviso o un rechazo), no ok: true');
+  if (resultado.ok) throw new Error('se esperaba un problema (un aviso o un rechazo), no ok: true');
   return resultado.problema;
 }
 
-/** ¿`compilar()` aceptó el programa? `ok`, o `ejecucion-no-disponible` (todas las pasadas lo aceptaron y solo falta ejecutarlo). Un aviso NO es aceptarlo. */
+/** ¿`compilar()` aceptó el programa? `ok`, o `ejecucion-no-disponible` (todas las pasadas lo aceptaron y solo falta ejecutarlo, p. ej. un `Math.pow`). Un aviso NO es aceptarlo. */
 function aceptaElPrograma(fuente: string): boolean {
   const resultado = compilar(fuente);
   return resultado.ok || (resultado.problema.categoria === 'no-disponible' && resultado.problema.codigo === 'ejecucion-no-disponible');
@@ -57,7 +57,14 @@ describe('tablas léxicas — los literales numéricos (N3, N4)', () => {
   });
 
   it.each(LITERALES_ACEPTADOS.map((l) => [l.texto, l.clase] as const))('«%s» (%s) lo acepta javac: compilar() no lo rechaza y lo responde con el código de su clase', (texto, clase) => {
-    expect(problemaDe(programaConLiteral(texto))).toMatchObject({ categoria: 'no-disponible', codigo: CODIGO_POR_CLASE_DE_LITERAL[clase] });
+    const esperado = CODIGO_POR_CLASE_DE_LITERAL[clase];
+    const fuente = programaConLiteral(texto);
+    if (esperado === 'ok') {
+      const resultado = compilar(fuente);
+      expect(resultado.ok, resultado.ok ? 'ok' : `${resultado.problema.codigo} en la línea ${resultado.problema.linea}`).toBe(true);
+    } else {
+      expect(problemaDe(fuente)).toMatchObject({ categoria: 'no-disponible', codigo: esperado });
+    }
   });
 
   it.each(LITERALES_RECHAZADOS.map((l) => [l.texto, l.codigoJavac] as const))('«%s» lo rechaza javac (%s): compilar() lo rechaza también, en la línea de javac', (texto, codigoJavac) => {

@@ -11,11 +11,22 @@ const UNIDAD_DE_DOUBLE = potenciaDeDos(-53);
 const DOS_A_LA_27 = 134217728;
 
 export class RandomJava {
+  /** Así viaja en la traza (`{ objeto: 'Random' }`) y así lo reconoce la instantánea del reintento. */
+  readonly claseJava = 'Random' as const;
   private semilla: bigint;
 
   /** `new Random(semilla)`: la semilla se mezcla con el multiplicador y se enmascara a 48 bits (por eso `new Random(0)` y `new Random(Long.MIN_VALUE)` dan la misma secuencia). */
   constructor(semilla: bigint) {
     this.semilla = (semilla ^ MULTIPLICADOR) & MASCARA_DE_48_BITS;
+  }
+
+  /** La instantánea del reintento (hito 1, parte C): una sentencia que se queda sin entrada a medias no debe gastar números al azar. El estado de 48 bits es un `bigint`, inmutable, así que es su propia copia. */
+  capturar(): bigint {
+    return this.semilla;
+  }
+
+  restaurar(estado: bigint): void {
+    this.semilla = estado;
   }
 
   /** `next(bits)`: avanza el estado y devuelve sus `bits` bits altos como `int` CON signo. */

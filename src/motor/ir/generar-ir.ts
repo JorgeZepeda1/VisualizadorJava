@@ -8,8 +8,14 @@
 // en el puerto, o cualquier `double` si el puerto no sabe escribir uno, es un `ErrorDeEjecucionNoDisponible` con el rango real (D2, regla 5 de
 // CLAUDE.md) que `compilar()` traduce al aviso `ejecucion-no-disponible`. Es una ruta defensiva PERMANENTE (tarea 1.27): nunca un resultado inventado.
 //
+// Hito 1, parte C: lo que la biblioteca marca como «No disponible» y SE PUEDE saber antes de ejecutar se decide aquí, no a media ejecución: un patrón de `printf`/`String.format` literal (o una
+// constante de compilación) con un especificador sin medir (`formatoSoportado`), `Double.parseDouble` de un literal hexadecimal, un segundo `new Scanner(System.in)` (o uno dentro de un ciclo: Java
+// reparte la entrada entre los búferes de los Scanner y el motor no lo modela) y un `Scanner`/`Random` convertido en texto. Lo que depende de un VALOR en ejecución (el patrón que lee una variable,
+// el texto que teclea el alumno) sigue siendo un aviso en ejecución.
+//
 // El árbol sale SIN números de punto (`punto: -1`); `plan-evaluacion.ts` los asigna en el orden en que Java evalúa. Cada paso (declaración,
 // sentencia de expresión, condición…) es un NODO con su plan; `Paso.valores` va alineado con él.
+import { Double, formatoSoportado, NoDisponibleEnEjecucion } from '../biblioteca/index.ts';
 import { caracterDeLiteral } from '../biblioteca/numeros/caracter.ts';
 import { promocionBinaria } from '../biblioteca/numeros/conversiones.ts';
 import { INT_MAXIMO, INT_MINIMO } from '../biblioteca/numeros/enteros.ts';
@@ -19,7 +25,7 @@ import type { Rango } from '../fuente/rango.ts';
 import { TablaDeLineas } from '../fuente/tabla-de-lineas.ts';
 import { PUERTO_VACIO, type PuertoBiblioteca } from '../interprete/puerto-biblioteca.ts';
 import { Alcance, type SimboloVariable } from '../semantica/alcance.ts';
-import { constanteDeVariable, valorConstante, valorSiSeSabe } from '../semantica/constantes.ts';
+import { constanteDeVariable, valorConstante } from '../semantica/constantes.ts';
 import { resolverSobrecarga } from '../semantica/sobrecargas.ts';
 import {
   argumentoDeSobrecarga,
@@ -90,11 +96,16 @@ function esNumerico(tipo: TipoIr | null): tipo is TipoNumericoIr {
 }
 
 /** Las firmas de `print`/`println` que el propio intérprete resuelve (no necesitan la biblioteca; `double` sí necesita `Double.toString`, lo decide el tipo). */
-const CLAVES_NATIVAS: ReadonlySet<string> = new Set(
+export const CLAVES_NATIVAS: ReadonlySet<string> = new Set(
   ['print', 'println'].flatMap((metodo) =>
     ['boolean', 'char', 'double', 'int', 'long', 'java.lang.String'].map((parametro) => `PrintStream.${metodo}(${parametro})`),
   ).concat(['PrintStream.println()']),
 );
+
+const CLAVES_DE_FORMATO: ReadonlySet<string> = new Set(['PrintStream.printf(java.lang.String,java.lang.Object[])', 'String.format(java.lang.String,java.lang.Object[])']);
+const CLAVE_DE_PARSE_DOUBLE = 'Double.parseDouble(java.lang.String)';
+const CLAVE_DE_NUEVO_SCANNER = 'Scanner.<init>(java.io.InputStream)';
+const CLAVE_DE_EQUALS = 'String.equals(java.lang.Object)';
 
 /** Constantes de campos estáticos que el propio intérprete conoce (las demás, como `Math.PI`, también: son valores fijos del JDK). */
 const CAMPOS_CONSTANTES: ReadonlyMap<string, { readonly tipo: TipoIr; readonly valor: number | bigint }> = new Map([
@@ -172,6 +183,9 @@ class GeneradorDeIr {
   private readonly ranuraDe = new Map<SimboloVariable, number>();
   private readonly nodos: NodoBorrador[] = [];
   private huboBiblioteca = false;
+  /** Cuántos `new Scanner(System.in)` lleva el programa y cuántos ciclos envuelven el punto que se está bajando (el cuerpo, la condición y la actualización; no el inicio de un `for`). */
+  private scannersCreados = 0;
+  private profundidadDeCiclo = 0;
 
   constructor(programa: NodoPrograma, opciones: OpcionesDeGeneracion) {
     this.programa = programa;
@@ -184,11 +198,7 @@ class GeneradorDeIr {
   generar(): ProgramaIr {
     const clase = this.programa.clase;
     const paquete = this.programa.paquete?.nombre ?? null;
-    const base = {
-      nombreClase: clase.nombre,
-      nombreCalificado: paquete === null ? clase.nombre : `${paquete}.${clase.nombre}`,
-      archivo: `${clase.nombre}.java`,
-    };
+    const base = { nombreClase: clase.nombre, paquete };
     if (clase.main === null) return { sentencias: [], ranuras: [], nodos: [], ...base };
     // El parámetro de `main` vive en el alcance (como en la atribución) pero no es una ranura: usarlo ya fue un aviso de arreglo.
     this.alcance.entrarBloque();
@@ -337,13 +347,17 @@ class GeneradorDeIr {
       }
       case 'while': {
         const nodo = this.cerrarSinPlan(this.reservarNodo('while', sentencia.rango));
-        const condicion = this.bajarCondicion(sentencia.condicion, 'condicion-ciclo');
-        return { forma: 'while', nodo, condicion, cuerpo: this.bajarSentencia(sentencia.cuerpo) };
+        return this.dentroDeUnCiclo(() => {
+          const condicion = this.bajarCondicion(sentencia.condicion, 'condicion-ciclo');
+          return { forma: 'while', nodo, condicion, cuerpo: this.bajarSentencia(sentencia.cuerpo) };
+        });
       }
       case 'do-while': {
         const nodo = this.cerrarSinPlan(this.reservarNodo('do-while', sentencia.rango));
-        const cuerpo = this.bajarSentencia(sentencia.cuerpo);
-        return { forma: 'do-while', nodo, cuerpo, condicion: this.bajarCondicion(sentencia.condicion, 'condicion-ciclo') };
+        return this.dentroDeUnCiclo(() => {
+          const cuerpo = this.bajarSentencia(sentencia.cuerpo);
+          return { forma: 'do-while', nodo, cuerpo, condicion: this.bajarCondicion(sentencia.condicion, 'condicion-ciclo') };
+        });
       }
       case 'for':
         return this.bajarFor(sentencia);
@@ -377,11 +391,23 @@ class GeneradorDeIr {
     let inicio: ForIr['inicio'] = null;
     if (sentencia.inicializacionDeclaracion !== null) inicio = this.bajarDeclaracion(sentencia.inicializacionDeclaracion);
     else if (sentencia.inicializacionExpresiones.length > 0) inicio = this.bajarListaDeExpresiones(sentencia.inicializacionExpresiones, sentencia.inicializacionExpresiones[0].rango);
-    const condicion = sentencia.condicion === null ? null : this.bajarCondicion(sentencia.condicion, 'condicion-ciclo');
-    const cuerpo = this.bajarSentencia(sentencia.cuerpo);
-    const actualizacion = sentencia.actualizacion.length === 0 ? null : this.bajarListaDeExpresiones(sentencia.actualizacion, sentencia.actualizacion[0].rango);
+    const { condicion, cuerpo, actualizacion } = this.dentroDeUnCiclo(() => ({
+      condicion: sentencia.condicion === null ? null : this.bajarCondicion(sentencia.condicion, 'condicion-ciclo'),
+      cuerpo: this.bajarSentencia(sentencia.cuerpo),
+      actualizacion: sentencia.actualizacion.length === 0 ? null : this.bajarListaDeExpresiones(sentencia.actualizacion, sentencia.actualizacion[0].rango),
+    }));
     this.alcance.salirBloque();
     return { forma: 'for', nodo, inicio, condicion, actualizacion, cuerpo };
+  }
+
+  /** Baja `bajar` sabiendo que lo que contiene se ejecuta varias veces. */
+  private dentroDeUnCiclo<T>(bajar: () => T): T {
+    this.profundidadDeCiclo += 1;
+    try {
+      return bajar();
+    } finally {
+      this.profundidadDeCiclo -= 1;
+    }
   }
 
   private bajarSwitch(sentencia: NodoSwitch): SwitchIr {
@@ -394,7 +420,7 @@ class GeneradorDeIr {
     const elementos: ElementoSwitchIr[] = [];
     for (const elemento of sentencia.elementos) {
       if (elemento.tipo === 'etiqueta-case') {
-        const constante = valorSiSeSabe(valorConstante(elemento.valor, this.alcance));
+        const constante = valorConstante(elemento.valor, this.alcance);
         if (constante === null || (constante.tipo !== 'int' && constante.tipo !== 'char' && constante.tipo !== 'String')) return noDisponible('etiqueta de case sin valor conocido', elemento.rango);
         const etiqueta = this.cerrarSinPlan(this.reservarNodo('caso', elemento.rango));
         elementos.push({ forma: 'caso', nodo: etiqueta, valor: constante.valor, texto: this.fuente.slice(elemento.valor.rango.inicio, elemento.valor.rango.fin) });
@@ -429,7 +455,7 @@ class GeneradorDeIr {
     const rango = rangoDe(nodo);
     // Una expresión constante de texto (`"ho" + "la"`, `P + "b"` con `final String P = "a"`) es UN valor internado (JLS 15.29): por eso `"ho" + "la" == "hola"` es true.
     if ((nodo.tipo === 'binaria' || nodo.tipo === 'nombre' || nodo.tipo === 'conversion') && tipoDeExpresion(nodo, this.alcance) === 'String') {
-      const constante = valorSiSeSabe(valorConstante(nodo, this.alcance));
+      const constante = valorConstante(nodo, this.alcance);
       if (constante !== null && constante.tipo === 'String') return this.constante('String', constante.valor, rango);
     }
     switch (nodo.tipo) {
@@ -631,8 +657,12 @@ class GeneradorDeIr {
     const esNativa = CLAVES_NATIVAS.has(clave);
     if (!esNativa && !this.puerto.operaciones.has(clave)) return noDisponible(`la biblioteca no sabe ejecutar ${clave}`, rango);
     if (!esNativa) this.huboBiblioteca = true;
+    this.decidirLoQueSeSabeAntesDeEjecutar(clave, argumentosAst, rango);
     const bajados = argumentosAst.map((argumento) => this.bajar(argumento));
     const fijos = firma.esVarargs ? firma.parametros.length - 1 : firma.parametros.length;
+    const variables = firma.esVarargs ? bajados.slice(fijos) : null;
+    // Un argumento variable (`printf("%s", sc)`) se convierte en texto con `toString`: el de un `Scanner` o un `Random` lleva una dirección de memoria y no se modela.
+    for (const variable of variables ?? []) this.exigirTextoDeJava(variable, rango);
     return {
       forma: 'llamada',
       tipo: tipoDeRetorno(firma.retorno),
@@ -641,15 +671,43 @@ class GeneradorDeIr {
       clave,
       receptor,
       flujo,
-      argumentos: bajados.slice(0, fijos).map((argumento, indice) => this.adaptarArgumento(argumento, firma.parametros[indice], rango)),
-      variables: firma.esVarargs ? bajados.slice(fijos) : null,
+      argumentos: bajados.slice(0, fijos).map((argumento, indice) => this.adaptarArgumento(argumento, firma.parametros[indice], clave, rango)),
+      variables,
       esNativa,
     };
   }
 
-  /** Lleva un argumento al tipo del parámetro de la firma resuelta (ensanchamiento numérico); lo que el subconjunto no modela (`float`, `Object` con un primitivo) no se ejecuta. */
-  private adaptarArgumento(argumento: ExpresionIr, parametro: string, rango: Rango): ExpresionIr {
+  /**
+   * Lo que la biblioteca marca «No disponible» en ejecución pero que, si el argumento es una constante de compilación, ya se sabe aquí: un formato con un especificador sin medir
+   * (`formatoSoportado`) y un literal hexadecimal de `Double.parseDouble`. Con un valor que se conoce solo en ejecución (una variable, lo que teclea el alumno) no hay forma de saberlo antes.
+   */
+  private decidirLoQueSeSabeAntesDeEjecutar(clave: string, argumentosAst: readonly NodoExpresion[], rango: Rango): void {
+    if (!CLAVES_DE_FORMATO.has(clave) && clave !== CLAVE_DE_PARSE_DOUBLE) return;
+    const constante = valorConstante(argumentosAst[0], this.alcance);
+    if (constante === null || constante.tipo !== 'String') return;
+    if (clave === CLAVE_DE_PARSE_DOUBLE) {
+      try {
+        Double.parseDouble(constante.valor);
+      } catch (error) {
+        // La `NumberFormatException` de un texto inválido es de la ejecución (el programa la lanza en Java); solo el hexadecimal es «No disponible».
+        if (error instanceof NoDisponibleEnEjecucion) return noDisponible('literal hexadecimal de punto flotante en Double.parseDouble', rango);
+      }
+      return;
+    }
+    const formato = formatoSoportado(constante.valor);
+    if (!formato.soportado) noDisponible(`el especificador ${formato.especificador} de printf/format no está medido contra el JDK`, rango);
+  }
+
+  /**
+   * Lleva un argumento al tipo del parámetro de la firma resuelta (ensanchamiento numérico); lo que el subconjunto no modela (`float`, `Object` con un primitivo) no se ejecuta.
+   * Excepción: `Math.round(int)`, `round(long)` y `round(char)` no existen en Java y se resuelven a `round(float)`; el subconjunto no tiene `float`, así que el argumento va SIN convertir y la
+   * operación del puerto hace el paso a `float` (un solo redondeo desde el `long`).
+   */
+  private adaptarArgumento(argumento: ExpresionIr, parametro: string, clave: string, rango: Rango): ExpresionIr {
     switch (parametro) {
+      case 'float':
+        if (argumento.tipo === 'int' || argumento.tipo === 'long' || argumento.tipo === 'char') return argumento;
+        return noDisponible('un float', rango);
       case 'int':
       case 'long':
       case 'double':
@@ -665,8 +723,10 @@ class GeneradorDeIr {
         if (argumento.tipo === 'String') return argumento;
         return noDisponible('una CharSequence que no es un String', rango);
       case 'java.lang.Object':
-        if (argumento.tipo === 'String' || argumento.tipo === 'Scanner' || argumento.tipo === 'Random') return argumento;
-        return noDisponible('un primitivo como Object', rango);
+        if (argumento.tipo === 'String') return argumento;
+        // `s.equals(sc)` es siempre `false` y no necesita el texto del objeto; cualquier otra firma con `Object` sí lo pide (`String.valueOf(sc)`).
+        if ((argumento.tipo === 'Scanner' || argumento.tipo === 'Random') && clave === CLAVE_DE_EQUALS) return argumento;
+        return noDisponible('un primitivo o un objeto de la biblioteca como Object', rango);
       default:
         return noDisponible(`parámetro ${parametro} fuera del subconjunto`, rango);
     }
@@ -679,9 +739,14 @@ class GeneradorDeIr {
     const clave = claveDeFirma(firma);
     if (!this.puerto.operaciones.has(clave)) return noDisponible(`la biblioteca no sabe ejecutar ${clave}`, rango);
     this.huboBiblioteca = true;
+    // Un solo `new Scanner(System.in)`, y fuera de los ciclos: con dos, Java le da a cada uno su propio búfer de `System.in` (el primero se lleva lo que alcanza a leer) y el motor no lo modela.
+    if (clave === CLAVE_DE_NUEVO_SCANNER) {
+      if (this.scannersCreados > 0 || this.profundidadDeCiclo > 0) return noDisponible('más de un Scanner sobre System.in', rango);
+      this.scannersCreados += 1;
+    }
     // `new Scanner(System.in)`: el `System.in` ya lo dice la clave del constructor; no queda como argumento.
     const argumentos = nodo.argumentos.flatMap((argumento, indice) =>
-      campoReflejadoDeSystem(argumento, this.alcance) === 'java.io.InputStream' ? [] : [this.adaptarArgumento(this.bajar(argumento), firma.parametros[indice], rango)],
+      campoReflejadoDeSystem(argumento, this.alcance) === 'java.io.InputStream' ? [] : [this.adaptarArgumento(this.bajar(argumento), firma.parametros[indice], clave, rango)],
     );
     return { forma: 'nuevo', tipo, punto: -1, rango, clave, argumentos };
   }

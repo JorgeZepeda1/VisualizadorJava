@@ -172,7 +172,7 @@ const VALIDOS: ReadonlyArray<readonly [archivo: string, codigo: string]> = [
   ['p-referencia-a-metodo-de-tipo-generico-valida', 'referencia-metodo'],
   // Q — un emoji en un `char` (aviso) y en una cadena (ya funcionaba).
   ['q-emoji-en-un-char-valido', 'caracter-suplementario-no-soportado'],
-  ['q-emoji-en-una-cadena-valido', 'ejecucion-no-disponible'],
+  ['q-emoji-en-una-cadena-valido', 'ok'],
 ];
 
 describe('corpus/experimentos/falsos-rechazos — el corpus de la tarea 1.35 está completo', () => {

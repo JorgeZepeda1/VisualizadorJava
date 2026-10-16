@@ -21,7 +21,7 @@ const VALIDOS: ReadonlyArray<readonly [archivo: string, resultado: 'ok' | string
   ['an-o-encadenado-dentro', 'ok'],
   ['an-concatenacion-izquierda-dentro', 'ok'],
   ['an-concatenacion-con-variable-dentro', 'ok'],
-  ['an-llamadas-en-cadena-dentro', 'ejecucion-no-disponible'],
+  ['an-llamadas-en-cadena-dentro', 'ok'],
   ['an-casts-en-cadena-dentro', 'ok'],
   ['an-asignaciones-en-cadena-dentro', 'ok'],
   ['an-bloques-con-if-dentro', 'ok'],

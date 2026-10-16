@@ -10,7 +10,8 @@ export { crearEjecucion } from './interprete/ejecucion.ts';
 export type { Avance, ConfigEjecucion, Ejecucion } from './interprete/ejecucion.ts';
 export type { ProgramaCompilado } from './ir/ir.ts';
 // El puerto de la biblioteca (tarea 2.17-2.19): lo que la parte A registra para que el intérprete ejecute llamadas, `new` y `Double.toString`.
-export { CadenaJava, EntradaDelPrograma, FaltaEntrada, FlujoDeSalida, PoolDeCadenas, PUERTO_VACIO } from './interprete/puerto-biblioteca.ts';
+export { CadenaJava, EntradaDelPrograma, FaltaEntrada, FlujoDeSalida, PoolDeCadenas } from './biblioteca/index.ts';
+export { PUERTO_VACIO } from './interprete/puerto-biblioteca.ts';
 export type {
   ContextoDeBiblioteca,
   ObjetoDeBiblioteca,

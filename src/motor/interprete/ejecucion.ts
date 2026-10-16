@@ -2,6 +2,7 @@
 // pasos que se le piden, cuenta los pasos y aplica los límites, convierte una `ExcepcionDeEjecucion` en el paso final `excepcion` con el `stderr` EXACTO
 // de la JVM, y cualquier otro fallo en el paso final `detenido` (`limite-caracteres`, `no-disponible-en-ejecucion`) o en `error-interno`.
 // El contrato `Ejecucion` (avanzar / darEntrada / cerrarEntrada) quedó fijo desde la rebanada vertical (REFACTOR de la tarea 0.12).
+import { formatearTrazaDePila, NoDisponibleEnEjecucion } from '../biblioteca/index.ts';
 import type { ProgramaCompilado, ProgramaIr } from '../ir/ir.ts';
 import type { ExplicacionPaso } from '../traza/explicacion.ts';
 import type { FinEjecucion, Paso, Segmento } from '../traza/paso.ts';
@@ -9,7 +10,7 @@ import { aTrazaValor } from './puerto-biblioteca.ts';
 import { crearContexto, nuevoPasoEnCurso, type ContextoDeEjecucion } from './contexto.ts';
 import { ExcepcionDeEjecucion } from './excepcion-de-ejecucion.ts';
 import { explicarFin } from './explicar.ts';
-import { LimiteDePasosExcedido, LimiteExcedido, NoDisponibleEnEjecucion } from './limites.ts';
+import { LimiteDePasosExcedido, LimiteExcedido } from './limites.ts';
 import { PUERTO_POR_OMISION } from './puerto-por-omision.ts';
 import type { PuertoBiblioteca } from './puerto-biblioteca.ts';
 import { ejecutarSentencia, type Emision } from './sentencias.ts';
@@ -36,12 +37,10 @@ export interface Ejecucion {
 
 /**
  * El `stderr` de una excepción no atrapada (design.md §3.6): `Exception in thread "main" <clase>[: <mensaje>]`, los marcos de `java.base` que la
- * biblioteca dejó, y al final el marco del alumno `at [paquete.]Clase.main(Clase.java:<línea>)`.
+ * biblioteca dejó, y al final el marco del alumno `at [paquete.]Clase.main(Clase.java:<línea>)` (el nombre calificado del programa ya lo trae con `package`).
  */
 function textoDeLaExcepcion(excepcion: ExcepcionDeEjecucion, programa: ProgramaIr, linea: number): string {
-  const encabezado = `Exception in thread "main" ${excepcion.claseCalificada}${excepcion.mensajeJava === null ? '' : `: ${excepcion.mensajeJava}`}\n`;
-  const marcos = excepcion.marcosDeJdk.map((marco) => `\tat ${marco}\n`).join('');
-  return `${encabezado}${marcos}\tat ${programa.nombreCalificado}.main(${programa.archivo}:${linea})\n`;
+  return formatearTrazaDePila(excepcion, [{ paquete: programa.paquete, clase: programa.nombreClase, metodo: 'main', linea }]);
 }
 
 function* ejecutarPrograma(programa: ProgramaIr, contexto: ContextoDeEjecucion): Generator<Emision, void, undefined> {
@@ -91,7 +90,7 @@ export function crearEjecucion(programa: ProgramaCompilado, config: ConfigEjecuc
       const fin: FinEjecucion = { causa: 'excepcion' };
       const texto = textoDeLaExcepcion(error, programa.ir, linea);
       pasos.push(
-        pasoFinal('excepcion', { clave: 'excepcion', datos: { clase: error.claseCalificada, mensaje: error.mensajeJava } }, fin, [{ flujo: 'err', texto }], linea),
+        pasoFinal('excepcion', { clave: 'excepcion', datos: { clase: error.clase, mensaje: error.mensaje } }, fin, [{ flujo: 'err', texto }], linea),
       );
       return terminar(pasos, fin);
     }

@@ -365,10 +365,9 @@ export interface ProgramaIr {
   readonly sentencias: readonly SentenciaIr[];
   readonly ranuras: readonly RanuraIr[];
   readonly nodos: readonly NodoIr[];
-  /** Nombre de la clase del alumno y del archivo (`<Clase>.java`) que la JVM imprime en el marco de `main`; con `package`, el nombre calificado. */
+  /** La clase del alumno y su paquete (`null` si no declara `package`): de ellos sale el marco `at [paquete.]Clase.main(Clase.java:N)` que la JVM imprime. */
   readonly nombreClase: string;
-  readonly nombreCalificado: string;
-  readonly archivo: string;
+  readonly paquete: string | null;
 }
 
 /** Lo que produce `compilar()` cuando el análisis termina sin problemas (design.md §1.3). */

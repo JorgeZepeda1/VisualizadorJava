@@ -2,7 +2,7 @@
 // 32 bits con signo. JavaScript suma, resta y multiplica en doble precisión, así que cada resultado se lleva otra vez a 32 bits con `| 0`
 // (suma y resta nunca pierden precisión con operandos de 32 bits) o con `Math.imul` (el producto sí la perdería a partir de 2^53). Funciones
 // puras, sin estado: las usa el intérprete (`interprete/expresiones.ts`) y el plegado de constantes.
-import { divisionEntreCero } from '../../interprete/excepcion-de-ejecucion.ts';
+import { divisionEntreCero } from '../excepciones/excepcion-java.ts';
 
 export const INT_MAXIMO = 2147483647;
 export const INT_MINIMO = -2147483648;

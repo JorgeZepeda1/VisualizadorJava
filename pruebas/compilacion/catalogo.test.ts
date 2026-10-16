@@ -35,10 +35,11 @@ describe('pruebas/compilacion/catalogo — avisos NO-DISP (uno por construcción
   const archivos = archivosJava(RUTA_AVISOS);
 
   it('el corpus de avisos no está vacío (guarda contra un directorio mal armado)', () => {
-    // 74 muestras: las 61 de la 1.17–1.34, las 6 de la 1.35 (clase anónima, llamada a `main`, `instanceof` con patrón, clase sellada, literal de clase, emoji en un `char`), las 4 de la 1.36
-    // (un paquete con nombre de clase, una constante de texto con un decimal, un programa demasiado grande, un texto cerca del límite de tamaño), la de la 1.37 (un programa demasiado anidado),
-    // la de la 1.38 (un paquete dentro de `java`, que el lanzador no arranca) y la de la 1.39 (el paquete de un módulo del JDK, que el lanzador tampoco carga).
-    expect(archivos.length).toBeGreaterThanOrEqual(74);
+    // 73 muestras: las 61 de la 1.17–1.34, las 6 de la 1.35 (clase anónima, llamada a `main`, `instanceof` con patrón, clase sellada, literal de clase, emoji en un `char`), las 3 de la 1.36
+    // (un paquete con nombre de clase, un programa demasiado grande, un texto cerca del límite de tamaño por una condición constante que poda código; la de una constante de texto con un decimal
+    // se retiró en la 2.4: `"d" + 1.5` ya se pliega), la de la 1.37 (un programa demasiado anidado), la de la 1.38 (un paquete dentro de `java`, que el lanzador no arranca) y la de la 1.39
+    // (el paquete de un módulo del JDK, que el lanzador tampoco carga).
+    expect(archivos.length).toBeGreaterThanOrEqual(73);
   });
 
   // Tarea 1.23 (agregada por el orquestador: hallazgo de la guarda de avisos, sub-lote 1-D6):

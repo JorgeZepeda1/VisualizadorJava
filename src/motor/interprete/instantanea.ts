@@ -4,8 +4,8 @@
 // el resultado depende solo de lo que hay en el búfer, la traza interactiva y la preparada son idénticas con los mismos renglones.
 //
 // Qué cubre (el estado mutable de la ejecución que una sentencia puede tocar): las ranuras (las variables), el cursor de la entrada, el estado
-// de cada objeto de la biblioteca que vive en una ranura (`Scanner`, `Random`) y de los objetos globales que la biblioteca registró. Lo que se
-// «tecleó» (el texto del búfer) NO se deshace: un renglón escrito sigue escrito.
+// de cada objeto de la biblioteca que vive en una ranura (`Scanner`, `Random`) y el del generador de semillas de la ejecución (del que salen `new Random()`
+// y `Math.random()`). Lo que se «tecleó» (el texto del búfer) NO se deshace: un renglón escrito sigue escrito.
 import type { ContextoDeEjecucion } from './contexto.ts';
 import type { ObjetoDeBiblioteca, ValorEjecucion } from './puerto-biblioteca.ts';
 
@@ -13,7 +13,6 @@ export interface Instantanea {
   readonly ranuras: readonly (ValorEjecucion | undefined)[];
   readonly cursor: number;
   readonly objetos: readonly { readonly objeto: ObjetoDeBiblioteca; readonly estado: unknown }[];
-  readonly cantidadDeGlobales: number;
 }
 
 function esObjetoDeBiblioteca(valor: ValorEjecucion | undefined): valor is ObjetoDeBiblioteca {
@@ -21,7 +20,7 @@ function esObjetoDeBiblioteca(valor: ValorEjecucion | undefined): valor is Objet
 }
 
 export function tomarInstantanea(contexto: ContextoDeEjecucion): Instantanea {
-  const objetos = new Set<ObjetoDeBiblioteca>(contexto.objetosGlobales);
+  const objetos = new Set<ObjetoDeBiblioteca>([contexto.biblioteca.fuenteDeAleatorios]);
   for (const valor of contexto.ranuras) {
     if (esObjetoDeBiblioteca(valor)) objetos.add(valor);
   }
@@ -29,7 +28,6 @@ export function tomarInstantanea(contexto: ContextoDeEjecucion): Instantanea {
     ranuras: contexto.ranuras.slice(),
     cursor: contexto.entrada.cursor,
     objetos: [...objetos].map((objeto) => ({ objeto, estado: objeto.capturar() })),
-    cantidadDeGlobales: contexto.objetosGlobales.length,
   };
 }
 
@@ -37,6 +35,4 @@ export function restaurarInstantanea(contexto: ContextoDeEjecucion, instantanea:
   for (let indice = 0; indice < instantanea.ranuras.length; indice += 1) contexto.ranuras[indice] = instantanea.ranuras[indice];
   contexto.entrada.cursor = instantanea.cursor;
   for (const { objeto, estado } of instantanea.objetos) objeto.restaurar(estado);
-  // Un objeto global que se registró durante el intento fallido no existió para el programa.
-  contexto.objetosGlobales.length = instantanea.cantidadDeGlobales;
 }

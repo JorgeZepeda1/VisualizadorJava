@@ -7,7 +7,7 @@
 // un solo código: lo que importa es si el nombre YA está visible en algún bloque todavía abierto,
 // no en cuál de los bloques abiertos vive.
 import type { Rango } from '../fuente/rango.ts';
-import type { ConstanteDeValorDesconocido, ValorConstante } from './constantes.ts';
+import type { ValorConstante } from './constantes.ts';
 
 export interface SimboloVariable {
   readonly nombre: string;
@@ -21,7 +21,7 @@ export interface SimboloVariable {
    * (`atribucion.ts`/`alcanzabilidad.ts`, cada uno su propio `Alcance`); `constantes.ts` SOLO lo
    * lee de vuelta (`valorConstante`, caso 'nombre'). `import type` — sin dependencia real en
    * tiempo de VALOR, misma garantía que ya documentaba este archivo. */
-  readonly constante?: ValorConstante | ConstanteDeValorDesconocido;
+  readonly constante?: ValorConstante;
 }
 
 export type ResultadoDeclarar =

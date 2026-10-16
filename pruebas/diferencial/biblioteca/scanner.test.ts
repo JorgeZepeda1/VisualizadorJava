@@ -3,6 +3,7 @@
 // una, qué deja el `InputMismatchException`, `nextLine` tras `nextInt`…). El motor se compara valor por valor (los `double` como bits) y excepción por excepción (clase y mensaje).
 import { describe, expect, it } from 'vitest';
 import { ExcepcionJava } from '../../../src/motor/biblioteca/excepciones/excepcion-java.ts';
+import { EntradaDelPrograma } from '../../../src/motor/biblioteca/entrada/entrada-del-programa.ts';
 import { ScannerJava } from '../../../src/motor/biblioteca/entrada/scanner.ts';
 import { NoDisponibleEnEjecucion } from '../../../src/motor/biblioteca/no-disponible.ts';
 import { type Regional } from '../../../src/motor/biblioteca/formato/regional.ts';
@@ -51,10 +52,10 @@ function describirOraculo(resultado: ResultadoDelOraculo): string {
 }
 
 function nuevoScannerConEntradaCompleta(regional: Regional, texto: string): ScannerJava {
-  const scanner = new ScannerJava(regional);
-  scanner.agregarEntrada(texto);
-  scanner.cerrarEntrada();
-  return scanner;
+  const entrada = new EntradaDelPrograma();
+  entrada.agregar(texto);
+  entrada.cerrar();
+  return new ScannerJava(regional, entrada);
 }
 
 for (const regional of REGIONALES) {

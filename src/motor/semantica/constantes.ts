@@ -10,12 +10,10 @@
 // SINTAXIS (`NodoExpresionNoSoportada`, 1.3), así que `plegarBinaria`/`plegarUnaria` no necesitan
 // reconocerlos.
 //
-// Tarea 1.36 (C-5 y W-10 de la verificación final del lote 1): un TERCER estado. `valorConstante` distingue tres cosas: una expresión que NO es constante (`null`), una constante de valor
-// CONOCIDO (`ValorConstante`) y una constante de valor DESCONOCIDO (`ConstanteDeValorDesconocido`): para javac `"a" + 1.5` es una expresión constante (JLS 15.29) pero el visualizador todavía no
-// sabe convertir un `double` a texto como Java (el `Double.toString` fiel es del lote 2, tareas 2.3/2.4, y NO se adelanta). Antes se daba `null` —«no es constante»— y eso era un resultado
-// inventado: de que una expresión sea constante dependen la alcanzabilidad de un ciclo, la asignación definitiva y las etiquetas de `case`. Quien decide con el VALOR (`alcanzabilidad.ts`,
-// `asignacion-definitiva.ts`, `switch.ts`) da un aviso honesto cuando le llega una constante de valor desconocido; quien solo necesita saber si una constante entera cabe en un tipo más
-// estrecho (`valorSiSeSabe`) no la ve, porque lo desconocido solo puede ser un `String` o un `boolean`.
+// Tarea 2.4 (cierre de la 1.36, hito 1 parte C): una expresión es constante de valor CONOCIDO o no es constante. La tarea 1.36 (C-5 y W-10) había agregado un tercer estado, «constante de valor
+// desconocido», porque el motor no sabía convertir un `double` a texto: para javac `"a" + 1.5` es una expresión constante (JLS 15.29) y de ella dependen la alcanzabilidad de un ciclo, la asignación
+// definitiva y las etiquetas de `case`; dar `null` («no es constante») era un resultado inventado, así que las tres decisiones daban un aviso honesto. Con `Double.toString` exacto (la biblioteca, tarea
+// 2.4) el texto de un `double` se calcula como lo hace Java, el tercer estado desaparece y las tres decisiones usan el valor real.
 //
 // Deuda 3 saldada (commit 999a8ca, sub-lote 1-D1, JLS 4.12.4): las variables `final` con
 // inicializador constante (design.md §2.7, exploracion/03 §1.1 `str03`) YA participan del plegado
@@ -35,13 +33,9 @@
 // llega en la tarea 2.2; aquí se reimplementan mínimamente (mismas fórmulas, documentadas) porque
 // el plegado de constantes NO PUEDE esperar a 2.2 (1.10 depende de 1.8, no de 2.2).
 //
-// Deuda saldada (commit 999a8ca, sub-lote 1-D1, regla 5 de CLAUDE.md): el GREEN original de esta
-// tarea traía un stub `textoDoubleTemporal` que formateaba un `double` con reglas propias (JS
-// `String(valor)` + ".0"), NUNCA con el `Double.toString` real de Java (design.md §4.2) — un
-// resultado inventado. Hasta que la tarea 2.4 traiga `digitosJava`/`Double.toString` real,
-// `plegarBinaria` da `null` para CUALQUIER concatenación con un operando `double` (nunca pliega),
-// y `aTextoJava` ya ni siquiera acepta ese caso en su tipo (`ValorConstanteDeTexto`, exhaustividad
-// de TypeScript) — 2.4 retira ese `if` y ese tipo, no solo un comentario TODO.
+// Deuda saldada (tarea 2.4): el texto de un `double` en una concatenación es el `Double.toString` de la biblioteca (design.md §4.2), el mismo de `println(double)`; ya no hay un stub ni un `if` que
+// evite plegar.
+import { doubleATexto } from '../biblioteca/formato/double-a-texto.ts';
 import type { NodoExpresion } from '../sintaxis/ast.ts';
 import type { Alcance } from './alcance.ts';
 
@@ -52,48 +46,6 @@ export type ValorConstante =
   | { readonly tipo: 'boolean'; readonly valor: boolean }
   | { readonly tipo: 'char'; readonly valor: number }
   | { readonly tipo: 'String'; readonly valor: string };
-
-/**
- * Lo que SÍ se sabe del largo de una constante de texto de valor desconocido (tarea 1.36): las partes conocidas con su largo exacto, en unidades UTF-16 (lo que mide `String.length()`) y en bytes de
- * UTF-8 modificado (lo que ocupa en un archivo de clase: `\0` son 2 bytes y cada unidad de un par de sustitutos, 3), y cuántas partes de largo DESCONOCIDO tiene —un `double` convertido a texto
- * (`Double.toString`: de 3 a 24 caracteres, siempre ASCII) o un `boolean` de valor desconocido («true» o «false»)—, que aportan entre `MINIMO_DE_UNA_PARTE_DESCONOCIDA` y
- * `MAXIMO_DE_UNA_PARTE_DESCONOCIDA` unidades y bytes cada una.
- */
-export interface MedidaDeUnTexto {
-  readonly unidades: number;
-  readonly bytes: number;
-  readonly partesDeLargoDesconocido: number;
-}
-
-/** El menos que puede medir el texto de un `double` (`0.0`, `NaN`) o de un `boolean` (`true`: 4); lo usa el modelo del límite de las constantes de texto del archivo de clase. */
-export const MINIMO_DE_UNA_PARTE_DESCONOCIDA = 3;
-/** El más que puede medir: `Double.toString(-1.2345678901234567E-300)` tiene 24 caracteres; 25 deja un margen. */
-export const MAXIMO_DE_UNA_PARTE_DESCONOCIDA = 25;
-
-/**
- * Tarea 1.36 (C-5 y W-10): una expresión que Java trata como CONSTANTE (JLS 15.29) pero cuyo valor este motor todavía no sabe calcular —hoy, solo un texto o una comparación de textos que lleva un
- * `double` convertido (`"a" + 1.5`, `"a" + 1.5 == "a1.5"`)—. No tiene propiedad `tipo` a propósito: quien lea una constante con `c.tipo` deja de compilar hasta decidir qué hace con lo desconocido
- * (`esDeValorDesconocido` o `valorSiSeSabe`); ese es el cierre por defecto de la 1.34 aplicado al valor.
- */
-export type ConstanteDeValorDesconocido =
-  | { readonly valorDesconocido: true; readonly tipoJava: 'boolean' }
-  | { readonly valorDesconocido: true; readonly tipoJava: 'String'; readonly medida: MedidaDeUnTexto };
-
-/** Lo que devuelve `valorConstante`: una constante de valor conocido, una de valor desconocido, o `null` si la expresión NO es constante. */
-export type ResultadoDeConstante = ValorConstante | ConstanteDeValorDesconocido | null;
-
-export function esDeValorDesconocido(resultado: ResultadoDeConstante): resultado is ConstanteDeValorDesconocido {
-  return resultado !== null && 'valorDesconocido' in resultado;
-}
-
-/**
- * El valor de una constante SOLO si se sabe; `null` si no es constante O si su valor es desconocido. Es para quien únicamente necesita el valor de una constante entera (que una constante `int` cabe
- * en un `char` o un `byte`, JLS 5.2): lo desconocido es siempre un `String` o un `boolean`, que no se estrechan ni entran en una etiqueta numérica, así que para ese uso es lo mismo que «ninguna».
- * Quien DECIDE con el valor (alcanzabilidad, asignación definitiva, etiquetas de `case`) NO debe usarla: tiene que ver lo desconocido y dar un aviso.
- */
-export function valorSiSeSabe(resultado: ResultadoDeConstante): ValorConstante | null {
-  return esDeValorDesconocido(resultado) ? null : resultado;
-}
 
 /** Los bytes que ocupa `texto` como constante `CONSTANT_Utf8` de un archivo de clase (UTF-8 MODIFICADO, JVMS 4.4.7): 1 para U+0001–U+007F, 2 para U+0000 y U+0080–U+07FF, 3 para el resto, y cada unidad de un par de sustitutos cuenta POR SEPARADO (3 + 3 = 6 bytes por un emoji). */
 export function bytesEnUtf8Modificado(texto: string): number {
@@ -122,10 +74,9 @@ const CAMPOS_CONSTANTES: ReadonlyMap<string, ValorConstante> = new Map<string, V
   ['Math.E', { tipo: 'double', valor: Math.E }],
 ]);
 
-/** Pura: el valor constante de `expresion` (JLS 15.29), `null` si NO es una expresión constante, o —tarea 1.36— una constante de VALOR DESCONOCIDO si lo es pero su valor
- * no se sabe calcular todavía (`ConstanteDeValorDesconocido`) — nunca lanza, nunca inventa (D2). Recorre el árbol recursivamente; cualquier sub-expresión no constante (una
- * llamada, una variable no-`final`, alguna de las excluidas arriba) propaga `null` hacia arriba de inmediato. */
-export function valorConstante(expresion: NodoExpresion, alcance: Alcance): ResultadoDeConstante {
+/** Pura: el valor constante de `expresion` (JLS 15.29), o `null` si NO es una expresión constante — nunca lanza, nunca inventa (D2). Recorre el árbol recursivamente; cualquier
+ * sub-expresión no constante (una llamada, una variable no-`final`, alguna de las excluidas arriba) propaga `null` hacia arriba de inmediato. */
+export function valorConstante(expresion: NodoExpresion, alcance: Alcance): ValorConstante | null {
   switch (expresion.tipo) {
     case 'literal-entero':
       return { tipo: 'int', valor: Number(expresion.valor) };
@@ -181,7 +132,7 @@ function valorDeCampoConstante(
  * literal). Quien DECLARA el símbolo (`atribucion.ts`/`alcanzabilidad.ts`) ya guardó ese valor
  * plegado en `SimboloVariable.constante` — aquí solo se lee de vuelta; `null` si el nombre no
  * existe, no es "final", o su inicializador nunca se pudo plegar (D2: nunca inventar). */
-function valorDeVariableConstante(nodo: Extract<NodoExpresion, { tipo: 'nombre' }>, alcance: Alcance): ResultadoDeConstante {
+function valorDeVariableConstante(nodo: Extract<NodoExpresion, { tipo: 'nombre' }>, alcance: Alcance): ValorConstante | null {
   const simbolo = alcance.buscar(nodo.nombre);
   return simbolo !== null && simbolo.esFinal && simbolo.constante !== undefined ? simbolo.constante : null;
 }
@@ -216,9 +167,7 @@ function comoLargo(p: NumericoPromovido): bigint {
 
 // ---- Unaria (+ - !) ----
 
-function plegarUnaria(operador: '+' | '-' | '!', v: ValorConstante | ConstanteDeValorDesconocido): ResultadoDeConstante {
-  // Tarea 1.36: `!` de un boolean de valor desconocido es un boolean de valor desconocido; `+`/`-` sobre un texto o un boolean no son Java válido.
-  if (esDeValorDesconocido(v)) return operador === '!' && v.tipoJava === 'boolean' ? v : null;
+function plegarUnaria(operador: '+' | '-' | '!', v: ValorConstante): ValorConstante | null {
   if (operador === '!') return v.tipo === 'boolean' ? { tipo: 'boolean', valor: !v.valor } : null;
   const p = promoverNumerico(v);
   if (p === null) return null;
@@ -233,20 +182,9 @@ function plegarUnaria(operador: '+' | '-' | '!', v: ValorConstante | ConstanteDe
 const OPERADORES_ARITMETICOS: ReadonlySet<string> = new Set(['+', '-', '*', '/', '%']);
 const OPERADORES_COMPARACION: ReadonlySet<string> = new Set(['==', '!=', '<', '>', '<=', '>=']);
 
-function plegarBinaria(operador: string, a: ValorConstante | ConstanteDeValorDesconocido, b: ValorConstante | ConstanteDeValorDesconocido): ResultadoDeConstante {
-  // Tarea 1.36: si algún operando es de valor desconocido, el resultado también lo es (o no es Java válido): `plegarConDesconocidos`.
-  if (esDeValorDesconocido(a) || esDeValorDesconocido(b)) return plegarConDesconocidos(operador, a, b);
-  if (operador === '+' && (a.tipo === 'String' || b.tipo === 'String')) {
-    // Deuda del commit 999a8ca (sub-lote 1-D1, regla 5 de CLAUDE.md): hasta que la tarea 2.4 traiga
-    // `digitosJava`/`Double.toString` real (design.md §4.2), el TEXTO de un `double` no se calcula -- el stub
-    // `textoDoubleTemporal` (retirado) lo formateaba con reglas propias (String(valor) de JS + ".0"), un
-    // resultado INVENTADO que nunca se verificó contra javac. `aTextoJava` ya NO acepta `double` (tipo
-    // `ValorConstanteDeTexto`, exhaustividad de TypeScript): este `if` es lo que GARANTIZA en tiempo de
-    // compilación que nunca se le pase uno. Tarea 1.36 (C-5): la concatenación SÍ es una expresión constante
-    // (JLS 15.29), de valor desconocido, y NO «no constante» como se daba antes (`null`).
-    if (a.tipo === 'double' || b.tipo === 'double') return textoDeValorDesconocido(a, b);
-    return { tipo: 'String', valor: aTextoJava(a) + aTextoJava(b) };
-  }
+function plegarBinaria(operador: string, a: ValorConstante, b: ValorConstante): ValorConstante | null {
+  // JLS 15.18.1: `+` con un operando `String` es una concatenación y SIEMPRE es constante cuando los dos lados lo son; un `double` se convierte con `Double.toString` (tarea 2.4).
+  if (operador === '+' && (a.tipo === 'String' || b.tipo === 'String')) return { tipo: 'String', valor: textoJavaDeConstante(a) + textoJavaDeConstante(b) };
   if (OPERADORES_ARITMETICOS.has(operador)) {
     const pa = promoverNumerico(a);
     const pb = promoverNumerico(b);
@@ -278,60 +216,6 @@ function plegarBinaria(operador: string, a: ValorConstante | ConstanteDeValorDes
     return { tipo: 'boolean', valor: r };
   }
   // Bits/instanceof/?: nunca llegan aquí (NO-DISP desde la sintaxis, ver cabecera).
-  return null;
-}
-
-// ---- Constantes de valor desconocido (tarea 1.36, C-5 y W-10) ----
-
-type Operando = ValorConstante | ConstanteDeValorDesconocido;
-
-/** El tipo de Java de una constante, conocida o no. */
-function tipoJavaDeLaConstante(v: Operando): ValorConstante['tipo'] {
-  return esDeValorDesconocido(v) ? v.tipoJava : v.tipo;
-}
-
-/** Lo que se sabe del largo del TEXTO en que se convierte `v` al concatenarlo con un `String` (JLS 5.1.11/15.18.1). La usa la pasada de límites del archivo (`limites-del-archivo.ts`) para medir las
- * constantes que entran a la receta de una concatenación. */
-export function medidaDelTexto(v: ValorConstante | ConstanteDeValorDesconocido): MedidaDeUnTexto {
-  if (esDeValorDesconocido(v)) return v.tipoJava === 'String' ? v.medida : { unidades: 0, bytes: 0, partesDeLargoDesconocido: 1 };
-  if (v.tipo === 'double') return { unidades: 0, bytes: 0, partesDeLargoDesconocido: 1 };
-  const texto = aTextoJava(v);
-  return { unidades: texto.length, bytes: bytesEnUtf8Modificado(texto), partesDeLargoDesconocido: 0 };
-}
-
-/** El texto en que se convierte `v` al concatenarlo, si se sabe: `null` para un `double` (su `Double.toString` es del lote 2) y para cualquier constante de valor desconocido. */
-export function textoSiSeSabe(v: ValorConstante | ConstanteDeValorDesconocido): string | null {
-  return esDeValorDesconocido(v) || v.tipo === 'double' ? null : aTextoJava(v);
-}
-
-/** `a + b` cuando uno es un `String` y el otro, o alguno de los dos, tiene un texto de valor desconocido: un `String` de valor desconocido, con la suma de lo que se sabe de cada lado. */
-function textoDeValorDesconocido(a: Operando, b: Operando): ConstanteDeValorDesconocido {
-  const izquierda = medidaDelTexto(a);
-  const derecha = medidaDelTexto(b);
-  return {
-    valorDesconocido: true,
-    tipoJava: 'String',
-    medida: {
-      unidades: izquierda.unidades + derecha.unidades,
-      bytes: izquierda.bytes + derecha.bytes,
-      partesDeLargoDesconocido: izquierda.partesDeLargoDesconocido + derecha.partesDeLargoDesconocido,
-    },
-  };
-}
-
-/**
- * Un operador binario con algún operando de valor desconocido (JLS 15.18.1, 15.21, 15.23, 15.24): `+` con un `String` da un `String` desconocido; `==` y `!=` entre dos `String` o entre dos
- * `boolean`, y `&&` y `||` entre dos `boolean`, dan un `boolean` desconocido (aunque un operando sea conocido: `false && x` vale `false` para cualquier `x`, pero no se aprovecha — un aviso
- * de más es honesto, un valor de menos no se inventa); cualquier otra combinación (`-`, `<`, un `String` con un `boolean`…) no es Java válido y no es constante: el error lo da la atribución.
- */
-function plegarConDesconocidos(operador: string, a: Operando, b: Operando): ResultadoDeConstante {
-  const izquierda = tipoJavaDeLaConstante(a);
-  const derecha = tipoJavaDeLaConstante(b);
-  if (operador === '+') return izquierda === 'String' || derecha === 'String' ? textoDeValorDesconocido(a, b) : null;
-  if (operador === '==' || operador === '!=') {
-    return (izquierda === 'String' && derecha === 'String') || (izquierda === 'boolean' && derecha === 'boolean') ? { valorDesconocido: true, tipoJava: 'boolean' } : null;
-  }
-  if (operador === '&&' || operador === '||') return izquierda === 'boolean' && derecha === 'boolean' ? { valorDesconocido: true, tipoJava: 'boolean' } : null;
   return null;
 }
 
@@ -456,19 +340,15 @@ function aplicarComparacionLargo(operador: string, x: bigint, y: bigint): boolea
 
 // ---- Concatenación con String (JLS 15.18.1: "+" con un operando String es constante) ----
 
-// Todo `ValorConstante` MENOS `double` (deuda del commit 999a8ca: `plegarBinaria` ya garantiza que
-// NUNCA se llega aquí con uno, ver arriba) — TypeScript exige que `aTextoJava` cubra los 5 casos
-// restantes sin `default`, así que si `ValorConstante` alguna vez gana un tipo nuevo, esto deja de
-// compilar hasta decidir cómo convertirlo a texto (la MISMA garantía de exhaustividad que ya usa
-// ADR 015 punto 1 para el catálogo de textos).
-type ValorConstanteDeTexto = Exclude<ValorConstante, { readonly tipo: 'double' }>;
-
-function aTextoJava(v: ValorConstanteDeTexto): string {
+/** El texto en que Java convierte `v` al concatenarlo con un `String` (JLS 5.1.11): `String.valueOf` de su tipo, con el `Double.toString` exacto para un `double`. TypeScript exige cubrir todos los tipos. */
+export function textoJavaDeConstante(v: ValorConstante): string {
   switch (v.tipo) {
     case 'int':
       return String(v.valor);
     case 'long':
       return v.valor.toString();
+    case 'double':
+      return doubleATexto(v.valor);
     case 'boolean':
       return v.valor ? 'true' : 'false';
     case 'char':
@@ -480,10 +360,7 @@ function aTextoJava(v: ValorConstanteDeTexto): string {
 
 // ---- Casts a primitivo y a String (JLS 15.29: "casts a primitivo o String"; el de `String` y el de `boolean` son la identidad, tarea 1.35) ----
 
-function plegarConversion(nombreTipo: string, v: ValorConstante | ConstanteDeValorDesconocido): ResultadoDeConstante {
-  // Tarea 1.36: un cast a `String` de un texto de valor desconocido, o a `boolean` de un boolean de valor desconocido, es la identidad y sigue siendo constante de valor desconocido; cualquier otro
-  // cast de un valor desconocido (a `int`, de un texto a `boolean`…) no es Java válido.
-  if (esDeValorDesconocido(v)) return (nombreTipo === 'String' && v.tipoJava === 'String') || (nombreTipo === 'boolean' && v.tipoJava === 'boolean') ? v : null;
+function plegarConversion(nombreTipo: string, v: ValorConstante): ValorConstante | null {
   // Tarea 1.35 (JLS 15.29: «casts a tipos primitivos y a `String`»): `(String) "a"` y `(boolean) true` son la identidad — el único cast válido de un `String` a
   // `String` o de un `boolean` a `boolean` — y siguen siendo constantes (`case (String) "a":`, `if ((boolean) true)`). Cualquier otro operando (`(String) 5`,
   // `(boolean) 1`) es un cast que Java rechaza: no es una constante (el error lo da la atribución, REQ-SUB-003).
@@ -549,10 +426,8 @@ function saturarDoubleALargo(valor: number): bigint {
  * primitivos del subconjunto y `String`, JLS 4.12.4) o si la asignación no es válida (el error de asignación lo da la atribución: aquí no queda una
  * constante inventada).
  */
-export function constanteDeVariable(nombreTipo: string, valor: ResultadoDeConstante): ValorConstante | ConstanteDeValorDesconocido | undefined {
+export function constanteDeVariable(nombreTipo: string, valor: ValorConstante | null): ValorConstante | undefined {
   if (valor === null) return undefined;
-  // Tarea 1.36: una constante de valor desconocido solo se guarda en una variable de su mismo tipo (`final String K = "a" + 1.5;`, `final boolean B = "a" + 1.5 == "a1.5";`).
-  if (esDeValorDesconocido(valor)) return (nombreTipo === 'String' && valor.tipoJava === 'String') || (nombreTipo === 'boolean' && valor.tipoJava === 'boolean') ? valor : undefined;
   switch (nombreTipo) {
     case 'boolean':
       return valor.tipo === 'boolean' ? valor : undefined;

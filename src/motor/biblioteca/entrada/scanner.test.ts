@@ -1,16 +1,17 @@
-// RED de la tarea 2.12 (REQ-BIB-009, REQ-BIB-010, REQ-EJEC-010, design.md §4.6): `Scanner` sobre un búfer de entrada que puede recibir MÁS texto. Si falta entrada para decidir el
-// resultado NO bloquea: lanza `FaltaEntrada` y el intérprete reintenta la sentencia cuando llegue otro renglón (modo interactivo, design.md §3.2). Con `cerrarEntrada()` (EOF) se
-// comporta como `java < archivo`. Los escenarios son los de la especificación y los goldens de `corpus/experimentos/texto/scan*`; el barrido contra miles de casos del JDK real
+// RED de la tarea 2.12 (REQ-BIB-009, REQ-BIB-010, REQ-EJEC-010, design.md §4.6): `Scanner` sobre la entrada del programa (`EntradaDelPrograma`), un búfer que puede recibir MÁS texto. Si falta
+// entrada para decidir el resultado NO bloquea: lanza `FaltaEntrada` y el intérprete reintenta la sentencia cuando llegue otro renglón (modo interactivo, design.md §3.2). Con `entrada.cerrar()`
+// (EOF) se comporta como `java < archivo`. Hito 1, parte C: el texto, el cursor y el EOF son los de la `EntradaDelPrograma` que maneja el intérprete, no los de un búfer propio del `Scanner`. Los escenarios son los de la especificación y los goldens de `corpus/experimentos/texto/scan*`; el barrido contra miles de casos del JDK real
 // (tokens y secuencias, es-MX y es-ES) está en `pruebas/diferencial/biblioteca/scanner.test.ts`.
 import { describe, expect, it } from 'vitest';
 import { ExcepcionJava } from '../excepciones/excepcion-java.ts';
+import { EntradaDelPrograma } from './entrada-del-programa.ts';
 import { FaltaEntrada, ScannerJava } from './scanner.ts';
 
 function conEntrada(texto: string, regional: 'es-MX' | 'es-ES' = 'es-MX'): ScannerJava {
-  const scanner = new ScannerJava(regional);
-  scanner.agregarEntrada(texto);
-  scanner.cerrarEntrada();
-  return scanner;
+  const entrada = new EntradaDelPrograma();
+  entrada.agregar(texto);
+  entrada.cerrar();
+  return new ScannerJava(regional, entrada);
 }
 
 function excepcionDe(accion: () => unknown): ExcepcionJava {
@@ -123,49 +124,84 @@ describe('Scanner — hasNext* no consumen', () => {
 });
 
 describe('Scanner — modo interactivo: pedir más entrada en vez de bloquear', () => {
+  function interactivo(): { entrada: EntradaDelPrograma; scanner: ScannerJava } {
+    const entrada = new EntradaDelPrograma();
+    return { entrada, scanner: new ScannerJava('es-MX', entrada) };
+  }
+
   it('sin texto y sin EOF, nextInt pide entrada; con el renglón completo responde', () => {
-    const scanner = new ScannerJava('es-MX');
+    const { entrada, scanner } = interactivo();
     expect(() => scanner.nextInt()).toThrow(FaltaEntrada);
-    scanner.agregarEntrada('12\n');
+    entrada.agregar('12\n');
     expect(scanner.nextInt()).toBe(12);
   });
 
   it('un token pegado al final del búfer puede seguir: espera al delimitador (o al EOF) antes de decidir', () => {
-    const scanner = new ScannerJava('es-MX');
-    scanner.agregarEntrada('12');
+    const { entrada, scanner } = interactivo();
+    entrada.agregar('12');
     expect(() => scanner.nextInt()).toThrow(FaltaEntrada);
-    scanner.agregarEntrada('3\n');
+    entrada.agregar('3\n');
     expect(scanner.nextInt()).toBe(123);
   });
 
   it('nextLine pide entrada hasta ver el fin de renglón; hasNext responde en cuanto hay algún carácter que no es separador', () => {
-    const scanner = new ScannerJava('es-MX');
-    scanner.agregarEntrada('hola');
+    const { entrada, scanner } = interactivo();
+    entrada.agregar('hola');
     expect(() => scanner.nextLine()).toThrow(FaltaEntrada);
     expect(scanner.hasNext()).toBe(true);
-    scanner.agregarEntrada(' mundo\n');
+    entrada.agregar(' mundo\n');
     expect(scanner.nextLine()).toBe('hola mundo');
     expect(() => scanner.hasNext()).toThrow(FaltaEntrada);
   });
 
-  it('cerrarEntrada() (EOF) convierte "falta entrada" en el resultado final: NoSuchElementException', () => {
-    const scanner = new ScannerJava('es-MX');
-    scanner.agregarEntrada('7\n');
+  it('el EOF de la entrada (entrada.cerrar()) convierte "falta entrada" en el resultado final: NoSuchElementException', () => {
+    const { entrada, scanner } = interactivo();
+    entrada.agregar('7\n');
     expect(scanner.nextInt()).toBe(7);
     expect(() => scanner.nextInt()).toThrow(FaltaEntrada);
-    scanner.cerrarEntrada();
+    entrada.cerrar();
     expect(excepcionDe(() => scanner.nextInt()).clase).toBe('java.util.NoSuchElementException');
   });
+});
 
-  it('capturar/restaurar devuelve el cursor: una sentencia que pidió entrada se reintenta desde donde empezó', () => {
-    const scanner = new ScannerJava('es-MX');
-    scanner.agregarEntrada('5 ');
-    const estado = scanner.capturar();
+describe('Scanner — lee la entrada del programa (EntradaDelPrograma), no un búfer propio', () => {
+  it('lo que lee avanza el cursor de la entrada: ese cursor es el que el intérprete captura y restaura en una instantánea', () => {
+    const entrada = new EntradaDelPrograma();
+    entrada.agregar('5 8\n');
+    entrada.cerrar();
+    const scanner = new ScannerJava('es-MX', entrada);
+    expect(scanner.nextInt()).toBe(5);
+    expect(entrada.cursor).toBe(1);
+    expect(scanner.nextInt()).toBe(8);
+    expect(entrada.cursor).toBe(3);
+  });
+
+  it('si el intérprete devuelve el cursor de la entrada, el Scanner vuelve a leer lo mismo (la sentencia se reintenta desde donde empezó)', () => {
+    const entrada = new EntradaDelPrograma();
+    entrada.agregar('5 ');
+    const scanner = new ScannerJava('es-MX', entrada);
+    const cursorInicial = entrada.cursor;
     expect(scanner.nextInt()).toBe(5);
     expect(() => scanner.nextInt()).toThrow(FaltaEntrada);
-    scanner.restaurar(estado);
-    scanner.agregarEntrada('8\n');
+    entrada.cursor = cursorInicial;
+    entrada.agregar('8\n');
     expect(scanner.nextInt()).toBe(5);
     expect(scanner.nextInt()).toBe(8);
+  });
+
+  it('capturar/restaurar devuelve lo que es del Scanner y no de la entrada: si estaba cerrado, vuelve a estarlo abierto', () => {
+    const entrada = new EntradaDelPrograma();
+    entrada.agregar('5 6\n');
+    entrada.cerrar();
+    const scanner = new ScannerJava('es-MX', entrada);
+    const estado = scanner.capturar();
+    scanner.close();
+    expect(excepcionDe(() => scanner.nextInt()).clase).toBe('java.lang.IllegalStateException');
+    scanner.restaurar(estado);
+    expect(scanner.nextInt()).toBe(5);
+  });
+
+  it('es un objeto de la biblioteca de clase Scanner (así viaja en la traza: { objeto: "Scanner" })', () => {
+    expect(new ScannerJava('es-MX', new EntradaDelPrograma()).claseJava).toBe('Scanner');
   });
 });

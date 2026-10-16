@@ -35,29 +35,34 @@ describe('valorATexto — String.valueOf por tipo estático (también la concate
 });
 
 describe('FlujoDeSalida — print y println', () => {
+  it('cada flujo sabe cuál es (`out` o `err`): es el receptor de printf y de él depende en qué flujo de la consola se escribe', () => {
+    expect(new FlujoDeSalida('out').nombre).toBe('out');
+    expect(new FlujoDeSalida('err').nombre).toBe('err');
+  });
+
   it('print no agrega fin de línea y println agrega "\\n" (el separador de la máquina de referencia)', () => {
-    const salida = new FlujoDeSalida();
+    const salida = new FlujoDeSalida('out');
     expect(salida.print('String', 'fin')).toBe('fin');
     expect(salida.println('String', 'fin')).toBe('fin\n');
     expect(salida.println()).toBe('\n');
   });
 
   it('la sobrecarga la decide el tipo estático: print(\'A\') → A, print(65) → 65, y println(\'A\' + 1) (que es int) → 66', () => {
-    const salida = new FlujoDeSalida();
+    const salida = new FlujoDeSalida('out');
     expect(salida.println('char', 65)).toBe('A\n');
     expect(salida.println('int', 65)).toBe('65\n');
     expect(salida.println('int', 'A'.charCodeAt(0) + 1)).toBe('66\n');
   });
 
   it('un sustituto suelto sale como `?` (lo que hace el codificador UTF-8 de la JVM), dentro de una cadena y como char', () => {
-    expect(new FlujoDeSalida().println('String', 'x\uD83Dy')).toBe('x?y\n');
-    const salida = new FlujoDeSalida();
+    expect(new FlujoDeSalida('out').println('String', 'x\uD83Dy')).toBe('x?y\n');
+    const salida = new FlujoDeSalida('out');
     expect(salida.print('char', 0xde00)).toBe('?');
     expect(salida.print('String', 'a')).toBe('a');
   });
 
   it('un sustituto alto al final de un print espera al siguiente: alto + bajo en prints separados forman UN carácter', () => {
-    const salida = new FlujoDeSalida();
+    const salida = new FlujoDeSalida('out');
     expect(salida.print('char', 0xd83d)).toBe('');
     expect(salida.print('char', 0xde00)).toBe('😀');
     // …y si el siguiente no es un sustituto bajo, el alto era suelto: `?` seguido del texto nuevo.
@@ -66,8 +71,8 @@ describe('FlujoDeSalida — print y println', () => {
   });
 
   it('System.out y System.err son flujos independientes: el sustituto pendiente de uno no afecta al otro', () => {
-    const out = new FlujoDeSalida();
-    const err = new FlujoDeSalida();
+    const out = new FlujoDeSalida('out');
+    const err = new FlujoDeSalida('err');
     expect(out.print('char', 0xd83d)).toBe('');
     expect(err.print('String', 'e')).toBe('e');
     expect(out.print('char', 0xde00)).toBe('😀');

@@ -103,16 +103,16 @@ const AVISOS: ReadonlyArray<readonly [archivo: string, codigo: string]> = [
 // Controles: programas que javac COMPILA. Todas las pasadas los aceptan (solo falta ejecutarlos); el envoltorio, fuera del
 // subconjunto, es un aviso honesto.
 const VALIDOS: ReadonlyArray<readonly [archivo: string, codigo: string]> = [
-  ['f1-cast-validos', 'ejecucion-no-disponible'],
-  ['f2-metodos-validos', 'ejecucion-no-disponible'],
-  ['f3-final-valida', 'ejecucion-no-disponible'],
+  ['f1-cast-validos', 'ok'],
+  ['f2-metodos-validos', 'ok'],
+  ['f3-final-valida', 'ok'],
   ['f4-switch-etiquetas-validas', 'ok'],
   // Tarea 1.33: el programa termina con `System.out.println(System.out.printf("%d", 1));` — `printf` como ARGUMENTO devuelve un PrintStream que el subconjunto no modela: el aviso propio, no el genérico.
   ['f5-void-como-sentencia-valido', 'valor-de-tipo-no-soportado'],
-  ['f6-metodos-de-clase-validos', 'ejecucion-no-disponible'],
+  ['f6-metodos-de-clase-validos', 'ok'],
   ['n1-envoltorios-validos', 'clase-no-soportada'],
-  ['n5-imports-con-comodin-validos', 'ejecucion-no-disponible'],
-  ['n6-variables-con-nombre-de-clase-validas', 'ejecucion-no-disponible'],
+  ['n5-imports-con-comodin-validos', 'ok'],
+  ['n6-variables-con-nombre-de-clase-validas', 'ok'],
   ['n6-asignacion-en-su-inicializador-valida', 'ok'],
 ];
 
