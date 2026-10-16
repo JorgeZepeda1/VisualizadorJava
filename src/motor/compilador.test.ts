@@ -27,8 +27,12 @@ describe('compilar', () => {
     const resultado = compilar(fuente);
     expect(resultado.ok).toBe(true);
     if (!resultado.ok) throw new Error('se esperaba ok:true');
-    expect(resultado.programa.ir.sentencias).toEqual([{ tipo: 'impresion', texto: 'Hola, mundo' }]);
+    expect(resultado.programa.ir.sentencias).toHaveLength(1);
+    expect(resultado.programa.ir.sentencias[0]).toMatchObject({ forma: 'expresion', clasePaso: 'impresion' });
+    expect(resultado.programa.arranque).toBeNull();
     expect(resultado.vista.fuente).toBe(fuente);
+    expect(resultado.vista.nodos).toHaveLength(1); // Tarea 2.16: la vista trae los nodos del programa (línea y plan de cada paso)
+    expect(resultado.vista.nodos[0]).toMatchObject({ clase: 'expresion', linea: 3 });
   });
 
   it('devuelve ok:false con un Problema real (categoría y línea calibrada de javac) si no compila', () => {
@@ -91,7 +95,7 @@ describe('compilar — el Problema tiene EXACTAMENTE las claves del contrato, ve
     ['un aviso de expresión (ternario, nodo del árbol)', conMain('int x = 1 > 0 ? 1 : 2;'), 'no-disponible'],
     ['un aviso léxico (literal hexadecimal, token)', conMain('int x = 0x10;'), 'no-disponible'],
     ['un aviso de biblioteca (String.split, atribución)', conMain('String s = "a,b"; s.split(",");'), 'no-disponible'],
-    ['lo que el motor todavía no ejecuta (declaración con println)', conMain('int x = 5; System.out.println(x);'), 'no-disponible'],
+    ['lo que el motor todavía no ejecuta (un double, que necesita Double.toString de la biblioteca)', conMain('double x = 5.5; System.out.println(x);'), 'no-disponible'],
     ['un error de atribución (variable no declarada)', conMain('int x = y;'), 'error-compilacion'],
     ['un error de sintaxis (falta el ";")', conMain('int x = 5'), 'error-compilacion'],
   ] as const)('%s: solo categoria, codigo, rango, linea y datos', (_caso, fuente, categoria) => {
@@ -226,10 +230,11 @@ describe('compilar — "println()" sin argumentos (corrección obligatoria, sub-
     const resultado = compilar(programaCon('System.out.println();'));
     expect(resultado.ok).toBe(true);
     if (!resultado.ok) throw new Error('se esperaba ok:true');
-    expect(resultado.programa.ir.sentencias).toEqual([{ tipo: 'impresion', texto: '' }]);
+    expect(resultado.programa.ir.sentencias).toHaveLength(1);
+    expect(resultado.programa.ir.sentencias[0]).toMatchObject({ forma: 'expresion', clasePaso: 'impresion' });
   });
 
-  it('el programa real de corpus/curso/u6-ciclos-anidados-tabla.java: "println()" ya NO se detecta como no-disponible (el único hueco restante es la IR de "for", del lote 2, no println)', () => {
+  it('el programa real de corpus/curso/u6-ciclos-anidados-tabla.java: "println()" ya NO se detecta como no-disponible y el "for" anidado se ejecuta (compila ok)', () => {
     const fuente = [
       'public class CiclosAnidadosTabla {',
       '    public static void main(String[] args) {',
@@ -243,21 +248,11 @@ describe('compilar — "println()" sin argumentos (corrección obligatoria, sub-
       '}',
     ].join('\n');
     const resultado = compilar(fuente);
-    // Antes de esta corrección, "println()" producía un error de SINTAXIS (categoría
-    // 'error-compilacion', ni siquiera llegaba a clasificarse). Hoy el análisis léxico+sintáctico+
-    // NO-DISP pasa limpio: lo único que falta es la IR real de "for" (lote 2, tarea 2.16) — un
-    // gap YA documentado y ajeno a esta corrección.
-    expect(resultado.ok).toBe(false);
-    if (resultado.ok) throw new Error('se esperaba ok:false (falta la IR de "for", lote 2)');
-    // Tarea 1.27 (agregada por el orquestador, D2): el hueco de IR del "for" ahora se reporta como
-    // 'no-disponible'/'ejecucion-no-disponible' (nunca 'error-compilacion' -- ese código
-    // desaparecería DE VERDAD si "println"/"for" volvieran a mis-clasificarse como una construcción
-    // NO-DISP real: el código sería uno de `CODIGOS_NO_SOPORTADO` DISTINTO de
-    // "ejecucion-no-disponible", p. ej. "for-mejorado-no-soportado" u otro -- esta aserción POSITIVA
-    // sigue probando, más precisa que antes, que ni "println" ni el "for" clásico disparan ningún
-    // código de no-soportado real: solo el hueco honesto de IR del lote 2).
-    expect(resultado.problema.categoria).toBe('no-disponible');
-    expect(resultado.problema.codigo).toBe('ejecucion-no-disponible');
+    // Antes de la corrección 1-C2, "println()" producía un error de SINTAXIS; hasta la tarea 2.16 el "for" no tenía IR y salía `ejecucion-no-disponible`. Hoy la IR baja el "for"
+    // anidado y el programa se ejecuta: ni "println" ni el "for" clásico disparan ningún código de no-soportado.
+    expect(resultado.ok).toBe(true);
+    if (!resultado.ok) throw new Error(`se esperaba ok:true, salió ${resultado.problema.codigo}`);
+    expect(resultado.programa.ir.sentencias[0]).toMatchObject({ forma: 'for' });
   });
 });
 
@@ -921,11 +916,9 @@ describe('compilar — una variable leída en su propio inicializador (N6, tarea
     expect(resultado.problema).toMatchObject({ categoria: 'error-compilacion', codigo: 'variable-posiblemente-no-asignada', linea: 3, datos: { nombre: 'x' } });
   });
 
-  it('control: `int y = (y = 5) + 1;` compila (javac lo acepta): ninguna pasada lo rechaza', () => {
+  it('control: `int y = (y = 5) + 1;` compila (javac lo acepta): ninguna pasada lo rechaza y se ejecuta (y vale 6)', () => {
     const resultado = compilar(['class C {', '  public static void main(String[] a) {', '    int y = (y = 5) + 1;', '  }', '}'].join('\n'));
-    expect(resultado.ok).toBe(false);
-    if (resultado.ok) throw new Error('se esperaba ok:false (falta la IR del lote 2)');
-    expect(resultado.problema).toMatchObject({ categoria: 'no-disponible', codigo: 'ejecucion-no-disponible' });
+    expect(resultado.ok).toBe(true);
   });
 });
 

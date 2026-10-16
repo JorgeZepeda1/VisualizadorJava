@@ -6,7 +6,7 @@ import { Traza } from './traza.ts';
 import type { Paso } from './paso.ts';
 
 function paso(texto: string): Paso {
-  return { clase: 'impresion', nodo: 0, salida: [{ flujo: 'out', texto }] };
+  return { clase: 'impresion', nodo: 0, linea: 1, explicacion: { clave: 'impresion', datos: { texto, flujo: 'out', saltoDeLinea: false } }, salida: [{ flujo: 'out', texto }] };
 }
 
 describe('Traza', () => {

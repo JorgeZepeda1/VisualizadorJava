@@ -3,6 +3,8 @@
 // reconstruye por recorte directo del arreglo; correcto, pero sin la optimización de checkpoints
 // cada 256 pasos de design.md §3.4). `suscribir`/`obtenerVersion` habilitan useSyncExternalStore
 // (ADR 013) desde este lote.
+import type { VistaPrograma } from '../ir/vista-programa.ts';
+import { instantaneaEn, type InstantaneaDeEjecucion } from './estado.ts';
 import type { Paso } from './paso.ts';
 
 export class Traza {
@@ -28,6 +30,11 @@ export class Traza {
   /** Los primeros `pasosCompletados` Paso de la traza. */
   estadoEn(pasosCompletados: number): readonly Paso[] {
     return this.pasos.slice(0, pasosCompletados);
+  }
+
+  /** Lo que se ve tras los primeros `pasosCompletados` pasos: línea, variables a la vista con su valor y salida acumulada (tarea 2.19, `traza/estado.ts`). */
+  instantaneaEn(pasosCompletados: number, vista: VistaPrograma): InstantaneaDeEjecucion {
+    return instantaneaEn(this.pasos, vista, pasosCompletados);
   }
 
   get total(): number {

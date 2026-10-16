@@ -97,11 +97,9 @@ describe('compilar — catálogo de exploracion/03 §4: veredicto, código y lí
     'err08_definite_assignment_while_true_break_ok',
     'err10b_definite_assignment_dowhile_ok',
     'flow17_shadowing_bloque_anidado',
-  ])('%s: javac SÍ compila (control positivo) — las pasadas 2-4 no lo rechazan, y el hueco de IR del lote 2 es "no-disponible", nunca "error-compilacion"', (archivo) => {
+  ])('%s: javac SÍ compila (control positivo) — las pasadas 2-4 no lo rechazan y el programa se ejecuta (ok), nunca "error-compilacion"', (archivo) => {
+    // Tarea 2.16: la IR del lote 2 ya baja estos programas (no usan la biblioteca ni `double`), así que `compilar()` los acepta del todo.
     const resultado = compilar(fuenteDe(archivo));
-    expect(resultado.ok).toBe(false);
-    if (resultado.ok) throw new Error('se esperaba ok:false (falta la IR del lote 2, no un rechazo semántico)');
-    expect(resultado.problema.categoria).toBe('no-disponible');
-    expect(resultado.problema.codigo).toBe('ejecucion-no-disponible');
+    expect(resultado.ok, resultado.ok ? '' : `${resultado.problema.categoria} ${resultado.problema.codigo}`).toBe(true);
   });
 });

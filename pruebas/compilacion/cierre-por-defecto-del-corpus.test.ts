@@ -96,15 +96,15 @@ const AVISOS: ReadonlyArray<readonly [archivo: string, codigo: string]> = [
 // Controles: programas que javac COMPILA. Ninguno se rechaza; los que usan algo fuera del subconjunto son un aviso honesto, y el resto, que ya pasó
 // todas las revisiones, solo espera a que el lote 2 lo ejecute.
 const VALIDOS: ReadonlyArray<readonly [archivo: string, codigo: string]> = [
-  ['a-switch-sentencias-despues-del-case-valido', 'ejecucion-no-disponible'],
+  ['a-switch-sentencias-despues-del-case-valido', 'ok'],
   ['b-flujos-estandar-validos', 'ejecucion-no-disponible'],
   ['b-args-length-valido', 'arreglo-no-soportado'],
   ['c-clase-math-sin-usar-valido', 'ok'],
-  ['c-clase-scanner-con-comodin-valido', 'ejecucion-no-disponible'],
+  ['c-clase-scanner-con-comodin-valido', 'ok'],
   ['c-clase-random-como-tipo-valido', 'clase-no-soportada'],
   ['c-clase-math-recursion-valido', 'clase-no-soportada'],
-  ['d-parentesis-validos', 'ejecucion-no-disponible'],
-  ['e-prototipo-nombres-validos', 'ejecucion-no-disponible'],
+  ['d-parentesis-validos', 'ok'],
+  ['e-prototipo-nombres-validos', 'ok'],
 ];
 
 describe('corpus/experimentos/cierre-por-defecto — el corpus de la tarea 1.34 está completo', () => {

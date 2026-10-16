@@ -1,0 +1,19 @@
+&& falsa: i = 1 r1 = false
+&& verdadera: j = 2 r2 = true
+|| verdadera: k = 1 r3 = true
+|| falsa: m = 2 r4 = true
+division evitada: false
+division evitada 2: true
+true
+true
+visitas = 2 mezcla = true
+false
+true
+true
+true
+false
+true
+true
+true
+true
+true

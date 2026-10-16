@@ -92,12 +92,12 @@ const AVISOS: ReadonlyArray<readonly [archivo: string, codigo: string]> = [
 // subconjunto, dan el aviso honesto de esa construcción.
 const VALIDOS: ReadonlyArray<readonly [archivo: string, codigo: string]> = [
   ['v-var-y-yield-como-nombre-de-variable', 'ejecucion-no-disponible'],
-  ['v-yield-con-incremento-y-asignacion-compuesta', 'ejecucion-no-disponible'],
-  ['v-var-y-yield-en-ciclos-y-condiciones', 'ejecucion-no-disponible'],
+  ['v-yield-con-incremento-y-asignacion-compuesta', 'ok'],
+  ['v-var-y-yield-en-ciclos-y-condiciones', 'ok'],
   ['v-var-y-yield-con-metodos-de-string', 'ejecucion-no-disponible'],
-  ['v-nombres-contextuales-validos', 'ejecucion-no-disponible'],
+  ['v-nombres-contextuales-validos', 'ok'],
   ['v-var-como-tipo-es-un-aviso', 'var-no-soportado'],
-  ['n2-nombres-parecidos-a-reservadas-validos', 'ejecucion-no-disponible'],
+  ['n2-nombres-parecidos-a-reservadas-validos', 'ok'],
   ['n3-guiones-bajos-validos', 'ejecucion-no-disponible'],
   ['n4-flotante-hexadecimal', 'literal-hexadecimal-no-soportado'],
   ['n4-flotante-hexadecimal-con-fraccion-y-signo', 'literal-hexadecimal-no-soportado'],
@@ -106,8 +106,8 @@ const VALIDOS: ReadonlyArray<readonly [archivo: string, codigo: string]> = [
   ['p-printf-como-sentencia-valido', 'ejecucion-no-disponible'],
   ['p-printf-como-argumento-de-println-valido', 'valor-de-tipo-no-soportado'],
   ['p-printf-encadenado-valido', 'valor-de-tipo-no-soportado'],
-  ['w2-return-sin-valor-valido', 'ejecucion-no-disponible'],
-  ['w2-println-sin-argumentos-valido', 'ejecucion-no-disponible'],
+  ['w2-return-sin-valor-valido', 'ok'],
+  ['w2-println-sin-argumentos-valido', 'ok'],
 ];
 
 describe('corpus/experimentos/lexico-y-sintaxis — el corpus de la tarea 1.33 está completo', () => {
@@ -179,6 +179,11 @@ describe('léxico y sintaxis — controles: lo que javac compila no se rechaza',
   it.each(VALIDOS)('%s → [%s]', (archivo, codigo) => {
     const { fuente } = leerGolden(archivo);
     const resultado = compilar(fuente);
+    // `ok`: el programa se puede ejecutar de verdad (no necesita nada de la biblioteca todavía no conectada).
+    if (codigo === 'ok') {
+      expect(resultado.ok, `${archivo}: ${resultado.ok ? 'ok' : `${resultado.problema.codigo} en la línea ${resultado.problema.linea}`}`).toBe(true);
+      return;
+    }
     if (resultado.ok) throw new Error(`${archivo}: se esperaba ${codigo} y salió ok: true`);
     expect(resultado.problema.categoria, `${archivo}: ${resultado.problema.codigo} en la línea ${resultado.problema.linea}`).toBe('no-disponible');
     expect(resultado.problema.codigo).toBe(codigo);

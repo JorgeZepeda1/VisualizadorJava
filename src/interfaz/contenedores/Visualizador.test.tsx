@@ -182,7 +182,7 @@ describe('<Visualizador/> — el texto real de cada problema, con su línea', ()
 describe('<Visualizador/> — el aviso es una región anunciada que solo existe cuando hay algo que decir', () => {
   it('sin problemas no hay ninguna región de alerta (ni al inicio ni tras una ejecución que sale bien)', async () => {
     trabajadorQueResponde((id) => [
-      { tipo: 'compilado', id, ok: true, vista: { fuente: '' } },
+      { tipo: 'compilado', id, ok: true, vista: { fuente: '', ranuras: [], nodos: [] } },
       { tipo: 'fin', id, fin: { causa: 'terminado' } },
     ]);
     render(<Visualizador />);
@@ -207,7 +207,7 @@ describe('<Visualizador/> — el aviso es una región anunciada que solo existe 
             }),
           ]
         : [
-            { tipo: 'compilado', id, ok: true, vista: { fuente: '' } },
+            { tipo: 'compilado', id, ok: true, vista: { fuente: '', ranuras: [], nodos: [] } },
             { tipo: 'fin', id, fin: { causa: 'terminado' } },
           ];
     });
@@ -229,7 +229,7 @@ describe('<Visualizador/> — un error de arranque (main sin static, sin main) t
 
   it('muestra el texto amable con la clase real y deja el editor editable (no hay nada que visualizar)', async () => {
     trabajadorQueResponde((id) => [
-      { tipo: 'compilado', id, ok: true, vista: { fuente: '' } },
+      { tipo: 'compilado', id, ok: true, vista: { fuente: '', ranuras: [], nodos: [] } },
       { tipo: 'fin', id, fin: { causa: 'error-arranque', arranque } },
     ]);
     render(<Visualizador />);
@@ -245,7 +245,7 @@ describe('<Visualizador/> — un error de arranque (main sin static, sin main) t
 
   it('un fin normal (terminado) NO muestra ningún aviso y deja el editor en solo lectura', async () => {
     trabajadorQueResponde((id) => [
-      { tipo: 'compilado', id, ok: true, vista: { fuente: '' } },
+      { tipo: 'compilado', id, ok: true, vista: { fuente: '', ranuras: [], nodos: [] } },
       { tipo: 'fin', id, fin: { causa: 'terminado' } },
     ]);
     render(<Visualizador />);

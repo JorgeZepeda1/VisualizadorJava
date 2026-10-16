@@ -5,7 +5,13 @@
 // rebanada vertical no muestra valores de variables, solo el texto literal impreso.
 export { Traza } from './traza/traza.ts';
 export type { Cambio, ClasePaso, FinEjecucion, Paso, Segmento, Valor } from './traza/paso.ts';
-export type { VistaPrograma } from './compilador.ts';
+export type { VistaPrograma } from './ir/vista-programa.ts';
+// Tarea 2.19: las claves de explicación y sus datos (el catálogo `textos/es-MX/explicaciones.ts` los vuelve frases, ADR 015).
+export type { ClaveExplicacion, DatosPorClave, ExplicacionPaso, LecturaExplicada, TipoDeCiclo } from './traza/explicacion.ts';
+// Tarea 2.19: lo que se ve en cada paso (línea, variables a la vista, salida acumulada), reconstruido de los pasos con `Traza.instantaneaEn` / `instantaneaEn`.
+export type { InstantaneaDeEjecucion, VariableDeInstantanea } from './traza/estado.ts';
+// Tarea 2.16: lo que la vista dice de cada nodo y de cada variable (la presentación lo lee para resaltar líneas y mostrar variables).
+export type { NodoIr, PuntoDelPlan, RanuraIr, TipoIr } from './ir/ir.ts';
 // Tarea 1.11: el catálogo de textos (`src/textos/es-MX/problemas.ts`, ADR 015) necesita estos
 // tipos para tipar sus funciones por sus datos — nunca el motor completo, solo las formas.
 export type { Categoria, CodigoProblema, Problema } from './problemas.ts';

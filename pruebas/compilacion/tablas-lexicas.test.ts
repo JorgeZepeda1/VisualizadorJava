@@ -135,7 +135,14 @@ describe('tablas léxicas — `yield`: la sentencia o una variable llamada `yiel
   });
 
   it.each(FORMAS_DE_YIELD.map((f) => [f.cuerpo, f.esSentencia, f.codigoJavac] as const))('«%s»: la sentencia es %s (javac: %s)', (cuerpo, esSentencia, codigoJavac) => {
-    const problema = problemaDe(programaConYield(cuerpo));
+    const resultado = compilar(programaConYield(cuerpo));
+    if (resultado.ok) {
+      // Una variable llamada `yield` que javac compila y que no necesita la biblioteca: el programa se ejecuta.
+      expect(esSentencia, cuerpo).toBe(false);
+      expect(codigoJavac, cuerpo).toBeNull();
+      return;
+    }
+    const problema = resultado.problema;
     if (esSentencia) {
       // La sentencia `yield` es una construcción de Java que el visualizador no soporta: un aviso (javac la rechaza fuera de un `switch` usado como expresión).
       expect(problema).toMatchObject({ categoria: 'no-disponible', codigo: 'yield-no-soportado', linea: LINEA_DE_YIELD });
@@ -146,6 +153,7 @@ describe('tablas léxicas — `yield`: la sentencia o una variable llamada `yiel
     expect(problema.codigo, cuerpo).not.toBe('yield-no-soportado');
     if (codigoJavac === null) {
       // Las asignaciones compuestas de bits (`yield &= 1;`, `yield <<= 1;`) son otra construcción que el visualizador todavía no soporta: su propio aviso.
+      // Lo demás que javac compila se ejecuta (`ok`) o, si necesita la biblioteca o un `double`, es `ejecucion-no-disponible`.
       const esperado = /[|&^]=|<<=|>>=/.test(cuerpo) ? 'asignacion-de-bits' : 'ejecucion-no-disponible';
       expect(problema, cuerpo).toMatchObject({ categoria: 'no-disponible', codigo: esperado });
     } else {
