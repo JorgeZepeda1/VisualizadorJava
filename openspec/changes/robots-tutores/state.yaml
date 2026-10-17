@@ -1,0 +1,33 @@
+# Estado del DAG del cambio (lo mantiene el orquestador)
+change: robots-tutores
+project: visualizadorjava
+artifact_store: hybrid
+execution_mode: planeacion-automatica-y-aprobacion-del-po-antes-de-apply
+base: docs/plan-robots sobre 89bf4fa (punta del PR #3, hitos 1 y 2)
+decisiones_po:
+  revisor: R-D1 errores y avisos existentes con su porqué + cinco trampas que compilan (; tras if, == con String, case sin break, nextInt+nextLine, división entera); sin estilo
+  programador: R-D2 modo reto con interruptor; 3 opciones en cada if/while/for/switch; explica acierto y error; solo condiciones
+  explicador: R-D3 libro U3-U7 con ejemplos que se abren en el visualizador + botón en contexto; Claude redacta, el PO aprueba antes de publicar
+  prioridad: R-D4 primero el hito 3 (Pages); los robots después
+  fecha: 2026-10-17
+preguntas_abiertas:   # recomendación por omisión aplicada en el plan (proposal.md §12)
+  PR-1: el reto reemplaza la predicción Sí/No de D4 (5.1 absorbida por R2; ADR 018 enmienda D4)
+  PR-2: opciones = veredicto + razón (A), con acierto parcial
+  PR-3: preguntar en cada revisión + «Ya entendí este ciclo»
+  PR-4: aviso corto en el paso 0 + confirmación en la ejecución; enlace revisor=despues para demostraciones
+  PR-5: 31 temas en dos oleadas (16 de U5, U6 e incremento y decremento primero)
+phases:
+  explore: skipped        # contexto directo del PO + código de los hitos 1 y 2
+  proposal: completed     # proposal.md (R-D1–R-D4, CR1–CR9, PR-1–PR-5)
+  spec: completed         # specs/: 3 capacidades nuevas + 3 deltas; 29 requisitos (26 nuevos, 3 modificados), 55 escenarios
+  design: completed       # design.md (ADR 017–019 por crear en R1.1, R2.1, R3.1)
+  tasks: completed        # tasks.md: 4 hitos (R1 17, R2 13, R3 14, R4 5) = 49 tareas, 9–13 sesiones
+  apply: pending          # espera: aprobación del PO del plan y respuestas a PR-1–PR-5; hito 3 publicado; PR #3 fusionado
+  verify: pending
+  archive: pending        # después de archivar visualizador-java (las deltas se aplican sobre sus specs)
+conciliacion_pendiente:   # en openspec/changes/visualizador-java/ (la hace el orquestador)
+  - "5.1 predicción ligera: absorbida por R2 si el PO acepta PR-1"
+  - "5.4 enlace: parámetros reto y revisor en lugar de prediccion (REQ-AULA-002)"
+  - "5.6 escenario docente: tres opciones en lugar de Sí/No (REQ-AULA-005, C19)"
+  - "5.2 galería: comparte la acción cargar-programa con R3.6"
+updated: 2026-10-17
