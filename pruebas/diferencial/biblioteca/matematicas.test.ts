@@ -21,8 +21,18 @@ function decodificar(codificado: string): Argumento {
   }
 }
 
+// El oráculo guarda `Double.doubleToRawLongBits`, y el bit de signo de un NaN lo pone el procesador (x86 da `fff8…`, ARM `7ff8…`), tanto en Java como en JS. Ningún programa del
+// subconjunto lo ve (`Double.toString` imprime `NaN`), así que los dos lados se comparan como `Double.doubleToLongBits`: todo NaN es el NaN canónico.
+const NAN_CANONICO = '7ff8000000000000';
+
 function describir(valor: number | bigint, comoDouble: boolean): string {
-  return comoDouble ? bitsAHex(bitsDeDouble(valor as number)) : String(valor);
+  if (!comoDouble) return String(valor);
+  return Number.isNaN(valor) ? NAN_CANONICO : bitsAHex(bitsDeDouble(valor as number));
+}
+
+function normalizarResultado(resultado: string, comoDouble: boolean): string {
+  if (!comoDouble || !resultado.startsWith('OK:')) return resultado;
+  return `OK:${describir(doubleDeBits(BigInt(`0x${resultado.slice(3)}`)), true)}`;
 }
 
 const OPERACIONES: ReadonlyMap<string, { readonly ejecutar: (a: never, b: never) => number | bigint; readonly devuelveDouble: boolean }> = new Map([
@@ -55,6 +65,14 @@ describe('Math contra el JDK 17 real (corpus/datos/matematicas)', () => {
       return { operacion, argumentos, resultado };
     });
 
+  it('un NaN se compara como el NaN canónico de Double.doubleToLongBits: el bit de signo de un NaN depende del procesador (x86 da fff8…, ARM 7ff8…) y ningún programa del subconjunto lo puede ver', () => {
+    expect(describir(doubleDeBits(0xfff8000000000000n), true)).toBe('7ff8000000000000');
+    expect(describir(doubleDeBits(0x7ff8000000000001n), true)).toBe('7ff8000000000000');
+    expect(normalizarResultado('OK:fff8000000000000', true)).toBe('OK:7ff8000000000000');
+    expect(normalizarResultado('OK:8000000000000000', true)).toBe('OK:8000000000000000'); // -0.0 sí se distingue
+    expect(normalizarResultado('OK:-5', false)).toBe('OK:-5');
+  });
+
   it('el conjunto cubre las 16 operaciones y trae miles de casos', () => {
     expect(lineas.length).toBeGreaterThan(3_000);
     expect(new Set(lineas.map((l) => l.operacion))).toEqual(new Set(OPERACIONES.keys()));
@@ -67,7 +85,8 @@ describe('Math contra el JDK 17 real (corpus/datos/matematicas)', () => {
       if (definicion === undefined) throw new Error(`operación sin definir: ${operacion}`);
       const [a, b] = argumentos.map(decodificar) as [Argumento, Argumento];
       const obtenido = `OK:${describir(definicion.ejecutar(a as never, b as never), definicion.devuelveDouble)}`;
-      if (obtenido !== resultado && fallos.length < 10) fallos.push(`${operacion}(${argumentos.join(', ')}): Java ${resultado}, motor ${obtenido}`);
+      const esperado = normalizarResultado(resultado, definicion.devuelveDouble);
+      if (obtenido !== esperado && fallos.length < 10) fallos.push(`${operacion}(${argumentos.join(', ')}): Java ${resultado}, motor ${obtenido}`);
     }
     expect(fallos).toEqual([]);
   });
