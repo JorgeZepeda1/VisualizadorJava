@@ -446,15 +446,15 @@ class GeneradorDeIr {
     return { forma: 'constante', tipo, punto: -1, rango, valor };
   }
 
-  /** `expresion` convertida a `a` con una conversión implícita visible; la misma expresión si ya es de ese tipo. */
-  private convertir(expresion: ExpresionIr, a: TipoNumericoIr, implicita: boolean): ExpresionIr {
+  /** `expresion` convertida a `a` con una conversión implícita visible; la misma expresión si ya es de ese tipo. `delTotal`: la conversión envuelve la expresión escrita completa (ver `ConversionIr.delTotal`). */
+  private convertir(expresion: ExpresionIr, a: TipoNumericoIr, implicita: boolean, delTotal = false): ExpresionIr {
     if (expresion.tipo === a || !esNumerico(expresion.tipo)) return expresion;
-    return { forma: 'conversion', tipo: a, de: expresion.tipo, punto: -1, rango: expresion.rango, operando: expresion, implicita };
+    return { forma: 'conversion', tipo: a, de: expresion.tipo, punto: -1, rango: expresion.rango, operando: expresion, implicita, ...(delTotal ? { delTotal: true as const } : {}) };
   }
 
-  /** Conversión de asignación (JLS 5.2): ensanchamiento, o estrechamiento de una constante `int` a `char`. */
+  /** Conversión de asignación (JLS 5.2): ensanchamiento, o estrechamiento de una constante `int` a `char`. Envuelve la expresión completa. */
   private convertirAsignacion(expresion: ExpresionIr, destino: TipoIr): ExpresionIr {
-    return esNumerico(destino) ? this.convertir(expresion, destino, true) : expresion;
+    return esNumerico(destino) ? this.convertir(expresion, destino, true, true) : expresion;
   }
 
   private bajar(nodo: NodoExpresion): ExpresionIr {
@@ -627,7 +627,7 @@ class GeneradorDeIr {
       operador,
       tipoOperacion,
       lectura,
-      valor: this.convertir(valor, tipoOperacion, true),
+      valor: this.convertir(valor, tipoOperacion, true, true),
     };
   }
 

@@ -14,6 +14,26 @@ const MAQUINA_DE_SNACKS = readFileSync(resolve('corpus/experimentos/ejercicios-d
 
 const ETIQUETAS_WCAG = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'];
 
+// C4 del panel 1: axe marcaba `scrollable-region-focusable` (grave) en `.cm-scroller` en cuanto el editor se desplazaba —un programa más alto que el editor, o una pantalla angosta— y el panel lo vio en el estado
+// de error. El programa corto de abajo no desborda el editor, por eso la prueba de siempre no lo veía: estos sí.
+const PROGRAMA_LARGO_CON_ERROR = [
+  'public class Largo {',
+  '    public static void main(String[] args) {',
+  ...Array.from({ length: 30 }, (_, indice) => `        int v${indice} = ${indice};`),
+  '        System.out.println("Hola")',
+  '    }',
+  '}',
+].join('\n');
+
+/** El texto de la línea donde está el cursor del editor (donde caería lo que el alumno teclee). */
+async function lineaDelCursor(page: Page): Promise<string | null> {
+  return page.evaluate(() => {
+    const nodo = getSelection()?.anchorNode;
+    const elemento = nodo === undefined || nodo === null ? null : nodo.nodeType === Node.TEXT_NODE ? nodo.parentElement : (nodo as Element);
+    return elemento?.closest('.cm-line')?.textContent ?? null;
+  });
+}
+
 async function violacionesDeAxe(page: Page): Promise<string[]> {
   const resultado = await new AxeBuilder({ page }).withTags(ETIQUETAS_WCAG).analyze();
   return resultado.violations.map((violacion) => `${violacion.id} (${violacion.impact}): ${violacion.nodes.map((nodo) => nodo.target.join(' ')).join(' | ')} — ${violacion.help}`);
@@ -67,6 +87,36 @@ test.describe('axe: cero violaciones en cada estado de la pantalla', () => {
     await pegarYVisualizar(page, ['public class Saludo {', '    public static void main(String[] args) {', '        System.out.println("Hola")', '    }', '}'].join('\n'));
     await expect(page.getByRole('alert')).toContainText('Error de compilación');
     await expect(page.locator('.cm-problema-error')).toBeVisible();
+    expect(await violacionesDeAxe(page)).toEqual([]);
+  });
+
+  test('un error de compilación con un programa largo (el editor se desplaza): sin violaciones, y el foco no se pierde: va a la línea del error (C4)', async ({ page }) => {
+    await pegarYVisualizar(page, PROGRAMA_LARGO_CON_ERROR);
+    await expect(page.getByRole('alert')).toContainText('Error de compilación');
+    await expect(page.locator('.cm-problema-error')).toBeVisible();
+    const desplazable = await page.locator('.cm-scroller').evaluate((e) => e.scrollHeight > e.clientHeight);
+    expect(desplazable, 'el programa de la prueba debe desbordar el editor para que axe revise la región desplazable').toBe(true);
+
+    expect(await violacionesDeAxe(page)).toEqual([]);
+    await expect(page.locator('.cm-content')).toBeFocused();
+    expect(await lineaDelCursor(page)).toContain('System.out.println("Hola")');
+  });
+
+  test('un error de compilación en una pantalla de celular (390 px): sin violaciones', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 800 });
+    await pegarYVisualizar(page, ['public class Saludo {', '    public static void main(String[] args) {', '        System.out.println("Hola")', '    }', '}'].join('\n'));
+    await expect(page.getByRole('alert')).toContainText('Error de compilación');
+    expect(await violacionesDeAxe(page)).toEqual([]);
+  });
+
+  test('editar el programa después de un error: el globo dice «Cambiaste el programa…», con la cara normal y sin violaciones', async ({ page }) => {
+    await pegarYVisualizar(page, PROGRAMA_LARGO_CON_ERROR);
+    await expect(page.getByRole('alert')).toContainText('Error de compilación');
+
+    await page.keyboard.type(';'); // el foco ya está en la línea del error: quien corrige solo teclea
+    await expect(globoDelRobot(page)).toContainText('Cambiaste el programa. Pulsa «Visualizar» y lo reviso otra vez.');
+    await expect(page.getByRole('alert')).toHaveCount(0);
+    await expect(page.getByRole('img', { name: /robot/i })).toHaveAttribute('data-animo', 'normal');
     expect(await violacionesDeAxe(page)).toEqual([]);
   });
 });

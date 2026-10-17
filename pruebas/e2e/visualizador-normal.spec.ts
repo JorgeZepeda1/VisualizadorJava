@@ -111,7 +111,7 @@ test.describe('MaquinaSnacks con entrada interactiva (el ejercicio del PO)', () 
     await expect(page.getByRole('row', { name: /^cantidad\b/ })).toContainText('2');
     await expect(page.getByRole('row', { name: /^codigo\b/ })).toContainText('"A1"');
     // La rama que no corre está atenuada, nunca oculta.
-    await expect(page.locator('li.atenuada')).toContainText('Entra al if');
+    await expect(page.locator('li.atenuada')).toContainText('No entra al if');
     // En el editor, el bloque que el programa se salta («Cantidad no válida» + `return`) se atenúa Y lleva una etiqueta en palabras; al pasar a la sentencia siguiente, desaparece.
     await expect(page.locator('.cm-etiqueta-rama-no-tomada')).toHaveText('✗ esta rama no se ejecuta');
     expect((await page.locator('.cm-rama-no-tomada').allTextContents()).join('')).toContain('Cantidad no válida');
@@ -223,8 +223,10 @@ test.describe('cómo termina un programa', () => {
       await expect(globoDelRobot(page)).toContainText('Se detuvo por seguridad');
     }).toPass({ timeout: 60_000 });
 
-    await expect(globoDelRobot(page)).toContainText('Paré el programa');
-    await expect(globoDelRobot(page)).toContainText('Así terminó: me detuve por seguridad');
+    // UN solo texto con el motivo (C7 del panel 1): el título ya dice que se detuvo, así que ni «Paré el programa» ni «Así terminó: me detuve…» lo repiten.
+    await expect(globoDelRobot(page)).toContainText('seguía repitiéndose');
+    await expect(globoDelRobot(page)).not.toContainText('Paré el programa');
+    await expect(globoDelRobot(page)).not.toContainText('Así terminó');
     await expect(page.getByRole('img', { name: /robot/i })).toHaveAttribute('data-animo', 'seguridad');
     // La traza sigue navegable.
     await page.getByRole('button', { name: /anterior/i }).click();

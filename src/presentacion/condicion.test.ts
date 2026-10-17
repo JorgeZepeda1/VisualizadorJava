@@ -26,7 +26,7 @@ describe('derivarCondicion: if', () => {
       tipo: 'if',
       evaluaciones: [{ cadena: ['x > 5', '3 > 5', 'false'], resultado: false }],
       ramas: [
-        { texto: 'Entra al `if`', corre: false },
+        { texto: 'No entra al `if`', corre: false },
         { texto: 'Entra al `else`', corre: true },
       ],
     });
@@ -39,13 +39,13 @@ describe('derivarCondicion: if', () => {
       evaluaciones: [{ cadena: ['intentos < 10', '3 < 10', 'true'], resultado: true }],
       ramas: [
         { texto: 'Entra al `if`', corre: true },
-        { texto: 'Entra al `else`', corre: false },
+        { texto: 'No entra al `else`', corre: false },
       ],
     });
   });
 
   it('un if sin else solo tiene la rama del if: corre o no corre', () => {
-    expect(derivarCondicion([pasoIf('x > 5', '3 > 5', false, false)])).toMatchObject({ ramas: [{ texto: 'Entra al `if`', corre: false }] });
+    expect(derivarCondicion([pasoIf('x > 5', '3 > 5', false, false)])).toMatchObject({ ramas: [{ texto: 'No entra al `if`', corre: false }] });
     expect(derivarCondicion([pasoIf('x > 2', '3 > 2', true, false)])).toMatchObject({ ramas: [{ texto: 'Entra al `if`', corre: true }] });
   });
 });
@@ -61,7 +61,19 @@ describe('derivarCondicion: cadena de else if, en orden', () => {
       ],
       ramas: [
         { texto: 'Entra al `else if`', corre: true },
-        { texto: 'Entra al `else`', corre: false },
+        { texto: 'No entra al `else`', corre: false },
+      ],
+    });
+  });
+
+  // C6 del panel 1: la rama que no corre dice «No entra…» con palabras; un «✗ Entra al…» se lee como «entra».
+  it('un else if falso con else: «No entra al `else if`» y el `else` es el que entra', () => {
+    const condicion = derivarCondicion([pasoIf('suma > 100', '3 > 100', false, true, 15), pasoIf('suma > 50', '3 > 50', false, true, 17)]);
+    expect(condicion).toMatchObject({
+      tipo: 'if',
+      ramas: [
+        { texto: 'No entra al `else if`', corre: false },
+        { texto: 'Entra al `else`', corre: true },
       ],
     });
   });
@@ -102,7 +114,7 @@ describe('derivarCondicion: ciclos', () => {
       vuelta: 2,
       ramas: [
         { texto: 'Entra al cuerpo del ciclo', corre: true },
-        { texto: 'Sale del ciclo', corre: false },
+        { texto: 'No sale del ciclo', corre: false },
       ],
     });
   });
@@ -110,7 +122,7 @@ describe('derivarCondicion: ciclos', () => {
   it('for falso: sale del ciclo y atenúa la entrada al cuerpo', () => {
     expect(derivarCondicion([pasoCiclo('for', false, 3)])).toMatchObject({
       ramas: [
-        { texto: 'Entra al cuerpo del ciclo', corre: false },
+        { texto: 'No entra al cuerpo del ciclo', corre: false },
         { texto: 'Sale del ciclo', corre: true },
       ],
     });
@@ -121,7 +133,7 @@ describe('derivarCondicion: ciclos', () => {
       ciclo: 'do-while',
       ramas: [
         { texto: 'Repite el ciclo', corre: true },
-        { texto: 'Sale del ciclo', corre: false },
+        { texto: 'No sale del ciclo', corre: false },
       ],
     });
   });

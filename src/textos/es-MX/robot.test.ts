@@ -23,6 +23,10 @@ describe('textosRobot: lo que dice el robot fuera de la explicación de un paso'
     expect(textosRobot.saludo()).toBe('¡Hola! Pega o escribe un programa de Java y pulsa «Visualizar». Yo te explico cada paso.');
   });
 
+  it('si el alumno cambia el programa después de un aviso, el robot ya no repite el error: invita a revisar otra vez (C4 del panel 1)', () => {
+    expect(textosRobot.programaCambiado()).toBe('Cambiaste el programa. Pulsa «Visualizar» y lo reviso otra vez.');
+  });
+
   it('mientras el motor revisa el programa, lo dice', () => {
     expect(textosRobot.compilando()).toBe('Estoy revisando tu programa…');
   });

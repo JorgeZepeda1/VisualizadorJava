@@ -16,9 +16,11 @@ export function cadenaDeSustitucion(explicacion: ExplicacionPaso): readonly stri
     }
     case 'declaracion-con-valor':
     case 'asignacion': {
-      const { expresion, sustituida, valor } = explicacion.datos;
+      const { expresion, sustituida, valor, conversion } = explicacion.datos;
+      // La cadena termina en lo que dio el CÁLCULO: si guardar lo convierte (`double promedio = suma / 3;`), el 8.0 no es el resultado de `suma / 3` (da 8) y lo cuenta el robot (panel 1, C1).
+      const calculado = conversion?.antes ?? valor;
       // Un literal (`int edad = 17`) no tiene nada que calcular: la cadena sería «17 → 17».
-      return expresion === valor ? null : armar(expresion, sustituida, valor);
+      return expresion === calculado ? null : armar(expresion, sustituida, calculado);
     }
     case 'asignacion-compuesta': {
       const { expresion, sustituida, derecho } = explicacion.datos;

@@ -53,9 +53,17 @@ describe('<EditorJava/> — editor completo (REQ-VIS-001)', () => {
     expect(contenido()?.getAttribute('contenteditable')).toBe('false');
     expect(contenido()?.getAttribute('tabindex')).toBe('0');
 
-    // Al volver a editar, el editor editable ya recibe el foco por sí mismo.
+    // Al volver a editar, el editor sigue contando con tabindex 0 (C4 del panel 1): `contenteditable` solo NO basta para axe. Con un programa más alto que el editor, `.cm-scroller` es una región
+    // desplazable y axe (`scrollable-region-focusable`, grave) exige un elemento enfocable con `tabindex` dentro: lo vio en el estado de error y en cualquier edición de un programa largo.
     rerender(<EditorJava valor={PROGRAMA} soloLectura={false} />);
     expect(contenido()?.getAttribute('contenteditable')).toBe('true');
+    expect(contenido()?.getAttribute('tabindex')).toBe('0');
+  });
+
+  it('el editor editable también lleva tabindex 0 desde que se crea (la primera visita y el estado de error son de edición)', () => {
+    const { container } = render(<EditorJava valor={PROGRAMA} />);
+    expect(container.querySelector('.cm-content')?.getAttribute('contenteditable')).toBe('true');
+    expect(container.querySelector('.cm-content')?.getAttribute('tabindex')).toBe('0');
   });
 
   it('un tabulador y un espacio corriente NO se marcan como caracteres especiales', () => {

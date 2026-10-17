@@ -60,6 +60,30 @@ describe('reductor: del código a la visualización', () => {
     expect(estado.aviso?.resaltado).toBeNull();
   });
 
+  // C4 del panel 1: tras corregir el código, el aviso ya no describe el programa que hay en el editor. Se conserva en el estado (el mensaje no se pierde para quien solo movió una coma), pero queda
+  // marcado como caducado: la pantalla deja de mostrarlo como si fuera actual y el robot dice «Cambiaste el programa…».
+  it('editar con un aviso a la vista lo marca como caducado: ya no describe el programa que hay en el editor (C4)', () => {
+    const conAviso = aplicar(estadoInicial('a'), { tipo: 'problema-al-revisar', aviso: AVISO });
+    expect(conAviso.aviso?.caducado).toBeUndefined();
+    const editado = aplicar(conAviso, { tipo: 'editar', codigo: 'ab' });
+    expect(editado.aviso?.caducado).toBe(true);
+    // y seguir editando no lo "revive"
+    expect(aplicar(editado, { tipo: 'editar', codigo: 'abc' }).aviso?.caducado).toBe(true);
+  });
+
+  it('editar SIN aviso a la vista no inventa uno; y un cambio que deja el mismo código no caduca el aviso', () => {
+    expect(aplicar(estadoInicial('a'), { tipo: 'editar', codigo: 'b' }).aviso).toBeNull();
+    const conAviso = aplicar(estadoInicial('a'), { tipo: 'problema-al-revisar', aviso: AVISO });
+    expect(aplicar(conAviso, { tipo: 'editar', codigo: 'a' }).aviso?.caducado).toBeUndefined();
+  });
+
+  it('un aviso NUEVO (otro Visualizar con otro error) vuelve a ser actual, aunque el anterior hubiera caducado', () => {
+    const caducado = aplicar(estadoInicial('a'), { tipo: 'problema-al-revisar', aviso: AVISO }, { tipo: 'editar', codigo: 'ab' });
+    const nuevo = aplicar(caducado, { tipo: 'visualizar', id: 2 }, { tipo: 'problema-al-revisar', aviso: AVISO });
+    expect(nuevo.aviso?.caducado).toBeUndefined();
+    expect(nuevo.aviso).toBe(AVISO);
+  });
+
   it('volver a editar termina la visualización: edición, sin aviso, paso 0 y sin reproducir', () => {
     const estado = aplicar(visualizando({ paso: 4, reproduciendo: true }), { tipo: 'volver-a-editar' });
     expect(estado.modo).toBe('edicion');

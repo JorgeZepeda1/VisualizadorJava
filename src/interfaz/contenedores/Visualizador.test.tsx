@@ -8,8 +8,9 @@
 // hace layout para eso, ADR 013; el recorrido real, con el motor de verdad, vive en
 // `pruebas/e2e/problemas-en-pantalla.spec.ts`). Los textos y la segmentación sí son los REALES.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { EditorView } from '@codemirror/view';
 import type { Problema, ProblemaArranque } from '../../motor/vista.ts';
 import type { MensajeTrabajadorAUi } from '../../trabajador/protocolo.ts';
 import { crearClienteTrabajador } from '../../trabajador/cliente.ts';
@@ -43,6 +44,27 @@ function editorEditable(): boolean {
 
 async function pulsarVisualizar(): Promise<void> {
   await userEvent.setup().click(screen.getByRole('button', { name: /visualizar/i }));
+}
+
+function vistaDelEditor(): EditorView {
+  const raiz = document.querySelector('.cm-editor');
+  const vista = raiz instanceof HTMLElement ? EditorView.findFromDOM(raiz) : null;
+  if (!vista) throw new Error('No se encontró el editor de CodeMirror');
+  return vista;
+}
+
+/** Cambia el programa del editor como lo haría quien corrige una línea: una transacción que inserta texto al final (pasa por el mismo `onCambio` que una tecla). */
+function corregirElPrograma(): void {
+  const vista = vistaDelEditor();
+  act(() => {
+    vista.dispatch({ changes: { from: vista.state.doc.length, insert: ' ' }, userEvent: 'input.type' });
+  });
+}
+
+/** La línea (1 en adelante) donde está el cursor del editor. */
+function lineaDelCursor(): number {
+  const vista = vistaDelEditor();
+  return vista.state.doc.lineAt(vista.state.selection.main.head).number;
 }
 
 beforeEach(() => {
@@ -179,6 +201,99 @@ describe('<Visualizador/> — el texto real de cada problema, con su línea', ()
     await screen.findByRole('alert');
 
     expect(editorEditable()).toBe(true);
+  });
+});
+
+// C4 del panel 1 (disenador-ux H6): tras un error de compilación el foco caía en `body` (el botón «Visualizar» se deshabilita mientras se revisa) y quien usa teclado o lector de pantalla quedaba
+// perdido. Ahora el foco va al editor, en la línea del error. Y cuando el alumno corrige, el globo ya no repite el error con la cara de preocupación mientras el editor ya no lo marca.
+describe('<Visualizador/> — después de un error el foco va al editor, a la línea del error (C4)', () => {
+  const ERROR_EN_LA_LINEA_3: Problema = { categoria: 'error-compilacion', codigo: 'falta-punto-y-coma', rango: RANGO, linea: 3, datos: { mensaje: 'x' } };
+
+  it('el foco queda en el editor y el cursor en la línea del error', async () => {
+    trabajadorQueResponde((id) => [compiladoConProblema(id, ERROR_EN_LA_LINEA_3)]);
+    render(<Visualizador />);
+    await pulsarVisualizar();
+    await screen.findByRole('alert');
+
+    await vi.waitFor(() => expect(document.activeElement).toBe(document.querySelector('.cm-content')));
+    expect(lineaDelCursor()).toBe(3);
+  });
+
+  it('triangulación: otro error, otra línea (la 4)', async () => {
+    trabajadorQueResponde((id) => [compiladoConProblema(id, { ...ERROR_EN_LA_LINEA_3, codigo: 'variable-no-declarada', linea: 4, datos: { nombre: 'edad' } })]);
+    render(<Visualizador />);
+    await pulsarVisualizar();
+    await screen.findByRole('alert');
+
+    await vi.waitFor(() => expect(document.activeElement).toBe(document.querySelector('.cm-content')));
+    expect(lineaDelCursor()).toBe(4);
+  });
+
+  it('un `main` sin static no tiene línea que señalar: el foco igual vuelve al editor para corregir', async () => {
+    const arranque: ProblemaArranque = { codigo: 'main-no-static', nombreClase: 'SinStatic', textoLanzador: 'Error' };
+    trabajadorQueResponde((id) => [
+      { tipo: 'compilado', id, ok: true, vista: { fuente: '', ranuras: [], nodos: [] } },
+      { tipo: 'fin', id, fin: { causa: 'error-arranque', arranque } },
+    ]);
+    render(<Visualizador />);
+    await pulsarVisualizar();
+    await screen.findByRole('alert');
+
+    await vi.waitFor(() => expect(document.activeElement).toBe(document.querySelector('.cm-content')));
+  });
+});
+
+describe('<Visualizador/> — al editar después de un aviso, el globo deja de repetirlo (C4)', () => {
+  const ERROR: Problema = { categoria: 'error-compilacion', codigo: 'falta-punto-y-coma', rango: RANGO, linea: 3, datos: { mensaje: 'x' } };
+
+  it('mientras el programa no cambia, el globo sigue diciendo el error con la cara de preocupación', async () => {
+    trabajadorQueResponde((id) => [compiladoConProblema(id, ERROR)]);
+    render(<Visualizador />);
+    await pulsarVisualizar();
+
+    expect((await screen.findByRole('alert')).textContent).toContain('Error de compilación');
+    expect(screen.getByRole('img', { name: /robot/i }).getAttribute('data-animo')).toBe('preocupado');
+  });
+
+  it('al editar, el globo pasa a «Cambiaste el programa…», con la cara normal y sin el error', async () => {
+    trabajadorQueResponde((id) => [compiladoConProblema(id, ERROR)]);
+    render(<Visualizador />);
+    await pulsarVisualizar();
+    await screen.findByRole('alert');
+
+    corregirElPrograma();
+
+    const globo = await screen.findByTestId('globo-del-robot');
+    expect(globo.textContent).toContain('Cambiaste el programa. Pulsa «Visualizar» y lo reviso otra vez.');
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(document.body.textContent).not.toContain('Te falta un punto y coma');
+    expect(screen.getByRole('img', { name: /robot/i }).getAttribute('data-animo')).toBe('normal');
+  });
+
+  it('también cuando el aviso era de «no disponible» o un `main` sin static: el aviso viejo no describe el programa nuevo', async () => {
+    trabajadorQueResponde((id) => [compiladoConProblema(id, { categoria: 'no-disponible', codigo: 'arreglo-no-soportado', rango: RANGO, linea: 3, datos: { tipoArreglo: 'int[]' } })]);
+    render(<Visualizador />);
+    await pulsarVisualizar();
+    await screen.findByRole('alert');
+
+    corregirElPrograma();
+
+    expect((await screen.findByTestId('globo-del-robot')).textContent).toContain('Cambiaste el programa.');
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('al pulsar «Visualizar» otra vez con otro error, el aviso nuevo vuelve a ser el actual', async () => {
+    trabajadorQueResponde((id) => [compiladoConProblema(id, ERROR)]);
+    render(<Visualizador />);
+    await pulsarVisualizar();
+    await screen.findByRole('alert');
+    corregirElPrograma();
+    await screen.findByTestId('globo-del-robot');
+
+    await pulsarVisualizar();
+
+    expect((await screen.findByRole('alert')).textContent).toContain('Línea 3: Te falta un punto y coma');
+    expect(screen.getByRole('img', { name: /robot/i }).getAttribute('data-animo')).toBe('preocupado');
   });
 });
 

@@ -4,7 +4,7 @@
 // algo que el motor no calculó: cada texto sale de un dato del motor (la explicación del paso, la línea del nodo que espera, la causa del fin) o de un estado que la interfaz conoce de verdad
 // (todavía no hay programa, se está revisando). Puro, sin DOM.
 import type { FinEjecucion, Paso, VistaPrograma } from '../motor/vista.ts';
-import { textoDelAvisoDeLimite } from '../textos/es-MX/avisos-de-limite.ts';
+import { textoDelAvisoDeLimite, textoIntrigaDelLimite } from '../textos/es-MX/avisos-de-limite.ts';
 import { textoDeExplicacion } from '../textos/es-MX/explicaciones.ts';
 import type { TipoDeAviso } from '../textos/es-MX/paneles.ts';
 import { textosRobot, type AnimoDelRobot } from '../textos/es-MX/robot.ts';
@@ -13,6 +13,8 @@ import { textosRobot, type AnimoDelRobot } from '../textos/es-MX/robot.ts';
 export type EstadoDeLaEjecucion =
   | { readonly estado: 'sin-ejecutar' }
   | { readonly estado: 'compilando' }
+  /** El alumno editó el código después de un aviso: el aviso viejo ya no describe el programa que hay en el editor (C4 del panel 1). */
+  | { readonly estado: 'cambiado-tras-un-aviso' }
   | { readonly estado: 'calculando' }
   | { readonly estado: 'esperando-entrada'; readonly nodo: number }
   | { readonly estado: 'terminada'; readonly fin: FinEjecucion }
@@ -98,13 +100,23 @@ function alInicio({ ejecucion, siguiente, total, vista }: EntradaDelRobot): Robo
   const lineaDeLaLectura = esperando ? lineaDelNodo(vista, ejecucion.nodo) : null;
   const lineaSiguiente = siguiente?.linea ?? lineaDeLaLectura;
   const notaDeLaEspera = esperando && total === 0 && lineaDeLaLectura !== null ? textosRobot.esperandoUnDato(lineaDeLaLectura) : null;
-  // Un programa que el visualizador detuvo por seguridad lo dice desde el paso 0, con la evidencia del ciclo si la hay: el alumno no tiene que llegar al último de miles de pasos para enterarse.
-  const notaDelLimite = ejecucion.estado === 'terminada' ? textoDelAvisoDeLimite(ejecucion.fin) : null;
+  // Un programa que el visualizador detuvo por seguridad lo adelanta desde el paso 0, pero como intriga: dice QUE no terminó solo y deja el POR QUÉ (la evidencia del ciclo) para el final (C7 del panel 1).
+  const notaDelLimite = ejecucion.estado === 'terminada' ? textoIntrigaDelLimite(ejecucion.fin.causa) : null;
   return sinPaso(textosRobot.alInicio(lineaSiguiente), esperando && total === 0 ? 'esperando' : 'normal', notaDeLaEspera ?? notaDelLimite);
 }
 
+/**
+ * La nota del último paso de un programa que terminó. En un límite del visualizador hay UN solo texto sobre el motivo (C7 del panel 1): si el último paso es el `detenido`, ya lo dice y no hay nota; si
+ * no (el perro guardián cortó por tiempo y no dejó ese paso), la nota es ese texto. El título del aviso («Se detuvo por seguridad») ya dice que se detuvo: no se repite en un «Así terminó: me detuve…».
+ */
+function notaDelCierre(fin: FinEjecucion, total: number, ultimo: Paso): string | null {
+  const delLimite = textoDelAvisoDeLimite(fin);
+  if (delLimite === null) return textosRobot.resumenDelFin[fin.causa]({ pasos: total });
+  return ultimo.explicacion.clave === 'detenido' ? null : delLimite;
+}
+
 /** Lo que el robot agrega en el ÚLTIMO paso: la espera de un dato, que el motor sigue calculando, o el resumen de cómo terminó. */
-function notaDelUltimoPaso(entrada: EntradaDelRobot): { readonly nota: string | null; readonly animo: AnimoDelRobot } {
+function notaDelUltimoPaso(entrada: EntradaDelRobot, ultimo: Paso): { readonly nota: string | null; readonly animo: AnimoDelRobot } {
   const { ejecucion, total, vista } = entrada;
   switch (ejecucion.estado) {
     case 'esperando-entrada': {
@@ -112,7 +124,7 @@ function notaDelUltimoPaso(entrada: EntradaDelRobot): { readonly nota: string | 
       return { nota: linea === null ? null : textosRobot.esperandoUnDato(linea), animo: 'esperando' };
     }
     case 'terminada':
-      return { nota: textosRobot.resumenDelFin[ejecucion.fin.causa]({ pasos: total }), animo: animoDelFin(ejecucion.fin.causa) };
+      return { nota: notaDelCierre(ejecucion.fin, total, ultimo), animo: animoDelFin(ejecucion.fin.causa) };
     case 'detenida':
       return { nota: textosRobot.detenida(), animo: 'normal' };
     case 'calculando':
@@ -126,12 +138,13 @@ export function derivarRobot(entrada: EntradaDelRobot): RobotVista {
   const { ejecucion, aplicados, total } = entrada;
   if (ejecucion.estado === 'sin-ejecutar') return sinPaso(textosRobot.saludo());
   if (ejecucion.estado === 'compilando') return sinPaso(textosRobot.compilando());
+  if (ejecucion.estado === 'cambiado-tras-un-aviso') return sinPaso(textosRobot.programaCambiado());
 
   const ultimo = aplicados.at(-1);
   if (ultimo === undefined) return alInicio(entrada);
 
   const esElUltimo = aplicados.length === total;
-  const { nota, animo } = esElUltimo ? notaDelUltimoPaso(entrada) : { nota: null, animo: 'normal' as const };
+  const { nota, animo } = esElUltimo ? notaDelUltimoPaso(entrada, ultimo) : { nota: null, animo: 'normal' as const };
   const avisoDelCierre = esElUltimo && ejecucion.estado === 'terminada' ? avisoDelFin(ejecucion.fin.causa) : null;
   const aviso = avisoDelPaso(ultimo) ?? avisoDelCierre;
   return {

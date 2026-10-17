@@ -119,6 +119,34 @@ test.describe('problemas en pantalla: el texto real de cada problema, con su lí
     await expect(page.getByRole('alert')).toHaveCount(0);
   });
 
+  // C4 del panel 1: el foco no se pierde en `body` tras el error, y el globo no sigue diciendo el error cuando el editor ya no lo marca.
+  test('tras el error el foco está en el editor, en la línea del error; al corregir, el globo invita a revisar otra vez y al pulsar Visualizar se ve el programa', async ({ page }) => {
+    await page.goto('/');
+    await escribirEnElEditor(page, PROGRAMA_SIN_PUNTO_Y_COMA);
+    await visualizar(page);
+    await expect(page.getByRole('alert')).toContainText('Línea 3: ');
+
+    await expect(page.locator('.cm-content')).toBeFocused();
+    const lineaDelCursor = await page.evaluate(() => {
+      const nodo = getSelection()?.anchorNode;
+      const elemento = nodo === undefined || nodo === null ? null : nodo.nodeType === Node.TEXT_NODE ? nodo.parentElement : (nodo as Element);
+      return elemento?.closest('.cm-line')?.textContent ?? null;
+    });
+    expect(lineaDelCursor).toContain('System.out.println("Hola")');
+
+    // Corrige la línea (el cursor ya está al inicio de ella: va al final y agrega el punto y coma).
+    await page.keyboard.press('End');
+    await page.keyboard.type(';');
+    await expect(page.getByTestId('globo-del-robot')).toContainText('Cambiaste el programa. Pulsa «Visualizar» y lo reviso otra vez.');
+    await expect(page.getByRole('alert')).toHaveCount(0);
+    await expect(page.locator('.cm-problema-error')).toHaveCount(0);
+    await expect(page.getByRole('img', { name: /robot/i })).toHaveAttribute('data-animo', 'normal');
+
+    await visualizar(page);
+    await irAlFinal(page);
+    await expect(page.getByTestId('consola')).toContainText('Hola');
+  });
+
   test('el aviso es una región `alert` anunciada: aparece con el problema, se corrige y desaparece', async ({ page }) => {
     await page.goto('/');
     // Sin problemas no hay región de alerta.

@@ -15,6 +15,11 @@ export interface PasoEnCurso {
   salida: Segmento[];
   /** Lo que valía una variable ANTES de asignarla, por punto (para decir «antes valía 5»). */
   anteriores: Map<number, ValorEjecucion | undefined>;
+  /**
+   * El resultado de `x op= e` ANTES de estrecharlo al tipo de `x`, por el punto de la asignación compuesta (`int x = 10; x += 2.7;` → 12.7 aquí y 12 en el registro). No ocupa un punto del plan
+   * (el punto de la asignación guarda el valor ya recortado): es un canal aparte para que la explicación diga «10 + 2.7 da 12.7 y, como `x` es `int`, se queda con 12» con lo que el motor midió.
+   */
+  sinRecortar: Map<number, ValorEjecucion>;
   /** Los renglones que se «teclearon» durante este paso (se acumulan entre intentos). */
   eco: string[];
   cursorAntes: number;
@@ -51,7 +56,7 @@ export function partirEnRenglones(texto: string): string[] {
 }
 
 export function nuevoPasoEnCurso(largoDelPlan: number, cursorAntes: number): PasoEnCurso {
-  return { registro: new Array<ValorEjecucion | null>(largoDelPlan).fill(null), cambios: [], salida: [], anteriores: new Map(), eco: [], cursorAntes };
+  return { registro: new Array<ValorEjecucion | null>(largoDelPlan).fill(null), cambios: [], salida: [], anteriores: new Map(), sinRecortar: new Map(), eco: [], cursorAntes };
 }
 
 export function crearContexto(programa: ProgramaIr, config: ConfigEjecucion, puerto: PuertoBiblioteca): ContextoDeEjecucion {

@@ -240,16 +240,26 @@ describe('<App/> — la rama del `if` que no se toma, con el motor real (hito 2C
 describe('<App/> — un ciclo que no termina, con el motor real (hito 2C)', () => {
   const CICLO_INFINITO = readFileSync(resolve(import.meta.dirname, '../../corpus/curso/u6-ciclo-infinito-demo.java'), 'utf8');
 
-  it('desde el paso 0 el alumno lee que el visualizador se detuvo por seguridad y por qué: «contador siempre valió 1»', async () => {
+  // C7 del panel 1: en el paso 0 el robot despierta la curiosidad sin contar el final; el porqué («contador siempre valió 1») se descubre al avanzar hasta el final, en UN solo texto.
+  it('en el paso 0 el alumno lee una intriga que NO cuenta el final, y al llegar al final lee el porqué una sola vez: «contador siempre valió 1»', async () => {
     render(<App />);
     escribirPrograma(CICLO_INFINITO);
     await pulsar(/visualizar/i);
 
     expect(globo()).toContain('Todavía no se ejecuta nada');
-    expect(globo()).toContain('El programa llevaba demasiados pasos y todavía no terminaba.');
-    expect(globo()).toContain('contador siempre valió 1 en las últimas 100 vueltas');
+    expect(globo()).toContain('Ojo: este programa no terminó solo. El visualizador lo detuvo por seguridad después de muchos pasos. Avanza y descubre por qué.');
+    expect(globo()).not.toContain('siempre valió');
     expect(screen.getAllByText('Paso 0 de 100001').length).toBeGreaterThan(0);
-  }, 30_000);
+
+    await pulsar(/fin/i);
+    expect(screen.getAllByText('Paso 100001 de 100001').length).toBeGreaterThan(0);
+    expect(globo()).toContain('Se detuvo por seguridad');
+    expect(globo()).toContain('En las últimas 100 vueltas del while de la línea 5, contador siempre valió 1, así que contador <= 5 siempre dio true.');
+    expect(globo()).toContain('Mientras nada dentro del ciclo cambie contador, el ciclo no va a terminar.');
+    // Un solo texto: ni «Paré el programa…» ni «Así terminó: me detuve…» repiten lo que el título ya dijo.
+    expect(globo()).not.toContain('Paré el programa');
+    expect(globo()).not.toContain('Así terminó');
+  }, 60_000);
 });
 
 describe('<App/> — el alumno corrige y vuelve a visualizar', () => {
