@@ -10,7 +10,7 @@ const IF_FALSO_CON_ELSE: CondicionVista = {
   tipo: 'if',
   evaluaciones: [{ cadena: ['x > 5', '3 > 5', 'false'], resultado: false }],
   ramas: [
-    { texto: 'Entra al `if`', corre: false },
+    { texto: 'No entra al `if`', corre: false },
     { texto: 'Entra al `else`', corre: true },
   ],
 };
@@ -32,7 +32,7 @@ describe('<PanelCondicion/> — cadena y ramas', () => {
     expect(ramas).toHaveLength(2);
 
     const rama = (texto: RegExp) => ramas.find((r) => texto.test(r.textContent ?? '')) as HTMLElement;
-    const entraAlIf = rama(/Entra al if/);
+    const entraAlIf = rama(/No entra al if/);
     const entraAlElse = rama(/Entra al else/);
 
     expect(entraAlElse.getAttribute('data-corre')).toBe('true');
@@ -42,7 +42,22 @@ describe('<PanelCondicion/> — cadena y ramas', () => {
     expect(entraAlIf.className).toContain('atenuada');
     // atenuada, NUNCA oculta
     expect(entraAlIf.hasAttribute('hidden')).toBe(false);
-    expect(entraAlIf.textContent).toContain('Entra al if');
+    expect(entraAlIf.textContent).toContain('No entra al if');
+  });
+
+  // C6 del panel 1: la rama que no corre se lee «No entra…» con sus propias palabras (visibles), no solo con la marca ✗ ni con el texto «(no se ejecuta)» que oye el lector de pantalla.
+  it('lo que se VE de la rama que no corre dice «No entra al if», y de la que corre, «Entra al else»', () => {
+    render(<PanelCondicion condicion={IF_FALSO_CON_ELSE} />);
+    const [ramaIf, ramaElse] = screen.getAllByRole('listitem');
+    const visible = (rama: HTMLElement | undefined) =>
+      Array.from(rama?.childNodes ?? [])
+        .filter((nodo) => !(nodo instanceof HTMLElement && (nodo.classList.contains('solo-lectores') || nodo.getAttribute('aria-hidden') === 'true')))
+        .map((nodo) => nodo.textContent)
+        .join('')
+        .replace(/\s+/g, ' ')
+        .trim();
+    expect(visible(ramaIf)).toBe('No entra al if');
+    expect(visible(ramaElse)).toBe('Entra al else');
   });
 
   it('cada rama dice con palabras si se ejecuta o no, para el lector de pantalla', () => {
@@ -78,7 +93,7 @@ describe('<PanelCondicion/> — cadena de else if, en orden', () => {
     ],
     ramas: [
       { texto: 'Entra al `else if`', corre: true },
-      { texto: 'Entra al `else`', corre: false },
+      { texto: 'No entra al `else`', corre: false },
     ],
   };
 
@@ -109,7 +124,7 @@ describe('<PanelCondicion/> — ciclos', () => {
       resultado: false,
       vuelta: 3,
       ramas: [
-        { texto: 'Entra al cuerpo del ciclo', corre: false },
+        { texto: 'No entra al cuerpo del ciclo', corre: false },
         { texto: 'Sale del ciclo', corre: true },
       ],
     };

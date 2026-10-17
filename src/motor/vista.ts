@@ -11,7 +11,7 @@ export type { Rango } from './fuente/rango.ts';
 // Se exporta del módulo hoja y no del índice de la biblioteca para que la interfaz no arrastre la biblioteca completa.
 export { doubleATexto } from './biblioteca/formato/double-a-texto.ts';
 // Tarea 2.19: las claves de explicación y sus datos (el catálogo `textos/es-MX/explicaciones.ts` los vuelve frases, ADR 015).
-export type { ClaveExplicacion, DatosPorClave, DiagnosticoDeCiclo, ExplicacionPaso, LecturaExplicada, TipoDeCiclo } from './traza/explicacion.ts';
+export type { ClaveExplicacion, ConversionAlGuardar, DatosPorClave, DiagnosticoDeCiclo, EfectoDeIncremento, ExplicacionPaso, LecturaExplicada, TipoDeCiclo } from './traza/explicacion.ts';
 // Tarea 2.19: lo que se ve en cada paso (línea, variables a la vista, salida acumulada), reconstruido de los pasos con `Traza.instantaneaEn` / `instantaneaEn`.
 export type { InstantaneaDeEjecucion, VariableDeInstantanea } from './traza/estado.ts';
 // Tarea 2.16: lo que la vista dice de cada nodo y de cada variable (la presentación lo lee para resaltar líneas y mostrar variables).

@@ -15,6 +15,11 @@ export interface AvisoDeEdicion {
   readonly adicionales: number;
   /** Lo que se subraya en el código; `null` si no hay un tramo que señalar o si el código ya cambió. */
   readonly resaltado: ResaltadoDeProblema | null;
+  /**
+   * El alumno editó el código después de recibir este aviso: ya no describe el programa que hay en el editor (C4 del panel 1). Se conserva en el estado, pero la pantalla no lo muestra como actual: el
+   * robot dice «Cambiaste el programa…» en vez de repetir el error con la cara de preocupación mientras el editor ya no lo marca. Un aviso nuevo (otro «Visualizar») nace sin esta marca.
+   */
+  readonly caducado?: true;
 }
 
 export interface EjecucionApp {
@@ -98,8 +103,12 @@ function alTic(estado: EstadoApp, total: number): EstadoApp {
 export function reductor(estado: EstadoApp, accion: Accion): EstadoApp {
   switch (accion.tipo) {
     case 'editar':
-      // Un aviso a la vista se conserva (el alumno lo está leyendo mientras corrige), pero su subrayado ya no señala el código nuevo.
-      return { ...estado, codigo: accion.codigo, aviso: estado.aviso === null ? null : { ...estado.aviso, resaltado: null } };
+      // Un aviso a la vista se conserva en el estado, pero su subrayado ya no señala el código nuevo y, si el código de verdad cambió, el aviso queda caducado: describe un programa que ya no está.
+      return {
+        ...estado,
+        codigo: accion.codigo,
+        aviso: estado.aviso === null ? null : { ...estado.aviso, resaltado: null, ...(accion.codigo === estado.codigo ? {} : { caducado: true as const }) },
+      };
     case 'visualizar':
       return {
         ...estado,

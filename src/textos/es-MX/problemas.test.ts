@@ -239,6 +239,15 @@ describe('textosProblemas — etiquetas de `switch` (F4, tarea 1.32)', () => {
     );
   });
 
+  // C3 del panel 1: «no una variable ni un cálculo» era falso (`final int K = 3; … case K + 1:` compila).
+  it('"etiqueta-de-case-no-constante" pide un valor que Java conozca antes de ejecutar y no niega las variables `final` ni los cálculos con constantes', () => {
+    const texto = textosProblemas['etiqueta-de-case-no-constante']({});
+    expect(texto).toBe(
+      'Cada `case` necesita un valor que Java conozca antes de ejecutar: un literal o una variable `final` con valor fijo, no una variable que puede cambiar.',
+    );
+    expect(texto).not.toContain('ni un cálculo');
+  });
+
   it('"etiqueta-default-duplicada" dice que solo puede haber un `default`', () => {
     expect(textosProblemas['etiqueta-default-duplicada']({})).toBe('Ya hay un `default` más arriba en este `switch`: solo puede haber uno.');
   });

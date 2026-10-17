@@ -44,6 +44,20 @@ describe('derivarRobot: antes de que haya pasos', () => {
   });
 });
 
+// C4 del panel 1: tras un error de compilación, si el alumno edita, el editor ya no marca el error. El globo dejaba el mensaje del error con la cara de preocupación: ahora invita a volver a pulsar «Visualizar».
+describe('derivarRobot: el alumno cambió el programa después de un aviso (C4)', () => {
+  it('dice que cambió el programa y qué hacer; con la cara normal, sin aviso y sin línea', () => {
+    expect(derivarRobot({ ejecucion: { estado: 'cambiado-tras-un-aviso' }, aplicados: [], siguiente: null, total: 0, vista: null })).toEqual({
+      animo: 'normal',
+      linea: null,
+      texto: 'Cambiaste el programa. Pulsa «Visualizar» y lo reviso otra vez.',
+      nota: null,
+      aviso: null,
+      asertivo: false,
+    });
+  });
+});
+
 describe('derivarRobot: el paso 0', () => {
   it('dice que todavía no se ejecuta nada y la línea del primer paso', () => {
     const robot = derivarRobot({ ejecucion: { estado: 'calculando' }, aplicados: [], siguiente: pasoDeImpresion(7), total: 5, vista: VISTA });
@@ -113,7 +127,8 @@ describe('derivarRobot: un programa que el visualizador detuvo por seguridad (hi
     fin: { causa: 'limite-pasos', diagnostico: DIAGNOSTICO_DE_CONTADOR },
   });
 
-  it('en el paso final el alumno lee la evidencia del ciclo: «`contador` siempre valió 1…»', () => {
+  // C7 del panel 1: UN solo texto al final. El título del aviso («Se detuvo por seguridad») ya dice que se detuvo; ni el paso ni la nota lo repiten con «Paré el programa…» y «Así terminó: me detuve…».
+  it('en el paso final el alumno lee la evidencia del ciclo —«`contador` siempre valió 1…»— como único texto, sin repetir que se detuvo', () => {
     const fin: FinEjecucion = { causa: 'limite-pasos', diagnostico: DIAGNOSTICO_DE_CONTADOR };
     const robot = derivarRobot({
       ejecucion: { estado: 'terminada', fin },
@@ -123,12 +138,16 @@ describe('derivarRobot: un programa que el visualizador detuvo por seguridad (hi
       vista: VISTA,
     });
     expect(robot.texto).toBe(
-      'Paré el programa: ya llevaba demasiados pasos. En el ciclo `while` de la línea 5, `contador` siempre valió 1 en las últimas 100 vueltas, así que la condición `contador <= 5` nunca dejó de cumplirse.',
+      'En las últimas 100 vueltas del `while` de la línea 5, `contador` siempre valió 1, así que `contador <= 5` siempre dio `true`. Mientras nada dentro del ciclo cambie `contador`, el ciclo no va a terminar.',
     );
+    expect(robot.nota).toBeNull();
+    expect(`${robot.texto} ${robot.nota ?? ''}`).not.toMatch(/Paré el programa|Así terminó: me detuve/);
     expect(robot.aviso).toBe('seguridad');
+    expect(robot.animo).toBe('seguridad');
+    expect(robot.asertivo).toBe(true);
   });
 
-  it('en el paso 0 ya avisa que se detuvo por seguridad, con la evidencia: no hay que llegar hasta el final para enterarse', () => {
+  it('en el paso 0 NO cuenta el final: despierta la curiosidad («Ojo… Avanza y descubre por qué») y no cita la evidencia', () => {
     const fin: FinEjecucion = { causa: 'limite-pasos', diagnostico: DIAGNOSTICO_DE_CONTADOR };
     const robot = derivarRobot({
       ejecucion: { estado: 'terminada', fin },
@@ -138,12 +157,11 @@ describe('derivarRobot: un programa que el visualizador detuvo por seguridad (hi
       vista: VISTA,
     });
     expect(robot.texto).toBe('Todavía no se ejecuta nada. Pulsa «Siguiente» y te explico la línea 4.');
-    expect(robot.nota).toBe(
-      'El programa llevaba demasiados pasos y todavía no terminaba. En el ciclo `while` de la línea 5, `contador` siempre valió 1 en las últimas 100 vueltas, así que la condición `contador <= 5` nunca dejó de cumplirse.',
-    );
+    expect(robot.nota).toBe('Ojo: este programa no terminó solo. El visualizador lo detuvo por seguridad después de muchos pasos. Avanza y descubre por qué.');
+    expect(robot.nota).not.toMatch(/contador|siempre valió/);
   });
 
-  it('en el paso 0, sin evidencia (el perro guardián cortó por tiempo), avisa lo que sí sabe y no inventa un ciclo', () => {
+  it('en el paso 0, sin evidencia (el perro guardián cortó por tiempo), la intriga dice lo que sí sabe y no inventa un ciclo', () => {
     const robot = derivarRobot({
       ejecucion: terminada('limite-tiempo'),
       aplicados: [],
@@ -151,7 +169,7 @@ describe('derivarRobot: un programa que el visualizador detuvo por seguridad (hi
       total: 40,
       vista: VISTA,
     });
-    expect(robot.nota).toBe('El programa llevaba demasiado tiempo calculando y todavía no terminaba.');
+    expect(robot.nota).toBe('Ojo: este programa no terminó solo. El visualizador lo detuvo por seguridad porque tardaba demasiado en calcular. Avanza y descubre por qué.');
   });
 
   it('en el paso 0 de un programa que terminó bien NO hay aviso de seguridad', () => {
@@ -268,8 +286,9 @@ describe('derivarRobot: cómo terminó', () => {
       fin: { causa: 'limite-pasos' },
     });
     const robot = derivarRobot({ ejecucion: terminada('limite-pasos'), aplicados: pasosHasta(5, pasoFinal), siguiente: null, total: 5, vista: VISTA });
-    expect(robot.texto).toContain('Paré el programa');
-    expect(robot.nota).toBe('Así terminó: me detuve por seguridad (demasiados pasos).');
+    // Sin ciclo que diagnosticar: el paso dice el motivo y el hilo para buscar; la nota no lo repite.
+    expect(robot.texto).toBe('El programa llevaba demasiados pasos y todavía no terminaba. ¿Será un ciclo que nunca termina?');
+    expect(robot.nota).toBeNull();
     expect(robot.aviso).toBe('seguridad');
     expect(robot.asertivo).toBe(true);
     expect(robot.animo).toBe('seguridad');
@@ -291,7 +310,17 @@ describe('derivarRobot: cómo terminó', () => {
     expect(robot.aviso).toBe('seguridad');
     expect(robot.asertivo).toBe(true);
     expect(robot.animo).toBe('seguridad');
-    expect(robot.nota).toBe('Así terminó: me detuve por seguridad (tardó demasiado en calcular).');
+    // No hay paso `detenido` que diga el motivo: lo dice la nota, y es el único texto sobre el límite (el título del aviso ya dice que se detuvo).
+    expect(robot.nota).toBe('El programa llevaba demasiado tiempo calculando y todavía no terminaba.');
+  });
+
+  it('el límite de tiempo con evidencia del ciclo en el `fin`: la nota es la evidencia, no «Así terminó: me detuve…»', () => {
+    const fin: FinEjecucion = { causa: 'limite-tiempo', diagnostico: DIAGNOSTICO_DE_CONTADOR };
+    const robot = derivarRobot({ ejecucion: { estado: 'terminada', fin }, aplicados: pasosHasta(40), siguiente: null, total: 40, vista: VISTA });
+    expect(robot.nota).toBe(
+      'En las últimas 100 vueltas del `while` de la línea 5, `contador` siempre valió 1, así que `contador <= 5` siempre dio `true`. Mientras nada dentro del ciclo cambie `contador`, el ciclo no va a terminar.',
+    );
+    expect(robot.aviso).toBe('seguridad');
   });
 
   it('el aviso por el límite de tiempo solo aparece en el último paso; antes, el robot explica el paso como siempre', () => {
@@ -309,7 +338,7 @@ describe('derivarRobot: cómo terminó', () => {
       fin: { causa: 'limite-tiempo' },
     });
     const robot = derivarRobot({ ejecucion: { estado: 'calculando' }, aplicados: pasosHasta(5, pasoFinal), siguiente: null, total: 5, vista: VISTA });
-    expect(robot.texto).toBe('Paré el programa: llevaba demasiado tiempo calculando.');
+    expect(robot.texto).toBe('El programa llevaba demasiado tiempo calculando y todavía no terminaba.');
     expect(robot.aviso).toBe('seguridad');
     expect(robot.asertivo).toBe(true);
   });

@@ -68,6 +68,35 @@ describe('cadenaDeSustitucion: cálculos', () => {
     ).toBeNull();
   });
 
+  // C1 del panel 1: la cadena debajo del globo mostraba `suma / 3 → 25 / 3 → 8.0`, la misma falsedad que el texto del robot: `25 / 3` da 8 y el 8.0 nace al guardarlo en el `double`. La cadena termina en lo
+  // que dio el CÁLCULO; la conversión la cuenta el robot («Como `promedio` es `double`, guardo 8.0»).
+  it('C1: una declaración que convierte al guardar termina la cadena en lo que dio el cálculo (8), no en lo guardado (8.0)', () => {
+    expect(
+      cadenaDeSustitucion({
+        clave: 'declaracion-con-valor',
+        datos: { nombre: 'promedio', tipo: 'double', expresion: 'suma / 3', sustituida: '25 / 3', valor: '8.0', conversion: { tipo: 'double', antes: '8' } },
+      }),
+    ).toEqual(['suma / 3', '25 / 3', '8']);
+  });
+
+  it('C1: una asignación que convierte también (`g = a / b` → 7 / 2 → 3)', () => {
+    expect(
+      cadenaDeSustitucion({
+        clave: 'asignacion',
+        datos: { nombre: 'g', expresion: 'a / b', sustituida: '7 / 2', valor: '3.0', anterior: null, conversion: { tipo: 'double', antes: '3' } },
+      }),
+    ).toEqual(['a / b', '7 / 2', '3']);
+  });
+
+  it('C1: un literal que solo se convierte (`double d = 5`) no tiene nada que calcular: sin cadena, no «5 → 5.0»', () => {
+    expect(
+      cadenaDeSustitucion({
+        clave: 'declaracion-con-valor',
+        datos: { nombre: 'd', tipo: 'double', expresion: '5', sustituida: '5', valor: '5.0', conversion: { tipo: 'double', antes: '5' } },
+      }),
+    ).toBeNull();
+  });
+
   it('una asignación compuesta muestra el lado derecho sustituido', () => {
     expect(
       cadenaDeSustitucion({

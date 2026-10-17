@@ -105,7 +105,9 @@ export const textosProblemas: { readonly [K in CodigoProblema]: (datos: DatosPor
   'objetivo-no-es-variable': () =>
     'Aquí se necesita el nombre de una variable ya declarada, no una clase ni el resultado de otra operación.',
   'selector-de-switch-invalido': ({ tipo }) => `El valor de un "switch" debe ser "int", "char" o "String", no "${tipo}".`,
-  'etiqueta-de-case-no-constante': () => 'Cada "case" necesita un valor fijo (constante), no una variable ni un cálculo.',
+  // C3 del panel 1: una variable `final` con valor fijo y un cálculo con constantes SÍ son etiquetas válidas (`final int K = 3; … case K + 1:` compila); lo que no sirve es una variable que puede cambiar.
+  'etiqueta-de-case-no-constante': () =>
+    'Cada `case` necesita un valor que Java conozca antes de ejecutar: un literal o una variable `final` con valor fijo, no una variable que puede cambiar.',
   'etiqueta-de-case-duplicada': () => 'Ya existe un "case" con este mismo valor más arriba; cada valor solo puede aparecer una vez.',
   // Tarea 1.32 (F4). Un `case` numérico con un `switch` de `char` es el único caso en que «otro tipo» sí puede servir (un número que
   // quepa): se explica con el rango de `char` en vez de repetir «debe ser del mismo tipo».

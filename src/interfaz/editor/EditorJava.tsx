@@ -13,9 +13,10 @@ import { textosPaneles } from '../../textos/es-MX/paneles.ts';
 import { resaltadoDeJava } from './resaltado-de-java.ts';
 import { establecerResaltados, extensionDeResaltados } from './resaltados.ts';
 
-/** Lo que el contenedor puede pedirle al editor desde fuera: llevar el foco a él (p. ej. al volver de la visualización a la edición). */
+/** Lo que el contenedor puede pedirle al editor desde fuera: llevar el foco a él (p. ej. al volver de la visualización a la edición, o a la línea de un error de compilación). */
 export interface ManejadorDelEditor {
-  enfocar(): void;
+  /** Enfoca el editor. Con `linea` (1 en adelante, si existe en el código) pone además el cursor al inicio de esa línea y la deja a la vista. */
+  enfocar(linea?: number): void;
 }
 
 export interface PropiedadesEditorJava {
@@ -33,11 +34,12 @@ export interface PropiedadesEditorJava {
 const ESPACIOS_ESPECIALES = /[\u00a0\u2000-\u200a\u202f\u205f\u3000]/;
 
 /**
- * Editable o de solo lectura. En solo lectura (durante la visualización) el código sigue pudiendo recibir el foco: es una región desplazable y quien usa solo teclado debe poder desplazarla
- * (WCAG 2.1.1; axe `scrollable-region-focusable`). El editor editable ya lo recibe por ser `contenteditable`.
+ * Editable o de solo lectura. El código es SIEMPRE enfocable (`tabindex="0"`): es una región desplazable y quien usa solo teclado debe poder desplazarla (WCAG 2.1.1; axe `scrollable-region-focusable`). En solo
+ * lectura (durante la visualización) hace falta porque el contenido deja de ser `contenteditable`; en edición también, porque axe NO cuenta `contenteditable` como enfocable y marcaba una falla grave en
+ * `.cm-scroller` en cuanto el programa era más alto que el editor (el panel 1 la vio en el estado de error, C4).
  */
 function extensionesDeEdicion(soloLectura: boolean): Extension {
-  return [EditorView.editable.of(!soloLectura), EditorView.contentAttributes.of(soloLectura ? { tabindex: '0' } : {})];
+  return [EditorView.editable.of(!soloLectura), EditorView.contentAttributes.of({ tabindex: '0' })];
 }
 
 function caracterEspecial(codigo: number, _descripcion: string | null, marcador: string): HTMLElement {
@@ -61,7 +63,21 @@ export function EditorJava({ valor, soloLectura = false, onCambio, resaltados = 
   const resaltadosRef = useRef({ lineas: resaltados, problema });
   resaltadosRef.current = { lineas: resaltados, problema };
 
-  useImperativeHandle(ref, () => ({ enfocar: () => vistaRef.current?.focus() }), []);
+  useImperativeHandle(
+    ref,
+    () => ({
+      enfocar: (linea) => {
+        const vista = vistaRef.current;
+        if (!vista) return;
+        // El cursor va al inicio de la línea pedida (si existe en el código de ahora) y esa línea queda a la vista; una línea que no existe no mueve nada.
+        if (linea !== undefined && Number.isInteger(linea) && linea >= 1 && linea <= vista.state.doc.lines) {
+          vista.dispatch({ selection: { anchor: vista.state.doc.line(linea).from }, scrollIntoView: true });
+        }
+        vista.focus();
+      },
+    }),
+    [],
+  );
 
   // Se crea una sola vez: `valor`/`soloLectura` se sincronizan en los efectos de abajo (patrón
   // estándar de CodeMirror 6 dentro de React — el estado real vive en `EditorView`, no en React).

@@ -31,8 +31,9 @@ const ROSTROS: Readonly<Record<AnimoDelRobot, ReactElement>> = {
     <>
       <circle className="robot-ojo" cx="45" cy="56" r="6" />
       <circle className="robot-ojo" cx="75" cy="56" r="6" />
-      <path className="robot-trazo" d="M37 44 L53 49" />
-      <path className="robot-trazo" d="M83 44 L67 49" />
+      {/* Cejas de preocupación amable (panel 1, C5): el extremo de adentro MÁS ALTO que el de afuera. Al revés (adentro más bajo) se leen como enojo. */}
+      <path className="robot-trazo" d="M37 47 L53 42" />
+      <path className="robot-trazo" d="M83 47 L67 42" />
       <path className="robot-trazo" d="M46 78 Q60 68 74 78" />
     </>
   ),

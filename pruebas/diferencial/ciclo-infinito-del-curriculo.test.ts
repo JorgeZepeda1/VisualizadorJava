@@ -34,8 +34,9 @@ describe('u6-ciclo-infinito-demo: se detiene por el límite de pasos, con su avi
         causa: 'limite-pasos',
         diagnostico: { ciclo: 'while', linea: 5, condicion: 'contador <= 5', vueltas: 100, sinCambio: [{ nombre: 'contador', valor: '1' }] },
       });
+      // C7 del panel 1: el único texto del final es la evidencia (el título del aviso ya dice que se detuvo), con lo que el motor midió: 100 vueltas, `contador` en 1, la condición siempre `true`.
       expect(textoDelAvisoDeLimite(fin)).toBe(
-        'El programa llevaba demasiados pasos y todavía no terminaba. En el ciclo `while` de la línea 5, `contador` siempre valió 1 en las últimas 100 vueltas, así que la condición `contador <= 5` nunca dejó de cumplirse.',
+        'En las últimas 100 vueltas del `while` de la línea 5, `contador` siempre valió 1, así que `contador <= 5` siempre dio `true`. Mientras nada dentro del ciclo cambie `contador`, el ciclo no va a terminar.',
       );
     });
   }

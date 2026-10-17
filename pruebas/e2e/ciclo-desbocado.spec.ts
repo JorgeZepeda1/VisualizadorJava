@@ -43,19 +43,21 @@ test.describe('ciclo desbocado: se detiene solo, la página sigue viva y el alum
   test('u6-ciclo-infinito-demo: se detiene por el límite, el hilo principal nunca se queda sin latir y el robot cita «contador siempre valió 1»', async ({ page }) => {
     await pegarYVisualizar(page, CICLO_SIN_AVANCE);
 
-    // Desde el paso 0 (sin tener que llegar al final) el alumno lee que se detuvo por seguridad y por qué.
+    // Desde el paso 0 el alumno lee una intriga (que no terminó solo y que lo detuvo el visualizador), SIN el porqué: ese lo descubre al avanzar (C7 del panel 1).
     await expect(globoDelRobot(page)).toContainText('Todavía no se ejecuta nada');
-    await expect(globoDelRobot(page)).toContainText('contador siempre valió 1 en las últimas 100 vueltas', { timeout: 60_000 });
-    await expect(globoDelRobot(page)).toContainText('El programa llevaba demasiados pasos y todavía no terminaba.');
+    await expect(globoDelRobot(page)).toContainText('Ojo: este programa no terminó solo. El visualizador lo detuvo por seguridad después de muchos pasos. Avanza y descubre por qué.', { timeout: 60_000 });
+    await expect(globoDelRobot(page)).not.toContainText('siempre valió');
     await expect(page.getByText('Paso 0 de 100001').first()).toBeVisible();
     expect(await huecoMaximoEntreLatidos(page), 'el hilo principal se quedó sin latir').toBeLessThan(HUECO_MAXIMO_ENTRE_LATIDOS_MS);
 
-    // En el último paso, el aviso con su título, la explicación del robot con la evidencia y el robot levantando la mano.
+    // En el último paso, el aviso con su título, UN solo texto con la evidencia (sin repetir «se detuvo») y el robot levantando la mano.
     await irAlFinal(page);
     await expect(page.getByText('Paso 100001 de 100001').first()).toBeVisible({ timeout: 60_000 });
     await expect(globoDelRobot(page)).toContainText('Se detuvo por seguridad');
-    await expect(globoDelRobot(page)).toContainText('Paré el programa: ya llevaba demasiados pasos.');
-    await expect(globoDelRobot(page)).toContainText('contador siempre valió 1');
+    await expect(globoDelRobot(page)).toContainText('En las últimas 100 vueltas del while de la línea 5, contador siempre valió 1, así que contador <= 5 siempre dio true.');
+    await expect(globoDelRobot(page)).toContainText('Mientras nada dentro del ciclo cambie contador, el ciclo no va a terminar.');
+    await expect(globoDelRobot(page)).not.toContainText('Paré el programa');
+    await expect(globoDelRobot(page)).not.toContainText('Así terminó');
     await expect(globoDelRobot(page)).toHaveAttribute('aria-live', 'assertive');
     await expect(page.getByRole('img', { name: /robot/i })).toHaveAttribute('data-animo', 'seguridad');
     // El borde punteado del aviso no se encima al texto: el texto empieza a la derecha del borde, con aire.
@@ -65,15 +67,19 @@ test.describe('ciclo desbocado: se detiene solo, la página sigue viva y el alum
 
     // Volver a visualizar termina al trabajador anterior y usa el de repuesto: la segunda ejecución llega igual de lejos y dice lo mismo.
     await visualizar(page);
-    await expect(globoDelRobot(page)).toContainText('contador siempre valió 1 en las últimas 100 vueltas', { timeout: 60_000 });
+    await expect(globoDelRobot(page)).toContainText('Ojo: este programa no terminó solo', { timeout: 60_000 });
     await expect(page.getByText('Paso 0 de 100001').first()).toBeVisible();
   });
 
   test('while (true) {}: no congela la página y el aviso lo dice con lo que sí se sabe del ciclo', async ({ page }) => {
     await pegarYVisualizar(page, CICLO_VACIO);
 
+    // En el paso 0, la intriga; el porqué (sin variables que citar) llega al avanzar hasta el final.
+    await expect(globoDelRobot(page)).toContainText('Ojo: este programa no terminó solo', { timeout: 60_000 });
+    await irAlFinal(page);
     await expect(globoDelRobot(page)).toContainText('El programa llevaba demasiados pasos y todavía no terminaba.', { timeout: 60_000 });
     await expect(globoDelRobot(page)).toContainText('seguía repitiéndose'); // la condición `true` no lee variables: no hay un «siempre valió» que citar y no se inventa
+    await page.getByRole('button', { name: /reiniciar/i }).click();
     expect(await huecoMaximoEntreLatidos(page), 'el hilo principal se quedó sin latir').toBeLessThan(HUECO_MAXIMO_ENTRE_LATIDOS_MS);
 
     // La página sigue respondiendo a quien la usa: la traza ya calculada es navegable.

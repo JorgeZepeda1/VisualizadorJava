@@ -7,7 +7,7 @@
 import { describe, expect, it } from 'vitest';
 import { render } from '@testing-library/react';
 import { EditorView } from '@codemirror/view';
-import { EditorJava } from './EditorJava.tsx';
+import { EditorJava, type ManejadorDelEditor } from './EditorJava.tsx';
 
 function vistaDe(contenedor: HTMLElement): EditorView {
   const vista = EditorView.findFromDOM(contenedor);
@@ -137,5 +137,51 @@ describe('<EditorJava/>', () => {
     rerender(<EditorJava valor="x" soloLectura onCambio={() => {}} />);
 
     expect(contenido()?.getAttribute('contenteditable')).toBe('false');
+  });
+});
+
+// C4 del panel 1: tras un error de compilación el contenedor lleva el foco al editor, a la línea del error. `enfocar(linea)` pone el cursor al inicio de esa línea (y desplaza el código para que se vea); sin línea
+// solo enfoca, como antes.
+describe('<EditorJava/> — enfocar en una línea', () => {
+  const TRES_LINEAS = 'uno\ndos\ntres';
+
+  function conRef(): { container: HTMLElement; manejador: { current: ManejadorDelEditor | null } } {
+    const manejador: { current: ManejadorDelEditor | null } = { current: null };
+    const { container } = render(<EditorJava valor={TRES_LINEAS} ref={(m) => {
+          manejador.current = m;
+        }} />);
+    return { container, manejador };
+  }
+
+  it('enfocar(2) deja el foco en el editor y el cursor al inicio de la línea 2', () => {
+    const { container, manejador } = conRef();
+    manejador.current?.enfocar(2);
+    expect(document.activeElement).toBe(container.querySelector('.cm-content'));
+    const vista = vistaDe(container);
+    expect(vista.state.selection.main.head).toBe(vista.state.doc.line(2).from);
+  });
+
+  it('triangulación: enfocar(3) mueve el cursor a la línea 3', () => {
+    const { container, manejador } = conRef();
+    manejador.current?.enfocar(3);
+    const vista = vistaDe(container);
+    expect(vista.state.doc.lineAt(vista.state.selection.main.head).number).toBe(3);
+  });
+
+  it('una línea que no existe (el código cambió, o 0) no mueve el cursor, pero el foco sí llega al editor', () => {
+    const { container, manejador } = conRef();
+    const antes = vistaDe(container).state.selection.main.head;
+    manejador.current?.enfocar(99);
+    manejador.current?.enfocar(0);
+    expect(vistaDe(container).state.selection.main.head).toBe(antes);
+    expect(document.activeElement).toBe(container.querySelector('.cm-content'));
+  });
+
+  it('sin línea solo enfoca, sin mover el cursor', () => {
+    const { container, manejador } = conRef();
+    const antes = vistaDe(container).state.selection.main.head;
+    manejador.current?.enfocar();
+    expect(document.activeElement).toBe(container.querySelector('.cm-content'));
+    expect(vistaDe(container).state.selection.main.head).toBe(antes);
   });
 });

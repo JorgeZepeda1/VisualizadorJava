@@ -54,6 +54,12 @@ export interface ConversionIr extends BaseExpresionIr {
   readonly de: TipoNumericoIr;
   readonly operando: ExpresionIr;
   readonly implicita: boolean;
+  /**
+   * Presente (y `true`) cuando esta conversión implícita envuelve la expresión ESCRITA completa y se aplica a su resultado: la de asignación al guardar en una variable (`double d = n / 2;`, JLS 5.2)
+   * o la que promueve el lado derecho de `x op= e` a la operación (JLS 15.26.2). Las que van DENTRO de la expresión (la promoción de un operando, `+c`) y los casts que escribió el alumno no la llevan.
+   * La explicación la usa para decir qué dio el cálculo ANTES de convertir (el punto de `operando`) y qué quedó guardado (el punto de esta conversión).
+   */
+  readonly delTotal?: true;
 }
 
 export type OperadorAritmeticoIr = '+' | '-' | '*' | '/' | '%';

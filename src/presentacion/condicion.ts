@@ -64,14 +64,14 @@ function evaluacionesDeLaCadena(aplicados: readonly Paso[], datosActuales: Datos
 function condicionDeIf(aplicados: readonly Paso[], datos: DatosDeIf): CondicionVista {
   const evaluaciones = evaluacionesDeLaCadena(aplicados, datos);
   const esElseIf = evaluaciones.length > 1;
-  const ramas: Rama[] = [{ texto: esElseIf ? textosPaneles.condicion.ramaElseIf() : textosPaneles.condicion.ramaIf(), corre: datos.resultado }];
-  if (datos.tieneSino) ramas.push({ texto: textosPaneles.condicion.ramaElse(), corre: !datos.resultado });
+  const ramas: Rama[] = [{ texto: esElseIf ? textosPaneles.condicion.ramaElseIf(datos.resultado) : textosPaneles.condicion.ramaIf(datos.resultado), corre: datos.resultado }];
+  if (datos.tieneSino) ramas.push({ texto: textosPaneles.condicion.ramaElse(!datos.resultado), corre: !datos.resultado });
   return { tipo: 'if', evaluaciones, ramas };
 }
 
 function condicionDeCiclo(explicacion: Extract<ExplicacionPaso, { clave: 'condicion-ciclo' }>): CondicionVista {
   const { ciclo, resultado, vuelta } = explicacion.datos;
-  const entra = ciclo === 'do-while' ? textosPaneles.condicion.ramaCicloRepite() : textosPaneles.condicion.ramaCicloEntra();
+  const entra = ciclo === 'do-while' ? textosPaneles.condicion.ramaCicloRepite(resultado) : textosPaneles.condicion.ramaCicloEntra(resultado);
   return {
     tipo: 'ciclo',
     ciclo,
@@ -80,7 +80,7 @@ function condicionDeCiclo(explicacion: Extract<ExplicacionPaso, { clave: 'condic
     vuelta,
     ramas: [
       { texto: entra, corre: resultado },
-      { texto: textosPaneles.condicion.ramaCicloSale(), corre: !resultado },
+      { texto: textosPaneles.condicion.ramaCicloSale(!resultado), corre: !resultado },
     ],
   };
 }

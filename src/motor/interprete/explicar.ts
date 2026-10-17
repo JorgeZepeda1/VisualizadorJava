@@ -2,7 +2,7 @@
 // la misma con sus variables sustituidas por su valor, el resultado—, con los valores escritos como Java los escribe. Lee el registro del paso que
 // acaba de ejecutarse (`contexto.paso`); no ejecuta nada. Las frases las pone el catálogo `src/textos/es-MX/explicaciones.ts`, no el motor.
 import type { CondicionIr, DeclaracionIr, ExpresionIr, ExpresionSentenciaIr, LlamadaIr, RaizIr, TipoIr } from '../ir/ir.ts';
-import type { DatosPorClave, DiagnosticoDeCiclo, ExplicacionPaso, LecturaExplicada, TipoDeCiclo } from '../traza/explicacion.ts';
+import type { ConversionAlGuardar, DatosPorClave, DiagnosticoDeCiclo, EfectoDeIncremento, ExplicacionPaso, LecturaExplicada, TipoDeCiclo } from '../traza/explicacion.ts';
 import type { ContextoDeEjecucion } from './contexto.ts';
 import { CadenaJava } from '../biblioteca/index.ts';
 import type { ValorEjecucion } from './puerto-biblioteca.ts';
@@ -95,6 +95,52 @@ function sustituirTodo(contexto: ContextoDeEjecucion, nodo: number, raiz: RaizIr
   return sustituir(contexto, nodo, raiz, raiz.inicio, raiz.inicio + raiz.texto.length);
 }
 
+// --- Lo que pasa ANTES de guardar: la conversión, el recorte y los ++ de adentro ----------------------------------------------------
+
+/** La expresión sin la conversión implícita que la envuelve (la de guardar, o la de promover el lado derecho de `x op= e`): lo que dio el cálculo ANTES de convertir. */
+function sinConversionDelTotal(expresion: ExpresionIr): ExpresionIr {
+  return expresion.forma === 'conversion' && expresion.delTotal === true ? expresion.operando : expresion;
+}
+
+/**
+ * Si guardar el resultado CONVIERTE el valor y eso cambia cómo se escribe (`double promedio = suma / 3;`: el cálculo da `8`, se guarda `8.0`), lo que dio el cálculo ANTES de convertir. El valor sale del
+ * registro del punto de la subexpresión, no se recalcula. Un `int` que entra a un `long` se escribe igual, y un cast del alumno ya forma parte de lo que se calcula: no hay nada que aclarar.
+ */
+function conversionAlGuardar(contexto: ContextoDeEjecucion, expresion: ExpresionIr): ConversionAlGuardar | null {
+  if (expresion.forma !== 'conversion' || expresion.delTotal !== true) return null;
+  const antes = valorDelPunto(contexto, expresion.operando.punto, expresion.de);
+  const despues = valorDelPunto(contexto, expresion.punto, expresion.tipo);
+  if (antes === null || despues === null || antes === despues) return null;
+  return { tipo: expresion.tipo, antes };
+}
+
+/** Los `++` y `--` que van dentro de [desde, hasta) y SÍ se evaluaron, en el orden de Java, con lo que valió cada uno y lo que dejó en su variable (del registro y de los cambios del paso). */
+function efectosDeIncremento(contexto: ContextoDeEjecucion, nodo: number, raiz: RaizIr, desde: number, hasta: number): EfectoDeIncremento[] {
+  const efectos: EfectoDeIncremento[] = [];
+  contexto.programa.nodos[nodo].plan.forEach((punto, indice) => {
+    if (punto.forma !== 'incremento' || punto.nombre === undefined || punto.tipo === null || punto.rango.inicio < desde || punto.rango.fin > hasta) return;
+    const valor = valorDelPunto(contexto, indice, punto.tipo);
+    const nuevo = contexto.paso.cambios.find((cambio) => cambio.punto === indice)?.nuevo;
+    if (valor === null || (typeof nuevo !== 'number' && typeof nuevo !== 'bigint')) return;
+    efectos.push({ expresion: textoEnRango(raiz, punto.rango.inicio, punto.rango.fin), nombre: punto.nombre, valor, nuevo: formatearValor(nuevo, punto.tipo, contexto) });
+  });
+  return efectos;
+}
+
+/** Lo que se agrega a los datos de un paso con expresión a la derecha: la conversión de guardar y los efectos de `++`/`--`, solo si los hay. */
+function datosDelCalculo(
+  contexto: ContextoDeEjecucion,
+  nodo: number,
+  raiz: RaizIr,
+  valor: ExpresionIr,
+  desde: number,
+  hasta: number,
+): { readonly conversion?: ConversionAlGuardar; readonly efectos?: readonly EfectoDeIncremento[] } {
+  const conversion = conversionAlGuardar(contexto, valor);
+  const efectos = efectosDeIncremento(contexto, nodo, raiz, desde, hasta);
+  return { ...(conversion === null ? {} : { conversion }), ...(efectos.length === 0 ? {} : { efectos }) };
+}
+
 // --- Por clase de paso -------------------------------------------------------------------------------------------------------------
 
 export function explicarDeclaracion(contexto: ContextoDeEjecucion, declaracion: DeclaracionIr): ExplicacionPaso {
@@ -111,15 +157,17 @@ export function explicarDeclaracion(contexto: ContextoDeEjecucion, declaracion: 
   const [declarador] = declaracion.declaradores;
   const valor = valores[0];
   if (declarador.inicializador === null || valor === null) return { clave: 'declaracion-sin-valor', datos: { nombre: declarador.nombre, tipo: declarador.tipo } };
+  const inicializador = declarador.inicializador;
   return {
     clave: 'declaracion-con-valor',
     datos: {
       nombre: declarador.nombre,
       tipo: declarador.tipo,
-      expresion: declarador.inicializador.texto,
-      sustituida: sustituirTodo(contexto, declaracion.nodo, declarador.inicializador),
+      expresion: inicializador.texto,
+      sustituida: sustituirTodo(contexto, declaracion.nodo, inicializador),
       valor,
-      ...(esLecturaDelTeclado(declarador.inicializador.expresion) ? { leeDelTeclado: true as const } : {}),
+      ...(esLecturaDelTeclado(inicializador.expresion) ? { leeDelTeclado: true as const } : {}),
+      ...datosDelCalculo(contexto, declaracion.nodo, inicializador, inicializador.expresion, inicializador.inicio, inicializador.inicio + inicializador.texto.length),
     },
   };
 }
@@ -153,10 +201,16 @@ export function explicarExpresion(contexto: ContextoDeEjecucion, sentencia: Expr
           valor: valorDelPunto(contexto, e.punto, e.tipo) ?? '',
           anterior: anterior === undefined ? null : formatearValor(anterior, e.tipo, contexto),
           ...(esLecturaDelTeclado(e.valor) ? { leeDelTeclado: true as const } : {}),
+          ...datosDelCalculo(contexto, sentencia.nodo, raiz, e.valor, e.valor.rango.inicio, e.valor.rango.fin),
         },
       };
     }
-    case 'asignacion-compuesta':
+    case 'asignacion-compuesta': {
+      const derecho = sinConversionDelTotal(e.valor);
+      const valor = valorDelPunto(contexto, e.punto, e.tipo) ?? '';
+      const operado = contexto.paso.sinRecortar.get(e.punto);
+      const operadoTexto = operado === undefined ? null : formatearValor(operado, e.tipoOperacion, contexto);
+      const efectos = efectosDeIncremento(contexto, sentencia.nodo, raiz, e.valor.rango.inicio, e.valor.rango.fin);
       return {
         clave: 'asignacion-compuesta',
         datos: {
@@ -164,11 +218,15 @@ export function explicarExpresion(contexto: ContextoDeEjecucion, sentencia: Expr
           operador: `${e.operador}=`,
           expresion: textoEnRango(raiz, e.valor.rango.inicio, e.valor.rango.fin),
           sustituida: sustituir(contexto, sentencia.nodo, raiz, e.valor.rango.inicio, e.valor.rango.fin),
-          derecho: valorDelPunto(contexto, e.valor.punto, e.valor.tipo) ?? '',
+          derecho: valorDelPunto(contexto, derecho.punto, derecho.tipo) ?? '',
           anterior: valorDelPunto(contexto, e.lectura.punto, e.lectura.tipo) ?? '',
-          valor: valorDelPunto(contexto, e.punto, e.tipo) ?? '',
+          valor,
+          // Guardar recorta el resultado de la operación: `int x = 10; x += 2.7;` da 12.7 y se queda con 12.
+          ...(operadoTexto === null || operadoTexto === valor ? {} : { recorte: { tipo: e.tipo, operado: operadoTexto } }),
+          ...(efectos.length === 0 ? {} : { efectos }),
         },
       };
+    }
     case 'incremento': {
       const anterior = contexto.paso.anteriores.get(e.punto);
       const actual = contexto.ranuras[e.ranura];
