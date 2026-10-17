@@ -4,6 +4,7 @@
 // el código entre comillas invertidas y lo que se imprime entre « ». TypeScript exige, por el tipo de `textosExplicacion`, una frase por cada
 // clave: imposible agregar una clave al motor sin su texto. Solo puede importar tipos de `motor/vista` (matriz de capas).
 import type { ClaveExplicacion, DatosPorClave, ExplicacionPaso, LecturaExplicada, TipoDeCiclo } from '../../motor/vista.ts';
+import { evidenciaDelCiclo } from './avisos-de-limite.ts';
 
 /** `cantidad vale 2`, `a vale 1 y b vale 2`, `a vale 1, b vale 2 y c vale 3`. */
 function enumerarLecturas(lecturas: readonly LecturaExplicada[]): string {
@@ -18,8 +19,9 @@ function veredicto(lecturas: readonly LecturaExplicada[], resultado: boolean, co
   return lecturas.length === 0 ? `es ${palabra} ${continuacion}` : `${enumerarLecturas(lecturas)}, así que es ${palabra} ${continuacion}`;
 }
 
-/** El cálculo de una expresión con sus variables ya sustituidas: lo que se dice antes de guardar el resultado. */
-function calculo(expresion: string, sustituida: string, valor: string): string {
+/** El cálculo de una expresión con sus variables ya sustituidas: lo que se dice antes de guardar el resultado. Una lectura del teclado no se «calcula»: se dice lo que el usuario escribió. */
+function calculo(expresion: string, sustituida: string, valor: string, leeDelTeclado?: true): string {
+  if (leeDelTeclado === true) return `Leo lo que escribiste en el teclado con \`${expresion}\`: ${valor}. `;
   if (expresion === valor) return '';
   if (sustituida === expresion) return `Calculo \`${expresion}\`, que da ${valor}. `;
   return `Calculo \`${expresion}\`: con los valores de ahora es \`${sustituida}\`, que da ${valor}. `;
@@ -34,8 +36,12 @@ function etiquetaDeCiclo(ciclo: TipoDeCiclo): string {
 }
 
 export const textosExplicacion: { readonly [K in ClaveExplicacion]: (datos: DatosPorClave[K]) => string } = {
-  'declaracion-con-valor': ({ nombre, tipo, expresion, sustituida, valor }) =>
-    `${calculo(expresion, sustituida, valor)}Creo la variable \`${nombre}\` de tipo ${tipo} y le guardo ${valor}.`,
+  'declaracion-con-valor': ({ nombre, tipo, expresion, sustituida, valor, leeDelTeclado }) => {
+    // Un objeto de la biblioteca no es un valor que se «calcule» ni que se «guarde»: se crea y sirve para algo.
+    if (tipo === 'Scanner') return `Creo la variable \`${nombre}\` de tipo Scanner con \`${expresion}\`. Con ella voy a leer lo que escribas en el teclado.`;
+    if (tipo === 'Random') return `Creo la variable \`${nombre}\` de tipo Random con \`${expresion}\`. Con ella voy a sacar números aleatorios.`;
+    return `${calculo(expresion, sustituida, valor, leeDelTeclado)}Creo la variable \`${nombre}\` de tipo ${tipo} y le guardo ${valor}.`;
+  },
   'declaracion-sin-valor': ({ nombre, tipo }) =>
     `Creo la variable \`${nombre}\` de tipo ${tipo}. Todavía no tiene valor: Java no te deja usarla hasta que le guardes algo.`,
   'declaracion-varias': ({ variables }) =>
@@ -43,8 +49,8 @@ export const textosExplicacion: { readonly [K in ClaveExplicacion]: (datos: Dato
       .map((variable) => `\`${variable.nombre}\` (${variable.tipo}) ${variable.valor === null ? 'sin valor todavía' : `con ${variable.valor}`}`)
       .join(', ')
       .replace(/, ([^,]*)$/, ' y $1')}.`,
-  asignacion: ({ nombre, expresion, sustituida, valor, anterior }) =>
-    `${calculo(expresion, sustituida, valor)}Guardo ${valor} en \`${nombre}\`${anterior === null ? '.' : `; antes valía ${anterior}.`}`,
+  asignacion: ({ nombre, expresion, sustituida, valor, anterior, leeDelTeclado }) =>
+    `${calculo(expresion, sustituida, valor, leeDelTeclado)}Guardo ${valor} en \`${nombre}\`${anterior === null ? '.' : `; antes valía ${anterior}.`}`,
   'asignacion-compuesta': ({ nombre, operador, expresion, sustituida, derecho, anterior, valor }) => {
     const ladoDerecho = sustituida === expresion || sustituida === derecho ? `el lado derecho vale ${derecho}` : `el lado derecho es \`${sustituida}\`, que da ${derecho},`;
     return `\`${nombre} ${operador} ${expresion}\`: ${ladoDerecho} y \`${nombre}\` valía ${anterior}. Guardo ${valor} en \`${nombre}\`.`;
@@ -85,10 +91,15 @@ export const textosExplicacion: { readonly [K in ClaveExplicacion]: (datos: Dato
   vacia: () => 'Una sentencia vacía (solo `;`): no hace nada, pero cuenta como un paso.',
   excepcion: ({ clase, mensaje }) =>
     `Java detuvo el programa con una excepción: \`${nombreCorto(clase)}\`${mensaje === null ? '' : ` (${mensaje})`}.`,
-  detenido: ({ causa }) => {
+  detenido: ({ causa, diagnostico }) => {
+    const evidencia = diagnostico === undefined ? '' : ` ${evidenciaDelCiclo(diagnostico)}`;
     switch (causa) {
       case 'limite-pasos':
-        return 'Paré el programa: ya llevaba demasiados pasos. ¿Será un ciclo que nunca termina?';
+        return diagnostico === undefined
+          ? 'Paré el programa: ya llevaba demasiados pasos. ¿Será un ciclo que nunca termina?'
+          : `Paré el programa: ya llevaba demasiados pasos.${evidencia}`;
+      case 'limite-tiempo':
+        return `Paré el programa: llevaba demasiado tiempo calculando.${evidencia}`;
       case 'limite-caracteres':
         return 'Paré el programa: un texto creció demasiado.';
       case 'no-disponible-en-ejecucion':

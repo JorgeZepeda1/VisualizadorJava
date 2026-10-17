@@ -44,7 +44,7 @@ function analizarEntero(entrada: string): number {
     if (resultado < limite + digito) throw entradaInvalida('Integer.parseInt/desborde-final', entrada);
     resultado -= digito;
   }
-  return negativo ? resultado : -resultado;
+  return negativo ? resultado : 0 - resultado; // `0 - 0` y no `-0`: un int de Java no tiene cero negativo (`1.0 / Integer.parseInt("0")` es Infinity)
 }
 
 /** `String.trim()` de Java: quita los caracteres ≤ U+0020 de los extremos (incluido `\u0000`), NO el espacio de no separación U+00A0. */

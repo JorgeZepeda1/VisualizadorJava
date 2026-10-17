@@ -1,8 +1,8 @@
 // Arma los DATOS de la explicación de cada paso (tarea 2.19, design.md §3.3, ADR 015): la clave y lo que su frase necesita —el texto de la expresión,
 // la misma con sus variables sustituidas por su valor, el resultado—, con los valores escritos como Java los escribe. Lee el registro del paso que
 // acaba de ejecutarse (`contexto.paso`); no ejecuta nada. Las frases las pone el catálogo `src/textos/es-MX/explicaciones.ts`, no el motor.
-import type { CondicionIr, DeclaracionIr, ExpresionSentenciaIr, LlamadaIr, RaizIr, TipoIr } from '../ir/ir.ts';
-import type { DatosPorClave, ExplicacionPaso, LecturaExplicada, TipoDeCiclo } from '../traza/explicacion.ts';
+import type { CondicionIr, DeclaracionIr, ExpresionIr, ExpresionSentenciaIr, LlamadaIr, RaizIr, TipoIr } from '../ir/ir.ts';
+import type { DatosPorClave, DiagnosticoDeCiclo, ExplicacionPaso, LecturaExplicada, TipoDeCiclo } from '../traza/explicacion.ts';
 import type { ContextoDeEjecucion } from './contexto.ts';
 import { CadenaJava } from '../biblioteca/index.ts';
 import type { ValorEjecucion } from './puerto-biblioteca.ts';
@@ -63,6 +63,8 @@ function lecturasEnRango(contexto: ContextoDeEjecucion, nodo: number, desde: num
   const lecturas: { inicio: number; fin: number; nombre: string; valor: string }[] = [];
   plan.forEach((punto, indice) => {
     if (punto.forma !== 'lectura' || punto.nombre === undefined || punto.rango.inicio < desde || punto.rango.fin > hasta) return;
+    // Un `Scanner` o un `Random` no es un valor que se pueda poner en lugar de la variable (`un Scanner.nextInt()` no dice nada): se queda escrito como `sc`.
+    if (punto.tipo === 'Scanner' || punto.tipo === 'Random') return;
     const valor = valorDelPunto(contexto, indice, punto.tipo);
     if (valor !== null) lecturas.push({ inicio: punto.rango.inicio, fin: punto.rango.fin, nombre: punto.nombre, valor });
   });
@@ -117,8 +119,16 @@ export function explicarDeclaracion(contexto: ContextoDeEjecucion, declaracion: 
       expresion: declarador.inicializador.texto,
       sustituida: sustituirTodo(contexto, declaracion.nodo, declarador.inicializador),
       valor,
+      ...(esLecturaDelTeclado(declarador.inicializador.expresion) ? { leeDelTeclado: true as const } : {}),
     },
   };
+}
+
+/** ¿La expresión es UNA lectura del teclado (`sc.nextInt()`, `sc.nextLine()`…), con o sin la conversión implícita al tipo de la variable? Entonces su valor es lo que el usuario escribió. */
+function esLecturaDelTeclado(expresion: ExpresionIr): boolean {
+  let actual = expresion;
+  while (actual.forma === 'conversion') actual = actual.operando;
+  return actual.forma === 'llamada' && actual.clave.startsWith('Scanner.next');
 }
 
 function textoDeLaSalida(contexto: ContextoDeEjecucion, flujo: 'out' | 'err'): { texto: string; saltoDeLinea: boolean } {
@@ -142,6 +152,7 @@ export function explicarExpresion(contexto: ContextoDeEjecucion, sentencia: Expr
           sustituida: sustituir(contexto, sentencia.nodo, raiz, e.valor.rango.inicio, e.valor.rango.fin),
           valor: valorDelPunto(contexto, e.punto, e.tipo) ?? '',
           anterior: anterior === undefined ? null : formatearValor(anterior, e.tipo, contexto),
+          ...(esLecturaDelTeclado(e.valor) ? { leeDelTeclado: true as const } : {}),
         },
       };
     }
@@ -222,6 +233,6 @@ export function explicarSeleccionDeSwitch(
 }
 
 /** Los datos de la explicación del paso final de una excepción o de una detención. */
-export function explicarFin(causa: DatosPorClave['detenido']['causa']): ExplicacionPaso {
-  return { clave: 'detenido', datos: { causa } };
+export function explicarFin(causa: DatosPorClave['detenido']['causa'], diagnostico?: DiagnosticoDeCiclo): ExplicacionPaso {
+  return { clave: 'detenido', datos: diagnostico === undefined ? { causa } : { causa, diagnostico } };
 }

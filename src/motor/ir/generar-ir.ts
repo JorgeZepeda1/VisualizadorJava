@@ -66,6 +66,7 @@ import type {
   OperadorComparacionIr,
   ProgramaIr,
   PuntoDelPlan,
+  RamasDeIfIr,
   RanuraIr,
   RaizIr,
   SentenciaIr,
@@ -74,6 +75,7 @@ import type {
   TipoNumericoIr,
 } from './ir.ts';
 import { ConstructorDePlan, numerarExpresion } from './plan-evaluacion.ts';
+import { rangoTextual } from './rango-textual.ts';
 
 export interface OpcionesDeGeneracion {
   /** El texto del programa (ya con los fines de línea normalizados): de aquí salen las líneas y el texto de cada expresión. */
@@ -123,8 +125,9 @@ function noDisponible(mensaje: string, rango: Rango): never {
   throw new ErrorDeEjecucionNoDisponible(mensaje, rango);
 }
 
+/** Lo que la expresión ocupa en el texto, con los paréntesis de sus extremos (`rango-textual.ts`): de aquí sale el texto que se le muestra al alumno. */
 function rangoDe(nodo: NodoExpresion): Rango {
-  return nodo.parentesis ?? nodo.rango;
+  return rangoTextual(nodo);
 }
 
 function claveDeFirma(firma: FirmaMiembro): string {
@@ -182,6 +185,7 @@ class GeneradorDeIr {
   private readonly ranuras: RanuraIr[] = [];
   private readonly ranuraDe = new Map<SimboloVariable, number>();
   private readonly nodos: NodoBorrador[] = [];
+  private readonly ramasDeIf: RamasDeIfIr[] = [];
   private huboBiblioteca = false;
   /** Cuántos `new Scanner(System.in)` lleva el programa y cuántos ciclos envuelven el punto que se está bajando (el cuerpo, la condición y la actualización; no el inicio de un `for`). */
   private scannersCreados = 0;
@@ -199,7 +203,7 @@ class GeneradorDeIr {
     const clase = this.programa.clase;
     const paquete = this.programa.paquete?.nombre ?? null;
     const base = { nombreClase: clase.nombre, paquete };
-    if (clase.main === null) return { sentencias: [], ranuras: [], nodos: [], ...base };
+    if (clase.main === null) return { sentencias: [], ranuras: [], nodos: [], ramasDeIf: [], ...base };
     // El parámetro de `main` vive en el alcance (como en la atribución) pero no es una ranura: usarlo ya fue un aviso de arreglo.
     this.alcance.entrarBloque();
     this.alcance.declarar({ nombre: clase.main.parametro, tipo: 'desconocido', esFinal: false, rango: clase.main.rango });
@@ -208,7 +212,7 @@ class GeneradorDeIr {
     this.alcance.salirBloque();
     this.alcance.salirBloque();
     const nodos: NodoIr[] = this.nodos.map((nodo) => ({ id: nodo.id, clase: nodo.clase, rango: nodo.rango, linea: nodo.linea, vivas: nodo.vivas, plan: nodo.plan }));
-    return { sentencias, ranuras: this.ranuras, nodos, ...base };
+    return { sentencias, ranuras: this.ranuras, nodos, ramasDeIf: this.ramasDeIf, ...base };
   }
 
   // --- Nodos y planes --------------------------------------------------------------------------------------------------------
@@ -341,6 +345,8 @@ class GeneradorDeIr {
         return { forma: 'continue', nodo: this.cerrarSinPlan(this.reservarNodo('continue', sentencia.rango)) };
       case 'if': {
         const condicion = this.bajarCondicion(sentencia.condicion, 'condicion-if');
+        // Antes de bajar las ramas: así los `if` anidados quedan DESPUÉS del que los contiene, en el orden del programa.
+        this.ramasDeIf.push({ nodo: condicion.nodo, entonces: sentencia.entonces.rango, sino: sentencia.sino === null ? null : sentencia.sino.rango });
         const entonces = this.bajarSentencia(sentencia.entonces);
         const sino = sentencia.sino === null ? null : this.bajarSentencia(sentencia.sino);
         return { forma: 'if', condicion, entonces, sino };

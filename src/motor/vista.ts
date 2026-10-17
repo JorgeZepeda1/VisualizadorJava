@@ -5,9 +5,13 @@
 // rebanada vertical no muestra valores de variables, solo el texto literal impreso.
 export { Traza } from './traza/traza.ts';
 export type { Cambio, ClasePaso, FinEjecucion, Paso, Segmento, Valor } from './traza/paso.ts';
-export type { VistaPrograma } from './ir/vista-programa.ts';
+export type { RamasDeIf, VistaPrograma } from './ir/vista-programa.ts';
+export type { Rango } from './fuente/rango.ts';
+// Hito 2A (arreglo c): el `Double.toString` EXACTO de Java (ADR 008), el mismo que escribe un `double` en la consola y en las explicaciones, para que la pantalla no use una aproximación.
+// Se exporta del módulo hoja y no del índice de la biblioteca para que la interfaz no arrastre la biblioteca completa.
+export { doubleATexto } from './biblioteca/formato/double-a-texto.ts';
 // Tarea 2.19: las claves de explicación y sus datos (el catálogo `textos/es-MX/explicaciones.ts` los vuelve frases, ADR 015).
-export type { ClaveExplicacion, DatosPorClave, ExplicacionPaso, LecturaExplicada, TipoDeCiclo } from './traza/explicacion.ts';
+export type { ClaveExplicacion, DatosPorClave, DiagnosticoDeCiclo, ExplicacionPaso, LecturaExplicada, TipoDeCiclo } from './traza/explicacion.ts';
 // Tarea 2.19: lo que se ve en cada paso (línea, variables a la vista, salida acumulada), reconstruido de los pasos con `Traza.instantaneaEn` / `instantaneaEn`.
 export type { InstantaneaDeEjecucion, VariableDeInstantanea } from './traza/estado.ts';
 // Tarea 2.16: lo que la vista dice de cada nodo y de cada variable (la presentación lo lee para resaltar líneas y mostrar variables).

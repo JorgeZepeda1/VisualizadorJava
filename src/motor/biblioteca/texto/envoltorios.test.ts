@@ -25,6 +25,12 @@ describe('Integer.parseInt', () => {
     expect(Integer.parseInt('2147483647')).toBe(2147483647);
   });
 
+  // Hito 2A: acumular en negativo y devolver `-resultado` daba -0 para "0" y "+0" (un `int` de Java NO tiene cero negativo): `1.0 / Integer.parseInt("0")` imprimía -Infinity en vez de Infinity,
+  // y lo mismo con `1.0 / sc.nextInt()` tecleando 0 (el JDK real: `corpus/experimentos/ejecucion/e29-division-entre-cero-leido`).
+  it('el cero de un int es +0 en cualquiera de sus escrituras ("0", "+0", "-0", "000"): ningún -0 de JavaScript', () => {
+    for (const texto of ['0', '+0', '-0', '000', '-000']) expect(Object.is(Integer.parseInt(texto), 0), texto).toBe(true);
+  });
+
   it('acepta cualquier dígito Unicode, no solo ASCII: "٣٤" (arábigo-índico) → 34 (REQ-BIB-008)', () => {
     expect(Integer.parseInt('٣٤')).toBe(34);
     expect(Integer.parseInt('１２３')).toBe(123);
