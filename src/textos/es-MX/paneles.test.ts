@@ -152,6 +152,10 @@ describe('textosPaneles.editor (REQ-VIS-001, REQ-VIS-004)', () => {
     expect(textosPaneles.editor.lineaSiguiente()).toBe('Línea siguiente');
   });
 
+  it('la rama del `if` que no se toma lleva una etiqueta en palabras (con ✗), para no depender solo del atenuado', () => {
+    expect(textosPaneles.editor.ramaNoTomada()).toBe('✗ esta rama no se ejecuta');
+  });
+
   it('describe los caracteres invisibles que se pegan desde una página o un PDF', () => {
     expect(textosPaneles.editor.caracterEspecial(0x00a0)).toBe('Espacio de no separación (U+00A0)');
     expect(textosPaneles.editor.caracterEspecial(0x200b)).toBe('Espacio de ancho cero (U+200B)');

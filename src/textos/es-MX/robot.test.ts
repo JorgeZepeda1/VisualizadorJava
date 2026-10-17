@@ -69,6 +69,10 @@ describe('textosRobot: lo que dice el robot fuera de la explicación de un paso'
     expect(textosRobot.resumenDelFin['error-interno']({ pasos: 3 })).toBe('Así terminó: algo falló dentro del visualizador, no en tu programa.');
   });
 
+  it('una ejecución que el trabajador detuvo antes del final (acuse `detenido`) lo dice sin achacarlo al programa ni al alumno', () => {
+    expect(textosRobot.detenida()).toBe('Así terminó: la ejecución se detuvo antes de llegar al final del programa.');
+  });
+
   it('hay un resumen para CADA causa de fin y ninguno deja un marcador sin resolver', () => {
     for (const causa of CAUSAS) {
       const texto = textosRobot.resumenDelFin[causa]({ pasos: 4 });

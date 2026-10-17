@@ -1,8 +1,8 @@
 // Los resaltados del editor (tarea 4.4, REQ-VIS-004, REQ-VIS-002, REQ-VIS-007, design.md §6.3): un `StateField` que recibe por `StateEffect` lo que la presentación derivó y lo convierte en
 // decoraciones de CodeMirror. La línea recién ejecutada y la siguiente llevan DOS marcas distintas —una clase de línea (borde sólido o punteado) Y un símbolo en el margen (▶ o ▷)—, así que no
 // dependen solo del color; el contador de vueltas es una etiqueta (*widget*) al final de la línea del ciclo; y un error o un aviso se subraya sobre su rango (ondulado o punteado) con ✖ o ⓘ
-// en el margen. El editor es presentacional: este módulo no sabe de la traza ni del trabajador, solo de líneas y rangos. Pendiente de la unión con el motor: atenuar en el editor la rama que no
-// corre necesita los rangos de las ramas, que la vista del programa todavía no trae.
+// en el margen. El editor es presentacional: este módulo no sabe de la traza ni del trabajador, solo de líneas y rangos. La rama del `if` que no se toma se atenúa con color suave Y cursiva Y una etiqueta en palabras
+// (hito 2C, rangos de `VistaPrograma.ramasDeIf`).
 import { StateEffect, StateField, type Extension, type Range, type Text } from '@codemirror/state';
 import { Decoration, EditorView, GutterMarker, WidgetType, gutter, type DecorationSet } from '@codemirror/view';
 import type { EtiquetaDeVuelta, ResaltadoDeProblema, ResaltadosDelEditor } from '../../presentacion/index.ts';
@@ -40,6 +40,24 @@ class EtiquetaDeVueltaDelEditor extends WidgetType {
   }
 }
 
+/** La etiqueta en palabras que acompaña a la rama atenuada («✗ esta rama no se ejecuta»): el atenuado solo no basta, no se puede depender del color (REQ-PLAT-005). */
+class EtiquetaDeRamaNoTomada extends WidgetType {
+  private readonly texto: string;
+  constructor(texto: string) {
+    super();
+    this.texto = texto;
+  }
+  override eq(otra: EtiquetaDeRamaNoTomada): boolean {
+    return otra.texto === this.texto;
+  }
+  override toDOM(): HTMLElement {
+    const etiqueta = document.createElement('span');
+    etiqueta.className = 'cm-etiqueta-rama-no-tomada';
+    etiqueta.textContent = this.texto;
+    return etiqueta;
+  }
+}
+
 function textoDeLaEtiqueta(etiqueta: EtiquetaDeVuelta): string {
   const base = textosPaneles.vueltas.etiquetaEnElEditor(etiqueta.vuelta);
   return etiqueta.termino ? `${base} (${textosPaneles.vueltas.yaTermino()})` : base;
@@ -65,6 +83,16 @@ function construirDecoraciones(estado: EstadoDeResaltados, documento: Text): Dec
     for (const etiqueta of lineas.vueltas) {
       if (!existe(documento, etiqueta.linea)) continue;
       rangos.push(Decoration.widget({ widget: new EtiquetaDeVueltaDelEditor(textoDeLaEtiqueta(etiqueta)), side: 1 }).range(documento.line(etiqueta.linea).to));
+    }
+    // La rama del `if` que no se toma: el tramo se atenúa (nunca se oculta) y su primera línea lleva una etiqueta en palabras. Un rango que se pasa del programa se recorta; uno vacío no marca nada.
+    const rama = lineas.ramaNoTomada;
+    if (rama !== null) {
+      const desde = Math.max(0, Math.min(rama.desde, documento.length));
+      const hasta = Math.max(0, Math.min(rama.hasta, documento.length));
+      if (hasta > desde) {
+        rangos.push(Decoration.mark({ class: 'cm-rama-no-tomada' }).range(desde, hasta));
+        rangos.push(Decoration.widget({ widget: new EtiquetaDeRamaNoTomada(textosPaneles.editor.ramaNoTomada()), side: 1 }).range(documento.lineAt(desde).to));
+      }
     }
   }
 

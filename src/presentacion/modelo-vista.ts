@@ -2,9 +2,10 @@
 // ejecutada y siguiente, las variables vivas, la cadena de sustitución, el panel de condición, las vueltas, la consola, el búfer y lo que dice el robot—. Los componentes presentacionales solo
 // reciben esto por `props`; la `Traza` vive fuera de React y el contenedor le pide `estadoEn`/`instantaneaEn` para armar la entrada. Puro, sin DOM, y NUNCA calcula lo que el motor ya calculó:
 // compone los datos de los pasos.
-import type { InstantaneaDeEjecucion, Paso, Segmento, VistaPrograma } from '../motor/vista.ts';
+import type { InstantaneaDeEjecucion, Paso, Rango, Segmento, VistaPrograma } from '../motor/vista.ts';
 import { derivarBufer, type BuferVista } from './bufer.ts';
 import { derivarCondicion, type CondicionVista } from './condicion.ts';
+import { ramaNoTomada } from './ramas-del-if.ts';
 import { derivarRobot, type EstadoDeLaEjecucion, type RobotVista } from './robot.ts';
 import { cadenaDeSustitucion } from './sustitucion.ts';
 import { derivarVariables, type VariableVista } from './variables.ts';
@@ -33,6 +34,8 @@ export interface ModeloVista {
   readonly consola: readonly Segmento[];
   readonly bufer: BuferVista | null;
   readonly robot: RobotVista;
+  /** El tramo del código que el programa se salta en este paso (la rama del `if` que no se toma), o `null` si el paso no es la condición de un `if` (hito 2C). */
+  readonly ramaNoTomada: Rango | null;
   /** ¿El programa espera un dato Y la pantalla está en el último paso? Solo entonces la consola muestra el campo de entrada. */
   readonly esperandoEntrada: boolean;
 }
@@ -56,6 +59,7 @@ export function derivarModeloVista(entrada: EntradaModeloVista): ModeloVista {
     consola: instantanea.salida,
     bufer: derivarBufer(aplicados),
     robot: derivarRobot({ ejecucion, aplicados, siguiente, total, vista }),
+    ramaNoTomada: ramaNoTomada(ultimo, vista),
     esperandoEntrada,
   };
 }

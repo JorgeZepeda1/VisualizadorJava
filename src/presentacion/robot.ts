@@ -1,8 +1,10 @@
 // Qué dice el robot y cómo se ve en cada momento (tarea 4.11, REQ-VIS-011, ADR 015). En un paso del programa dice la frase de su explicación —el motor manda la clave y los datos, el catálogo
-// `textos/es-MX/explicaciones.ts` la escribe—, con su línea; en el paso 0 dice cuál línea sigue; si el programa espera un dato lo dice; y en el último paso resume cómo terminó. El robot NUNCA dice
+// `textos/es-MX/explicaciones.ts` la escribe—, con su línea; en el paso 0 dice cuál línea sigue (y, si el visualizador detuvo el programa por seguridad, lo avisa ya desde ahí con el texto de
+// `textos/es-MX/avisos-de-limite.ts`); si el programa espera un dato lo dice; y en el último paso resume cómo terminó. El robot NUNCA dice
 // algo que el motor no calculó: cada texto sale de un dato del motor (la explicación del paso, la línea del nodo que espera, la causa del fin) o de un estado que la interfaz conoce de verdad
 // (todavía no hay programa, se está revisando). Puro, sin DOM.
 import type { FinEjecucion, Paso, VistaPrograma } from '../motor/vista.ts';
+import { textoDelAvisoDeLimite } from '../textos/es-MX/avisos-de-limite.ts';
 import { textoDeExplicacion } from '../textos/es-MX/explicaciones.ts';
 import type { TipoDeAviso } from '../textos/es-MX/paneles.ts';
 import { textosRobot, type AnimoDelRobot } from '../textos/es-MX/robot.ts';
@@ -13,7 +15,9 @@ export type EstadoDeLaEjecucion =
   | { readonly estado: 'compilando' }
   | { readonly estado: 'calculando' }
   | { readonly estado: 'esperando-entrada'; readonly nodo: number }
-  | { readonly estado: 'terminada'; readonly fin: FinEjecucion };
+  | { readonly estado: 'terminada'; readonly fin: FinEjecucion }
+  /** El trabajador acusó `detener` antes de que el programa terminara (hito 2C): ya no llegarán más pasos y no hay un `fin` que resumir. */
+  | { readonly estado: 'detenida' };
 
 export interface RobotVista {
   readonly animo: AnimoDelRobot;
@@ -63,6 +67,7 @@ function avisoDelPaso(paso: Paso): TipoDeAviso | null {
   switch (explicacion.datos.causa) {
     case 'limite-pasos':
     case 'limite-caracteres':
+    case 'limite-tiempo':
       return 'seguridad';
     case 'no-disponible-en-ejecucion':
       return 'no-disponible';
@@ -88,11 +93,14 @@ function alInicio({ ejecucion, siguiente, total, vista }: EntradaDelRobot): Robo
   if (ejecucion.estado === 'terminada' && total === 0) {
     return sinPaso(textosRobot.resumenDelFin[ejecucion.fin.causa]({ pasos: 0 }), animoDelFin(ejecucion.fin.causa));
   }
+  if (ejecucion.estado === 'detenida' && total === 0) return sinPaso(textosRobot.detenida());
   const esperando = ejecucion.estado === 'esperando-entrada';
   const lineaDeLaLectura = esperando ? lineaDelNodo(vista, ejecucion.nodo) : null;
   const lineaSiguiente = siguiente?.linea ?? lineaDeLaLectura;
-  const nota = esperando && total === 0 && lineaDeLaLectura !== null ? textosRobot.esperandoUnDato(lineaDeLaLectura) : null;
-  return sinPaso(textosRobot.alInicio(lineaSiguiente), esperando && total === 0 ? 'esperando' : 'normal', nota);
+  const notaDeLaEspera = esperando && total === 0 && lineaDeLaLectura !== null ? textosRobot.esperandoUnDato(lineaDeLaLectura) : null;
+  // Un programa que el visualizador detuvo por seguridad lo dice desde el paso 0, con la evidencia del ciclo si la hay: el alumno no tiene que llegar al último de miles de pasos para enterarse.
+  const notaDelLimite = ejecucion.estado === 'terminada' ? textoDelAvisoDeLimite(ejecucion.fin) : null;
+  return sinPaso(textosRobot.alInicio(lineaSiguiente), esperando && total === 0 ? 'esperando' : 'normal', notaDeLaEspera ?? notaDelLimite);
 }
 
 /** Lo que el robot agrega en el ÚLTIMO paso: la espera de un dato, que el motor sigue calculando, o el resumen de cómo terminó. */
@@ -105,6 +113,8 @@ function notaDelUltimoPaso(entrada: EntradaDelRobot): { readonly nota: string | 
     }
     case 'terminada':
       return { nota: textosRobot.resumenDelFin[ejecucion.fin.causa]({ pasos: total }), animo: animoDelFin(ejecucion.fin.causa) };
+    case 'detenida':
+      return { nota: textosRobot.detenida(), animo: 'normal' };
     case 'calculando':
       return { nota: textosRobot.calculando(), animo: 'normal' };
     default:

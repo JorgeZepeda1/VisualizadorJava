@@ -177,6 +177,81 @@ describe('<App/> — MaquinaSnacks con entrada interactiva (el ejercicio del PO)
   });
 });
 
+describe('<App/> — la rama del `if` que no se toma, con el motor real (hito 2C)', () => {
+  const PROGRAMA = [
+    'public class Rama {',
+    '    public static void main(String[] args) {',
+    '        int n = 5;',
+    '        if (n > 10) {',
+    '            System.out.println("grande");',
+    '        } else if (n > 3) {',
+    '            System.out.println("medio");',
+    '        } else {',
+    '            System.out.println("chico");',
+    '        }',
+    '    }',
+    '}',
+  ].join('\n');
+
+  /** El código atenuado en el editor, una pieza por línea, SIN la etiqueta que lo acompaña. */
+  function atenuado(): string {
+    return Array.from(document.querySelectorAll('.cm-rama-no-tomada'))
+      .map((pieza) => {
+        const copia = pieza.cloneNode(true) as HTMLElement;
+        copia.querySelectorAll('.cm-etiqueta-rama-no-tomada').forEach((etiqueta) => etiqueta.remove());
+        return copia.textContent ?? '';
+      })
+      .join('\n');
+  }
+
+  it('en la condición falsa del `if` se atenúa su bloque; en la del `else if` verdadera, el `else`; y al salir de la condición, nada', async () => {
+    render(<App />);
+    escribirPrograma(PROGRAMA);
+    await pulsar(/visualizar/i);
+    await pulsar(/siguiente/i);
+    expect(atenuado()).toBe('');
+
+    await pulsar(/siguiente/i); // `n > 10` es falso: el programa se salta el bloque de «grande»
+    expect(globo()).toContain('Reviso n > 10');
+    expect(atenuado()).toBe('{\n            System.out.println("grande");\n        }');
+    expect(document.querySelectorAll('.cm-etiqueta-rama-no-tomada')).toHaveLength(1);
+
+    await pulsar(/siguiente/i); // `n > 3` es verdadero: se salta el `else` final
+    expect(globo()).toContain('Reviso n > 3');
+    expect(atenuado()).toBe('{\n            System.out.println("chico");\n        }');
+
+    await pulsar(/siguiente/i); // ya no es una condición
+    expect(atenuado()).toBe('');
+    expect(document.querySelector('.cm-etiqueta-rama-no-tomada')).toBeNull();
+  });
+
+  it('con la primera condición verdadera, el `else if` completo (con su propio `else`) es lo que se atenúa', async () => {
+    render(<App />);
+    escribirPrograma(PROGRAMA.replace('int n = 5;', 'int n = 50;'));
+    await pulsar(/visualizar/i);
+    await pulsar(/siguiente/i);
+    await pulsar(/siguiente/i); // `n > 10` es verdadero
+    expect(atenuado()).toBe(
+      ['if (n > 3) {', '            System.out.println("medio");', '        } else {', '            System.out.println("chico");', '        }'].join('\n'),
+    );
+  });
+});
+
+describe('<App/> — un ciclo que no termina, con el motor real (hito 2C)', () => {
+  const CICLO_INFINITO = readFileSync(resolve(import.meta.dirname, '../../corpus/curso/u6-ciclo-infinito-demo.java'), 'utf8');
+
+  it('desde el paso 0 el alumno lee que el visualizador se detuvo por seguridad y por qué: «contador siempre valió 1»', async () => {
+    render(<App />);
+    escribirPrograma(CICLO_INFINITO);
+    await pulsar(/visualizar/i);
+
+    expect(globo()).toContain('Todavía no se ejecuta nada');
+    expect(globo()).toContain('El programa llevaba demasiados pasos y todavía no terminaba.');
+    expect(globo()).toContain('contador siempre valió 1 en las últimas 100 vueltas');
+    expect(screen.getAllByText('Paso 0 de 100001').length).toBeGreaterThan(0);
+  }, 30_000);
+});
+
 describe('<App/> — el alumno corrige y vuelve a visualizar', () => {
   it('«Editar programa» devuelve el editor y, al corregir y visualizar de nuevo, se ve el programa nuevo', async () => {
     render(<App />);

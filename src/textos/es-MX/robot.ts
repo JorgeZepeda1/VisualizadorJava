@@ -43,6 +43,8 @@ export const textosRobot = {
   /** El programa llegó a una lectura de `Scanner` sin renglón: `linea` es la de ese nodo, que el motor mandó en `espera-entrada`. */
   esperandoUnDato: (linea: number): string => `En la línea ${linea} el programa espera un dato. Escríbelo en la consola y pulsa Enter.`,
   calculando: (): string => 'Sigo calculando los siguientes pasos…',
+  /** El trabajador acusó `detener`: la ejecución ya no sigue y no llegarán más pasos. No es una causa de fin del programa (nadie lo vio terminar), por eso no está en `resumenDelFin`. */
+  detenida: (): string => 'Así terminó: la ejecución se detuvo antes de llegar al final del programa.',
   resumenDelFin: RESUMENES_DEL_FIN,
   descripcionDelAnimo: {
     normal: (): string => 'Un robot amable que te explica cada paso',

@@ -18,6 +18,7 @@ export {
   derivarResaltados,
   resaltadosDelProblema,
   type EtiquetaDeVuelta,
+  type RamaAtenuada,
   type ResaltadoDeProblema,
   type ResaltadosDelEditor,
 } from './resaltados.ts';

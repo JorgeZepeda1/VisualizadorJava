@@ -2,6 +2,7 @@
 // El motor ya escribe así los valores de sus explicaciones (`motor/interprete/explicar.ts`); aquí se escriben los de las variables a partir del `Valor` crudo de la traza y
 // del tipo de la variable (un `char` viaja como número: sin su tipo, 65 no sería `'A'`).
 import { describe, expect, it } from 'vitest';
+import { doubleATexto } from '../motor/vista.ts';
 import { formatearValor } from './valores.ts';
 
 describe('formatearValor: enteros, booleanos y objetos', () => {
@@ -75,6 +76,18 @@ describe('formatearValor: double, con la forma de Double.toString', () => {
     expect(formatearValor(9999999, 'double')).toBe('9999999.0');
     expect(formatearValor(0.001, 'double')).toBe('0.001');
     expect(formatearValor(123456.789, 'double')).toBe('123456.789');
+  });
+
+  it('los casos donde JDK 17 NO escribe los dígitos más cortos (los de JavaScript) salen como Java: `Double.toString` exacto del motor (hito 2C)', () => {
+    expect(formatearValor(1e23, 'double')).toBe('9.999999999999999E22');
+    expect(formatearValor(Number.MIN_VALUE, 'double')).toBe('4.9E-324');
+    expect(formatearValor(2 ** 60, 'double')).toBe('1.15292150460684698E18');
+  });
+
+  it('el valor que el panel de variables escribe es el mismo que el motor escribe en la consola (una sola fuente de verdad)', () => {
+    for (const numero of [0.1 + 0.2, 10 / 3, 1e7, 1.5e-5, 12345678.9, 2 ** 53, 100]) {
+      expect(formatearValor(numero, 'double'), String(numero)).toBe(doubleATexto(numero));
+    }
   });
 
   it('NaN e infinitos se escriben como Java', () => {

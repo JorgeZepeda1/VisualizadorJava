@@ -1,6 +1,7 @@
 // Catálogo es-MX — las cuatro zonas de la pantalla (código, estado, consola, explicación) y sus paneles (tareas 4.3 a 4.9, 4.11; ADR 015, design.md §6.2). Un solo
 // lugar con las palabras que el alumno ve —o escucha— en cada panel: los componentes las piden aquí y nunca llevan un texto suelto. Los fragmentos de código van entre
 // comillas invertidas (`if`) y la presentación los segmenta para pintarlos como código. Solo puede importar tipos de `motor/vista` (matriz de capas).
+import { tituloDelAvisoDeLimite } from './avisos-de-limite.ts';
 
 /**
  * Los tipos de aviso que ve el alumno (REQ-VIS-002): los dos primeros llegan al revisar el programa; los otros dos, al ejecutarlo. `interno` es el quinto, aparte: un fallo del propio
@@ -15,7 +16,8 @@ const TITULOS_DE_AVISO: Readonly<Record<TipoDeAviso, string>> = {
   'error-compilacion': 'Error de compilación',
   'no-disponible': 'No disponible en el visualizador',
   excepcion: 'El programa se detuvo por un error',
-  seguridad: 'Se detuvo por seguridad',
+  // El título del aviso de seguridad vive en su catálogo (`avisos-de-limite.ts`): una sola frase para el ícono del globo y para el aviso (hito 2C).
+  seguridad: tituloDelAvisoDeLimite(),
   interno: 'Falla del visualizador',
 };
 
@@ -107,6 +109,8 @@ export const textosPaneles = {
     etiqueta: (): string => 'Código Java',
     lineaEjecutada: (): string => 'Línea recién ejecutada',
     lineaSiguiente: (): string => 'Línea siguiente',
+    /** La etiqueta junto a la rama del `if` que el programa se salta (el código se atenúa, nunca se oculta). */
+    ramaNoTomada: (): string => '✗ esta rama no se ejecuta',
     /** El nombre de un carácter invisible (el título que sale al pasar el ratón sobre su marca roja). */
     caracterEspecial: (codigo: number): string => `${NOMBRES_DE_CARACTERES_ESPECIALES.get(codigo) ?? 'Carácter de control'} (${codigoUnicode(codigo)})`,
   },

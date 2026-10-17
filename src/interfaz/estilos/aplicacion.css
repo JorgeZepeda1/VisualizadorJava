@@ -237,6 +237,27 @@ button:disabled {
   font-weight: 600;
 }
 
+/* La rama del `if` que NO se toma: color suave (que sigue pasando AA, nunca `opacity`) Y cursiva Y una etiqueta en palabras con ✗ — nunca solo color (REQ-VIS-006). El código sigue ahí, visible. */
+.cm-rama-no-tomada,
+.cm-rama-no-tomada span {
+  color: var(--texto-suave);
+  font-style: italic;
+}
+
+.cm-etiqueta-rama-no-tomada,
+.cm-rama-no-tomada .cm-etiqueta-rama-no-tomada {
+  margin-left: 1rem;
+  padding: 0 0.5rem;
+  border: 1px dashed #8b92a6;
+  border-radius: 999px;
+  background: #f1f3f8;
+  color: var(--texto-suave);
+  font-family: system-ui, sans-serif;
+  font-size: 0.8em;
+  font-style: normal;
+  font-weight: 600;
+}
+
 /* Error: subrayado ONDULADO. Aviso de «no disponible»: subrayado PUNTEADO. */
 .cm-problema-error {
   text-decoration: underline wavy var(--error);
@@ -574,6 +595,11 @@ li.atenuada {
 /* Avisos (cuatro tipos + fallo interno): ícono, título y un BORDE distinto cada uno, además del color. */
 .aviso {
   border-left: 0.5rem solid var(--error);
+}
+
+/* Dentro del globo del robot el aviso no trae relleno propio: sin esta sangría, el borde punteado (o el que toque) se encima al texto. */
+.globo-contenido .aviso {
+  padding-left: 0.75rem;
 }
 
 .aviso-titulo {

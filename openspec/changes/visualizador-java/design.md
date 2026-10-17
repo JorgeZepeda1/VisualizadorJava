@@ -63,7 +63,7 @@ Las guardas son del compilador (un `tsconfig` por capa: si `motor` toca `documen
 ├── src/
 │   ├── motor/
 │   │   ├── index.ts            API completa (trabajador y pruebas)
-│   │   ├── vista.ts            API de presentación: Traza, formatearValorJava, tipos
+│   │   ├── vista.ts            API de presentación: Traza, doubleATexto (el Double.toString exacto), tipos
 │   │   ├── fuente/             Rango, tabla de líneas (desplazamiento ↔ línea/columna)
 │   │   ├── lexico/             analizador-lexico.ts, tokens.ts, literales.ts
 │   │   ├── sintaxis/           analizador-sintactico.ts, expresiones.ts (Pratt), ast.ts, no-soportado.ts,
@@ -109,6 +109,7 @@ Las guardas son del compilador (un `tsconfig` por capa: si `motor` toca `documen
 │   │   │                       transformar-semilla.ts, mutantes.ts, programas-generados.ts, medir-plataforma.ts
 │   │   └── java/               Generar*.java, CompiladorEnLote.java, MedirPow.java
 │   ├── eslint/                 reglas locales (textos fuera del catálogo, capas)
+│   ├── vitest/                 transporte-en-proceso.ts (setupFile del proyecto `interfaz`: registra el respaldo en proceso del cliente, porque jsdom no tiene `Worker` y `cliente.ts` no importa `trabajador.ts`)
 │   └── presupuesto-tamano.ts · licencias.ts
 ├── pruebas/                    diferencial/ propiedades/ compilacion/ traza/ generadores/ e2e/ rendimiento/
 └── .github/workflows/          ci.yml · oraculo.yml · plataforma.yml · desplegar.yml
@@ -299,7 +300,7 @@ interface Paso {
   clase: ClasePaso;
   nodo: number;                       // id en VistaPrograma
   valores?: (Valor | null)[];         // alineados con el plan del nodo; null = no evaluado (cortocircuito)
-  cambios?: Cambio[];                 // { ranura, anterior, nuevo, punto } — reversibles
+  cambios?: Cambio[];                 // { ranura, anterior, nuevo, punto } — `anterior` es de ESA variable; nunca se deshace con él (§3.4)
   salida?: Segmento[];                // { flujo: 'out' | 'err' | 'eco', texto }
   entrada?: { cursor: number; agregado?: string };   // renglón que entró al búfer y avance del cursor
   control?: { resultado?: boolean; vuelta?: number; ciclo?: number; caso?: number; predecible?: true };
@@ -329,7 +330,8 @@ type Valor = number | bigint | boolean | string | { objeto: 'Scanner' } | { obje
 La guarda la interfaz en `motor/traza/traza.ts` (código puro, compartido con las pruebas):
 
 - `agregar(pasos)`; cada **256 pasos** un punto de control (ranuras, contadores de vuelta, cursor y búfer del `Scanner`, longitud de consola).
-- `estadoEn(n)` = punto de control + ≤ 255 deltas; avanzar o retroceder uno aplica o deshace un delta (cada cambio trae `anterior`). Saltar a cualquier paso de 100 000 cuesta microsegundos (C11).
+- `instantaneaEn(n, vista)` = punto de control anterior a `n` + ≤ 255 deltas (`estadoEn(n)` devuelve los primeros `n` pasos). **La `Traza` solo avanza desde el punto de control: no existe «deshacer un paso».** Ir a un paso anterior (retroceder uno, saltar atrás, reiniciar) parte de un punto de control y vuelve a aplicar los `cambios` hacia adelante. Saltar a cualquier paso de 100 000 cuesta microsegundos (C11).
+- **`Cambio.anterior` es el valor de ESA variable, no el del nombre** (decisión de la tarea 3.1, hito 2-A; ADR 006): dos `for` seguidos con `int fila` (`e16-triangulos-y-tablas`) son dos variables con el mismo nombre, y la declaración de la segunda llega con `anterior` vacío aunque el nombre aún valiera algo; deshacer con él perdería ese valor. Por eso `anterior` solo alimenta lo que se muestra («cambió de 3 a 4») y nunca se usa para reconstruir un estado; la propiedad `pruebas/propiedades/traza-del-corpus.test.ts` vigila que partir de un punto de control dé lo mismo que reproducir desde 0, en cada paso de cada programa ejecutable del corpus.
 - **Variables en alcance** se derivan estáticamente (`vivas` de cada nodo); «sin inicializar» es dinámico (la declaración escribe `SIN_VALOR` en cada vuelta); «salió de alcance» es la diferencia entre los nodos de n−1 y n.
 - **Prueba de escritorio:** índice incremental de pasos relevantes (cambian variables, evalúan condición o imprimen); columnas **por nombre**, que no es ambiguo porque Java prohíbe el sombreado; tabla virtualizada.
 - **Consola:** segmentos `out`/`err`/`eco` con índice acumulado por paso; se pinta solo la ventana visible.
@@ -470,7 +472,10 @@ Sus valores se generan de `DecimalFormatSymbols` del JDK. Lo consumen **solo** `
 | T → UI | `pasos` | `id`, `desde`, `pasos[]` (≤ 2 000 pasos o ≤ 16 ms por lote) |
 | T → UI | `espera-entrada` | `id`, `nodo` (la lectura pendiente = «línea siguiente») |
 | T → UI | `fin` · `error-interno` | `id`, `fin` · `id`, `mensaje` |
+| T → UI | `detenido` | `id` — el acuse de `detener` (hito 2, parte A): el trabajador dejó de correr esa ejecución |
 
+- **`detener` siempre recibe su `detenido`.** El trabajador lo manda aunque la ejecución ya no existiera; si no llega en 300 ms, el cliente termina al trabajador (`terminate()`), deja listo al de repuesto y **fabrica él mismo** el `detenido`. Así la interfaz no necesita su propio plazo.
+- **Qué hace la pantalla con `detenido`** (hito 2, parte C): si la ejecución vigente seguía calculando o esperando un dato, queda `detenida` — no hay `fin` que resumir y ya no llegarán pasos —, el robot lo dice («Así terminó: la ejecución se detuvo antes de llegar al final del programa.»), el campo de la consola desaparece y lo ya calculado sigue navegable; si ya había terminado, el acuse no cambia nada. Un mensaje de una ejecución ya reemplazada (otro `id` que el vigente) se ignora —el contenedor compara con el `id` de la ejecución **vigente**, no con el del cliente que lo mandó— y «Editar programa» también invalida la ejecución que se deja.
 - **Un trabajador por ejecución** y uno de repuesto ya cargado: editar o volver a visualizar termina el anterior; no hay estado viejo que limpiar.
 - El trabajador corre `avanzar` en rebanadas de ≤ 8 ms y cede con `MessageChannel` (sin la espera mínima de `setTimeout` anidado); los límites son cooperativos dentro del motor.
 - Clonación estructurada (conserva `BigInt`, `-0`, `NaN`); nada de JSON ni de `SharedArrayBuffer` (GitHub Pages no manda COOP/COEP).
@@ -531,7 +536,7 @@ sequenceDiagram
   W-->>C: pasos (cada ≤ 16 ms)
   alt límite cooperativo (pasos, caracteres o tiempo)
     W-->>C: fin {limite-pasos, diagnóstico del ciclo}
-    C-->>UI: «Se detuvo por seguridad» con datos («contador siempre valió 1»)
+    C-->>UI: «Se detuvo por seguridad» con datos («contador siempre valió 1»), ya desde el paso 0 del robot
   else 2 s sin mensajes mientras calcula
     C->>W: terminate()
     C->>C: activa el trabajador de repuesto
@@ -588,7 +593,7 @@ Cuatro zonas fijas en el mismo campo visual: **código · estado (Variables ⇄ 
 
 ### 6.3 CodeMirror 6
 
-Paquetes: `@codemirror/state`, `view`, `language`, `commands`, `lang-java` (solo resalta; el análisis es del motor). Extensiones: números de línea, historial, sangría al pulsar Enter, correspondencia de llaves, resaltado, `Compartment` para solo lectura (en visualización) y para el tema (proyector). Un `StateField` recibe por `StateEffect` los resaltados del `ModeloVista`: línea recién ejecutada y línea siguiente (clase de línea + marcador de canal ▶/▷ con texto accesible), subexpresión actual (marca con contorno), rama no tomada (atenuada + etiqueta «no se ejecuta»), «no evaluado» (tachado + etiqueta), error y aviso (subrayado ondulado o punteado + marcador ✖/ⓘ), contador de vueltas (*widget*). Tab no se captura (sin trampa de teclado, WCAG 2.1.2). El editor es un presentacional: recibe `modo` y `resaltados`, emite `onCambio`.
+Paquetes: `@codemirror/state`, `view`, `language`, `commands`, `lang-java` (solo resalta; el análisis es del motor). Extensiones: números de línea, historial, sangría al pulsar Enter, correspondencia de llaves, resaltado, `Compartment` para solo lectura (en visualización) y para el tema (proyector). Un `StateField` recibe por `StateEffect` los resaltados del `ModeloVista`: línea recién ejecutada y línea siguiente (clase de línea + marcador de canal ▶/▷ con texto accesible), subexpresión actual (marca con contorno), rama no tomada (atenuada + etiqueta «✗ esta rama no se ejecuta»; los rangos salen de `VistaPrograma.ramasDeIf`, que el motor entrega con `compilar()`), «no evaluado» (tachado + etiqueta), error y aviso (subrayado ondulado o punteado + marcador ✖/ⓘ), contador de vueltas (*widget*). Tab no se captura (sin trampa de teclado, WCAG 2.1.2). El editor es un presentacional: recibe `modo` y `resaltados`, emite `onCambio`.
 
 ### 6.4 Consola (D7) y búfer
 

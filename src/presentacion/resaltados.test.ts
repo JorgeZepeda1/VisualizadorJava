@@ -9,18 +9,30 @@ const VISTA = vistaDePrueba([nodo(0, { linea: 4 }), nodo(1, { linea: 6 })]);
 
 describe('derivarResaltados: líneas y vueltas', () => {
   it('lleva la línea recién ejecutada y la siguiente', () => {
-    expect(derivarResaltados({ lineas: { ejecutada: 4, siguiente: 5 }, vueltas: [] }, VISTA)).toEqual({
+    expect(derivarResaltados({ lineas: { ejecutada: 4, siguiente: 5 }, vueltas: [], ramaNoTomada: null }, VISTA)).toEqual({
       lineaEjecutada: 4,
       lineaSiguiente: 5,
       vueltas: [],
+      ramaNoTomada: null,
     });
   });
 
+  it('lleva la rama del `if` que no se toma como el tramo de código a atenuar (desde/hasta, como el subrayado de un problema)', () => {
+    const resaltados = derivarResaltados({ lineas: { ejecutada: 4, siguiente: 5 }, vueltas: [], ramaNoTomada: { inicio: 66, fin: 98 } }, VISTA);
+    expect(resaltados.ramaNoTomada).toEqual({ desde: 66, hasta: 98 });
+  });
+
+  it('triangulación: otro tramo, otros desplazamientos', () => {
+    const resaltados = derivarResaltados({ lineas: { ejecutada: 9, siguiente: 10 }, vueltas: [], ramaNoTomada: { inicio: 12, fin: 40 } }, VISTA);
+    expect(resaltados.ramaNoTomada).toEqual({ desde: 12, hasta: 40 });
+  });
+
   it('antes del primer paso solo hay línea siguiente', () => {
-    expect(derivarResaltados({ lineas: { ejecutada: null, siguiente: 3 }, vueltas: [] }, VISTA)).toEqual({
+    expect(derivarResaltados({ lineas: { ejecutada: null, siguiente: 3 }, vueltas: [], ramaNoTomada: null }, VISTA)).toEqual({
       lineaEjecutada: null,
       lineaSiguiente: 3,
       vueltas: [],
+      ramaNoTomada: null,
     });
   });
 
@@ -32,6 +44,7 @@ describe('derivarResaltados: líneas y vueltas', () => {
           { nombre: 'ciclo externo', vuelta: 2, termino: false, nodoDelCiclo: 0 },
           { nombre: 'ciclo interno', vuelta: 3, termino: true, nodoDelCiclo: 1 },
         ],
+        ramaNoTomada: null,
       },
       VISTA,
     );
@@ -43,7 +56,7 @@ describe('derivarResaltados: líneas y vueltas', () => {
 
   it('un ciclo que la vista no conoce no inventa una línea', () => {
     const resaltados = derivarResaltados(
-      { lineas: { ejecutada: 1, siguiente: null }, vueltas: [{ nombre: 'ciclo', vuelta: 1, termino: false, nodoDelCiclo: 99 }] },
+      { lineas: { ejecutada: 1, siguiente: null }, vueltas: [{ nombre: 'ciclo', vuelta: 1, termino: false, nodoDelCiclo: 99 }], ramaNoTomada: null },
       VISTA,
     );
     expect(resaltados.vueltas).toEqual([]);

@@ -1,77 +1,84 @@
-// Tarea 3.4/3.5/3.6 (REQ-EJEC-007, C10, ADR 007): un ciclo sin fin NUNCA congela la página. Playwright ×3 motores contra el build real, con el motor y el trabajador de verdad: el programa del currículo
-// `u6-ciclo-infinito-demo` (un `while (contador <= 5)` al que le falta `contador = contador + 1`) corre en el Web Worker, que da pasos en rebanadas de ≤ 8 ms y cede el turno; el límite de pasos lo
-// detiene solo; y mientras tanto el hilo principal sigue atendiendo (un reloj de la página que late cada 20 ms no se queda sin latir). Volver a visualizar funciona (el trabajador se reemplaza).
+// Tarea 3.4/3.5/3.6 + hito 2C (REQ-EJEC-007, C10, ADR 007): un ciclo sin fin NUNCA congela la página y el alumno entiende por qué se detuvo. Playwright ×3 motores contra el build real, con el motor y el
+// trabajador de verdad, sobre la pantalla del visualizador: el programa del currículo `u6-ciclo-infinito-demo` (un `while (contador <= 5)` al que le falta `contador = contador + 1`) corre en el Web
+// Worker, que da pasos en rebanadas de ≤ 8 ms y cede el turno; el límite de pasos lo detiene solo; mientras tanto el hilo principal sigue atendiendo (un reloj de la página que late cada 20 ms no se
+// queda sin latir); y el robot dice, desde el paso 0, que se detuvo por seguridad y cita la evidencia («`contador` siempre valió 1…»). Volver a visualizar funciona (el trabajador se reemplaza).
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
+import { escribirEnElEditor, globoDelRobot, irAlFinal, visualizar } from './ayudas.ts';
 
-const CICLO_SIN_AVANCE = [
-  'public class CicloInfinitoDemo {',
-  '    public static void main(String[] args) {',
-  '        int contador = 1;',
-  '        while (contador <= 5) {',
-  '            System.out.println("Vuelta número " + contador);',
-  '        }',
-  '    }',
-  '}',
-].join('\n');
+const CICLO_SIN_AVANCE = readFileSync(resolve('corpus/curso/u6-ciclo-infinito-demo.java'), 'utf8');
+const CICLO_VACIO = ['public class Vacio {', '    public static void main(String[] args) {', '        while (true) {}', '    }', '}'].join('\n');
 
-// Escribe de verdad en CodeMirror 6 (mismo procedimiento que u3-hola-mundo.spec.ts).
-async function escribirEnElEditor(page: Page, programa: string): Promise<void> {
-  const editor = page.locator('.cm-content');
-  await expect(editor).toBeVisible();
-  await editor.click();
-  await page.keyboard.press('ControlOrMeta+a');
-  await page.keyboard.type(programa);
+/** Cota holgada a propósito: lo que se vigila es que el motor NUNCA ocupe el hilo principal sin soltarlo (un ciclo sin fin lo dejaría sin latir para siempre); el «teclado ≤ 100 ms p95» es de la 3.8. */
+const HUECO_MAXIMO_ENTRE_LATIDOS_MS = 5_000;
+
+/** Un reloj de la página que late cada 20 ms: si el motor corriera en el hilo principal (o el trabajador lo atorara) habría un hueco enorme entre latidos. */
+async function empezarARegistrarLatidos(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const ventana = window as unknown as { __latidos: number[] };
+    ventana.__latidos = [];
+    setInterval(() => ventana.__latidos.push(performance.now()), 20);
+  });
 }
 
-/** Espera a que lo que hay en la consola deje de crecer (la ejecución ya se detuvo) y lo devuelve. */
-async function esperarConsolaEstable(page: Page): Promise<string> {
-  let anterior = '';
-  await expect
-    .poll(
-      async () => {
-        const actual = (await page.getByTestId('consola').textContent()) ?? '';
-        const estable = actual.length > 0 && actual === anterior;
-        anterior = actual;
-        return estable;
-      },
-      { timeout: 60_000, intervals: [400] },
-    )
-    .toBe(true);
-  return anterior;
+async function huecoMaximoEntreLatidos(page: Page): Promise<number> {
+  // `while (true) {}` llega al límite en unos 200 ms: se espera a tener latidos suficientes en vez de exigirlos de inmediato (si el hilo se atorara, nunca llegarían y la espera falla).
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __latidos: number[] }).__latidos.length), { timeout: 10_000 }).toBeGreaterThan(10);
+  const latidos = await page.evaluate(() => (window as unknown as { __latidos: number[] }).__latidos);
+  return Math.max(...latidos.slice(1).map((latido, indice) => latido - (latidos[indice] ?? latido)));
 }
 
-test.describe('ciclo desbocado: se detiene solo y la página sigue viva', () => {
-  // 100 000 pasos se pintan en la consola de la pantalla de hoy (sin virtualizar hasta el lote 4) y dos ejecuciones en WebKit pasan de los 30 s por omisión.
+async function pegarYVisualizar(page: Page, programa: string): Promise<void> {
+  await page.goto('/');
+  await escribirEnElEditor(page, programa);
+  await empezarARegistrarLatidos(page);
+  await visualizar(page);
+}
+
+test.describe('ciclo desbocado: se detiene solo, la página sigue viva y el alumno entiende por qué', () => {
+  // 100 000 pasos se calculan en el trabajador; ir al último pinta la consola completa (sin virtualizar), y dos ejecuciones en WebKit pasan de los 30 s por omisión.
   test.setTimeout(120_000);
 
-  test('el ciclo sin avance se detiene por el límite, el hilo principal nunca se queda sin latir y se puede volver a visualizar', async ({ page }) => {
-    await page.goto('/');
-    await escribirEnElEditor(page, CICLO_SIN_AVANCE);
+  test('u6-ciclo-infinito-demo: se detiene por el límite, el hilo principal nunca se queda sin latir y el robot cita «contador siempre valió 1»', async ({ page }) => {
+    await pegarYVisualizar(page, CICLO_SIN_AVANCE);
 
-    // Un reloj de la página: late cada 20 ms. Si el motor corriera en el hilo principal (o el trabajador lo atorara) habría un hueco enorme entre latidos.
-    await page.evaluate(() => {
-      const ventana = window as unknown as { __latidos: number[] };
-      ventana.__latidos = [];
-      setInterval(() => ventana.__latidos.push(performance.now()), 20);
-    });
+    // Desde el paso 0 (sin tener que llegar al final) el alumno lee que se detuvo por seguridad y por qué.
+    await expect(globoDelRobot(page)).toContainText('Todavía no se ejecuta nada');
+    await expect(globoDelRobot(page)).toContainText('contador siempre valió 1 en las últimas 100 vueltas', { timeout: 60_000 });
+    await expect(globoDelRobot(page)).toContainText('El programa llevaba demasiados pasos y todavía no terminaba.');
+    await expect(page.getByText('Paso 0 de 100001').first()).toBeVisible();
+    expect(await huecoMaximoEntreLatidos(page), 'el hilo principal se quedó sin latir').toBeLessThan(HUECO_MAXIMO_ENTRE_LATIDOS_MS);
 
-    await page.getByRole('button', { name: /visualizar/i }).click();
-    await expect(page.getByTestId('consola')).toContainText('Vuelta número 1');
-    const salida = await esperarConsolaEstable(page);
-    expect(salida.startsWith('Vuelta número 1\n')).toBe(true);
-    expect(new Set(salida.split('\n').filter((renglon) => renglon !== ''))).toEqual(new Set(['Vuelta número 1'])); // «contador» nunca cambió
+    // En el último paso, el aviso con su título, la explicación del robot con la evidencia y el robot levantando la mano.
+    await irAlFinal(page);
+    await expect(page.getByText('Paso 100001 de 100001').first()).toBeVisible({ timeout: 60_000 });
+    await expect(globoDelRobot(page)).toContainText('Se detuvo por seguridad');
+    await expect(globoDelRobot(page)).toContainText('Paré el programa: ya llevaba demasiados pasos.');
+    await expect(globoDelRobot(page)).toContainText('contador siempre valió 1');
+    await expect(globoDelRobot(page)).toHaveAttribute('aria-live', 'assertive');
+    await expect(page.getByRole('img', { name: /robot/i })).toHaveAttribute('data-animo', 'seguridad');
+    // El borde punteado del aviso no se encima al texto: el texto empieza a la derecha del borde, con aire.
+    const avisoDelGlobo = globoDelRobot(page).locator('.aviso');
+    const sangria = await avisoDelGlobo.evaluate((elemento) => parseFloat(getComputedStyle(elemento).paddingLeft));
+    expect(sangria, 'el texto del aviso toca el borde punteado').toBeGreaterThanOrEqual(8);
 
-    const latidos = await page.evaluate(() => (window as unknown as { __latidos: number[] }).__latidos);
-    expect(latidos.length).toBeGreaterThan(10);
-    const huecoMaximo = Math.max(...latidos.slice(1).map((latido, indice) => latido - latidos[indice]));
-    // Cota holgada a propósito: con la pantalla de hoy, que pinta toda la consola en cada lote (se virtualiza en el lote 4), WebKit con tres navegadores en paralelo llega a ≈ 2,3 s de repintado. Lo que se
-    // vigila aquí es que el motor NUNCA ocupe el hilo principal sin soltarlo (un ciclo sin fin lo dejaría sin latir para siempre y la prueba agotaría su tiempo); el «teclado ≤ 100 ms p95» es de la 3.8.
-    expect(huecoMaximo, 'el hilo principal se quedó sin latir').toBeLessThan(10_000);
+    // Volver a visualizar termina al trabajador anterior y usa el de repuesto: la segunda ejecución llega igual de lejos y dice lo mismo.
+    await visualizar(page);
+    await expect(globoDelRobot(page)).toContainText('contador siempre valió 1 en las últimas 100 vueltas', { timeout: 60_000 });
+    await expect(page.getByText('Paso 0 de 100001').first()).toBeVisible();
+  });
 
-    // Volver a visualizar termina al trabajador anterior y usa el de repuesto: la segunda ejecución llega igual de lejos.
-    await page.getByRole('button', { name: /visualizar/i }).click();
-    await expect(page.getByTestId('consola')).toContainText('Vuelta número 1');
-    const segunda = await esperarConsolaEstable(page);
-    expect(segunda).toBe(salida);
+  test('while (true) {}: no congela la página y el aviso lo dice con lo que sí se sabe del ciclo', async ({ page }) => {
+    await pegarYVisualizar(page, CICLO_VACIO);
+
+    await expect(globoDelRobot(page)).toContainText('El programa llevaba demasiados pasos y todavía no terminaba.', { timeout: 60_000 });
+    await expect(globoDelRobot(page)).toContainText('seguía repitiéndose'); // la condición `true` no lee variables: no hay un «siempre valió» que citar y no se inventa
+    expect(await huecoMaximoEntreLatidos(page), 'el hilo principal se quedó sin latir').toBeLessThan(HUECO_MAXIMO_ENTRE_LATIDOS_MS);
+
+    // La página sigue respondiendo a quien la usa: la traza ya calculada es navegable.
+    await page.getByRole('button', { name: /siguiente/i }).click();
+    await expect(page.getByText('Paso 1 de 100001').first()).toBeVisible();
+    await expect(globoDelRobot(page)).toContainText('Línea 3');
   });
 });

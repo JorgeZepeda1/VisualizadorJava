@@ -121,6 +121,29 @@ describe('reductor: lo que manda el trabajador', () => {
   });
 });
 
+describe('reductor: el acuse `detenido` del trabajador (hito 2C)', () => {
+  it('con el programa calculando, la ejecución queda detenida: ya no llegarán más pasos y nada queda «calculando» para siempre', () => {
+    const estado = aplicar(visualizando({ paso: 3, seguirAlLlegar: true }), { tipo: 'detenido' });
+    expect(estado.ejecucion).toMatchObject({ estado: 'detenida', nodoEnEspera: null, fin: null });
+    expect(estado.navegacion).toMatchObject({ paso: 3, seguirAlLlegar: false });
+  });
+
+  it('con el programa esperando un dato, la espera se cierra: el campo de la consola ya no tiene a quién entregarle el dato', () => {
+    const estado = aplicar(visualizando(), { tipo: 'espera-entrada', nodo: 8 }, { tipo: 'detenido' });
+    expect(estado.ejecucion).toMatchObject({ estado: 'detenida', nodoEnEspera: null });
+  });
+
+  it('si el programa ya había terminado, el acuse no cambia cómo terminó', () => {
+    const terminado = aplicar(visualizando(), { tipo: 'fin', fin: { causa: 'excepcion' } });
+    expect(aplicar(terminado, { tipo: 'detenido' })).toEqual(terminado);
+  });
+
+  it('una reproducción que llegó al último paso se detiene sola (no espera pasos que ya no vendrán)', () => {
+    const detenida = aplicar(visualizando({ paso: 10, reproduciendo: true }), { tipo: 'detenido' });
+    expect(aplicar(detenida, { tipo: 'tic', total: 10 }).navegacion).toMatchObject({ paso: 10, reproduciendo: false });
+  });
+});
+
 describe('reductor: navegación', () => {
   it('siguiente avanza un paso y no pasa del total', () => {
     expect(aplicar(visualizando({ paso: 2 }), { tipo: 'siguiente', total: 10 }).navegacion.paso).toBe(3);

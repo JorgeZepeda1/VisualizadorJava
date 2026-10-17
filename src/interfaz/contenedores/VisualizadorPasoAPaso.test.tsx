@@ -244,6 +244,70 @@ describe('<Visualizador/> — el programa espera un dato (REQ-VIS-009)', () => {
   });
 });
 
+describe('<Visualizador/> — el acuse `detenido` del trabajador (hito 2C)', () => {
+  it('con el programa calculando, el acuse cierra la ejecución: el robot ya no dice «Sigo calculando» y lo ya calculado sigue navegable', async () => {
+    trabajadorQueResponde((id) => [compilado(id), { tipo: 'pasos', id, desde: 0, pasos: [DECLARACION, IMPRESION] }, { tipo: 'detenido', id }]);
+    render(<Visualizador />);
+    await pulsar(/visualizar/i);
+    await pulsar(/fin/i);
+
+    expect(screen.getByTestId('globo-del-robot').querySelector('.globo-nota')?.textContent).toBe(
+      'Así terminó: la ejecución se detuvo antes de llegar al final del programa.',
+    );
+    expect(screen.getByTestId('globo-del-robot').textContent).not.toContain('Sigo calculando');
+    expect(screen.getAllByText('Paso 2 de 2').length).toBeGreaterThan(0);
+    await pulsar(/anterior/i);
+    expect(globo()).toContain('Creo la variable edad de tipo int y le guardo 17.');
+  });
+
+  it('con el programa esperando un dato, el acuse quita el campo de la consola: ya no hay a quién entregarle el dato', async () => {
+    trabajadorQueResponde((id) => [
+      compilado(id),
+      { tipo: 'pasos', id, desde: 0, pasos: [DECLARACION, IMPRESION] },
+      { tipo: 'espera-entrada', id, nodo: 2 },
+      { tipo: 'detenido', id },
+    ]);
+    render(<Visualizador />);
+    await pulsar(/visualizar/i);
+    await pulsar(/fin/i);
+
+    expect(screen.queryByRole('textbox', { name: /dato/i })).toBeNull();
+    expect(screen.getByTestId('globo-del-robot').querySelector('.globo-nota')?.textContent).toBe(
+      'Así terminó: la ejecución se detuvo antes de llegar al final del programa.',
+    );
+  });
+
+  it('un acuse de una ejecución ya reemplazada (otro `id`) no toca a la ejecución nueva', async () => {
+    const entregas: Array<(mensaje: MensajeTrabajadorAUi) => void> = [];
+    vi.mocked(crearClienteTrabajador).mockImplementation(({ onMensaje }) => {
+      entregas.push(onMensaje);
+      const nuevo = { ejecutar: vi.fn(), darEntrada: vi.fn(), cerrarEntrada: vi.fn(), detener: vi.fn(), terminar: vi.fn() };
+      nuevo.ejecutar.mockImplementation((id: number) => {
+        onMensaje(compilado(id));
+        onMensaje({ tipo: 'pasos', id, desde: 0, pasos: [DECLARACION, IMPRESION] });
+      });
+      return nuevo as unknown as ClienteTrabajador;
+    });
+    render(<Visualizador />);
+    await pulsar(/visualizar/i);
+    await pulsar(/visualizar/i);
+    expect(entregas).toHaveLength(2);
+
+    await act(async () => {
+      entregas[0]?.({ tipo: 'detenido', id: 1 });
+    });
+    await pulsar(/fin/i);
+    expect(screen.getByTestId('globo-del-robot').querySelector('.globo-nota')?.textContent).toBe('Sigo calculando los siguientes pasos…');
+
+    await act(async () => {
+      entregas[1]?.({ tipo: 'detenido', id: 2 });
+    });
+    expect(screen.getByTestId('globo-del-robot').querySelector('.globo-nota')?.textContent).toBe(
+      'Así terminó: la ejecución se detuvo antes de llegar al final del programa.',
+    );
+  });
+});
+
 describe('<Visualizador/> — volver a editar', () => {
   beforeEach(() => {
     trabajadorQueResponde((id) => [compilado(id), { tipo: 'pasos', id, desde: 0, pasos: [DECLARACION] }, { tipo: 'fin', id, fin: { causa: 'terminado' } }]);

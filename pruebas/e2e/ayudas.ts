@@ -48,3 +48,42 @@ export async function teclearDato(page: Page, dato: string): Promise<void> {
 export function globoDelRobot(page: Page): Locator {
   return page.getByTestId('globo-del-robot');
 }
+
+/**
+ * Salta al último paso hasta que el programa espera un dato (el campo de la consola toma el foco) y lo teclea. Reintenta porque los pasos llegan del trabajador un instante después de teclear el
+ * dato anterior: si «Fin» se pulsa antes de que lleguen, todavía no hay a quién entregarle el dato.
+ */
+export async function teclearCuandoElProgramaEspere(page: Page, dato: string): Promise<void> {
+  const campo = page.getByRole('textbox', { name: /dato/i });
+  await expect(async () => {
+    await irAlFinal(page);
+    await expect(campo).toBeFocused({ timeout: 1_000 });
+  }).toPass({ timeout: 15_000 });
+  await teclearDato(page, dato);
+}
+
+/** Salta al último paso hasta que el robot cierra con el resumen «Así terminó…» (el programa ya no espera nada ni calcula más). */
+export async function irAlFinalDelPrograma(page: Page): Promise<void> {
+  await expect(async () => {
+    await irAlFinal(page);
+    await expect(globoDelRobot(page)).toContainText('Así terminó', { timeout: 1_000 });
+  }).toPass({ timeout: 15_000 });
+}
+
+/**
+ * Reinicia y recorre la traza paso por paso hasta el último: en CADA uno el robot dice algo (nunca un globo vacío) y nada queda sin resolver (un marcador `{…}`, `undefined`, `NaN`…). Devuelve
+ * cuántos pasos tiene la traza, que sale del máximo del deslizador.
+ */
+export async function verificarQueElRobotDiceAlgoEnCadaPaso(page: Page): Promise<number> {
+  const total = Number(await page.getByRole('slider', { name: /posición/i }).getAttribute('max'));
+  await page.getByRole('button', { name: /reiniciar/i }).click();
+  const siguiente = page.getByRole('button', { name: /siguiente/i });
+  for (let paso = 1; paso <= total; paso += 1) {
+    await siguiente.click();
+    await expect(page.getByText(`Paso ${paso} de ${total}`).first()).toBeVisible();
+    const texto = (await globoDelRobot(page).textContent()) ?? '';
+    expect(texto.trim().length, `paso ${paso}`).toBeGreaterThan(8);
+    expect(texto, `paso ${paso}`).not.toMatch(/[{}]|undefined|NaN|\[object|null/);
+  }
+  return total;
+}

@@ -85,6 +85,7 @@ function ejecucionParaElModelo(estado: EstadoApp): EstadoDeLaEjecucion {
   const { ejecucion } = estado;
   if (ejecucion.estado === 'esperando-entrada' && ejecucion.nodoEnEspera !== null) return { estado: 'esperando-entrada', nodo: ejecucion.nodoEnEspera };
   if (ejecucion.estado === 'terminada' && ejecucion.fin !== null) return { estado: 'terminada', fin: ejecucion.fin };
+  if (ejecucion.estado === 'detenida') return { estado: 'detenida' };
   return { estado: 'calculando' };
 }
 
@@ -121,8 +122,9 @@ export function Visualizador() {
   const problemaEnElCodigo = estado.modo === 'edicion' ? (estado.aviso?.resaltado ?? null) : null;
 
   // --- Lo que llega del trabajador ----------------------------------------------------------------------------------------------------------------
-  function alMensaje(id: number, mensaje: MensajeTrabajadorAUi): void {
-    if (mensaje.id !== id) return; // mensaje de una ejecución ya reemplazada: se ignora
+  function alMensaje(mensaje: MensajeTrabajadorAUi): void {
+    // Un mensaje de una ejecución ya reemplazada se ignora: se compara con la ejecución VIGENTE (la `ref`), no con la del cliente que lo mandó —ese `id` siempre coincide con el suyo—.
+    if (mensaje.id !== idEjecucionRef.current) return;
     switch (mensaje.tipo) {
       case 'compilado':
         despachar(mensaje.ok ? { tipo: 'compilado-ok', vista: mensaje.vista } : { tipo: 'problema-al-revisar', aviso: avisoDelProblema(mensaje.problema, mensaje.adicionales) });
@@ -142,6 +144,10 @@ export function Visualizador() {
       case 'error-interno':
         despachar({ tipo: 'problema-al-revisar', aviso: avisoInterno() });
         return;
+      case 'detenido':
+        // El acuse de `detener` (el cliente lo garantiza: el real, o el que fabrica a los 300 ms si el trabajador no contestó): la ejecución ya no sigue, así que la pantalla deja de esperar.
+        despachar({ tipo: 'detenido' });
+        return;
     }
   }
 
@@ -153,7 +159,7 @@ export function Visualizador() {
     focoInicialPendiente.current = true;
     despachar({ tipo: 'visualizar', id });
 
-    const cliente = crearClienteTrabajador({ onMensaje: (mensaje) => alMensaje(id, mensaje) });
+    const cliente = crearClienteTrabajador({ onMensaje: alMensaje });
     clienteRef.current = cliente;
     cliente.ejecutar(id, estado.codigo, configPorOmision());
   }
@@ -161,6 +167,7 @@ export function Visualizador() {
   function volverAEditar(): void {
     clienteRef.current?.terminar();
     clienteRef.current = null;
+    idEjecucionRef.current += 1; // lo que aún viniera en camino de la ejecución que se dejó ya no es de nadie
     traza.reiniciar();
     focoEnElEditorPendiente.current = true;
     despachar({ tipo: 'volver-a-editar' });

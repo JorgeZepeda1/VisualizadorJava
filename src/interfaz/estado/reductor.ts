@@ -20,7 +20,8 @@ export interface AvisoDeEdicion {
 export interface EjecucionApp {
   /** Identifica la ejecución: los mensajes de una ejecución ya reemplazada se ignoran. */
   readonly id: number;
-  readonly estado: 'calculando' | 'esperando-entrada' | 'terminada';
+  /** `detenida`: el trabajador acusó `detener` (`detenido`) antes de que el programa terminara; no hay `fin` y ya no llegarán pasos (hito 2C). */
+  readonly estado: 'calculando' | 'esperando-entrada' | 'terminada' | 'detenida';
   /** El nodo de la lectura pendiente cuando `estado === 'esperando-entrada'`. */
   readonly nodoEnEspera: number | null;
   readonly fin: FinEjecucion | null;
@@ -55,6 +56,7 @@ export type Accion =
   | { readonly tipo: 'espera-entrada'; readonly nodo: number }
   | { readonly tipo: 'entrada-enviada' }
   | { readonly tipo: 'fin'; readonly fin: FinEjecucion }
+  | { readonly tipo: 'detenido' }
   | { readonly tipo: 'siguiente'; readonly total: number }
   | { readonly tipo: 'anterior' }
   | { readonly tipo: 'reiniciar' }
@@ -143,6 +145,14 @@ export function reductor(estado: EstadoApp, accion: Accion): EstadoApp {
       return {
         ...estado,
         ejecucion: { ...estado.ejecucion, estado: 'terminada', nodoEnEspera: null, fin: accion.fin },
+        navegacion: { ...estado.navegacion, seguirAlLlegar: false },
+      };
+    case 'detenido':
+      // Un programa que ya terminó (con su `fin`) no cambia por un acuse tardío; uno que seguía calculando o esperando un dato ya no va a recibir nada más.
+      if (estado.ejecucion.estado === 'terminada' || estado.ejecucion.estado === 'detenida') return estado;
+      return {
+        ...estado,
+        ejecucion: { ...estado.ejecucion, estado: 'detenida', nodoEnEspera: null },
         navegacion: { ...estado.navegacion, seguirAlLlegar: false },
       };
     case 'siguiente':

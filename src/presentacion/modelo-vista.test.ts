@@ -65,6 +65,47 @@ describe('derivarModeloVista: la condición de un if', () => {
   });
 });
 
+describe('derivarModeloVista: la rama del `if` que no se toma (hito 2C)', () => {
+  // Nodo 1 = la condición `intentos < 10` (verdadera en PASO_CONDICION); su `if` tiene `else`.
+  const VISTA_CON_RAMAS = { ...VISTA, ramasDeIf: [{ nodo: 1, entonces: { inicio: 30, fin: 60 }, sino: { inicio: 66, fin: 98 } }] };
+
+  it('en el paso de la condición verdadera, la rama que se salta es la del `else`', () => {
+    const modelo = derivarModeloVista({
+      vista: VISTA_CON_RAMAS,
+      aplicados: [PASO_CONDICION],
+      siguiente: PASO_ASIGNACION,
+      instantanea: instantanea({ paso: 1, linea: 4 }),
+      total: 3,
+      ejecucion: { estado: 'calculando' },
+    });
+    expect(modelo.ramaNoTomada).toEqual({ inicio: 66, fin: 98 });
+  });
+
+  it('en cuanto el paso ya no es la condición, no se atenúa nada', () => {
+    const modelo = derivarModeloVista({
+      vista: VISTA_CON_RAMAS,
+      aplicados: [PASO_CONDICION, PASO_ASIGNACION],
+      siguiente: null,
+      instantanea: instantanea({ paso: 2, linea: 5 }),
+      total: 2,
+      ejecucion: { estado: 'calculando' },
+    });
+    expect(modelo.ramaNoTomada).toBeNull();
+  });
+
+  it('en el paso 0 tampoco', () => {
+    const modelo = derivarModeloVista({
+      vista: VISTA_CON_RAMAS,
+      aplicados: [],
+      siguiente: PASO_CONDICION,
+      instantanea: instantanea({}),
+      total: 2,
+      ejecucion: { estado: 'calculando' },
+    });
+    expect(modelo.ramaNoTomada).toBeNull();
+  });
+});
+
 describe('derivarModeloVista: una asignación', () => {
   const modelo = derivarModeloVista({
     vista: VISTA,

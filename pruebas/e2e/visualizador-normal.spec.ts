@@ -5,7 +5,19 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import { consola, ecoDeLaConsola, escribirEnElEditor, globoDelRobot, irAlFinal, salidaDelPrograma, teclearDato, visualizar } from './ayudas.ts';
+import {
+  consola,
+  ecoDeLaConsola,
+  escribirEnElEditor,
+  globoDelRobot,
+  irAlFinal,
+  irAlFinalDelPrograma,
+  salidaDelPrograma,
+  teclearCuandoElProgramaEspere,
+  teclearDato,
+  verificarQueElRobotDiceAlgoEnCadaPaso,
+  visualizar,
+} from './ayudas.ts';
 
 const CORPUS_DEL_PO = 'corpus/experimentos/ejercicios-del-po';
 
@@ -83,15 +95,7 @@ test.describe('MaquinaSnacks con entrada interactiva (el ejercicio del PO)', () 
     await irAlFinal(page);
     await expect(page.getByText('Paso 26 de 26').first()).toBeVisible();
 
-    await page.getByRole('button', { name: /reiniciar/i }).click();
-    const siguiente = page.getByRole('button', { name: /siguiente/i });
-    for (let paso = 1; paso <= 26; paso += 1) {
-      await siguiente.click();
-      await expect(page.getByText(`Paso ${paso} de 26`).first()).toBeVisible();
-      const texto = (await globoDelRobot(page).textContent()) ?? '';
-      expect(texto.trim().length, `paso ${paso}`).toBeGreaterThan(8);
-      expect(texto, `paso ${paso}`).not.toMatch(/[{}]|undefined|NaN|\[object|null/);
-    }
+    expect(await verificarQueElRobotDiceAlgoEnCadaPaso(page)).toBe(26);
   });
 
   test('el panel de variables sigue al programa y la condición muestra su cadena de sustitución', async ({ page }) => {
@@ -108,12 +112,44 @@ test.describe('MaquinaSnacks con entrada interactiva (el ejercicio del PO)', () 
     await expect(page.getByRole('row', { name: /^codigo\b/ })).toContainText('"A1"');
     // La rama que no corre está atenuada, nunca oculta.
     await expect(page.locator('li.atenuada')).toContainText('Entra al if');
+    // En el editor, el bloque que el programa se salta («Cantidad no válida» + `return`) se atenúa Y lleva una etiqueta en palabras; al pasar a la sentencia siguiente, desaparece.
+    await expect(page.locator('.cm-etiqueta-rama-no-tomada')).toHaveText('✗ esta rama no se ejecuta');
+    expect((await page.locator('.cm-rama-no-tomada').allTextContents()).join('')).toContain('Cantidad no válida');
     // La línea recién ejecutada y la siguiente llevan DOS marcas distintas.
     await expect(page.locator('.cm-linea-ejecutada')).toHaveCount(1);
     await expect(page.locator('.cm-linea-siguiente')).toHaveCount(1);
     await expect(page.locator('.cm-marca-ejecutada')).toHaveText('▶');
     await expect(page.locator('.cm-marca-siguiente')).toHaveText('▷');
+
+    await page.getByRole('button', { name: /siguiente/i }).click();
+    await expect(page.locator('.cm-rama-no-tomada')).toHaveCount(0);
+    await expect(page.locator('.cm-etiqueta-rama-no-tomada')).toHaveCount(0);
   });
+});
+
+// Criterio de aceptación del hito 2 (PO): las CINCO entradas del ejercicio, tecleadas en la consola de la pantalla real, dejan la consola idéntica al golden de Java y el robot dice algo en cada paso.
+// Los datos salen del propio corpus (`*.entrada.txt`, un dato por renglón): una sola fuente de verdad con el golden que generó el JDK 17 real.
+const ENTRADAS_DE_MAQUINA_DE_SNACKS = ['a1-2-50', 'b2-3-40', 'b3', 'z9', 'a2-5'] as const;
+
+test.describe('MaquinaSnacks: las cinco entradas del PO, tecleadas en la consola', () => {
+  for (const entrada of ENTRADAS_DE_MAQUINA_DE_SNACKS) {
+    const datos = delCorpus(`maquina-snacks-${entrada}.entrada.txt`)
+      .split('\n')
+      .filter((renglon) => renglon !== '');
+
+    test(`${datos.join(' ')}: la consola termina idéntica a Java, lo tecleado va aparte y el robot dice algo en cada paso`, async ({ page }) => {
+      await pegarYVisualizar(page, delCorpus(`maquina-snacks-${entrada}.java`));
+      for (const dato of datos) await teclearCuandoElProgramaEspere(page, dato);
+      await irAlFinalDelPrograma(page);
+
+      expect(await salidaDelPrograma(page)).toBe(delCorpus(`maquina-snacks-${entrada}.combinada`));
+      expect(await ecoDeLaConsola(page)).toEqual(datos.map((dato) => `${dato}\n`));
+      await expect(consola(page).getByRole('textbox')).toHaveCount(0);
+      await expect(page.getByRole('img', { name: /robot/i })).toHaveAttribute('data-animo', 'feliz');
+
+      expect(await verificarQueElRobotDiceAlgoEnCadaPaso(page)).toBeGreaterThan(datos.length);
+    });
+  }
 });
 
 test.describe('navegar con teclado y con mouse', () => {

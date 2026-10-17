@@ -72,7 +72,7 @@ function lineasConClase(contenedor: HTMLElement, clase: string): string[] {
 }
 
 function resaltados(parcial: Partial<ResaltadosDelEditor>): ResaltadosDelEditor {
-  return { lineaEjecutada: null, lineaSiguiente: null, vueltas: [], ...parcial };
+  return { lineaEjecutada: null, lineaSiguiente: null, vueltas: [], ramaNoTomada: null, ...parcial };
 }
 
 describe('<EditorJava/> — línea recién ejecutada y línea siguiente (REQ-VIS-004)', () => {
@@ -148,6 +148,73 @@ describe('<EditorJava/> — contador de vueltas como etiqueta junto al ciclo (RE
       />,
     );
     expect(Array.from(container.querySelectorAll('.cm-etiqueta-de-vuelta')).map((e) => e.textContent)).toEqual(['↻ vuelta 2', '↻ vuelta 3']);
+  });
+});
+
+describe('<EditorJava/> — la rama del `if` que no se toma, atenuada y con etiqueta (REQ-VIS-006, hito 2C)', () => {
+  const IF_ELSE = ['if (n > 3) {', '    uno();', '} else {', '    dos();', '}'].join('\n');
+  // Los dos bloques del programa: el `entonces` va de la primera llave a su cierre y el `sino` de la segunda llave de apertura al final.
+  const ENTONCES = { desde: IF_ELSE.indexOf('{'), hasta: IF_ELSE.indexOf('}') + 1 };
+  const SINO = { desde: IF_ELSE.lastIndexOf('{'), hasta: IF_ELSE.length };
+
+  /** El código atenuado, línea por línea, SIN la etiqueta que lo acompaña (esa se prueba aparte). */
+  function textoAtenuado(contenedor: HTMLElement): string {
+    return Array.from(contenedor.querySelectorAll('.cm-rama-no-tomada'))
+      .map((e) => {
+        const copia = e.cloneNode(true) as HTMLElement;
+        copia.querySelectorAll('.cm-etiqueta-rama-no-tomada').forEach((etiqueta) => etiqueta.remove());
+        return copia.textContent ?? '';
+      })
+      .join('\n');
+  }
+
+  it('atenúa el bloque del `entonces` (varias líneas) y NO lo oculta: el texto sigue en el documento', () => {
+    const { container } = render(<EditorJava valor={IF_ELSE} resaltados={resaltados({ ramaNoTomada: ENTONCES })} />);
+    expect(textoAtenuado(container)).toBe('{\n    uno();\n}');
+    expect(container.querySelector('.cm-content')?.textContent).toContain('uno();');
+  });
+
+  it('triangulación: atenuar el `sino` deja el `entonces` normal', () => {
+    const { container } = render(<EditorJava valor={IF_ELSE} resaltados={resaltados({ ramaNoTomada: SINO })} />);
+    expect(textoAtenuado(container)).toBe('{\n    dos();\n}');
+    expect(textoAtenuado(container)).not.toContain('uno();');
+  });
+
+  it('lleva una etiqueta en palabras, al final de la primera línea de la rama: no depende solo del color', () => {
+    const { container } = render(<EditorJava valor={IF_ELSE} resaltados={resaltados({ ramaNoTomada: SINO })} />);
+    const etiquetas = Array.from(container.querySelectorAll('.cm-etiqueta-rama-no-tomada'));
+    expect(etiquetas.map((e) => e.textContent)).toEqual(['✗ esta rama no se ejecuta']);
+    expect(etiquetas[0]?.closest('.cm-line')?.textContent).toContain('} else {');
+  });
+
+  it('una rama de una sola línea (un `if` sin llaves) se atenúa entera', () => {
+    const sinLlaves = 'if (n == 5) cinco();\nseguir();';
+    const rama = { desde: sinLlaves.indexOf('cinco'), hasta: sinLlaves.indexOf('\n') };
+    const { container } = render(<EditorJava valor={sinLlaves} resaltados={resaltados({ ramaNoTomada: rama })} />);
+    expect(textoAtenuado(container)).toBe('cinco();');
+    expect(container.querySelectorAll('.cm-etiqueta-rama-no-tomada')).toHaveLength(1);
+  });
+
+  it('sin rama que atenuar no hay atenuado ni etiqueta', () => {
+    const { container } = render(<EditorJava valor={IF_ELSE} resaltados={resaltados({ ramaNoTomada: null })} />);
+    expect(container.querySelector('.cm-rama-no-tomada, .cm-etiqueta-rama-no-tomada')).toBeNull();
+  });
+
+  it('al pasar al paso siguiente la atenuación anterior desaparece', () => {
+    const { container, rerender } = render(<EditorJava valor={IF_ELSE} resaltados={resaltados({ ramaNoTomada: ENTONCES })} />);
+    expect(textoAtenuado(container)).toBe('{\n    uno();\n}');
+    rerender(<EditorJava valor={IF_ELSE} resaltados={resaltados({ ramaNoTomada: null })} />);
+    expect(container.querySelector('.cm-rama-no-tomada, .cm-etiqueta-rama-no-tomada')).toBeNull();
+  });
+
+  it('un rango que se pasa del final del programa se recorta, sin romper el editor', () => {
+    const { container } = render(<EditorJava valor={IF_ELSE} resaltados={resaltados({ ramaNoTomada: { desde: SINO.desde, hasta: 9999 } })} />);
+    expect(textoAtenuado(container)).toBe('{\n    dos();\n}');
+  });
+
+  it('un rango vacío no atenúa nada ni deja una etiqueta suelta', () => {
+    const { container } = render(<EditorJava valor={IF_ELSE} resaltados={resaltados({ ramaNoTomada: { desde: 5, hasta: 5 } })} />);
+    expect(container.querySelector('.cm-rama-no-tomada, .cm-etiqueta-rama-no-tomada')).toBeNull();
   });
 });
 
