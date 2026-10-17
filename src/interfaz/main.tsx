@@ -1,11 +1,11 @@
 // Punto de entrada real (design.md §1.2, ADR 013/014). Reemplaza el marcador `index.ts` de la
 // tarea 0.1 — `index.html` ya apunta aquí desde esta tarea (0.14). El registro del service worker
-// (tarea 0.11) se dispara después de montar, para no retrasar el primer pintado.
+// (tareas 0.11 y 5.7) lo hace el contenedor `VersionNueva` dentro de un efecto: corre después de pintar,
+// para no retrasar el primer pintado, y detiene la vigilancia de versiones si la app se desmonta.
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App.tsx';
 import './estilos/aplicacion.css';
-import { registrarServiceWorker } from './pwa/registro.ts';
 
 const raiz = document.getElementById('raiz');
 if (!raiz) {
@@ -17,5 +17,3 @@ createRoot(raiz).render(
     <App />
   </StrictMode>,
 );
-
-registrarServiceWorker();

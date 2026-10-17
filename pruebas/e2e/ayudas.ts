@@ -87,3 +87,11 @@ export async function verificarQueElRobotDiceAlgoEnCadaPaso(page: Page): Promise
   }
   return total;
 }
+
+/**
+ * La tecla que mueve el foco al siguiente elemento. En WebKit de macOS (el de Playwright aquí, como Safari), Tab solo recorre los campos de texto y deja pasar los botones y los enlaces
+ * (la preferencia «Pulsar Tab para resaltar cada elemento» viene apagada); Alt+Tab sí los recorre — así lo documenta Playwright. En el resto de motores y sistemas es Tab.
+ */
+export function teclaDeTabulador(navegador: string): string {
+  return navegador === 'webkit' && process.platform === 'darwin' ? 'Alt+Tab' : 'Tab';
+}

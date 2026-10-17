@@ -2,11 +2,22 @@ name: Desplegar
 
 # Publica en GitHub Pages (design.md §9, ADR 014). P1 ya resuelta (2026-09-25): repositorio público
 # JorgeZepeda1/VisualizadorJava → BASE_PUBLICA=/VisualizadorJava/ (ya no un marcador de posición).
-# El build real con esa ruta base solo puede confirmarse cuando exista el remoto; aquí queda listo
-# y verificado de forma estructural (YAML válido + revisión contra design.md §9).
+# El build con esa ruta base se probó en tres navegadores (hito 3, tarea 5.12): `pruebas/e2e/despliegue.spec.ts`
+# construye con la MISMA variable y prueba la carga, el trabajador, el service worker y el modo sin red.
+# Después de publicar, la misma prueba corre contra la URL real:
+#   URL_DESPLEGADA=https://jorgezepeda1.github.io/VisualizadorJava/ npm run e2e -- despliegue
 #
-# Revertir una versión: volver a ejecutar este flujo manualmente con `ref` apuntando a la etiqueta
-# anterior (propuesta §11) — Pages sirve lo último desplegado, nunca hace falta "deshacer" un commit.
+# Antes del PRIMER despliegue (una sola vez, en el repositorio):
+#   1. Settings → Pages → Build and deployment → Source: «GitHub Actions».
+#   2. Settings → Environments → github-pages → Deployment branches and tags: agregar la regla de
+#      ETIQUETA `v*`. El entorno suele crearse permitiendo sólo la rama por omisión, y entonces un
+#      despliegue disparado por una etiqueta falla con «Tag … is not allowed to deploy to github-pages
+#      due to environment protection rules» (si ya permite etiquetas, el paso no estorba).
+#
+# Revertir una versión: volver a ejecutar este flujo manualmente (Actions → Desplegar → Run workflow,
+# desde `main`) con `ref` apuntando a la etiqueta anterior (propuesta §11) — Pages sirve lo último
+# desplegado, nunca hace falta "deshacer" un commit. Los alumnos con la versión nueva en caché ven el
+# aviso «Hay una versión nueva» (tarea 5.7) y vuelven a la anterior al recargar.
 
 on:
   push:
@@ -50,6 +61,10 @@ jobs:
 
       - name: Build de producción con la ruta base real de Pages (P1)
         run: BASE_PUBLICA=/VisualizadorJava/ npm run build
+
+      # Tarea 5.9 (REQ-PLAT-003): no se publica un sitio que pese más de 500 KB comprimidos.
+      - name: Presupuesto de carga (≤ 500 KB comprimidos)
+        run: npm run presupuesto
 
       - name: Empaquetar el artefacto de Pages
         uses: actions/upload-pages-artifact@v5

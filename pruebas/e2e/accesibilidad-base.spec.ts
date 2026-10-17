@@ -8,7 +8,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import { escribirEnElEditor, globoDelRobot, irAlFinal, teclearDato, visualizar } from './ayudas.ts';
+import { escribirEnElEditor, globoDelRobot, irAlFinal, teclaDeTabulador, teclearDato, visualizar } from './ayudas.ts';
 
 const MAQUINA_DE_SNACKS = readFileSync(resolve('corpus/experimentos/ejercicios-del-po/maquina-snacks-a1-2-50.java'), 'utf8');
 
@@ -17,14 +17,6 @@ const ETIQUETAS_WCAG = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'];
 async function violacionesDeAxe(page: Page): Promise<string[]> {
   const resultado = await new AxeBuilder({ page }).withTags(ETIQUETAS_WCAG).analyze();
   return resultado.violations.map((violacion) => `${violacion.id} (${violacion.impact}): ${violacion.nodes.map((nodo) => nodo.target.join(' ')).join(' | ')} — ${violacion.help}`);
-}
-
-/**
- * La tecla que mueve el foco al siguiente elemento. En WebKit de macOS (el de Playwright aquí, como Safari), Tab solo recorre los campos de texto y deja pasar los botones y los enlaces
- * (la preferencia «Pulsar Tab para resaltar cada elemento» viene apagada); Alt+Tab sí los recorre — así lo documenta Playwright. En el resto de motores y sistemas es Tab.
- */
-function teclaDeTabulador(navegador: string): string {
-  return navegador === 'webkit' && process.platform === 'darwin' ? 'Alt+Tab' : 'Tab';
 }
 
 async function pegarYVisualizar(page: Page, fuente: string): Promise<void> {
