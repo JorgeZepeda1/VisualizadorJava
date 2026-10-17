@@ -33,8 +33,8 @@ function trabajadorQueResponde(respuesta: (id: number) => readonly MensajeTrabaj
   }));
 }
 
-function compiladoConProblema(id: number, problema: Problema): MensajeTrabajadorAUi {
-  return { tipo: 'compilado', id, ok: false, problema, adicionales: 0 };
+function compiladoConProblema(id: number, problema: Problema, adicionales = 0): MensajeTrabajadorAUi {
+  return { tipo: 'compilado', id, ok: false, problema, adicionales };
 }
 
 function editorEditable(): boolean {
@@ -63,7 +63,10 @@ describe('<Visualizador/> — el texto real de cada problema, con su línea', ()
     render(<Visualizador />);
     await pulsarVisualizar();
 
-    expect((await screen.findByRole('alert')).textContent).toBe('Línea 3: Te falta un punto y coma ";" al final de esta línea.');
+    const aviso = await screen.findByRole('alert');
+    // Tarea 4.5: el aviso lleva el título de su tipo; el texto del catálogo, con su línea, sigue siendo el mismo.
+    expect(aviso.textContent).toContain('Error de compilación');
+    expect(aviso.textContent).toContain('Línea 3: Te falta un punto y coma ";" al final de esta línea.');
   });
 
   it('triangulación: otro error, otra línea y datos propios ("edad" en la línea 12)', async () => {
@@ -179,6 +182,41 @@ describe('<Visualizador/> — el texto real de cada problema, con su línea', ()
   });
 });
 
+describe('<Visualizador/> — «y N más» (REQ-SUB-006, pendiente de la tarea 4.5)', () => {
+  const ARREGLO: Problema = { categoria: 'no-disponible', codigo: 'arreglo-no-soportado', rango: RANGO, linea: 3, datos: { tipoArreglo: 'int[]' } };
+
+  it('cuando el motor encontró más avisos, la pantalla dice cuántos más hay', async () => {
+    trabajadorQueResponde((id) => [compiladoConProblema(id, ARREGLO, 2)]);
+    render(<Visualizador />);
+    await pulsarVisualizar();
+
+    expect((await screen.findByRole('alert')).textContent).toContain('y 2 avisos más');
+  });
+
+  it('con un solo aviso adicional, en singular; sin adicionales, no dice nada de «más»', async () => {
+    trabajadorQueResponde((id) => [compiladoConProblema(id, ARREGLO, 1)]);
+    const { unmount } = render(<Visualizador />);
+    await pulsarVisualizar();
+    expect((await screen.findByRole('alert')).textContent).toContain('y 1 aviso más');
+    unmount();
+
+    trabajadorQueResponde((id) => [compiladoConProblema(id, ARREGLO, 0)]);
+    render(<Visualizador />);
+    await pulsarVisualizar();
+    expect((await screen.findByRole('alert')).textContent).not.toMatch(/más/);
+  });
+
+  it('el problema se subraya en el editor sobre su rango, con la marca del margen de su tipo', async () => {
+    trabajadorQueResponde((id) => [compiladoConProblema(id, ARREGLO, 0)]);
+    render(<Visualizador />);
+    await pulsarVisualizar();
+    await screen.findByRole('alert');
+
+    expect(document.querySelector('.cm-problema-aviso')).not.toBeNull();
+    expect(document.querySelector('.cm-marca-problema')?.textContent).toBe('ⓘ');
+  });
+});
+
 describe('<Visualizador/> — el aviso es una región anunciada que solo existe cuando hay algo que decir', () => {
   it('sin problemas no hay ninguna región de alerta (ni al inicio ni tras una ejecución que sale bien)', async () => {
     trabajadorQueResponde((id) => [
@@ -265,7 +303,10 @@ describe('<Visualizador/> — un fallo interno del motor no se presenta como err
     await pulsarVisualizar();
 
     const texto = (await screen.findByRole('alert')).textContent ?? '';
-    expect(texto).toBe('Algo falló dentro del visualizador.');
+    // Tarea 4.5: un fallo del visualizador tiene su propio título (no es "Error de compilación" ni "Se detuvo por seguridad").
+    expect(texto).toContain('Falla del visualizador');
+    expect(texto).toContain('Algo falló dentro del visualizador.');
+    expect(texto).not.toContain('Error de compilación');
     expect(texto).not.toMatch(/RangeError|call stack|sintaxis/i);
     expect(editorEditable()).toBe(true);
   });

@@ -4,6 +4,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App.tsx';
+import './estilos/aplicacion.css';
 import { registrarServiceWorker } from './pwa/registro.ts';
 
 const raiz = document.getElementById('raiz');

@@ -1,21 +1,54 @@
-// Editor de CodeMirror 6, de solo texto (design.md §1.2, §6.3; ADR 013). Presentacional puro:
-// recibe `valor`/`soloLectura` y emite `onCambio`; no sabe nada de compilación ni de la traza. Los
-// resaltados por `StateEffect` (línea ejecutada, subexpresión, rama no tomada…) llegan en el
-// lote 4 — el `Compartment` de solo lectura ya queda armado desde esta rebanada porque lo necesita
-// el propio flujo "edición → visualización" (design.md §6.2).
-import { useEffect, useRef } from 'react';
-import { Compartment, EditorState } from '@codemirror/state';
-import { EditorView, keymap, lineNumbers } from '@codemirror/view';
+// Editor de CodeMirror 6 (tareas 0.14, 4.3 y 4.4; design.md §1.2, §6.3; ADR 013). Presentacional puro: recibe `valor`, `soloLectura`, `resaltados` y `problema` y emite `onCambio`; no sabe nada de
+// compilación ni de la traza. Extensiones (§6.3): números de línea, historial, sangría al pulsar Enter, correspondencia de llaves, resaltado de sintaxis de Java (`lang-java` solo resalta; el
+// análisis es del motor), caracteres invisibles a la vista (lo que el alumno pega desde una página o un PDF), un `Compartment` de solo lectura (en visualización) y el campo de resaltados
+// (`./resaltados.ts`). Tab NO se captura (sin `indentWithTab`): sin trampa de teclado, WCAG 2.1.2.
+import { useEffect, useImperativeHandle, useRef, type Ref } from 'react';
+import { Compartment, EditorState, type Extension, type StateEffect } from '@codemirror/state';
+import { EditorView, highlightSpecialChars, keymap, lineNumbers } from '@codemirror/view';
+import { bracketMatching, indentOnInput } from '@codemirror/language';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { java } from '@codemirror/lang-java';
+import type { ResaltadoDeProblema, ResaltadosDelEditor } from '../../presentacion/index.ts';
+import { textosPaneles } from '../../textos/es-MX/paneles.ts';
+import { resaltadoDeJava } from './resaltado-de-java.ts';
+import { establecerResaltados, extensionDeResaltados } from './resaltados.ts';
+
+/** Lo que el contenedor puede pedirle al editor desde fuera: llevar el foco a él (p. ej. al volver de la visualización a la edición). */
+export interface ManejadorDelEditor {
+  enfocar(): void;
+}
 
 export interface PropiedadesEditorJava {
   readonly valor: string;
   readonly soloLectura?: boolean;
   readonly onCambio?: (nuevoValor: string) => void;
+  /** La línea recién ejecutada, la siguiente y las etiquetas de vuelta (REQ-VIS-004, REQ-VIS-007). */
+  readonly resaltados?: ResaltadosDelEditor | null;
+  /** El error o aviso que se subraya sobre su rango (REQ-VIS-002). */
+  readonly problema?: ResaltadoDeProblema | null;
+  readonly ref?: Ref<ManejadorDelEditor>;
 }
 
-export function EditorJava({ valor, soloLectura = false, onCambio }: PropiedadesEditorJava) {
+/** Los espacios invisibles que más se pegan desde una página web (el de no separación y los de ancho fijo); los demás invisibles ya los marca CodeMirror. */
+const ESPACIOS_ESPECIALES = /[\u00a0\u2000-\u200a\u202f\u205f\u3000]/;
+
+/**
+ * Editable o de solo lectura. En solo lectura (durante la visualización) el código sigue pudiendo recibir el foco: es una región desplazable y quien usa solo teclado debe poder desplazarla
+ * (WCAG 2.1.1; axe `scrollable-region-focusable`). El editor editable ya lo recibe por ser `contenteditable`.
+ */
+function extensionesDeEdicion(soloLectura: boolean): Extension {
+  return [EditorView.editable.of(!soloLectura), EditorView.contentAttributes.of(soloLectura ? { tabindex: '0' } : {})];
+}
+
+function caracterEspecial(codigo: number, _descripcion: string | null, marcador: string): HTMLElement {
+  const marca = document.createElement('span');
+  marca.className = 'cm-specialChar';
+  marca.textContent = marcador;
+  marca.title = textosPaneles.editor.caracterEspecial(codigo);
+  return marca;
+}
+
+export function EditorJava({ valor, soloLectura = false, onCambio, resaltados = null, problema = null, ref }: PropiedadesEditorJava) {
   const contenedorRef = useRef<HTMLDivElement | null>(null);
   const vistaRef = useRef<EditorView | null>(null);
   const compartimientoSoloLecturaRef = useRef(new Compartment());
@@ -24,6 +57,11 @@ export function EditorJava({ valor, soloLectura = false, onCambio }: Propiedades
   // Textos que este editor emitió por `onCambio` y que React todavía no devuelve como `valor`, en
   // el orden en que se emitieron (ver el efecto de `valor`, abajo).
   const emitidosPendientesRef = useRef<string[]>([]);
+  // Lo último que el contenedor pidió marcar: el editor lo aplica al crearse y cada vez que cambia.
+  const resaltadosRef = useRef({ lineas: resaltados, problema });
+  resaltadosRef.current = { lineas: resaltados, problema };
+
+  useImperativeHandle(ref, () => ({ enfocar: () => vistaRef.current?.focus() }), []);
 
   // Se crea una sola vez: `valor`/`soloLectura` se sincronizan en los efectos de abajo (patrón
   // estándar de CodeMirror 6 dentro de React — el estado real vive en `EditorView`, no en React).
@@ -34,11 +72,18 @@ export function EditorJava({ valor, soloLectura = false, onCambio }: Propiedades
       state: EditorState.create({
         doc: valor,
         extensions: [
+          extensionDeResaltados(),
           lineNumbers(),
+          highlightSpecialChars({ addSpecialChars: ESPACIOS_ESPECIALES, render: caracterEspecial }),
           history(),
+          indentOnInput(),
+          bracketMatching(),
+          resaltadoDeJava,
           keymap.of([...defaultKeymap, ...historyKeymap]),
           java(),
-          compartimientoSoloLectura.of(EditorView.editable.of(!soloLectura)),
+          // Sin nombre, un lector de pantalla anuncia un cuadro de texto sin decir de qué.
+          EditorView.contentAttributes.of({ 'aria-label': textosPaneles.editor.etiqueta() }),
+          compartimientoSoloLectura.of(extensionesDeEdicion(soloLectura)),
           EditorView.updateListener.of((actualizacion) => {
             if (actualizacion.docChanged) {
               const texto = actualizacion.state.doc.toString();
@@ -51,6 +96,7 @@ export function EditorJava({ valor, soloLectura = false, onCambio }: Propiedades
       parent: contenedorRef.current,
     });
     vistaRef.current = vista;
+    vista.dispatch({ effects: establecerResaltados.of(resaltadosRef.current) });
     return () => {
       vista.destroy();
       vistaRef.current = null;
@@ -88,11 +134,25 @@ export function EditorJava({ valor, soloLectura = false, onCambio }: Propiedades
     const vista = vistaRef.current;
     if (!vista) return;
     vista.dispatch({
-      effects: compartimientoSoloLecturaRef.current.reconfigure(
-        EditorView.editable.of(!soloLectura),
-      ),
+      effects: compartimientoSoloLecturaRef.current.reconfigure(extensionesDeEdicion(soloLectura)),
     });
   }, [soloLectura]);
+
+  // Los resaltados llegan por `StateEffect` (design.md §6.3): se reemplazan completos cada vez que cambian. El contenedor los deriva en cada render (objetos nuevos), así que se compara por
+  // contenido: nada se vuelve a mandar —ni se vuelve a desplazar el código— mientras lo marcado sea lo mismo (p. ej., al teclear un dato en la consola).
+  const claveDeResaltados = JSON.stringify([resaltados, problema]);
+  useEffect(() => {
+    const vista = vistaRef.current;
+    if (!vista) return;
+    const { lineas, problema: delProblema } = resaltadosRef.current;
+    const efectos: StateEffect<unknown>[] = [establecerResaltados.of({ lineas, problema: delProblema })];
+    // El código largo se desplaza para que la línea que se marca quede a la vista.
+    const linea = lineas?.lineaEjecutada ?? lineas?.lineaSiguiente ?? delProblema?.linea ?? null;
+    if (linea !== null && linea >= 1 && linea <= vista.state.doc.lines) {
+      efectos.push(EditorView.scrollIntoView(vista.state.doc.line(linea).from, { y: 'nearest', yMargin: 48 }));
+    }
+    vista.dispatch({ effects: efectos });
+  }, [claveDeResaltados]);
 
   return <div ref={contenedorRef} data-testid="editor-java" />;
 }

@@ -2,6 +2,7 @@
 // contra el build real (webServer en playwright.config.ts: `vite build` + `vite preview`, con el
 // service worker activo — el único caso donde CLAUDE.md permite `vite build`).
 import { expect, test } from '@playwright/test';
+import { irAlFinal } from './ayudas.ts';
 
 const PROGRAMA_E2E = [
   'public class Saludo {',
@@ -33,6 +34,8 @@ test.describe('rebanada vertical: u3-hola-mundo', () => {
     await page.keyboard.type(PROGRAMA_E2E);
 
     await page.getByRole('button', { name: /visualizar/i }).click();
+    // Tarea 4.13: tras Visualizar la pantalla queda en el paso 0 (design.md §6.2); «Fin» salta al último paso.
+    await irAlFinal(page);
 
     await expect(page.getByTestId('consola')).toContainText('E2E funciona');
 
@@ -98,6 +101,7 @@ test.describe('rebanada vertical: u3-hola-mundo', () => {
     await page.reload();
     await expect(page.getByRole('button', { name: /visualizar/i })).toBeVisible();
     await page.getByRole('button', { name: /visualizar/i }).click();
+    await irAlFinal(page);
     await expect(page.getByTestId('consola')).toContainText('Hola, mundo');
 
     expect(

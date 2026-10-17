@@ -873,85 +873,119 @@
 - REFACTOR: cada plantilla como función tipada por sus datos (completas por construcción, C9).
 - Verif: `src/textos/es-MX` + `pruebas/arquitectura/sin-texto-literal`
 
-**4.2 Modelo de vista y sustitución** — apoya REQ-VIS-006, REQ-VIS-011 · depende: 3.1, 4.1
+**4.2 Modelo de vista y sustitución** — apoya REQ-VIS-006, REQ-VIS-011 · depende: 3.1, 4.1 — ✅ hecha (2026-10-16, hito 2-B)
 - RED `presentacion/{modelo-vista,sustitucion}.test.ts`: paso de condición deriva `intentos < 10 → 3 < 10 → true`; paso de asignación deriva `ModeloVista` con variables vivas y explicación resuelta; falla.
 - GREEN: `src/presentacion/{modelo-vista,sustitucion}.ts`.
 - Verif: `presentacion/modelo-vista`
+- RED (ejecutado, módulo por módulo, antes del código): `npx vitest run --project motor src/presentacion/{valores,sustitucion,variables}.test.ts` → `Test Files  3 failed (3)`: `Cannot find module './sustitucion.ts'` / `'./valores.ts'` / `'./variables.ts'`; `condicion`/`vueltas`/`bufer` + el catálogo `paneles` → `Test Files  4 failed (4) | Tests  1 failed | 23 passed`: `Cannot find module './bufer.ts'` / `'./condicion.ts'` / `'./vueltas.ts'` y `textosPaneles.condicion.ramaElseIf is not a function`. `robot`, `modelo-vista` y `resaltados`: la prueba importa un módulo que no existía (RED por módulo inexistente, no ejecutado por separado).
+- GREEN: `src/presentacion/{valores,sustitucion,variables,condicion,vueltas,bufer,robot,modelo-vista,resaltados}.ts` (+ `ayudas-de-prueba.ts`, solo para pruebas) y los catálogos `src/textos/es-MX/{paneles,robot,controles}.ts`. `derivarModeloVista({ vista, aplicados, siguiente, instantanea, total, ejecucion })` devuelve líneas ejecutada/siguiente, variables, cadena de sustitución (`intentos < 10 → 3 < 10 → true`), panel de condición, vueltas, consola, búfer, robot y `esperandoEntrada`. 143 pruebas de `src/presentacion` + 47 de los catálogos (`robot`, `paneles`, `controles`, `interfaz`), verdes.
+- Límite conocido (pendiente de la unión con la parte A): los `double` de la ventana de variables NO usan el `Double.toString` exacto del motor, porque `motor/vista.ts` todavía no exporta `formatearValorJava` (su propio comentario lo anuncia para la primera tarea que lo necesite). `presentacion/valores.ts` arma la forma de Java (`5.0`, `1.0E7`, `1.0E-4`) sobre los dígitos más cortos de JavaScript: coincide en todo lo corriente; JDK 17 puede añadir un dígito de más en casos rarísimos. Se reemplaza por el del motor al exportarlo.
 
-**4.3 `EditorJava` (CodeMirror 6)** — REQ-VIS-001 · depende: 0.14
+**4.3 `EditorJava` (CodeMirror 6)** — REQ-VIS-001 · depende: 0.14 — ✅ hecha (2026-10-16, hito 2-B)
 - RED `interfaz/editor/EditorJava.test.tsx`: pegar un programa muestra resaltado de Java y números de línea sin configuración previa; Tab no se captura; falla contra el editor mínimo de 0.14.
 - GREEN: `src/interfaz/editor/EditorJava.tsx` con extensiones de §6.3 (`@codemirror/{state,view,language,commands,lang-java}`, historial, sangría, correspondencia de llaves).
 - REFACTOR: aísla el `StateField` de resaltados en un módulo propio (4.4).
 - Verif: `interfaz/editor/EditorJava`
 - Mostrar los caracteres invisibles (extensión `highlightSpecialChars` de CodeMirror) para que el alumno vea lo que pegó desde una página o un PDF (hallazgo W-1 de la verificación final del lote 1).
+- RED (ejecutado): `npx vitest run --project interfaz src/interfaz/editor/EditorJavaCompleto.test.tsx` → `Tests  16 failed | 6 passed (22)` (resaltado de Java sin estilo, sin `aria-label`, sin marcas de caracteres invisibles, sin resaltados de línea, etc.); luego `en solo lectura el código sigue pudiendo recibir el foco` → `AssertionError: expected null to be '0'`.
+- GREEN: `src/interfaz/editor/EditorJava.tsx` (números de línea, `highlightSpecialChars` con `\u00a0` y los espacios de ancho fijo agregados y títulos en español, historial, `indentOnInput`, `bracketMatching`, `lang-java`, `Compartment` de solo lectura con `tabindex=0`, `aria-label`, sin `indentWithTab`: Tab no se captura) y `editor/resaltado-de-java.ts` (paleta propia AA). `@lezer/highlight` 1.2.4 se declara en `package.json`, `package-lock.json` y `herramientas/versiones-fijadas.ts` (MIT, ya viajaba en el bundle como dependencia de `@codemirror/language`; sin peso nuevo). `npm run licencias` → 10 dependencias, todas permisivas.
 
-**4.4 Resaltados y marcadores de línea** — REQ-VIS-004 · depende: 4.3, 4.2
+**4.4 Resaltados y marcadores de línea** — REQ-VIS-004 · depende: 4.3, 4.2 — ✅ hecha (2026-10-16, hito 2-B)
 - RED `presentacion/resaltados.test.ts` + `editor/resaltados.test.tsx`: línea recién ejecutada y línea siguiente con DOS marcas distintas (no solo color); rama no tomada atenuada con etiqueta; "no evaluado" tachado con etiqueta; contador de vueltas como *widget*; falla.
 - GREEN: `src/presentacion/resaltados.ts` + `StateField`/`StateEffect` en `EditorJava.tsx`.
 - Verif: `presentacion/resaltados`
+- RED (ejecutado): `EditorJavaCompleto.test.tsx` (ver 4.3) → las 16 fallas incluyen línea ejecutada/siguiente, etiqueta de vuelta y subrayado de problema; `presentacion/resaltados.test.ts` importaba un módulo inexistente.
+- GREEN: `src/presentacion/resaltados.ts` + `src/interfaz/editor/resaltados.ts` (`StateField` + `StateEffect` + margen de marcas): línea recién ejecutada = fondo verde + barra sólida + ▶; línea siguiente = fondo ámbar + contorno de rayas + ▷ (DOS marcas distintas, no solo color); etiqueta `↻ vuelta N` (*widget*) al final de la línea de cada ciclo activo; el código se desplaza para dejar a la vista la línea que se marca. Verificado también en `pruebas/e2e/visualizador-normal.spec.ts`.
+- PENDIENTE (necesita datos del motor, no se inventa en la interfaz): atenuar la RAMA NO TOMADA en el editor (`VistaPrograma` no trae los rangos de las ramas `then`/`else`; el panel de condición sí la muestra atenuada, nunca oculta) y el «no evaluado» tachado (es del modo Detallado, lote 6).
 
-**4.5 Aviso de problema (4 tipos)** — REQ-VIS-002 · depende: 4.3, 1.11
+**4.5 Aviso de problema (4 tipos)** — REQ-VIS-002 · depende: 4.3, 1.11 — ✅ hecha (2026-10-16, hito 2-B)
 - RED `componentes/AvisoProblema.test.tsx`: error de compilación en línea 3 → ícono/título "Error de compilación", distinto de "No disponible en el visualizador"; subrayado ondulado (error) vs punteado (aviso); falla.
 - GREEN: `src/interfaz/componentes/AvisoProblema.tsx`.
 - Verif: `interfaz/componentes/AvisoProblema`
 - 1.28 adelantó el texto real de cada problema en pantalla (con su línea y el código en `<code>`); a la 4.5 le quedan el ícono, el título y el subrayado.
 - Pendiente de REQ-SUB-006 (re-verificación del lote 1, 2026-09-29): la cláusula «y N más». El motor ya calcula `adicionales` (por ejemplo, 2 con 3 arreglos), pero ninguna prueba usa N > 0 y la pantalla no lo muestra. La 4.5 lo muestra y lo prueba con N > 0.
+- RED (ejecutado): `componentes/AvisoProblema.test.tsx` → `Failed to resolve import "./AvisoProblema.tsx"`; `Visualizador.test.tsx` ajustado a título + texto (los `toBe` exactos se vuelven `toContain` del título y del texto con su línea).
+- GREEN: `src/interfaz/componentes/AvisoProblema.tsx`: ícono (✖ ⓘ ⚠ ⛔ ⚙) + título + borde distinto por tipo (sólido, de rayas, doble, punteado, ranurado: no solo color); cuarto y quinto tipo para lo que llega al ejecutar (`excepcion`, `seguridad`) y para un fallo del propio visualizador (`interno`: «Falla del visualizador», nunca como error del alumno). `{ anunciar }` evita anunciar dos veces dentro del globo del robot. Subrayado ondulado (error) / punteado (aviso) + ✖ / ⓘ en el margen del editor.
+- «y N más» (pendiente de REQ-SUB-006): CERRADO. `AvisoProblema` dice «y 2 avisos más» / «y 1 aviso más»; probado con N > 0 en `AvisoProblema.test.tsx`, `Visualizador.test.tsx` y `problemas-en-pantalla.spec.ts` (tres arreglos reales → «y 2 avisos más»).
 
-**4.6 Panel de variables** — REQ-VIS-005 · depende: 4.2
+**4.6 Panel de variables** — REQ-VIS-005 · depende: 4.2 — ✅ hecha (2026-10-16, hito 2-B)
 - RED `componentes/PanelVariables.test.tsx`: `contador` 3→4 muestra "3 → 4" con el 3 atenuado; sin inicializar → "sin inicializar"; fuera de alcance → atenuada/retirada con nota; falla.
 - GREEN: `src/interfaz/componentes/PanelVariables.tsx` + `contenedores/PanelVariables.tsx` (`useSyncExternalStore` sobre `Traza`).
 - Verif: `interfaz/componentes/PanelVariables`
+- RED (ejecutado): `componentes/PanelVariables.test.tsx` → `Failed to resolve import "./PanelVariables.tsx"`.
+- GREEN: `src/interfaz/componentes/PanelVariables.tsx` (tabla nombre/tipo/valor; `3 → 4` con el 3 atenuado y tachado y el 4 resaltado y en negritas; «sin inicializar»; «nueva» como palabra; «ya no existe: salió de su bloque» con la fila atenuada). El contenedor lo alimenta con `derivarModeloVista` (la lectura de la `Traza` con `useSyncExternalStore` está en `contenedores/Visualizador.tsx`, no en un contenedor aparte por panel).
 
-**4.7 Consola, búfer y campo de entrada** — REQ-VIS-008, REQ-VIS-009 · depende: 4.2, 3.5
+**4.7 Consola, búfer y campo de entrada** — REQ-VIS-008, REQ-VIS-009 · depende: 4.2, 3.5 — ✅ hecha (2026-10-16, hito 2-B)
 - RED `componentes/{Consola,FranjaBufer,CampoEntrada}.test.tsx`: mensaje+entrada tecleada en el mismo renglón, entrada con color distinto Y rasgo no cromático; `System.err` en rojo; franja `"Pendiente: ␣30⏎"` visible tras `nextInt()`+`nextLine()`; sin mensajes de IDE; falla.
 - GREEN: `src/presentacion/consola.ts` + `src/interfaz/componentes/{Consola,FranjaBufer,CampoEntrada}.tsx`.
 - Verif: `interfaz/componentes/Consola`
+- RED (ejecutado): `componentes/{Consola,FranjaBufer,CampoEntrada}.test.tsx` → `Failed to resolve import` ×2 y `Consola.test.tsx` → `Tests  7 failed | 9 passed`: `expected '' to contain 'consola-err'`, `expected 'SPAN' to be 'INPUT'`, etc.
+- GREEN: `src/presentacion/bufer.ts` + `src/interfaz/componentes/{Consola,FranjaBufer,CampoEntrada}.tsx`. Consola: salida normal, `System.err` en rojo con ícono ⚠ y la palabra «Error» para el lector de pantalla, eco de lo tecleado en el mismo renglón con otro color Y subrayado (verificado con `getComputedStyle` en el E2E), `role="log"` con `aria-live="off"` (el que narra es el robot), sin mensajes de IDE. `FranjaBufer`: «Pendiente: ␣30⏎» (con `nextInt()` queda «⏎»; el motor alimenta un renglón a la vez, así que la franja muestra lo que queda del renglón actual). `CampoEntrada`: toma el foco al aparecer, Enter o «Enviar», un Enter vacío es un renglón en blanco, el contenedor manda el dato con su `\n` (`darEntrada` lo exige) y lo quita cuando el programa sigue.
 
-**4.8 Panel de condición** — REQ-VIS-006 · depende: 4.2
+**4.8 Panel de condición** — REQ-VIS-006 · depende: 4.2 — ✅ hecha (2026-10-16, hito 2-B)
 - RED `componentes/PanelCondicion.test.tsx`: rama no tomada atenuada, NUNCA oculta; cadena `else if` en orden; `case` igualado + caída sin `break` + `default` señalados explícitamente; falla.
 - GREEN: `src/interfaz/componentes/PanelCondicion.tsx`.
 - Verif: `interfaz/componentes/PanelCondicion`
+- RED (ejecutado): `componentes/PanelCondicion.test.tsx` → `Failed to resolve import "./PanelCondicion.tsx"`.
+- GREEN: `src/presentacion/condicion.ts` + `src/interfaz/componentes/{PanelCondicion,CadenaDeSustitucion}.tsx`: cadena de sustitución, ramas con ✓ / ✗ (la que no corre, atenuada con borde de rayas, NUNCA oculta, y «se ejecuta» / «no se ejecuta» para el lector de pantalla), cadena de `else if` en el orden en que se revisaron (hacia atrás, mientras el paso anterior sea un `if` falso con `else`), `switch` con el `case` igualado, la caída sin `break` y el `default`.
 
-**4.9 Contador de vueltas (UI)** — REQ-VIS-007 · depende: 4.4
+**4.9 Contador de vueltas (UI)** — REQ-VIS-007 · depende: 4.4 — ✅ hecha (2026-10-16, hito 2-B)
 - RED `componentes/ContadorVueltas.test.tsx`: dos `for` anidados muestran "ciclo externo: vuelta 2 · ciclo interno: vuelta 3", contadores por separado; falla.
 - GREEN: `src/interfaz/componentes/ContadorVueltas.tsx` (usa el *widget* de 4.4).
 - Verif: `interfaz/componentes/ContadorVueltas`
+- RED (ejecutado): `componentes/ContadorVueltas.test.tsx` → `Failed to resolve import "./ContadorVueltas.tsx"`.
+- GREEN: `src/presentacion/vueltas.ts` (recorre los pasos hacia adelante; un ciclo se olvida en cuanto un paso queda fuera de su rango —condición falsa, `break`, `return`—, así un ciclo interno que vuelve a empezar cuenta desde cero; `do-while`: la vuelta 1 empieza en el cuerpo, antes de la primera revisión) + `src/interfaz/componentes/ContadorVueltas.tsx`: «ciclo externo: vuelta 2 · ciclo interno: vuelta 3», cada contador por separado, y la misma cuenta como etiqueta en el editor (4.4).
 
 **4.10 Prueba de escritorio (UI)** — REQ-VIS-010 · depende: 3.2, 4.6
 - RED `componentes/PruebaDeEscritorio.test.tsx`: pestaña alterna a Variables; `total` 0→25 en el paso 6 → celda resaltada; columna de salida presente; tabla virtualizada con ≥1000 renglones sin colgar; falla.
 - GREEN: `src/interfaz/componentes/PruebaDeEscritorio.tsx` sobre `motor/traza/prueba-de-escritorio.ts` (3.2).
 - Verif: `interfaz/componentes/PruebaDeEscritorio`
 
-**4.11 Explicación en español (incl. plantilla 21 `printf`)** — REQ-VIS-011 · depende: 4.1, 4.2, 2.8
+**4.11 Explicación en español (incl. plantilla 21 `printf`)** — REQ-VIS-011 · depende: 4.1, 4.2, 2.8 — ✅ hecha (2026-10-16, hito 2-B)
 - RED `componentes/Explicacion.test.tsx`: paso de asignación → "se calcula total + precio y el resultado (125) se guarda en total. Antes tenía 100." (≤2 renglones); paso de `printf` usa las piezas de 2.8; `aria-live="polite"` salvo excepción (`assertive`); falla.
 - GREEN: `src/interfaz/componentes/Explicacion.tsx`.
 - Verif: `interfaz/componentes/Explicacion`
+- RED (ejecutado): `componentes/{Explicacion,Robot}.test.tsx` → `Failed to resolve import` ×2; `presentacion/robot.test.ts` (5 fallas de datos de prueba corregidas al pasar a verde: la traza debe llegar a su último paso para que el robot agregue la nota).
+- GREEN (ES EL ROBOT, decisión del PO 2026-10-16: globo de texto, sin voz): `src/interfaz/componentes/{Robot,Explicacion}.tsx` + `src/presentacion/robot.ts` + `src/textos/es-MX/robot.ts`. Robot en SVG en línea (cero imágenes ni red; 5 rostros con FORMA distinta: normal, esperando, contento, preocupado, «alto» por seguridad) y un globo `aria-live="polite"` (`assertive` en una excepción o una detención) que dice «Línea N: <frase del catálogo `explicaciones.ts`>»; en el paso 0 dice cuál línea sigue; si el programa espera un dato, lo dice con la línea de la lectura y la consola toma el foco; en el último paso resume cómo terminó (normal, con excepción, detenido por límite…). Respeta `prefers-reduced-motion`. NUNCA dice algo que el motor no calculó: cada texto sale de la explicación del paso, de la línea del nodo que espera o de la causa del fin; `pruebas/e2e/visualizador-normal.spec.ts` recorre los 26 pasos de MaquinaSnacks y verifica que ninguno deja un globo vacío ni un marcador `{…}`.
+- Observaciones para el PO / la unión (no se tocó el catálogo de explicaciones del motor): (1) la frase de una lectura dice «con los valores de ahora es `un Scanner.nextInt()`»; (2) la expresión de `char c = (char) (65 + k);` sale truncada en la explicación («Calculo `(char) (65 + k`», falta el paréntesis final: el texto de la raíz que arma el motor); (3) el ejemplo de REQ-VIS-011 («se calcula total + precio y el resultado (125) se guarda en total. Antes tenía 100.») es otra redacción que la del catálogo («Calculo `total + precio`: …, que da 125. Guardo 125 en `total`; antes valía 100.»).
 
-**4.12 Controles de reproducción** — REQ-VIS-012 · depende: 0.14
+**4.12 Controles de reproducción** — REQ-VIS-012 · depende: 0.14 — ✅ hecha (2026-10-16, hito 2-B)
 - RED `componentes/BarraControles.test.tsx`: ⏮◀▶⏭⏯, velocidad, deslizador "paso X de Y"; flechas avanzan/retroceden, Inicio/Fin saltan a extremos, espacio reproduce/pausa; falla.
 - GREEN: `src/interfaz/componentes/BarraControles.tsx`.
 - Verif: `interfaz/componentes/BarraControles`
+- RED (ejecutado): `componentes/BarraControles.test.tsx` → `Failed to resolve import "./BarraControles.tsx"`; luego `muestra la ayuda de atajos a la vista` → `Unable to find an element with the text: /^Atajos: flecha izquierda y derecha/`.
+- GREEN: `src/interfaz/componentes/BarraControles.tsx`: ⏮ Reiniciar, ◀ Anterior, Siguiente ▶, Fin ⏭, ⏵ Reproducir / ⏸ Pausa (cada uno con su palabra y `aria-keyshortcuts`), selector de cinco velocidades y deslizador «Paso X de Y» (`aria-valuetext`); atajos con el foco FUERA de campos de texto, selectores y deslizadores: flechas, Inicio, Fin y espacio (con el foco en un botón, el espacio activa ese botón y no reproduce además); ayuda de atajos a la vista y ligada con `aria-describedby`. La reproducción automática vive en el contenedor (un tic por intervalo según la velocidad; el reductor la detiene sola al llegar al final, a una espera de dato o al terminar).
 
-**4.13 `EstadoApp` + `ClienteTrabajador` — integración** · depende: 4.3–4.12
+**4.13 `EstadoApp` + `ClienteTrabajador` — integración** · depende: 4.3–4.12 — ✅ hecha (2026-10-16, hito 2-B)
 - RED `interfaz/App.test.tsx`(ampliado): el reductor `EstadoApp` (§6.1) conecta editor→trabajador (3.5/3.6)→traza→todos los paneles de 4.4–4.12 en un flujo único (pegar, Visualizar, navegar, ver variables/condición/consola/explicación); falla.
 - GREEN: `src/interfaz/estado/reductor.ts` (`useReducer`) + `src/interfaz/contenedores/{App,Visualizador}.tsx` completos.
 - REFACTOR: separa contenedor/presentacional donde 4.4–4.12 aún no lo esté.
 - Verif: `interfaz/App`
+- RED: `estado/reductor.test.ts` importaba `./reductor.ts`, que no existía (RED por módulo inexistente, no ejecutado por separado); `App.test.tsx` y `contenedores/VisualizadorPasoAPaso.test.tsx` se escribieron ANTES del contenedor nuevo (el viejo saltaba al último paso al visualizar y no tenía robot ni consola interactiva) y no se ejecutaron por separado contra él.
+- GREEN: `src/interfaz/estado/reductor.ts` (`EstadoApp` + 17 acciones: modo, código, ejecución, aviso y navegación; la posición se acota con el `total` de la `Traza`, única fuente de verdad) + `src/interfaz/contenedores/Visualizador.tsx` (el ÚNICO que habla con el trabajador: `useReducer` + `Traza` con `useSyncExternalStore` + `derivarModeloVista`; configuración `entradaInteractiva: true`; al compilar queda en el paso 0 con el foco en «Siguiente»; «Editar programa» devuelve el editor y su foco; al teclear un dato la pantalla pasa sola al paso de la lectura). `App.test.tsx` corre el motor de verdad bajo jsdom: MaquinaSnacks `a1 2 50` y `z9` terminan IDÉNTICAS al golden `.combinada` del JDK 17.
+- Parcial: `EstadoApp` aún no lleva `ajustes` (nivel Normal/Detallado, predicción, proyector, regional, semilla) ni `dialogo` (lotes 5 y 6); `entradaPreparada` tampoco (galería, lote 5).
 
 **4.14 Cobertura de explicación Normal + errores conceptuales (parte)** — REQ-DIFF-007(Normal) · depende: 4.13
 - RED `pruebas/traza/cobertura-normal.test.ts`: en cada traza Normal de `corpus/curso`, ninguna explicación tiene marcador sin resolver; los errores conceptuales #1,2,3,5,6,7,8,9,10,11,12,14,16,17 (`exploracion/01` §6 — los que no requieren Detallado) tienen ≥1 programa que los hace visibles; falla.
 - GREEN: ajustes de plantillas/datos que el barrido revele.
 - Verif: `pruebas/traza/cobertura-normal`
 
-**4.15 Accesibilidad AA — línea base** — REQ-PLAT-005(parte) · depende: 4.13
+**4.15 Accesibilidad AA — línea base** — REQ-PLAT-005(parte) · depende: 4.13 — ✅ hecha (2026-10-16, hito 2-B)
 - RED `pruebas/e2e/accesibilidad-base.spec.ts` (Playwright + `@axe-core/playwright`): cero violaciones graves/críticas en la pantalla principal con un programa cargado; flujo M1–M17 solo con teclado; `prefers-reduced-motion` sin perder información; zoom 200% sin recorte; falla.
 - GREEN: ajustes de foco/contraste/`aria-*` que el barrido revele.
 - Verif: `npm run e2e -- accesibilidad-base`
+- RED (ejecutado, Chromium): `5 failed`: dos estados con violaciones REALES de axe —`color-contrast (serious): .cm-linea-siguiente > .ͼh` (el estilo por omisión de CodeMirror no alcanza AA sobre las líneas teñidas) y `scrollable-region-focusable (serious): .cm-scroller` (el editor de solo lectura no recibía el foco)— y dos fallos de la propia prueba (el contorno del foco se medía sobre un botón deshabilitado; Fin se pulsaba antes de que llegaran los pasos); después, el reflujo a 320 px (`la página se desborda a 320px`: un `<code>` sin espacios). En WebKit, además, `color-contrast` en `.globo-texto` por una animación con `opacity` y Tab que no recorre botones (WebKit de macOS: se usa Alt+Tab, como documenta Playwright).
+- GREEN: paleta propia AA (`editor/resaltado-de-java.ts`, probada contra todos los fondos leídos de la hoja de estilos), `tabindex=0` en el editor de solo lectura, `overflow-wrap` en `code` y en el globo, animaciones del globo solo con `transform` (nunca `opacity`), «atenuado» sin `opacity` (color más suave), y `src/interfaz/estilos/aplicacion.css` (variables CSS, cuatro zonas en dos columnas y una sola por debajo de 60 rem, `prefers-reduced-motion`). `pruebas/e2e/accesibilidad-base.spec.ts` (×3 motores): cero violaciones de axe WCAG 2.0/2.1 A y AA en 5 estados (primera visita, paso a paso con condición y franja del búfer, esperando un dato, excepción, error de compilación); flujo completo solo con teclado sin trampa; movimiento reducido sin perder información; zoom 200 % (640 px) y reflujo a 320 px sin desborde horizontal de la página.
+- Pendiente (lote 5): tema oscuro y modo proyector; auditoría AA completa con lector de pantalla real.
 
-**4.16 E2E — M1–M3, M5–M17 combinados (C9 Normal, C14 base)** · depende: 4.14, 4.15
+**4.16 E2E — M1–M3, M5–M17 combinados (C9 Normal, C14 base)** · depende: 4.14, 4.15 — ✅ hecha (2026-10-16, hito 2-B)
 - RED `pruebas/e2e/visualizador-normal.spec.ts` (Chromium + Firefox): pega código de `corpus/curso`, Visualizar, navega con teclado y mouse, ve variables/condición/consola/prueba de escritorio/explicación, termina por excepción y por límite de pasos; falla hasta que 4.1–4.15 cierren.
 - GREEN: cierra huecos de integración que el E2E revele.
 - Verif: `npm run e2e -- visualizador-normal`
+- RED (ejecutado): `pruebas/e2e/visualizador-normal.spec.ts` se escribió contra la pantalla ya integrada; las especificaciones viejas (`u3-hola-mundo`, `problemas-en-pantalla`) fallaban con la pantalla nueva porque asumían que tras Visualizar la consola ya mostraba todo (ahora se queda en el paso 0): se actualizaron con «Fin» y con el título del aviso. Primer corrida en Chromium: `8 passed | 1 failed` (una secuencia de teclas de la propia prueba: al llegar al último paso el campo de entrada toma el foco y Inicio/Fin pasan a ser del campo; se reordenó).
+- GREEN: `pruebas/e2e/{ayudas,visualizador-normal}.ts(.spec.ts)`. Criterio de aceptación del PO: MaquinaSnacks `a1 2 50` y `z9` con entrada interactiva — la consola muestra lo MISMO que el golden `.combinada` (byte por byte, sin lo tecleado), el robot nombra la línea de cada espera, la consola toma el foco, y el robot dice algo en cada uno de los 26 pasos (nunca un globo vacío ni un marcador `{…}`). También: variables y condición con su cadena de sustitución, teclado y mouse (flechas, Inicio, Fin, deslizador, Reproducir se detiene sola en el dato), «Editar programa», una excepción (`ArithmeticException`, aviso asertivo, mensaje en rojo) y un ciclo que no termina (se detiene por seguridad, traza navegable).
+- Verificación (2026-10-16): `npm test` **151 archivos / 7 048** verde (base 126 / 6 683), `npm run lint` y `npm run tipos` exit 0, `npm run e2e` **143 passed, 1 skipped** (el skip es el de WebKit sin red de la 0.15) en Chromium, Firefox y WebKit; mutantes sin cambio (`pruebas/compilacion/mutantes.test.ts`: veredicto 100 %, línea 98,88 %, código 89,22 %); peso con gzip de `dist/`: **406,9 KB** (índice 298,5 + trabajador 98,7 + CSS 2,8 + resto 6,8; límite 500 KB).
+- Fuera de este encargo y SIN hacer: 4.10 (prueba de escritorio, UI) y 4.14 (cobertura de explicación + errores conceptuales).
 
 **Criterio de salida:** `interfaz/**` + `presentacion/**` (excepto Detallado) verdes; `pruebas/traza/cobertura-normal`, `e2e/accesibilidad-base`, `e2e/visualizador-normal` verdes; C9(Normal) y C14(base) cumplidos.
 **Cierre:** `sdd-verify` del lote 4 → commit con confirmación del PO → actualizar `state.yaml`.

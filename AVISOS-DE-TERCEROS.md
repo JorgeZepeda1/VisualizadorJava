@@ -26,6 +26,7 @@ build, linters — no se listan: nunca llegan al navegador del alumno). Esta sec
 - **@codemirror/language** 6.12.4 — MIT
 - **@codemirror/state** 6.7.6 — MIT
 - **@codemirror/view** 6.43.13 — MIT
+- **@lezer/highlight** 1.2.4 — MIT
 - **lz-string** 1.5.0 — MIT
 - **react** 19.3.0 — MIT
 - **react-dom** 19.3.0 — MIT

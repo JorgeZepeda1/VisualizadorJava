@@ -7,3 +7,17 @@
 // subrayado siguen en la tarea 4.5.
 export { segmentarCodigoEnLinea, type SegmentoDeTexto } from './segmentos-de-codigo.ts';
 export { textoDelArranque, textoDelProblema } from './texto-del-problema.ts';
+// Lote 4 (tareas 4.2 a 4.11): el modelo de vista que los componentes presentacionales reciben por `props` (design.md §6.1, ADR 013).
+export { derivarModeloVista, type EntradaModeloVista, type ModeloVista } from './modelo-vista.ts';
+export type { EstadoDeLaEjecucion, RobotVista } from './robot.ts';
+export type { VariableVista } from './variables.ts';
+export type { CondicionVista, Evaluacion, Rama } from './condicion.ts';
+export type { VueltaVista } from './vueltas.ts';
+export type { BuferVista } from './bufer.ts';
+export {
+  derivarResaltados,
+  resaltadosDelProblema,
+  type EtiquetaDeVuelta,
+  type ResaltadoDeProblema,
+  type ResaltadosDelEditor,
+} from './resaltados.ts';
