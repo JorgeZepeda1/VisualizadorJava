@@ -1,327 +1,443 @@
 # Tareas: Robots tutores (`robots-tutores`)
 
-> Fase `sdd-tasks` · 2026-10-17. Fuente: `design.md` (§2 revisor, §3 reto, §4 libro, §6 pruebas, §8 hitos), `specs/*/spec.md` (29 requisitos: 26 nuevos y 3 modificados; 55 escenarios), `proposal.md` (R-D1–R-D4, CR1–CR9, §11 Definición de Terminado, §12 PR-1–PR-5).
+> Fase `sdd-tasks`, **actualización 1** · 2026-10-17. Fuente: `design.md` (§2 pantalla, §3 robots, §4 reto, §5 libro, §6 revisor, §7 peso, §8 pruebas, §10 hitos), `specs/*/spec.md` (42 requisitos: 37 nuevos y 5 modificados; 100 escenarios), `proposal.md` (R-D1–R-D8, CR1–CR15, §11 Definición de Terminado, §12 PQ-1–PQ-6) y el panel 1.
 >
-> **Tamaño:** como en `visualizador-java/tasks.md`, cada tarea trae su RED, su GREEN, los archivos y su verificación para que `sdd-apply` no tenga que reabrir el diseño; por eso pasa del presupuesto de la plantilla. 49 tareas en 4 hitos cortos, cada uno usable por sí solo y con **una sola verificación**.
+> **Tamaño:** como en `visualizador-java/tasks.md`, cada tarea trae su RED, su GREEN, sus archivos y su verificación para que `sdd-apply` no reabra el diseño; por eso pasa del presupuesto de la plantilla. **72 tareas en 5 hitos**, cada uno usable por sí solo y con **una sola verificación** que incluye al panel de expertos. Reemplaza el plan anterior de 49 tareas (R1 revisor → R2 reto → R3–R4 libro).
 
 ## Convenciones
 
-- **TDD estricto** (`strict_tdd: true`): toda tarea de código es RED (prueba nueva que falla por una razón concreta, **ejecutada**) → GREEN (lo mínimo, confirmado por ejecución) → REFACTOR («ninguno relevante» cuando no aplica). Las tareas de documentos (ADR) y de proceso (revisión del PO) no llevan RED.
-- **Comandos base** (no se repiten): `npm test -- <patrón> --reporter=dot` · `npm run test:oraculo` · `npm run e2e -- <patrón> --reporter=dot` · `npm run lint` · `npm run tipos` · `npm run oraculo:goldens` (JDK 17.0.18). Nunca `npm run build` suelto (regla 8): el peso se mide en `npm run ci` al cerrar el hito.
-- **Datos del JDK solo del oráculo** (ADR 010): todo golden de `corpus/experimentos/{trampas,reto}/` y `corpus/libro/` lo genera `oraculo:goldens`.
-- **Textos** solo en `src/textos/es-MX/` (ADR 015); identificadores en español ASCII (ADR 002); la matriz de capas no cambia (ADR 001).
-- **Dependencias:** dentro de un hito, secuenciales por número salvo nota; «depende» solo cuando cruza de hito o salta.
-- **Cierre de cada hito:** una `sdd-verify` → el PO revisa los textos nuevos → commit con confirmación EXPLÍCITA del PO (conventional commits, sin atribución de IA) → `state.yaml`. Sin `judgment-day` salvo que la verificación lo pida.
-- **Preguntas del PO:** las tareas marcadas «PR-n» se implementan con la recomendación por omisión y se ajustan si el PO decide otra cosa (`proposal.md` §12).
+- **TDD estricto** (`strict_tdd: true`): toda tarea de código es RED (prueba nueva que falla por una razón concreta, **ejecutada**) → GREEN (lo mínimo, confirmado por ejecución) → REFACTOR («ninguno relevante» si no aplica). Las tareas de documento (ADR) y de proceso (PO, panel) no llevan RED. Las de contenido del libro sí: su RED es la prueba del índice que exige ese tema.
+- **Comandos base** (no se repiten): `npm test -- <patrón> --reporter=dot` · `npm run test:oraculo` · `npm run e2e -- <patrón> --reporter=dot` · `npm run lint` · `npm run tipos` · `npm run oraculo:goldens` (JDK 17.0.18). Nunca `npm run build` suelto (regla 8): el peso se mide en `npm run ci` al cerrar el hito, y las E2E «sin red» lo exigen de forma explícita.
+- **Datos del JDK solo del oráculo** (ADR 010): todo golden de `corpus/experimentos/{reto,trampas}/` y `corpus/libro/` lo genera `oraculo:goldens`.
+- **Textos** solo en `src/textos/es-MX/` (ADR 015), con la voz y el vocabulario de REQ-PANT-010; identificadores en español ASCII (ADR 002); la matriz de capas no cambia (ADR 001); `import.meta.glob` solo en `src/interfaz/datos/`.
+- **Dependencias:** dentro de un hito, secuenciales por número salvo nota; las de contenido (borradores) son una pista en paralelo.
+- **Cierre de cada hito:** una verificación (`sdd-verify` + panel de expertos sobre la pantalla real) → el PO revisa los textos nuevos → `npm run ci` (peso) → commit con confirmación EXPLÍCITA del PO (conventional commits, sin atribución de IA) → `state.yaml`.
 
-## Hito R1 — Robot revisor
+## Hito R0 — Pantalla y personajes
 
-**Objetivo:** el revisor explica los errores y avisos de hoy con su porqué y detecta las cinco trampas que compilan, con cero falsos positivos medidos y confirmación en la ejecución.
-**Entrada:** hito 3 publicado y PR #3 fusionado (R-D4). **Sesiones:** 2–3.
+**Objetivo:** un alumno nuevo sabe por dónde empezar; «Siguiente» está junto al robot; la pantalla cabe en celular y en proyector; los tres robots existen y habla uno a la vez; la galería ofrece los programas del curso; empiezan los borradores de U6.
+**Entrada:** hito 3 publicado y PR #3 fusionado (R-D4); `v0.3.1` publicada (R-D8). **Sesiones:** 3–4.
 
-**R1.1 ADR 017 — Revisor de trampas** · documento
-- `docs/adr/017-revisor-de-trampas.md`: pasada sobre la IR; definición de falso positivo (hecho que no se cumple o fuera de la etiqueta del PO); las cinco reglas con su argumento de JLS; alternativas (AST, presentación) y consecuencias (recall conservador).
+**R0.1 El PO elige los tres robots** · proceso — REQ-PANT-008 · PQ-1
+- Maqueta en escala de grises de las tres siluetas, accesorios y nombres (design §3.1, recomendación de PQ-1); el PO aprueba o cambia nombres y apariencia. Se puede hacer en paralelo a R0.2–R0.4; bloquea R0.5.
 
-**R1.2 Modelo `Trampa` y la pasada vacía** — REQ-REV-002, REQ-REV-003
-- RED `src/motor/revision/revisar.test.ts`: `compilar()` de MaquinaSnacks entrega `vista.trampas = []`; un programa con error de compilación no tiene `vista`; la traza de cada programa ejecutable del corpus es idéntica con y sin `revisar`; falla (módulo inexistente).
-- GREEN: `revision/{trampas,revisar}.ts` (§1.2), `compilador.ts` llena `vista.trampas`, `VistaPrograma.trampas?`, tipos exportados en `motor/vista.ts`.
-- Verif: `motor/revision` · `motor/compilador`
+**R0.2 ADR 017 — Pantalla y tres robots** · documento
+- `docs/adr/017-pantalla-y-tres-robots.md`: ranura de acciones, un hablante y su turno, puertas con destino, distribuciones y proyector (absorbe 5.5), galería curricular (adelanta parte de 5.2), `import.meta.glob` solo en `interfaz/datos`, PQ-6; alternativas: un robot con tres papeles, pantalla de inicio aparte, mini retrato en el globo.
 
-**R1.3 Corpus de trampas con el oráculo** — REQ-REV-005, REQ-DIFF-009
-- RED `pruebas/diferencial/trampas.test.ts`: cada `.java` de `corpus/experimentos/trampas/` tiene goldens con `compilo: true` y el motor coincide byte a byte; hay ≥ 3 positivas (`p-<familia>-*`) y ≥ 2 casi-trampas (`c-<familia>-*`) por familia; falla (carpeta vacía).
-- GREEN: ≈ 25 programas con sus entradas (variantes de §2.5.3 y las casi-trampas de §2.2) + `npm run oraculo:goldens`.
-- Verif: `diferencial/trampas` · `test:oraculo`
+**R0.3 Voz «Java revisa…» y vocabulario** — REQ-PANT-010, REQ-PANT-004
+- RED `textos/es-MX/voz.test.ts` (rechaza `Reviso`, `Guardo`, `verdadero`, `falso`, `es falso`, `iteración`, `revisión N` en el catálogo de los robots) + `textos/es-MX/explicaciones.test.ts` (T1 de la línea 72 de MaquinaSnacks y T2 con «Terminó la vuelta 2…», sin piezas todavía) + `robot.test.ts` (T3 del paso 0); fallan con los textos de hoy.
+- GREEN: `textos/es-MX/{explicaciones,robot}.ts` con las plantillas T1–T3 y menores del maestro (§4), `presentacion/robot.ts` pasa la sustitución completa que ya existe.
+- Verif: `textos/es-MX` · `presentacion/robot`
 
-**R1.4 Etiquetas del corpus** — REQ-REV-005
-- RED `pruebas/revisor/etiquetas.test.ts`: `corpus/trampas-esperadas.json` tiene una entrada por cada `.java` de `curso/`, `experimentos/tipicos/`, `experimentos/ejercicios-del-po/` y `experimentos/trampas/`, solo con códigos de `CodigoTrampa`; falla (no existe).
-- GREEN: el archivo: `u5-switch-sin-break-fallthrough` → 3 × `case-que-sigue-de-largo` (l. 6, 8, 10); las positivas de `trampas/` con lo suyo; el resto `[]`.
-- Verif: `revisor/etiquetas`
+**R0.4 Textos de la pantalla** — REQ-PANT-001, 002, 004, 006, 007
+- RED `textos/es-MX/pantalla.test.ts`: saludo, tres puertas, navegación, consola vacía, aviso de edición durante la visualización, leyenda ▶/▷, «Paso N» con y sin total, «Ajustes de la clase» y sus estados en palabras, acciones del fin; sin marcadores; falla (módulo inexistente).
+- GREEN: `src/textos/es-MX/pantalla.ts` (borradores para la revisión del PO en R0.16).
+- Verif: `textos/es-MX/pantalla`
 
-**R1.5 Trampa 1: `;` tras la condición** — REQ-REV-002, REQ-REV-004
-- RED `revision/punto-y-coma.test.ts`: positivas de `trampas/` (`if`, `while`, `for`; con bloque o sentencia después) con `nodoCondicion` y `nodoSiguiente`; no reporta `{ }` ni `do { } while (c);`; falla.
-- GREEN: `revision/punto-y-coma.ts` (regla 1 de §2.2).
-- Verif: `revision/punto-y-coma`
+**R0.5 Tres personajes** — REQ-PANT-008 · depende: R0.1
+- RED `componentes/Robot.test.tsx`: `personaje` `paso-a-paso` | `revisor` | `libro` con `data-forma` y accesorio distintos, mismo `viewBox`, nombre visible y accesible del catálogo, cada ánimo en cada cabeza, sin animación con movimiento reducido; falla.
+- GREEN: `Robot.tsx` con las tres figuras aprobadas, `textos/es-MX/robot.ts` (nombres), estilos.
+- Verif: `interfaz/componentes/Robot`
 
-**R1.6 Trampa 2: `==`/`!=` entre `String`** — REQ-REV-002, REQ-REV-004
-- RED `revision/comparacion-de-textos.test.ts`: `respuesta == "si"`, `a != b` (`String`) con su `punto`; no reporta `equals`, `char` ni números; falla.
-- GREEN: `revision/comparacion-de-textos.ts`.
-- Verif: `revision/comparacion-de-textos`
+**R0.6 Un solo hablante** — REQ-PANT-009
+- RED `presentacion/hablante.test.ts` (error de compilación, aviso y arranque → revisor; libro → libro; lo demás → paso a paso) + `componentes/Explicacion.test.tsx` (exactamente un `[data-personaje]` en la zona; al cambiar de hablante la región `aria-live` empieza con su nombre, y no lo repite si no cambió); falla.
+- GREEN: `presentacion/hablante.ts`, `ModeloVista.hablante`, `Explicacion.tsx` (fundido de 150 ms solo con `prefers-reduced-motion: no-preference`).
+- Verif: `presentacion/hablante` · `interfaz/componentes/Explicacion`
 
-**R1.7 Estructura de `switch` y trampa 3** — REQ-REV-002, REQ-REV-004
-- RED `revision/case-que-sigue.test.ts` + `revision/estructura-de-switch.test.ts`: grupos y `Terminacion` (normal/abrupta/depende) de MaquinaSnacks y `u5-switch-sin-break-fallthrough`; reporta los tres grupos de este último; no reporta grupos vacíos, el último grupo ni los que terminan en `break`/`return`/`continue` o en un `if`; falla.
-- GREEN: `revision/{estructura-de-switch,case-que-sigue}.ts`, `VistaPrograma.switches`.
-- Verif: `motor/revision`
+**R0.7 Estado: secciones, saludo, ajustes y programas cargados** — REQ-PANT-001, 002, 006; REQ-AULA-001
+- RED `estado/reductor.test.ts`: `ir-a-seccion` no pierde programa ni paso; `saludo` hasta la primera acción; `cambiar-ajuste` (proyector, velocidad) sin perder el paso; `cargar-programa { codigo, entradaPreparada, origen }` guarda el programa anterior y `volver-a-mi-programa` lo restaura; `visualizar` usa `entradaPreparada`; falla.
+- GREEN: `estado/reductor.ts` (design §2.2), `contenedores/Visualizador.tsx` deja de fijar `entradaPreparada: ''`.
+- Verif: `interfaz/estado` · `interfaz/contenedores`
 
-**R1.8 Trampa 4: renglón pendiente del `Scanner`** — REQ-REV-002, REQ-REV-004
-- RED `revision/renglon-pendiente.test.ts`: `nextInt()`/`next()`/`nextDouble()` seguido de `String s = sc.nextLine();`; no reporta `sc.nextLine();` como sentencia, lecturas en ramas distintas ni `u3-saludo-con-scanner`; falla.
-- GREEN: `revision/renglon-pendiente.ts` (regla 4: última llamada de una, primera de la otra, ninguna en medio a ninguna profundidad).
-- Verif: `revision/renglon-pendiente`
+**R0.8 Saludo con puertas, navegación y ajustes de la clase** — REQ-PANT-001, 002, 006 · PQ-2
+- RED `presentacion/ranura.test.ts` (puertas solo con destino: sin temas publicados no hay «Leer un tema») + `componentes/{Saludo,Navegacion,AjustesDeLaClase}.test.tsx` (foco en la primera puerta; «Probar mi programa» enfoca el editor; `aria-current="page"`; «Libro» oculto sin temas; ajustes con teclado y estado en palabras); falla.
+- GREEN: `presentacion/ranura.ts` (puertas), `Saludo.tsx`, `Navegacion.tsx`, `AjustesDeLaClase.tsx`; la velocidad sale de `BarraControles.tsx`; encabezado en `App.tsx`.
+- Verif: `presentacion/ranura` · `interfaz/componentes`
 
-**R1.9 Trampa 5: división entera que se vuelve `double`** — REQ-REV-002, REQ-REV-004
-- RED `revision/division-entera.test.ts`: `double p = suma / 3;`, `1 / 2 * base`, `(double) (a / b)`, `long`; no reporta `(double) a / b`, `int m = n / 2`, `"x" + a / b`, `suma / 5` con `suma` `double`; los cuatro puntos del plan en los datos; falla.
-- GREEN: `revision/division-entera.ts`.
-- Verif: `revision/division-entera`
+**R0.9 Ranura bajo el globo y «Siguiente» primario** — REQ-PANT-003
+- RED `componentes/RanuraDeAcciones.test.tsx` + `contenedores/Visualizador.test.tsx`: en visualización la ranura tiene «◀ Anterior · Siguiente ▶» debajo del globo con `aria-keyshortcuts`; «Siguiente» es el primario y recibe el foco al visualizar; «Visualizar» deja de ser primario; flechas, Inicio, Fin y espacio siguen; la ranura nunca muestra dos cosas a la vez; falla.
+- GREEN: `RanuraDeAcciones.tsx`, `presentacion/ranura.ts` (`navegacion`), `BarraControles.tsx` conserva Inicio/Fin/Reproducir/deslizador.
+- Verif: `interfaz/componentes` · `interfaz/contenedores`
 
-**R1.10 Guarda de cero falsos positivos** — REQ-REV-004, REQ-REV-005 (CR1, CR2)
-- RED `pruebas/revisor/trampas-del-corpus.test.ts`: lo detectado = `trampas-esperadas.json` en código y línea para cada archivo; `revisar` corre sobre cada mutante que javac acepta en `corpus/mutantes/veredictos.jsonl` (campo `fuente`) sin lanzar y con el mismo resultado en dos corridas; falla (el cargador `pruebas/revisor/corpus-etiquetado.ts` no existe).
-- GREEN: el cargador; cada discrepancia que salga se corrige en su regla con su caso en la prueba unitaria de esa familia.
-- Verif: `pruebas/revisor`
+**R0.10 Un dueño por dato, pistas y fin del recorrido** — REQ-PANT-004, REQ-PANT-007, REQ-PANT-001 (consola vacía)
+- RED `presentacion/modelo-vista.test.ts` (`posicion.total` es `null` mientras calcula y en `u6-ciclo-infinito-demo` detenido; ranura `fin` con «Probar con otros datos» y «Modificar el programa») + `contenedores/Visualizador.test.tsx` (sin `ContadorVueltas` en la zona de explicación; leyenda ▶/▷; teclear en visualización muestra el aviso en `aria-live="polite"`; consola vacía con título y texto); falla.
+- GREEN: `modelo-vista.ts`, `ranura.ts` (`fin`), `Visualizador.tsx`, `Consola.tsx`, estilos de la línea siguiente.
+- Verif: `presentacion/modelo-vista` · `interfaz/contenedores`
 
-**R1.11 Hecho `mismo-texto` en el paso** — REQ-REV-006
-- RED `interprete/expresiones.test.ts`: `sc.next() == "si"` con la entrada «si» → `hechos: [{ punto, tipo: 'mismo-texto', mismoTexto: true }]` y resultado `false`; `"a" == "b"` → `false`; las comparaciones numéricas no llevan hecho (eso es R2.2); falla.
-- GREEN: `interprete/expresiones.ts` lo anota con `StringJava.equals`; `Paso.hechos` en `traza/paso.ts`.
-- Verif: `motor/interprete`
+**R0.11 Galería «Ejemplos»** — REQ-AULA-001 (parte curricular de la 5.2)
+- RED `presentacion/galeria.test.ts` (secciones U3–U7 desde texto crudo de prueba; la máquina de snacks con 5 datos de ejemplo; entrada preparada idéntica al `.entrada.txt`) + `pruebas/arquitectura/galeria-completa.test.ts` (todo `.java` de `corpus/curso/` y `ejercicios-del-po/` tiene entrada en `textos/es-MX/galeria.ts`; toda `.entrada.txt` termina en `\n`) + `componentes/Galeria.test.tsx`; falla.
+- GREEN: `src/interfaz/datos/programas-crudos.ts` (diferido), `presentacion/galeria.ts`, `textos/es-MX/galeria.ts` (títulos, «Qué observar», demostraciones propuestas en design §2.5), `Galeria.tsx`.
+- Verif: `presentacion/galeria` · `arquitectura/galeria-completa` · `interfaz/componentes/Galeria`
 
-**R1.12 Textos del revisor** — REQ-REV-001, REQ-REV-003
-- RED `textos/es-MX/revisor.test.ts`: `familiaDelProblema` y `familiaDelAviso` cubren todos los códigos (tipos `Record`); un `porQue` por familia; texto de cada trampa y de cada confirmación sin marcadores; resumen con 0, 1 y n trampas («revisé las 5 que conozco…»); ninguna frase con «incorrecto», «error tuyo» o «te equivocaste»; falla.
-- GREEN: `src/textos/es-MX/revisor.ts` (borradores para la revisión del PO en R1.17).
-- Verif: `textos/es-MX/revisor`
+**R0.12 Distribuciones: escritorio, celular y proyector** — REQ-PANT-003, REQ-PANT-005, REQ-AULA-004 (absorbe 5.5)
+- RED `pruebas/e2e/pantalla.spec.ts` + `pruebas/e2e/proyector.spec.ts`: a 1366×768 robot, globo y ranura sin desplazar; a 390×844 y 320 px editor ≈ 35vh centrado en la línea actual, globo visible en el paso 0, barra inferior fija, sin desplazamiento horizontal; proyector a 1024×768 y 1280×720 con código ≥ 24 px, línea de 53 caracteres partida sin desplazamiento horizontal, variables sin «Tipo», consola con sus últimas líneas, nada encimado ni cortado; falla.
+- GREEN: `estilos/{aplicacion,proyector}.css` (áreas de cuadrícula y `data-proyector`), `EditorJava.tsx` (`Compartment` de tema y `lineWrapping` en proyector), `PanelVariables.tsx` (`compacto`), `Consola.tsx` (`ultimasLineas`).
+- Verif: `npm run e2e -- pantalla proyector`
 
-**R1.13 Presentación del revisor** — REQ-REV-001, REQ-REV-006, REQ-REV-007 · PR-4
-- RED `presentacion/revisor.test.ts`: paso 0 de `u5-switch-sin-break-fallthrough` → 3 trampas en 6, 8 y 10; MaquinaSnacks → «revisé las 5…»; con `revisorAlInicio: false` no hay resumen; una confirmación por familia con las positivas (`nextLine()` leyó `""`; dos textos iguales y `false`; caída al `case 2`; `false` y aun así la línea siguiente; `25 / 3` → `8` → `8.0`); sin manifestación no hay nota; un error de compilación da su porqué; falla.
-- GREEN: `src/presentacion/revisor.ts` + `ModeloVista.revisor`.
-- Verif: `presentacion/revisor`
+**R0.13 Modelo del libro y programas con el oráculo** — REQ-LIBRO-002, REQ-LIBRO-003, REQ-DIFF-009 (infraestructura de borradores)
+- RED `textos/es-MX/libro/indice.test.ts` (los 34 ids de design §5.2 con unidad, oleada y orden; un tema con contenido tiene las 8 secciones, 2–3 «Ponte a prueba», 2 tareas, ≤ 550 palabras, sin salidas escritas) + `herramientas/oraculo/generar-goldens.test.ts` (descubre `corpus/libro/`) + `pruebas/diferencial/libro.test.ts` (byte a byte o veredicto y línea; ningún aviso de fuera de alcance; entradas con `\n`), con un programa semilla `corpus/libro/u6-while/contar-del-1-al-5.java`; falla.
+- GREEN: `textos/es-MX/libro/{tipos,indice}.ts`, `generar-goldens.ts` recorre `libro`, el programa semilla y su `.meta.json`, goldens.
+- Verif: `textos/es-MX/libro` · `diferencial/libro` · `test:oraculo`
 
-**R1.14 Personajes y nota del revisor** — REQ-VIS-014, REQ-REV-001, REQ-REV-007
-- RED `componentes/{Robot,NotaDelRevisor,Explicacion}.test.tsx`: `personaje` programador y revisor con accesorio distinto (`data-personaje`, la lupa) y nombre accesible; la nota en la misma región `aria-live`; «Ver explicación» con teclado; con un error de compilación habla el revisor con `AvisoProblema` intacto y su porqué; falla.
-- GREEN: `Robot.tsx` (`personaje`), `NotaDelRevisor.tsx`, `Explicacion.tsx`, `textos/es-MX/robot.ts`, estilos.
-- Verif: `interfaz/componentes`
+**R0.14 Borradores U6, parte 1 (5 temas)** · contenido — REQ-LIBRO-002, 003, 004
+- RED `indice.test.ts` ampliada: `u6-que-es-un-ciclo`, `u6-while`, `u6-contador-acumulador-bandera`, `u6-do-while` y `u6-for` con contenido completo y programas verificados; falla (sin contenido).
+- GREEN: `textos/es-MX/libro/u6.ts` + `corpus/libro/u6-*/` + goldens. Estado borrador; el PO los recibe como texto en el chat.
+- Verif: `textos/es-MX/libro` · `diferencial/libro`
 
-**R1.15 Marca de trampa en el editor** — REQ-REV-007
-- RED `editor/marcas-de-trampa.test.ts`: cada línea de `vista.trampas` lleva `cm-trampa` y la marca ⚑ con nombre «Trampa», distinta de ✖ y ⓘ; ninguna en edición después de cambiar el código; falla.
-- GREEN: `src/interfaz/editor/marcas-de-trampa.ts` sobre el `StateField` de resaltados (4.4).
-- Verif: `interfaz/editor`
-
-**R1.16 E2E y accesibilidad del revisor** — REQ-REV-006, REQ-REV-007 (CR3)
-- RED `pruebas/e2e/revisor.spec.ts`: `u5-switch-sin-break-fallthrough` (aviso del paso 0, marcas, nota en cada caída) y la positiva del renglón pendiente con su entrada, solo con teclado; axe sin graves ni críticas; Chromium, Firefox y WebKit; falla.
+**R0.15 E2E y accesibilidad de la pantalla** — REQ-PANT-001–REQ-PANT-009 (CR1, CR2, CR3)
+- RED `pruebas/e2e/pantalla.spec.ts` ampliada: primera vez solo con teclado (saludo → «Ver un ejemplo paso a paso» → MaquinaSnacks → paso 1 en ≤ 3 acciones); error de compilación y su corrección con el hablante correcto; exactamente un robot en cada estado; axe sin graves ni críticas en saludo, visualización, error, galería y proyector; zoom al 200 %; galería sin red tras la primera visita (sobre el build real, regla 8); Chromium, Firefox y WebKit; falla.
 - GREEN: los huecos que destape.
-- Verif: `npm run e2e -- revisor`
+- Verif: `npm run e2e -- pantalla`
 
-**R1.17 Cierre de R1** · proceso
-- `sdd-verify` del hito; el PO revisa `textos/es-MX/revisor.ts` y `corpus/trampas-esperadas.json`; commit confirmado; `state.yaml`.
+**R0.16 Cierre de R0** · proceso
+- Verificación única: `sdd-verify` + panel (diseñador sobre la pantalla real a 1366×768, 1280×720, 1024×768, 390 y 320; maestro sobre voz, saludo y «Qué observar»; experto en Java sobre galería y entradas). El PO revisa `textos/es-MX/{pantalla,galeria,explicaciones,robot}.ts`; `npm run ci` (peso); commit confirmado; `state.yaml`; avisar al orquestador para conciliar 5.2 y 5.5.
 
-## Hito R2 — Modo reto
+## Hito R1 — Modo reto (ciclos primero)
 
-**Objetivo:** el robot programador pregunta con tres opciones antes de cada condición y selección, con la respuesta y las refutaciones tomadas del motor.
-**Entrada:** R1 cerrado; respuestas del PO a PR-1, PR-2 y PR-3 (o sus recomendaciones). **Sesiones:** 3–4.
+**Objetivo:** el robot paso a paso pregunta con tres tarjetas antes de cada condición y selección que admiten reto, con la respuesta, las refutaciones y el balance tomados del motor; cabe en proyector y celular.
+**Entrada:** R0 cerrado. **Sesiones:** 3–4.
 
-**R2.1 ADR 018 — Modo reto (enmienda D4)** · documento · PR-1, PR-2
-- `docs/adr/018-modo-reto.md`: D4 pasa a tres opciones; opción = veredicto + razón como afirmaciones; catálogo y selección (§3.3–3.4); hechos del motor; alternativas B y C.
+**R1.0 Prueba en papel en clase** · proceso, a cargo del PO (la «R2.0» del panel) · PQ-4
+- Los 4 retos de MaquinaSnacks `a1 2 50` (textos de `panel-1-maestro.md` §3.3) en una clase real, 20 min, votación a mano alzada; el PO anota qué opción confundió y por qué. Puede hacerse durante R0.
 
-**R2.2 Hecho `relacion` de las comparaciones numéricas** — REQ-RETO-006
-- RED `interprete/expresiones.test.ts`: `i < 10` con `i` = 10 → `igual`; `0.0 / 0.0 < 1` → `sin-orden`; `'a' < 98` → `menor`; `long`; `-0.0 == 0.0` → `igual`; propiedad en `pruebas/propiedades/relacion-del-corpus.test.ts`: en todo paso de condición del corpus, la relación es coherente con el resultado de su operador; falla.
-- GREEN: `interprete/expresiones.ts` (mismas operaciones que deciden el resultado).
+**R1.1 El PO revisa el catálogo de distractores** · proceso — REQ-RETO-004
+- Al **inicio** del hito: el PO revisa design §4.3 (familias, textos de ejemplo, las tres familias nuevas de `switch`) con el resultado de R1.0, y los 4 retos de §4.6. Lo que cambie se aplica en design §4.3–§4.6 antes de R1.7.
+
+**R1.2 ADR 018 — Modo reto (enmienda D4)** · documento
+- `docs/adr/018-modo-reto.md`: D4 pasa a tres tarjetas; consecuencia + razón como afirmaciones; dónde no hay reto; catálogo, selección, balance y salida a la forma C; silenciado; columna exclusiva; alternativas B y C.
+
+**R1.3 Hechos `relacion` y `mismo-texto`** — REQ-RETO-007
+- RED `interprete/expresiones.test.ts`: `i < 10` con `i` = 10 → `igual`; `0.0 / 0.0 < 1` → `sin-orden`; `'a' < 98` → `menor`; `long`; `-0.0 == 0.0` → `igual`; `sc.next() == "si"` con «si» → `mismo-texto: true` y resultado `false`; `!=` análogo; + `pruebas/propiedades/relacion-del-corpus.test.ts` (relación coherente con su operador en todo el corpus); falla.
+- GREEN: `interprete/expresiones.ts` (mismas operaciones que deciden el resultado; `StringJava.equals`), `traza/paso.ts` (`hechos`).
 - Verif: `motor/interprete` · `propiedades/relacion-del-corpus`
 
-**R2.3 Piezas y forma de la condición** — REQ-RETO-003, REQ-RETO-006 (CR9)
-- RED `interprete/explicar.test.ts`: `cantidad < 1 || cantidad > 3` con 2 → piezas `2 < 1`/false y `2 > 3`/false, forma `o`; `edad >= 18 && tieneIne` con 16 → la segunda con `resultado: null` y `sustituida: null`; `!(x > 3)` → `no`; `seEncontroNegativo` → clase `variable`; falla.
-- GREEN: `ir/generar-ir.ts` (`CondicionIr.forma`), `interprete/explicar.ts`, `traza/explicacion.ts`.
-- Verif: `motor/interprete` + `npm run rendimiento` dentro de C11 (100 000 pasos ≤ 1 s; cambio de paso ≤ 100 ms p95)
+**R1.4 Condiciones en la vista y contención** — REQ-RETO-002, REQ-RETO-009, REQ-RETO-010
+- RED `ir/vista-programa.test.ts`: `CondicionEnVista` de MaquinaSnacks (`variables`, `rango` de las líneas 53 y 66, `admiteReto`); motivos `constante` (`while (true)`, `if (MODO)` con `final`), `lee-entrada`, `azar`, `con-efectos` (`n-- > 0`); `hayInstruccionesDespues`; `cicloPadre` en `u6-ciclos-anidados-tabla`; `control.predecible` solo si `admiteReto`; falla.
+- GREEN: `ir/{ir,generar-ir,vista-programa}.ts` (constante con la prueba de `semantica/alcanzabilidad.ts`), `interprete/sentencias.ts`.
+- Verif: `motor/ir` · `motor/interprete`
 
-**R2.4 Estructura de los `if` en la vista** — REQ-RETO-004
-- RED `ir/vista-programa.test.ts`: `sinoEsIf`, `enEscalera` y `entoncesTermina` en `u5-escalera-else-if-orden-incorrecto`, en el `if` de la línea 53 de MaquinaSnacks (`abrupta` por `return`) y en `u5-decision-anidada-licencia`; falla.
-- GREEN: `ir/generar-ir.ts`, `ir/vista-programa.ts` (`RamasDeIf`).
+**R1.5 Piezas de la condición por paso** — REQ-RETO-003, REQ-RETO-007, REQ-PANT-010 (CR14)
+- RED `interprete/explicar.test.ts`: `cantidad < 1 || cantidad > 3` con 2 → `2 < 1`/`false`, `2 > 3`/`false`; `edad >= 18 && tieneIne` con 16 → la segunda con `resultado: null` y `sustituida: null`; `!(x > 3)`; `seEncontroNegativo` → clase `variable`; + `explicaciones.test.ts` con la frase de piezas («ningún lado da `true`») de la línea 53; falla.
+- GREEN: `interprete/explicar.ts`, `traza/explicacion.ts`, `textos/es-MX/explicaciones.ts`.
+- Verif: `motor/interprete` · `textos/es-MX/explicaciones` + `npm run rendimiento` dentro de C11
+
+**R1.6 Estructura de `if` y `switch`** — REQ-RETO-004 (y base de la trampa 3)
+- RED `ir/vista-programa.test.ts`: `sinoEsIf`, `enEscalera`, `entoncesTermina` en `u5-escalera-else-if-orden-incorrecto`, la línea 53 de MaquinaSnacks (`abrupta` por `return`) y `u5-decision-anidada-licencia`; `EstructuraDeSwitch` con `termina` por alcanzabilidad (grupo en `break`, en `return`, en `if` que puede caer, en `if/else` con dos ramas abruptas, apiladas, `tieneDefault`); falla.
+- GREEN: `ir/{generar-ir,vista-programa}.ts` reutilizando `semantica/alcanzabilidad.ts`.
 - Verif: `motor/ir`
 
-**R2.5 Afirmaciones, reglas de Java y su respaldo** — REQ-RETO-003, REQ-RETO-004, REQ-RETO-006, REQ-DIFF-009
-- RED `presentacion/reto/afirmaciones.test.ts`: `verificar` de cada tipo (§3.2) contra trazas reales del corpus; `pruebas/diferencial/reto.test.ts`: cada `ReglaDeJava` tiene su programa en `corpus/experimentos/reto/` y el motor coincide con su golden; falla.
-- GREEN: `presentacion/reto/afirmaciones.ts` + ≈ 14 programas (`o-revisa-el-segundo`, `y-no-revisa-el-segundo`, `frontera`, `while-no-entra`, `escalera-se-detiene`, `return-termina-main`, `switch-break-y-caida`…) + `oraculo:goldens`.
+**R1.7 Afirmaciones y reglas de Java con su respaldo** — REQ-RETO-004, REQ-RETO-007, REQ-DIFF-009 · depende: R1.1
+- RED `presentacion/reto/afirmaciones.test.ts` (`verificar` de cada tipo de design §4.2 contra trazas reales) + `pruebas/diferencial/reto.test.ts` (cada `ReglaDeJava` tiene su programa en `corpus/experimentos/reto/` y el motor coincide con su golden); falla.
+- GREEN: `presentacion/reto/afirmaciones.ts` + ≈ 20 programas (`o-revisa-el-segundo`, `y-no-revisa-el-segundo`, `frontera`, `while-no-entra`, `for-actualiza-al-final`, `while-no-cuenta-solo`, `escalera-se-queda-con-la-primera`, `return-termina-main`, `switch-break-y-caida`, `switch-sin-coincidencia`, `textos-distintos-guardados`…) + `oraculo:goldens`.
 - Verif: `presentacion/reto` · `diferencial/reto`
 
-**R2.6 Textos del reto** — REQ-RETO-005 · PR-2
-- RED `textos/es-MX/reto.test.ts`: pregunta por construcción; texto de cada familia, veredicto, refutación y retroalimentación (acierto, parcial, error); ninguna opción pasa de 140 caracteres con los datos más largos del corpus; sin marcadores ni «incorrecto»; falla.
-- GREEN: `src/textos/es-MX/reto.ts` (borradores para la revisión del PO en R2.13).
-- Verif: `textos/es-MX/reto`
+**R1.8 Textos del reto** — REQ-RETO-001, 003, 006, 009
+- RED `textos/es-MX/reto.test.ts`: preguntas exactas por construcción (maestro §3.1), texto de primera vez, cada familia como consecuencia (≤ 30) + razón (total ≤ 100) con los datos más largos del corpus, retroalimentación ✔/◐/✖, «✔ Lo que hizo Java», «¿Y las otras opciones?», «Ya entendí este ciclo» y su descripción, interruptor; sin «incorrecto» ni «`==` no sirve»; pasa `voz.test.ts`; falla.
+- GREEN: `src/textos/es-MX/reto.ts` (borradores para la revisión del PO en R1.18).
+- Verif: `textos/es-MX/reto` · `textos/es-MX/voz`
 
-**R2.7 Familias y constructor del reto** — REQ-RETO-002, REQ-RETO-003, REQ-RETO-004
-- RED `presentacion/reto.test.ts`: los cuatro retos de MaquinaSnacks `a1 2 50`, la línea 72 con `b2 3 40` y la 53 con `a2 5` exactamente como en §3.5; los seis casos del corpus de §3.5; ningún reto en otros pasos; mismo orden en dos corridas; la correcta en `(nodo × 7 + revisión) mod 3`; falla.
-- GREEN: `presentacion/reto/familias.ts` + `presentacion/reto.ts` (§3.4).
+**R1.9 Familias y constructor del reto** — REQ-RETO-002, 003, 004
+- RED `presentacion/reto.test.ts`: los 4 retos de MaquinaSnacks `a1 2 50` y la línea 24 con `z9` exactamente como en design §4.6 (con los cambios de R1.1); los casos del corpus de §4.6; sin reto en pasos con `motivoSinReto`; variedad entre retos seguidos; mismo resultado en dos corridas; correcta en `(nodo × 7 + revisión) mod 3`; falla.
+- GREEN: `presentacion/reto/familias.ts` + `presentacion/reto.ts` (design §4.4, memoria por índice de paso).
 - Verif: `presentacion/reto`
 
-**R2.8 Propiedad del reto en todo el corpus** — REQ-RETO-003, REQ-RETO-004, REQ-RETO-006 (CR4)
-- RED `pruebas/propiedades/reto-del-corpus.test.ts`: en cada paso de condición y de selección de cada programa ejecutable del corpus (incluidos `trampas/` y `reto/`): tres opciones distintas, exactamente una con todas sus afirmaciones verdaderas, cada distractor con al menos una falsa, ninguna afirmación `pieza` sobre una pieza sin revisar, textos resueltos; falla (el recorredor `pruebas/propiedades/pasos-de-condicion.ts` no existe).
-- GREEN: el recorredor y las correcciones que destape (cada una con su caso en `presentacion/reto.test.ts`).
+**R1.10 Propiedad y balance en todo el corpus** — REQ-RETO-003, 004, 005, 007 (CR4, CR5)
+- RED `pruebas/propiedades/reto-del-corpus.test.ts`: en cada paso con reto de cada programa ejecutable (incluidos `reto/` y `trampas/` cuando existan): tres opciones distintas, exactamente una verdadera, cada distractor con al menos una afirmación falsa, ninguna `pieza` sobre una pieza sin revisar; pasos sin reto con su motivo; balance 40–60 %, `pieza-volteada` ≤ 20 %, topes de `if-como-ciclo`/`if-espera`; falla (el recorredor `pruebas/propiedades/pasos-con-reto.ts` no existe).
+- GREEN: el recorredor y los ajustes de orden que destape (cada uno con su caso en `presentacion/reto.test.ts`). **Si el balance no se alcanza, se detiene el hito y el PO decide** (design §4.5).
 - Verif: `propiedades/reto-del-corpus`
 
-**R2.9 Estado y navegación con retos** — REQ-RETO-001, REQ-RETO-007, REQ-RETO-008, REQ-VIS-013 · PR-1, PR-3
-- RED `estado/reductor.test.ts` + `presentacion/modelo-vista.test.ts`: `alternar-reto` sin perder la posición; `siguiente` no avanza con un reto pendiente; `responder-reto` registra y avanza; la reproducción se pausa; atrás y adelante conservan la respuesta; «Fin» salta retos; `visualizar` vacía respuestas; `silenciar-ciclo` hasta la revisión `false` de ese nodo; falla.
-- GREEN: `estado/reductor.ts` (`ajustes`, `reto`), `modelo-vista.ts` (`reto`, `retroalimentacion`), `contenedores/Visualizador.tsx`.
+**R1.11 «Ya entendí este ciclo»** — REQ-RETO-009 (CR7)
+- RED `presentacion/reto/silenciado.test.ts`: `u6-contador-de-pares` silenciado en la primera revisión solo pregunta en sus dos últimas revisiones y en ningún `if` de adentro; `u6-ciclos-anidados-tabla` (interno silenciado vuelve a preguntar en la siguiente vuelta del externo; externo silenciado calla también al interno); traza que espera un dato → sigue silenciado; salida por `break` termina el silenciado; falla.
+- GREEN: `presentacion/reto/silenciado.ts` (design §4.7).
+- Verif: `presentacion/reto`
+
+**R1.12 Estado y navegación con retos** — REQ-RETO-001, 008, REQ-VIS-013
+- RED `estado/reductor.test.ts` + `presentacion/modelo-vista.test.ts`: `alternar-reto` sin perder la posición (y texto de primera vez una sola vez); `siguiente` no avanza con reto pendiente y la flecha derecha va a la tarjeta 1; `responder-reto` registra y avanza; la reproducción se pausa; atrás/adelante conservan; «Fin» salta; `visualizar` vacía; `silenciar-ciclo`; la retroalimentación reemplaza el texto del globo; `ranura.reto`; falla.
+- GREEN: `estado/reductor.ts` (`reto`), `modelo-vista.ts`, `ranura.ts`, `contenedores/Visualizador.tsx`.
 - Verif: `interfaz/estado` · `presentacion/modelo-vista`
 
-**R2.10 Pregunta del reto e interruptor** — REQ-RETO-001, REQ-RETO-005, REQ-RETO-008, REQ-RETO-009, REQ-VIS-013
-- RED `componentes/{PreguntaReto,InterruptorReto}.test.tsx`: tres botones con número y `aria-keyshortcuts` 1/2/3; foco en la opción 1; retroalimentación con ✔/◐/✖ y palabra en `aria-live="polite"`; «Ya entendí este ciclo» solo en ciclos; el interruptor es `role="switch"` con nombre del catálogo; falla.
-- GREEN: los dos componentes, `BarraControles.tsx`, `textos/es-MX/controles.ts`, estilos (proyector incluido).
+**R1.13 Tarjetas, retroalimentación e interruptor** — REQ-RETO-001, 006, 008, 010
+- RED `componentes/{TarjetasDelReto,InterruptorReto}.test.tsx` + `Explicacion.test.tsx`: tarjetas ≥ 56 px con número, consecuencia y razón, `aria-keyshortcuts` 1/2/3, foco en la 1; elegir confirma; ✔/◐/✖ con ícono, palabra y borde; «✔ Lo que hizo Java»; «¿Y las otras opciones?» con teclado; foco a «Siguiente» y `aria-live="polite"`; rótulo «Reto · línea N» y robot con «?»; panel de condición oculto hasta contestar; interruptor `role="switch"` con «Encendido»/«Apagado»; sin movimiento con movimiento reducido; falla.
+- GREEN: los dos componentes, `RanuraDeAcciones.tsx`, `Explicacion.tsx`, `Robot.tsx` (letrero «?»), encabezado, estilos.
 - Verif: `interfaz/componentes`
 
-**R2.11 El enlace lleva `reto` y `revisor`** — REQ-AULA-002 · PR-4 · depende: 5.4 de `visualizador-java`
-- RED `presentacion/enlace.test.ts`: ida y vuelta exacta con `reto=1` y `revisor=despues`; un enlace sin ellos abre con el reto apagado y el aviso del paso 0; falla.
-- GREEN: `src/presentacion/enlace.ts`. Si la 5.4 aún no existe, esta tarea pasa a ser parte de su contrato y se cierra con ella.
+**R1.14 Columna exclusiva del reto** — REQ-RETO-010, REQ-AULA-004
+- RED `pruebas/e2e/reto.spec.ts` (parte de distribución): con un reto pendiente, a 1280×720 y 1024×768 en proyector y a 390×844, la pregunta, «Valores ahora», las 3 tarjetas, el porqué y «Siguiente» se ven sin desplazar ni encimarse; variables y consola compactas; falla.
+- GREEN: `data-reto="pendiente"` en `Visualizador.tsx`, CSS de la columna y de la barra inferior crecida, `RetoVista.valoresAhora`.
+- Verif: `npm run e2e -- reto`
+
+**R1.15 El enlace lleva `reto`** — REQ-AULA-002 · depende: 5.4 de `visualizador-java`
+- RED `presentacion/enlace.test.ts`: ida y vuelta exacta con `reto=1`; sin él abre apagado; falla.
+- GREEN: `src/presentacion/enlace.ts`. Si la 5.4 aún no existe, el parámetro pasa a su contrato y esta tarea se cierra con ella.
 - Verif: `presentacion/enlace`
 
-**R2.12 E2E del reto: teclado, proyector y AA** — REQ-RETO-002, REQ-RETO-007, REQ-RETO-009, REQ-AULA-005 (CR5)
-- RED `pruebas/e2e/reto.spec.ts`: MaquinaSnacks `a1 2 50` presenta 4 retos (24, 53, 66, 72) y se contestan con 1/2/3; regresar no vuelve a preguntar; en proyector a 1024×768 y 1280×720 nada se encima ni se corta; axe sin graves ni críticas; tres motores; falla.
+**R1.16 E2E del reto en clase** — REQ-RETO-002, 008, 009, 010, REQ-AULA-005 (CR6)
+- RED `pruebas/e2e/reto.spec.ts` ampliada: MaquinaSnacks `a1 2 50` presenta 4 retos (24, 53, 66, 72) que se contestan con 1/2/3; regresar no vuelve a preguntar; `u6-suma-1-a-n` con «Ya entendí»; un `while (true)` no pregunta; un solo robot en cada estado; axe sin graves ni críticas; tres motores; falla.
 - GREEN: los huecos que destape.
 - Verif: `npm run e2e -- reto`
 
-**R2.13 Cierre de R2** · proceso
-- `sdd-verify` del hito; el PO revisa `textos/es-MX/reto.ts` y el catálogo de familias (§3.3); commit confirmado; `state.yaml`; avisar al orquestador para conciliar 5.1, 5.4 y 5.6 de `visualizador-java`.
+**R1.17 Borradores U6, parte 2 (5 temas)** · contenido — REQ-LIBRO-002, 003, 004
+- RED `indice.test.ts`: `u6-ciclos-incrementales-y-decrementales`, `u6-error-por-uno-y-ciclo-infinito`, `u6-repetir-hasta-que-el-usuario-quiera`, `u6-ciclos-anidados` y `u6-break-y-continue` completos; falla.
+- GREEN: `textos/es-MX/libro/u6.ts` + `corpus/libro/u6-*/` + goldens. Estado borrador.
+- Verif: `textos/es-MX/libro` · `diferencial/libro`
 
-## Hito R3 — Libro: la sección, los accesos y la oleada 1
+**R1.18 Cierre de R1** · proceso
+- Verificación única con el panel (maestro sobre catálogo y retroalimentación; diseñador sobre tarjetas en proyector y celular; experto en Java sobre las reglas); el PO revisa `textos/es-MX/reto.ts` y, si hizo falta, decide el balance; `npm run ci`; commit confirmado; `state.yaml`; avisar al orquestador para conciliar 5.1, 5.4 y 5.6.
 
-**Objetivo:** el libro funciona completo con los 16 temas de la oleada 1 (U5, U6 e incremento y decremento), aprobados por el PO.
-**Entrada:** R2 cerrado (los borradores R3.10 y R3.11 pueden empezar durante R2: no tocan código de R2); respuesta a PR-5. **Sesiones:** 3–4 + la revisión del PO.
+## Hito R2 — Libro, oleada 1 (21 temas, U6 primero)
 
-**R3.1 ADR 019 — Libro de temas** · documento
-- `docs/adr/019-libro-de-temas.md`: contenido tipado; ejemplos del oráculo; aprobación con huella y la regla «nadie marca aprobado sin el visto bueno explícito del PO»; accesos por el árbol de CodeMirror; carga diferida y límite de peso.
+**Objetivo:** el libro funciona completo con los 10 temas de U6, sus 5 requisitos y los 6 de U5, aprobados por el PO.
+**Entrada:** R1 cerrado (los 10 borradores de U6 ya existen). **Sesiones:** 3 + la revisión del PO.
 
-**R3.2 Modelo e índice del libro** — REQ-LIBRO-001, REQ-LIBRO-002
-- RED `textos/es-MX/libro/indice.test.ts`: los 31 ids de §4.2, únicos, con unidad y oleada; todo tema con contenido cumple la estructura (idea, cómo se escribe, ≥ 1 ejemplo, errores típicos, resumen), ≤ 700 palabras y sin salidas de consola escritas; `relacionados` existen; un tema sin contenido está en borrador; falla.
-- GREEN: `textos/es-MX/libro/{tipos,indice}.ts`.
-- Verif: `textos/es-MX/libro`
+**R2.1 El PO revisa la lista de temas** · proceso — REQ-LIBRO-001 · PQ-3
+- Al **inicio** del hito: el PO revisa los 34 temas, su orden y las oleadas (design §5.2); los cambios se aplican en `indice.ts` y en design §5.2 antes de R2.10.
 
-**R3.3 Ejemplos del libro con el oráculo** — REQ-LIBRO-003, REQ-DIFF-009
-- RED `herramientas/oraculo/generar-goldens.test.ts` (descubre `corpus/libro/`) + `pruebas/diferencial/libro.test.ts` (los que ejecutan, byte a byte; los de error, veredicto y línea), con un ejemplo semilla `corpus/libro/u6-for/tabla-del-3.java`; falla.
-- GREEN: `generar-goldens.ts` recorre `libro`; el ejemplo y su `.meta.json`; goldens.
-- Verif: `diferencial/libro` · `test:oraculo`
+**R2.2 ADR 019 — Libro de temas** · documento
+- `docs/adr/019-libro-de-temas.md`: estructura que empieza por el ejemplo (PRIMM), contenido tipado, programas del oráculo dentro del subconjunto, huella y la regla «nadie marca aprobado sin el visto bueno explícito del PO», accesos por el árbol de CodeMirror, carga diferida y peso.
 
-**R3.4 Huella y aprobación** — REQ-LIBRO-006
-- RED `pruebas/libro/aprobaciones.test.ts` + `herramientas/libro-huella.test.ts`: un tema aprobado con huella vieja falla (con un tema de prueba); la huella cambia si cambia un texto o un ejemplo; los borradores no salen en el índice publicado (`mostrarBorradores: false`); falla.
-- GREEN: `herramientas/libro-huella.ts`, script `libro:huella` en `package.json`, filtro en presentación.
+**R2.3 Huella y aprobación** — REQ-LIBRO-007
+- RED `pruebas/libro/aprobaciones.test.ts` + `herramientas/libro-huella.test.ts`: un tema aprobado con huella vieja falla; la huella cambia si cambia un texto o un programa; los borradores no salen en el índice publicado; falla.
+- GREEN: `herramientas/libro-huella.ts`, script `libro:huella` en `package.json`, filtro `mostrarBorradores`.
 - Verif: `pruebas/libro` · `herramientas/libro-huella`
 
-**R3.5 Presentación del libro** — REQ-LIBRO-001, REQ-LIBRO-005 (CR7)
-- RED `presentacion/libro.test.ts`: índice por unidad, anterior y siguiente; tema de un paso por su clave (`tieneSino`, escalera, tipo de ciclo, `switch`); tema de cada familia de problema y de cada trampa; cobertura: todo `if`/`switch`/`while`/`do`/`for` de la galería y del corpus ejecutable lleva a un tema publicado; falla.
+**R2.4 Presentación del libro** — REQ-LIBRO-001, 004, 006 (CR9)
+- RED `presentacion/libro.test.ts`: índice por unidad con «Este capítulo llega pronto»; anterior/siguiente; «Ponte a prueba» y «Para comprobar» desde goldens; tema de un paso por su clave y de cada construcción (`el-if`, `if-con-else`, escalera, decrementales); cobertura: todo `if`/`switch`/`while`/`do`/`for` de la galería y del corpus ejecutable lleva a un tema publicado; falla.
 - GREEN: `src/presentacion/libro.ts`.
 - Verif: `presentacion/libro`
 
-**R3.6 Pantalla del libro, carga diferida y abrir un ejemplo** — REQ-LIBRO-001, REQ-LIBRO-004, REQ-LIBRO-007, REQ-LIBRO-008, REQ-VIS-014
-- RED `interfaz/libro/*.test.tsx` + `estado/reductor.test.ts` + `pruebas/arquitectura/libro-diferido.test.ts`: `pantalla` y `temaAbierto` sin perder programa ni paso; `cargar-programa { codigo, entradaPreparada }` y «Volver a mi programa»; el robot explicador con su libro; la salida del ejemplo es la del golden; ningún módulo de `src/interfaz` importa `textos/es-MX/libro/u*.ts` salvo con `import()`; falla.
-- GREEN: `interfaz/libro/{PantallaLibro,TemaDelLibro,EjemploDelLibro}.tsx`, reductor, `Robot.tsx` (explicador). Si la 5.2 ya creó `cargar-programa`, se reutiliza.
+**R2.5 Pantalla del libro y carga diferida** — REQ-LIBRO-001, 002, 008, 009, REQ-PANT-001, 002, 009
+- RED `interfaz/libro/*.test.tsx` + `pruebas/arquitectura/libro-diferido.test.ts`: las 8 secciones en orden; «Ver la salida» y «Ver la respuesta» con teclado; habla el robot del libro; aparecen la puerta «Leer un tema» y «Libro» en la navegación; ningún módulo importa `libro/u*.ts` salvo con `import()`; falla.
+- GREEN: `interfaz/libro/{PantallaLibro,TemaDelLibro,ProgramaDelLibro}.tsx`, `interfaz/datos/libro-crudo.ts`.
 - Verif: `interfaz/libro` · `arquitectura/libro-diferido`
 
-**R3.7 Accesos en contexto** — REQ-LIBRO-005
-- RED `editor/accesos-a-temas.test.ts` + `componentes/Explicacion.test.tsx`: marca 📖 en las líneas de `if`/`switch`/`while`/`do`/`for` (árbol de CodeMirror), con el tema según §4.5 (un `for` con `i--` agrega el de decrementales); `Alt+F1` en la línea del cursor; el globo enlaza el tema de la condición actual; solo temas publicados; falla.
+**R2.6 Abrir un ejemplo del libro** — REQ-LIBRO-005, REQ-PANT-007
+- RED `estado/reductor.test.ts` + `presentacion/ranura.test.ts` + componentes: «▶ Verlo paso a paso» y «🎯 Ponerme a prueba» (reto encendido) con `origen: libro`; franja «Ejemplo del libro: … · ← Volver al tema»; aviso de reemplazo y «Volver a mi programa»; sugerencia de encender el reto la segunda vez; fin con «Volver al tema» y «Siguiente tema»; falla.
+- GREEN: reductor, `ranura.ts`, `Visualizador.tsx`, textos del libro en `pantalla.ts`.
+- Verif: `interfaz/estado` · `presentacion/ranura`
+
+**R2.7 Accesos en contexto** — REQ-LIBRO-006
+- RED `editor/accesos-a-temas.test.ts` + `componentes/Explicacion.test.tsx`: 📖 solo en la línea del cursor en edición; botón «Tema de esta línea» y `Alt+F1`; mapeo de design §5.5 (un `for` con `i--` agrega decrementales); el globo enlaza el tema de la condición actual; solo temas publicados; falla.
 - GREEN: `interfaz/editor/accesos-a-temas.ts`, `Explicacion.tsx`, ayuda de atajos.
 - Verif: `interfaz/editor` · `interfaz/componentes`
 
-**R3.8 Enlaces desde el revisor y el reto** — REQ-LIBRO-005
-- RED `presentacion/{revisor,reto}.test.ts`: el porqué de un problema y la nota de una trampa enlazan su tema; la retroalimentación del reto enlaza el de la construcción y, si la familia lo tiene, el de su error; nunca un borrador; falla.
-- GREEN: `presentacion/{revisor,reto}.ts`, `NotaDelRevisor.tsx`, `PreguntaReto.tsx`.
-- Verif: `presentacion`
+**R2.8 Enlaces desde el reto** — REQ-LIBRO-006
+- RED `presentacion/reto.test.ts`: la retroalimentación enlaza el tema de la construcción y, si la familia lo tiene, el de su error (`frontera` → `error-por-uno-y-ciclo-infinito`); nunca un borrador; falla.
+- GREEN: `presentacion/reto.ts`, `TarjetasDelReto.tsx`.
+- Verif: `presentacion/reto`
 
-**R3.9 Límite de peso del libro** — REQ-LIBRO-007 (CR6)
+**R2.9 Límite de peso del libro** — REQ-LIBRO-008 (CR8, CR15)
 - RED `herramientas/presupuesto-tamano.test.ts`: con un `dist/` de prueba, un fragmento del libro de más de 80 KB gzip da salida 1 aunque el total quepa; falla.
 - GREEN: `herramientas/presupuesto-tamano.ts` (del hito 3) con el límite por fragmento.
-- Verif: `herramientas/presupuesto-tamano`; el peso real se mide en `npm run ci` al cerrar R3
+- Verif: `herramientas/presupuesto-tamano`
 
-**R3.10 Borrador oleada 1 — U5 (6 temas)** — REQ-LIBRO-002, REQ-LIBRO-003 · PR-5
-- RED `textos/es-MX/libro/indice.test.ts` (ampliada): los 6 temas de U5 tienen contenido y ejemplos verificados por el oráculo; falla (sin contenido).
+**R2.10 Borradores: requisitos de U6 (5 temas)** · contenido — REQ-LIBRO-002, 003, 004
+- RED `indice.test.ts`: `u4-comparaciones`, `u4-operadores-logicos`, `u3-entrada-con-scanner`, `u4-division-entera-y-modulo` y `u4-incremento-y-decremento` completos; falla.
+- GREEN: `textos/es-MX/libro/{u3,u4}.ts` + `corpus/libro/` + goldens. Estado borrador.
+- Verif: `textos/es-MX/libro` · `diferencial/libro`
+
+**R2.11 Borradores U5 (6 temas)** · contenido — REQ-LIBRO-002, 003, 004
+- RED `indice.test.ts`: los 6 de U5 en el orden del maestro; falla.
 - GREEN: `textos/es-MX/libro/u5.ts` + `corpus/libro/u5-*/` + goldens. Estado borrador.
 - Verif: `textos/es-MX/libro` · `diferencial/libro`
 
-**R3.11 Borrador oleada 1 — U6 (9 temas) e incremento y decremento** — REQ-LIBRO-002, REQ-LIBRO-003 · PR-5
-- RED la misma prueba, ahora con los 9 de U6 y `u4-incremento-y-decremento`; falla.
-- GREEN: `textos/es-MX/libro/{u6,u4}.ts` + `corpus/libro/u6-*/`, `corpus/libro/u4-incremento-y-decremento/` + goldens. Estado borrador.
-- Verif: `textos/es-MX/libro` · `diferencial/libro`
-
-**R3.12 E2E del libro: accesible y sin red** — REQ-LIBRO-004, REQ-LIBRO-007, REQ-LIBRO-008
-- RED `pruebas/e2e/libro.spec.ts`: índice y tres temas con teclado y axe; acceso en contexto desde un `for`; abrir un ejemplo y volver al programa; sin red tras la primera visita (sobre el build real, regla 8); tres motores; falla.
+**R2.12 E2E del libro: accesible y sin red** — REQ-LIBRO-005, 008, 009
+- RED `pruebas/e2e/libro.spec.ts`: índice y tres temas con teclado y axe; «Ponerme a prueba» abre con el reto; acceso en contexto desde un `for`; volver al programa; sin red tras la primera visita (build real, regla 8); proyector; tres motores; falla.
 - GREEN: los huecos que destape.
 - Verif: `npm run e2e -- libro`
 
-**R3.13 Revisión y aprobación del PO — oleada 1** · proceso — REQ-LIBRO-006
-- El PO revisa cada tema en `npm run dev` (marca «Borrador»); las observaciones se corrigen; con su aprobación explícita por tema, `npm run libro:huella -- <id>` → `aprobado` con fecha y huella.
-- Verif: `pruebas/libro/aprobaciones` en verde con los 16 aprobados.
+**R2.13 Revisión y aprobación del PO — oleada 1** · proceso — REQ-LIBRO-007
+- El PO revisa cada tema en `npm run dev` (marca «Borrador»), primero los de U6; con su aprobación explícita por tema, `npm run libro:huella -- <id>`. Verif: `pruebas/libro/aprobaciones` en verde con los 21.
 
-**R3.14 Cierre de R3** · proceso
-- `sdd-verify` del hito; `npm run ci` (peso por fragmento y total); commit confirmado; `state.yaml`.
+**R2.14 Cierre de R2** · proceso
+- Verificación única con el panel (maestro sobre los temas; diseñador sobre pantalla y proyector; experto en Java sobre los programas y el subconjunto); `npm run ci` (peso por fragmento y total); commit confirmado; `state.yaml`.
 
-## Hito R4 — Libro, oleada 2
+## Hito R3 — Robot revisor
 
-**Objetivo:** los 15 temas restantes (U3, U4 y U7), aprobados por el PO. Solo contenido: no toca código.
-**Entrada:** R3 cerrado. **Sesiones:** 1–2 + la revisión del PO.
+**Objetivo:** el revisor explica los errores y avisos de hoy con su porqué (y el hecho del `;` de la E2) y detecta las cinco trampas de Java que compilan, con cero falsos positivos medidos, pistas graduadas y espera con el reto.
+**Entrada:** R2 cerrado. **Sesiones:** 3.
 
-**R4.1 Borrador — U3 (6 temas)** — REQ-LIBRO-002, REQ-LIBRO-003
-- RED `textos/es-MX/libro/indice.test.ts` con los 6 de U3; falla. GREEN `textos/es-MX/libro/u3.ts` + `corpus/libro/u3-*/` + goldens. Verif: `textos/es-MX/libro` · `diferencial/libro`
+**R3.1 ADR 020 — Revisor de trampas** · documento
+- `docs/adr/020-revisor-de-trampas.md`: pasada sobre la IR; falso positivo = hecho que no se cumple o fuera de la etiqueta del PO; las 5 reglas con su JLS y los ajustes E2, E3, E4, E7 y E8; límites conocidos de la regla 4; pistas graduadas y espera con el reto.
 
-**R4.2 Borrador — U4 (7 temas)** — REQ-LIBRO-002, REQ-LIBRO-003
-- RED la misma con los 7 restantes de U4; falla. GREEN `textos/es-MX/libro/u4.ts` + `corpus/libro/u4-*/` + goldens. Verif: ídem
+**R3.2 Modelo `Trampa` y la pasada vacía** — REQ-REV-002, 003
+- RED `revision/revisar.test.ts`: MaquinaSnacks → `vista.trampas = []`; con error de compilación no hay `vista`; traza idéntica con y sin `revisar` en todo el corpus; falla (módulo inexistente).
+- GREEN: `revision/{trampas,revisar}.ts` (design §6.1), `compilador.ts`, `VistaPrograma.trampas`, tipos en `motor/vista.ts`.
+- Verif: `motor/revision` · `motor/compilador`
 
-**R4.3 Borrador — U7 (2 temas)** — REQ-LIBRO-002, REQ-LIBRO-003
-- RED la misma con los 2 de U7; falla. GREEN `textos/es-MX/libro/u7.ts` + `corpus/libro/u7-*/` + goldens. Verif: ídem
+**R3.3 Corpus de trampas con el oráculo** — REQ-REV-005, REQ-DIFF-009
+- RED `pruebas/diferencial/trampas.test.ts`: cada `.java` de `corpus/experimentos/trampas/` tiene goldens y el motor coincide (byte a byte, o veredicto y línea en las de E2); ≥ 3 positivas (`p-*`) y ≥ 2 casi-trampas (`c-*`) por familia, incluidas las de design §6.6.3; falla (carpeta vacía).
+- GREEN: ≈ 30 programas con sus entradas + `oraculo:goldens`.
+- Verif: `diferencial/trampas` · `test:oraculo`
 
-**R4.4 Revisión y aprobación del PO — oleada 2** · proceso — REQ-LIBRO-006
-- Como R3.13. Verif: `pruebas/libro/aprobaciones` con los 31 aprobados.
+**R3.4 Etiquetas del corpus** — REQ-REV-005
+- RED `pruebas/revisor/etiquetas.test.ts`: `corpus/trampas-esperadas.json` tiene una entrada por cada `.java` de las cuatro carpetas, solo con códigos de `CodigoTrampa`; falla.
+- GREEN: el archivo (`u5-switch-sin-break-fallthrough` → 3 × `case-que-sigue-de-largo`, l. 6, 8, 10; las positivas con lo suyo; el resto `[]`).
+- Verif: `revisor/etiquetas`
+
+**R3.5 Trampa 1: `;` tras la condición** — REQ-REV-002, 004
+- RED `revision/punto-y-coma.test.ts`: positivas `if`/`while`/`for` con `nodoCondicion` y `nodoSiguiente`; no reporta `{ }` ni `do { } while (c);`; falla.
+- GREEN: `revision/punto-y-coma.ts`.
+- Verif: `revision/punto-y-coma`
+
+**R3.6 Trampa 2: `==`/`!=` entre `String`** — REQ-REV-002, 003, 004
+- RED `revision/comparacion-de-textos.test.ts`: `respuesta == "si"`, `op != "salir"` en un `while` con `punto` y `enCondicion`; no reporta `equals`, `char`, números ni `switch` con `String`; falla.
+- GREEN: `revision/comparacion-de-textos.ts`.
+- Verif: `revision/comparacion-de-textos`
+
+**R3.7 Trampa 3 con alcanzabilidad** — REQ-REV-002, 004 · depende: R1.6
+- RED `revision/case-que-sigue.test.ts`: reporta los tres grupos de `u5-switch-sin-break-fallthrough` y un grupo que termina en `if` que cae; no reporta apiladas, último grupo, `break`/`return`/`continue` ni `if/else` con las dos ramas abruptas; falla.
+- GREEN: `revision/case-que-sigue.ts` sobre `EstructuraDeSwitch.termina`.
+- Verif: `revision/case-que-sigue`
+
+**R3.8 Trampa 4: renglón pendiente, también entre vueltas** — REQ-REV-002, 004
+- RED `revision/renglon-pendiente.test.ts`: `nextInt()`/`next()`/`nextDouble()` + `String s = sc.nextLine();` usado; el ciclo nombre/edad (`entreVueltas: true`); no reporta `sc.nextLine();`, la «basura» que no se lee, ramas distintas ni `u3-saludo-con-scanner`; falla.
+- GREEN: `revision/renglon-pendiente.ts` (design §6.2, regla 4 a y b; «usado» por lecturas posteriores de la variable).
+- Verif: `revision/renglon-pendiente`
+
+**R3.9 Trampa 5: división entera que se vuelve `double`** — REQ-REV-002, 004
+- RED `revision/division-entera.test.ts`: `double p = suma / 3;`, `1 / 2 * base`, `(double) (a / b)`, `long`; no reporta `(double) a / b`, `int m = n / 2`, `"x" + a / b`, `suma / 5` con `suma` `double`; los cuatro puntos; falla.
+- GREEN: `revision/division-entera.ts`.
+- Verif: `revision/division-entera`
+
+**R3.10 Guarda de cero falsos positivos** — REQ-REV-004, 005 (CR10, CR11)
+- RED `pruebas/revisor/trampas-del-corpus.test.ts`: lo detectado = `trampas-esperadas.json` en código y línea; `revisar` sobre cada mutante que javac acepta sin lanzar y estable en dos corridas; falla (el cargador `pruebas/revisor/corpus-etiquetado.ts` no existe).
+- GREEN: el cargador; cada discrepancia se corrige en su regla con su caso unitario.
+- Verif: `pruebas/revisor`
+
+**R3.11 Hechos para notas con pérdida real** — REQ-REV-006 (E8)
+- RED `interprete/expresiones.test.ts` + `biblioteca/entrada/*.test.ts`: `25 / 3` → `division-entera.exacta: false`, `100 / 4` → `true` (negativos con la semántica de Java); `nextLine()` tras `20⏎` → `soloBlancos: true`, tras `20 Juan⏎` → `false`, tras `20  ⏎` → `true`; falla.
+- GREEN: `interprete/expresiones.ts`, lectura de `Scanner`, `traza/paso.ts`.
+- Verif: `motor/interprete` · `motor/biblioteca`
+
+**R3.12 El porqué de los problemas existentes y el `;` de la E2** — REQ-REV-001, 003
+- RED `semantica/atribucion.test.ts` + `sintaxis/*.test.ts` (`cuerpoVacioAntes` en `for (…); println(i)` e `if (c); … else`) + `textos/es-MX/revisor.test.ts` (`familiaDelProblema` y `familiaDelAviso` exhaustivas; un `porQue` por familia; el hecho del `;` cuando viene el dato); falla.
+- GREEN: `motor/problemas.ts`, atribución y analizador, `textos/es-MX/revisor.ts` (familias).
+- Verif: `motor/semantica` · `motor/sintaxis` · `textos/es-MX/revisor`
+
+**R3.13 Textos del revisor** — REQ-REV-003, 006, 007
+- RED `textos/es-MX/revisor.test.ts` ampliada: aviso de cada trampa (el de `==` sin «dará `false`»; el de `nextLine` con «lo que quedaba del renglón»); evidencia de cada confirmación; franja con 0, 1 y n trampas, con trampas en espera y en «después»; sello sin trampas de una línea; «trampa de Java»; sin «incorrecto», «error tuyo» ni «te equivocaste»; pasa `voz.test.ts`; falla.
+- GREEN: `textos/es-MX/revisor.ts` (borradores para la revisión del PO en R3.18).
+- Verif: `textos/es-MX/revisor` · `textos/es-MX/voz`
+
+**R3.14 Presentación del revisor** — REQ-REV-001, 006, 007, REQ-PANT-009
+- RED `presentacion/revisor.test.ts` + `presentacion/hablante.test.ts`: franja del paso 0 de `u5-switch-sin-break-fallthrough` (líneas 6, 8, 10); con el reto encendido, las de `adelantaUnReto` quedan en espera; «después» con texto neutro; el revisor toma el turno en cada confirmación (y no en una división exacta ni con resto no vacío); con reto contestado en el paso, enlace «Ver la trampa de Java»; `turno: 'revisor'` con «Ver explicación»; falla.
+- GREEN: `src/presentacion/revisor.ts`, `hablante.ts`, `ModeloVista.revisor`, reductor (`ver-explicacion-del-revisor`).
+- Verif: `presentacion/revisor` · `presentacion/hablante`
+
+**R3.15 Franja y marca de lupa** — REQ-REV-007
+- RED `componentes/FranjaDelRevisor.test.tsx` + `editor/marcas-de-trampa.test.ts`: franja encima del editor con la lupa, «Ver explicación» con teclado, `aria-live="polite"`; cada línea de `vista.trampas` lleva `cm-trampa` con el SVG de lupa con «!» y el título «Trampa de Java», distinta de ✖ y ⓘ; ninguna al editar después de cambiar el código; falla.
+- GREEN: `FranjaDelRevisor.tsx`, `interfaz/editor/marcas-de-trampa.ts` sobre el `StateField` de resaltados.
+- Verif: `interfaz/componentes` · `interfaz/editor`
+
+**R3.16 Enlaces al libro, «después» y demostraciones** — REQ-REV-007, REQ-LIBRO-006, REQ-AULA-001, REQ-AULA-002 · depende: 5.4 para el enlace
+- RED `presentacion/{revisor,libro,galeria,enlace}.test.ts`: el porqué de un problema y cada trampa enlazan su tema publicado; `revisor=despues` de ida y vuelta en el enlace; un programa de demostración de la galería abre en «después»; falla.
+- GREEN: `presentacion/{revisor,libro,galeria,enlace}.ts`, «Ajustes de la clase» (momento del aviso).
+- Verif: `presentacion`
+
+**R3.17 E2E y accesibilidad del revisor** — REQ-REV-001, 006, 007 (CR12)
+- RED `pruebas/e2e/revisor.spec.ts`: `u5-switch-sin-break-fallthrough` (franja, marcas, el revisor habla en cada caída); la positiva del renglón pendiente con su entrada; `for (…); println(i)` con el hecho del `;`; con el reto encendido, la trampa 2 en espera; un solo robot en cada estado; solo teclado; axe; tres motores; falla.
+- GREEN: los huecos que destape.
+- Verif: `npm run e2e -- revisor`
+
+**R3.18 Cierre de R3** · proceso
+- Verificación única con el panel (experto en Java sobre reglas y corpus; maestro sobre textos y pistas; diseñador sobre franja y marca); el PO revisa `textos/es-MX/revisor.ts` y `corpus/trampas-esperadas.json`; `npm run ci`; commit confirmado; `state.yaml`.
+
+## Hito R4 — Libro, oleada 2 (13 temas)
+
+**Objetivo:** U3, el resto de U4 y U7, aprobados por el PO. Solo contenido: no toca código.
+**Entrada:** R2 cerrado (puede ir en paralelo a R3). **Sesiones:** 1–2 + la revisión del PO.
+
+**R4.1 Borradores U3 (5 temas)** — REQ-LIBRO-002, 003, 004
+- RED `indice.test.ts` con `programa-y-main`, `variables-y-tipos`, `asignacion`, `salida` y `tipos-de-errores`; falla. GREEN `textos/es-MX/libro/u3.ts` + `corpus/libro/u3-*/` + goldens. Verif: `textos/es-MX/libro` · `diferencial/libro`
+
+**R4.2 Borradores U4 (5 temas)** — REQ-LIBRO-002, 003, 004
+- RED la misma con `operadores-aritmeticos`, `precedencia`, `conversiones`, `math-y-random` y `textos-y-concatenacion`; falla. GREEN `u4.ts` + `corpus/libro/u4-*/` + goldens. Verif: ídem
+
+**R4.3 Borradores U7 (3 temas)** — REQ-LIBRO-002, 003, 004
+- RED la misma con `prueba-de-escritorio`, `depurar-con-el-visualizador` y `casos-de-prueba`; falla. GREEN `u7.ts` + `corpus/libro/u7-*/` + goldens. Verif: ídem
+
+**R4.4 Revisión y aprobación del PO — oleada 2** · proceso — REQ-LIBRO-007
+- Como R2.13. Verif: `pruebas/libro/aprobaciones` con los 34 aprobados.
 
 **R4.5 Cierre de R4** · proceso
-- `sdd-verify` acotada al contenido; `npm run ci` (peso); commit confirmado; `state.yaml`.
+- Verificación acotada al contenido, con el maestro y el experto en Java; `npm run ci` (peso); commit confirmado; `state.yaml`.
 
 ## Matriz de trazabilidad
 
-### Requisitos (29) → tareas
+### Requisitos (42) → tareas
 
 | Requisito | Tareas |
 |---|---|
-| REQ-REV-001 | R1.12, R1.13, R1.14 |
-| REQ-REV-002 | R1.2, R1.5, R1.6, R1.7, R1.8, R1.9 |
-| REQ-REV-003 | R1.2, R1.12 |
-| REQ-REV-004 | R1.3, R1.5–R1.9, R1.10 |
-| REQ-REV-005 | R1.3, R1.4, R1.10 |
-| REQ-REV-006 | R1.11, R1.13, R1.16 |
-| REQ-REV-007 | R1.13, R1.14, R1.15, R1.16 |
-| REQ-RETO-001 | R2.9, R2.10 |
-| REQ-RETO-002 | R2.7, R2.12 |
-| REQ-RETO-003 | R2.3, R2.5, R2.7, R2.8 |
-| REQ-RETO-004 | R2.4, R2.5, R2.7, R2.8 |
-| REQ-RETO-005 | R2.6, R2.10 |
-| REQ-RETO-006 | R2.2, R2.3, R2.5, R2.8 |
-| REQ-RETO-007 | R2.9, R2.12 |
-| REQ-RETO-008 | R2.9, R2.10 |
-| REQ-RETO-009 | R2.10, R2.12 |
-| REQ-LIBRO-001 | R3.2, R3.5, R3.6 |
-| REQ-LIBRO-002 | R3.2, R3.10, R3.11, R4.1–R4.3 |
-| REQ-LIBRO-003 | R3.3, R3.10, R3.11, R4.1–R4.3 |
-| REQ-LIBRO-004 | R3.6, R3.12 |
-| REQ-LIBRO-005 | R3.5, R3.7, R3.8 |
-| REQ-LIBRO-006 | R3.4, R3.13, R4.4 |
-| REQ-LIBRO-007 | R3.6, R3.9, R3.12 |
-| REQ-LIBRO-008 | R3.6, R3.12 |
-| REQ-VIS-013 (modificado) | R2.1, R2.9, R2.10 |
-| REQ-VIS-014 | R1.14, R3.6 |
-| REQ-AULA-002 (modificado) | R2.11 |
-| REQ-AULA-005 (modificado) | R2.12 (y la 5.6 de `visualizador-java`, conciliada) |
-| REQ-DIFF-009 | R1.3, R2.5, R3.3 |
+| REQ-PANT-001 | R0.4, R0.7, R0.8, R0.10, R0.15, R2.5 |
+| REQ-PANT-002 | R0.4, R0.7, R0.8, R0.15, R2.5 |
+| REQ-PANT-003 | R0.9, R0.12, R0.15 |
+| REQ-PANT-004 | R0.3, R0.4, R0.10 |
+| REQ-PANT-005 | R0.12, R0.15 |
+| REQ-PANT-006 | R0.4, R0.7, R0.8 |
+| REQ-PANT-007 | R0.4, R0.10, R2.6 |
+| REQ-PANT-008 | R0.1, R0.5, R0.15 |
+| REQ-PANT-009 | R0.6, R0.15, R2.5, R3.14 |
+| REQ-PANT-010 | R0.3, R1.5, R1.8, R3.13 |
+| REQ-RETO-001 | R1.8, R1.12, R1.13 |
+| REQ-RETO-002 | R1.4, R1.9, R1.16 |
+| REQ-RETO-003 | R1.5, R1.8, R1.9, R1.10 |
+| REQ-RETO-004 | R1.1, R1.6, R1.7, R1.9, R1.10 |
+| REQ-RETO-005 | R1.10 |
+| REQ-RETO-006 | R1.8, R1.13 |
+| REQ-RETO-007 | R1.3, R1.5, R1.7, R1.10 |
+| REQ-RETO-008 | R1.12, R1.13, R1.16 |
+| REQ-RETO-009 | R1.4, R1.8, R1.11, R1.16 |
+| REQ-RETO-010 | R1.4, R1.13, R1.14, R1.16 |
+| REQ-LIBRO-001 | R2.4, R2.5 |
+| REQ-LIBRO-002 | R0.13, R0.14, R1.17, R2.5, R2.10, R2.11, R4.1–R4.3 |
+| REQ-LIBRO-003 | R0.13, R0.14, R1.17, R2.10, R2.11, R4.1–R4.3 |
+| REQ-LIBRO-004 | R0.14, R1.17, R2.4, R2.10, R2.11, R4.1–R4.3 |
+| REQ-LIBRO-005 | R2.6, R2.12 |
+| REQ-LIBRO-006 | R2.4, R2.7, R2.8, R3.16 |
+| REQ-LIBRO-007 | R2.3, R2.13, R4.4 |
+| REQ-LIBRO-008 | R2.5, R2.9, R2.12 |
+| REQ-LIBRO-009 | R2.5, R2.12 |
+| REQ-REV-001 | R3.12, R3.14, R3.17 |
+| REQ-REV-002 | R3.2, R3.5–R3.9 |
+| REQ-REV-003 | R3.2, R3.6, R3.12, R3.13 |
+| REQ-REV-004 | R3.5–R3.10 |
+| REQ-REV-005 | R3.3, R3.4, R3.10 |
+| REQ-REV-006 | R3.11, R3.13, R3.14, R3.17 |
+| REQ-REV-007 | R3.13–R3.17 |
+| REQ-VIS-013 (modificado) | R1.2, R1.12, R1.13 |
+| REQ-AULA-001 (modificado) | R0.7, R0.11, R3.16 (autoría: 5.2/5.3 de `visualizador-java`) |
+| REQ-AULA-002 (modificado) | R1.15, R3.16 (y la 5.4, conciliada) |
+| REQ-AULA-004 (modificado) | R0.12, R1.14 |
+| REQ-AULA-005 (modificado) | R1.16 (y la 5.6, conciliada) |
+| REQ-DIFF-009 | R0.13, R1.7, R3.3 |
 
 ### Criterios de éxito → tareas
 
 | Criterio | Tareas |
 |---|---|
-| CR1 cero falsos positivos en el corpus curricular | R1.4, R1.10 |
-| CR2 muestras positivas y casi-trampas | R1.3, R1.10 |
-| CR3 confirmación en la ejecución | R1.13, R1.16 |
-| CR4 reto en todo el corpus | R2.8 |
-| CR5 E2E del reto con teclado y proyector | R2.12 |
-| CR6 libro = oráculo, aprobación, peso | R3.3, R3.4, R3.9, R3.14 |
-| CR7 cobertura construcción → tema | R3.5 |
-| CR8 textos en catálogo y revisados por el PO | R1.17, R2.13, R3.13, R4.4 |
-| CR9 rendimiento C11 con piezas | R2.3 |
-
-### Preguntas del PO → tareas que cambian
-
-| Pregunta | Tareas | Si el PO elige otra opción |
-|---|---|---|
-| PR-1 reto en lugar de Sí/No | R2.1, R2.9, R2.10 | se conserva la 5.1 aparte y se agrega un segundo interruptor |
-| PR-2 forma de las opciones | R2.1, R2.5–R2.8 | (B) catálogo de destinos más corto; (C) segundo paso en `PreguntaReto` |
-| PR-3 frecuencia en ciclos | R2.9, R2.10 | sin `silenciar-ciclo`, o solo primera y última revisión |
-| PR-4 momento del aviso | R1.13, R2.11 | cambia el valor por omisión de `revisorAlInicio` |
-| PR-5 temas y oleadas | R3.10, R3.11, R4.1–R4.3 | se mueven temas entre R3 y R4 |
+| CR1 primera vez | R0.12, R0.15 |
+| CR2 proyector y AA | R0.12, R0.15 |
+| CR3 un hablante | R0.1, R0.5, R0.6, R0.15 |
+| CR4 reto en todo el corpus | R1.10 |
+| CR5 balance y topes | R1.10 |
+| CR6 clase (MaquinaSnacks) | R1.14, R1.16 |
+| CR7 cansancio | R1.11 |
+| CR8 libro = oráculo, estructura, peso | R0.13, R2.3, R2.9, R2.13, R4.4 |
+| CR9 cobertura | R2.4 |
+| CR10 cero falsos positivos | R3.4, R3.10 |
+| CR11 muestras | R3.3, R3.10 |
+| CR12 confirmación con pérdida real y E2 | R3.11, R3.12, R3.17 |
+| CR13 textos | R0.16, R1.18, R2.13, R3.18, R4.4 |
+| CR14 rendimiento | R1.5 |
+| CR15 peso | R0.16, R1.18, R2.9, R2.14, R3.18, R4.5 |
 
 ## Resumen por hito
 
 | Hito | Objetivo | Tareas | Sesiones | Verificación |
 |---|---|---|---|---|
-| R1 | Robot revisor | 17 | 2–3 | `sdd-verify` R1 |
-| R2 | Modo reto | 13 | 3–4 | `sdd-verify` R2 |
-| R3 | Libro + oleada 1 | 14 | 3–4 + PO | `sdd-verify` R3 |
-| R4 | Libro, oleada 2 | 5 | 1–2 + PO | `sdd-verify` acotada |
-| **Total** | | **49** | **9–13** | |
+| R0 | Pantalla y personajes (+ U6 parte 1) | 16 | 3–4 | una, con el panel |
+| R1 | Modo reto (+ U6 parte 2) | 19 | 3–4 | una, con el panel |
+| R2 | Libro, oleada 1 (21 temas) | 14 | 3 + PO | una, con el panel |
+| R3 | Robot revisor | 18 | 3 | una, con el panel |
+| R4 | Libro, oleada 2 (13 temas) | 5 | 1–2 + PO | acotada al contenido |
+| **Total** | | **72** | **13–17** | |

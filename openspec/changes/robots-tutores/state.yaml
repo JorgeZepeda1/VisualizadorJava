@@ -3,31 +3,48 @@ change: robots-tutores
 project: visualizadorjava
 artifact_store: hybrid
 execution_mode: planeacion-automatica-y-aprobacion-del-po-antes-de-apply
-base: docs/plan-robots sobre 89bf4fa (punta del PR #3, hitos 1 y 2)
+base: docs/plan-robots sobre 06da23d (plan del 2026-10-17 + panel 1 y sus anexos)
 decisiones_po:
-  revisor: R-D1 errores y avisos existentes con su porqué + cinco trampas que compilan (; tras if, == con String, case sin break, nextInt+nextLine, división entera); sin estilo
-  programador: R-D2 modo reto con interruptor; 3 opciones en cada if/while/for/switch; explica acierto y error; solo condiciones
-  explicador: R-D3 libro U3-U7 con ejemplos que se abren en el visualizador + botón en contexto; Claude redacta, el PO aprueba antes de publicar
-  prioridad: R-D4 primero el hito 3 (Pages); los robots después
+  revisor: R-D1 errores y avisos existentes con su porqué + cinco trampas de Java que compilan; sin estilo
+  paso_a_paso: R-D2 narrador + modo reto con interruptor; 3 opciones en cada if/while/for/switch; solo condiciones (nombre visible «paso a paso», no «programador»)
+  libro: R-D3 libro U3-U7 con ejemplos que se abren en el visualizador + acceso en contexto; Claude redacta, el PO aprueba cada tema
+  prioridad: R-D4 primero el hito 3 (Pages)
+  tres_robots: R-D5 tres robots distintos; un solo hablante, mismo lugar, forma + accesorio + color, nada de un robot dentro del globo de otro
+  unidad_del_grupo: R-D6 U6; el reto (ciclos) antes que el revisor; U6 y sus requisitos encabezan la oleada 1
+  pantalla_primero: R-D7 hito R0 previo al reto (saludo con 3 puertas, navegación, Anterior/Siguiente bajo el globo, Siguiente primario, celular, proyector = 5.5)
+  correcciones: R-D8 C1-C9 van aparte como v0.3.1; el plan las da por hechas
   fecha: 2026-10-17
-preguntas_abiertas:   # recomendación por omisión aplicada en el plan (proposal.md §12)
-  PR-1: el reto reemplaza la predicción Sí/No de D4 (5.1 absorbida por R2; ADR 018 enmienda D4)
-  PR-2: opciones = veredicto + razón (A), con acierto parcial
-  PR-3: preguntar en cada revisión + «Ya entendí este ciclo»
-  PR-4: aviso corto en el paso 0 + confirmación en la ejecución; enlace revisor=despues para demostraciones
-  PR-5: 31 temas en dos oleadas (16 de U5, U6 e incremento y decremento primero)
+adoptado_por_omision:   # panel 1 §4-§5; el PO puede cambiarlo
+  - voz «Java revisa…» en los tres robots; true/false como código; «vuelta»; «trampa de Java»
+  - reto: «consecuencia, porque razón» ≤ 100; elegir confirma; «¿Y las otras opciones?»; la retro reemplaza la narración; sin reto en constantes, Scanner, Random, efectos o sin sustitución
+  - catálogo del maestro sin y-revisa-los-dos ni otra-etiqueta; 5 familias nuevas; balance 40-60 % con salida a la forma C
+  - «Ya entendí este ciclo» silencia también lo de adentro y vuelve a preguntar en las dos últimas revisiones
+  - libro: 34 temas, empieza por el ejemplo, «Ponte a prueba» y «Ahora hazlo tú», ≤ 550 palabras (meta 400)
+  - revisor: pistas graduadas, espera con el reto, demostraciones en «después», ajustes E2/E3/E4/E7/E8 (enmienda de REQ-REV-003)
+  - entrada preparada con salto de línea en cada renglón
+preguntas_abiertas:   # proposal.md §12, con la recomendación aplicada en el plan
+  PQ-1: nombres y apariencia de los tres robots → «Robot paso a paso» (cuadrada con antena, puntero, azul), «Robot revisor» (redonda tipo casco, lupa con «!», ámbar), «Robot del libro» (ancha con lentes, libro abierto, verde); bloquea R0.5
+  PQ-2: «Leer un tema» y «Libro» aparecen hasta que haya un tema publicado (R2)
+  PQ-3: oleada 1 = 21 (U6 10 + requisitos 5 + U5 6), oleada 2 = 13
+  PQ-4: fecha de U6 y clase de la prueba en papel (R1.0)
+  PQ-5: «Ahora hazlo tú» muestra solo la salida esperada, no la solución
+  PQ-6: la narración conserva la sustitución; el panel da el detalle por pieza
+resueltas: PR-1 reto reemplaza Sí/No; PR-2 forma (A) con balance y salida a (C); PR-3 cada revisión + «Ya entendí» ampliado; PR-4 pistas graduadas + espera + «después»; PR-5 34 temas en dos oleadas
 phases:
   explore: skipped        # contexto directo del PO + código de los hitos 1 y 2
-  proposal: completed     # proposal.md (R-D1–R-D4, CR1–CR9, PR-1–PR-5)
-  spec: completed         # specs/: 3 capacidades nuevas + 3 deltas; 29 requisitos (26 nuevos, 3 modificados), 55 escenarios
-  design: completed       # design.md (ADR 017–019 por crear en R1.1, R2.1, R3.1)
-  tasks: completed        # tasks.md: 4 hitos (R1 17, R2 13, R3 14, R4 5) = 49 tareas, 9–13 sesiones
-  apply: pending          # espera: aprobación del PO del plan y respuestas a PR-1–PR-5; hito 3 publicado; PR #3 fusionado
-  verify: pending
+  panel: completed        # panel-1.md + anexos (diseñador, maestro, experto en Java); respuestas del PO 2026-10-17
+  proposal: completed     # actualización 1: R-D1–R-D8, CR1–CR15, PQ-1–PQ-6, conciliación §13
+  spec: completed         # actualización 1: 4 capacidades nuevas + 3 deltas; 42 requisitos (37 nuevos, 5 modificados), 100 escenarios
+  design: completed       # actualización 1: ADR 017 pantalla y robots, 018 reto, 019 libro, 020 revisor (se crean en R0.2, R1.2, R2.2, R3.1)
+  tasks: completed        # actualización 1: 5 hitos (R0 16, R1 19, R2 14, R3 18, R4 5) = 72 tareas, 13-17 sesiones
+  apply: pending          # espera: aprobación del PO del plan actualizado y PQ-1; hito 3 publicado; v0.3.1 publicada
+  verify: pending         # una por hito, con el panel de expertos
   archive: pending        # después de archivar visualizador-java (las deltas se aplican sobre sus specs)
-conciliacion_pendiente:   # en openspec/changes/visualizador-java/ (la hace el orquestador)
-  - "5.1 predicción ligera: absorbida por R2 si el PO acepta PR-1"
-  - "5.4 enlace: parámetros reto y revisor en lugar de prediccion (REQ-AULA-002)"
-  - "5.6 escenario docente: tres opciones en lugar de Sí/No (REQ-AULA-005, C19)"
-  - "5.2 galería: comparte la acción cargar-programa con R3.6"
+conciliacion_pendiente:   # en openspec/changes/visualizador-java/tasks.md (la hace el orquestador; proposal.md §13)
+  - "5.1 predicción ligera: absorbida por R1 (modo reto)"
+  - "5.2 galería: la parte curricular la entrega R0.11 (cargar-programa incluido); la 5.2 queda para corpus/autoria tras la 5.3"
+  - "5.4 enlace: parámetros reto y revisor en lugar de prediccion (R1.15, R3.16)"
+  - "5.5 modo proyector: absorbida por R0.12 (+ columna exclusiva del reto en R1.14)"
+  - "5.6 escenario docente: tres opciones + «Ya entendí»; depende de R0 y R1 en lugar de 5.1, 5.2, 5.5"
+  - "de paso: 5.7/5.8 precache y sin red con galería y libro; 5.10 AA completa con las pantallas nuevas"
 updated: 2026-10-17
