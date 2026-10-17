@@ -30,6 +30,15 @@ Fecha: 2026-10-17. Revisaron en paralelo el diseñador de experiencia (`disenado
 3. **Mejorar la pantalla antes del reto.** El diseñador midió que el reto no cabe en proyector ni en celular con la distribución actual, y que un alumno nuevo no sabe por dónde empezar. Propone, antes de R2: saludo del robot con tres puertas («Leer un tema», «Ver un ejemplo paso a paso», «Probar mi programa»), «Anterior/Siguiente» debajo del globo, y el modo proyector (tarea 5.5).
 4. **Publicar las correcciones de la sección 2** como versión `v0.3.1` cuando estén verificadas.
 
+**Respuestas del PO (2026-10-17):**
+
+1. **Tres robots distintos**, cada uno con su personaje. Del informe del diseñador quedan como requisitos: un solo robot habla a la vez, cada uno se reconoce por su forma y su accesorio además del color, y quien habla aparece siempre en el mismo lugar.
+2. **El grupo estará en U6.** El modo reto con ciclos va primero, y los temas de U6 encabezan la primera oleada del libro, junto con sus requisitos.
+3. **Mejorar la pantalla antes del reto:** saludo con tres puertas, Anterior y Siguiente debajo del globo, y modo proyector.
+4. **Publicar las correcciones** como `v0.3.1` cuando estén verificadas.
+
+Anexos con el detalle de cada informe: `panel-1-disenador.md`, `panel-1-maestro.md` y `panel-1-java.md`.
+
 ## 4. Lo que se adopta por omisión (el PO puede cambiarlo)
 
 - **Voz del robot: «Java revisa…»** en lugar de «Reviso…». El robot es el guía que señala lo que hace la computadora, no la computadora. Evita que el alumno crea que la máquina entiende lo que quiso decir (Pea, 1986).
