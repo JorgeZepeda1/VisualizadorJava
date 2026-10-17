@@ -46,8 +46,9 @@ export default defineConfig({
           environment: 'jsdom',
           include: ['src/interfaz/**/*.test.{ts,tsx}'],
           // Desmonta el árbol de React entre pruebas (tarea 0.14: primeras pruebas de componentes
-          // del repo) — ver src/interfaz/configuracion-pruebas.ts.
-          setupFiles: ['src/interfaz/configuracion-pruebas.ts'],
+          // del repo) — ver src/interfaz/configuracion-pruebas.ts. Y registra el transporte en proceso
+          // del cliente del trabajador (jsdom no tiene `Worker`; hito 2C) — ver herramientas/vitest/.
+          setupFiles: ['src/interfaz/configuracion-pruebas.ts', 'herramientas/vitest/transporte-en-proceso.ts'],
         },
       },
       {

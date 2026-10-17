@@ -9,6 +9,7 @@
 // borrada): `Saludo` NO compila (`';' expected` en la línea 3); `Arreglos` y `SinStatic` SÍ compilan
 // (este último falla solo al lanzarlo: «el método principal no es static en la clase SinStatic»).
 import { expect, test, type Page } from '@playwright/test';
+import { irAlFinal } from './ayudas.ts';
 
 const PROGRAMA_SIN_PUNTO_Y_COMA = [
   'public class Saludo {',
@@ -84,6 +85,22 @@ test.describe('problemas en pantalla: el texto real de cada problema, con su lí
     await expect(aviso).not.toContainText('Java sí');
   });
 
+  // Pendiente de REQ-SUB-006 (re-verificación del lote 1), cerrado en la tarea 4.5: con tres arreglos el motor da el primer aviso y cuenta dos más; la pantalla lo dice.
+  test('tres arreglos: el aviso nombra el primero y dice «y 2 avisos más»; el código se subraya y el margen lleva ⓘ', async ({ page }) => {
+    await page.goto('/');
+    await escribirEnElEditor(
+      page,
+      ['public class Arreglos {', '    public static void main(String[] args) {', '        int[] a = new int[3];', '        int[] b = new int[3];', '        int[] c = new int[3];', '    }', '}'].join('\n'),
+    );
+    await visualizar(page);
+
+    const aviso = page.getByRole('alert');
+    await expect(aviso).toContainText('No disponible en el visualizador');
+    await expect(aviso).toContainText('y 2 avisos más');
+    await expect(page.locator('.cm-problema-aviso').first()).toBeVisible();
+    await expect(page.locator('.cm-marca-problema').first()).toHaveText('ⓘ');
+  });
+
   test('un main sin static se explica con el nombre de la clase, y el alumno puede corregir y volver a visualizar', async ({
     page,
   }) => {
@@ -97,6 +114,7 @@ test.describe('problemas en pantalla: el texto real de cada problema, con su lí
     // El editor sigue siendo editable: no hay nada que visualizar, el alumno corrige.
     await escribirEnElEditor(page, PROGRAMA_CORREGIDO);
     await visualizar(page);
+    await irAlFinal(page);
     await expect(page.getByTestId('consola')).toContainText('Ya funciona');
     await expect(page.getByRole('alert')).toHaveCount(0);
   });
@@ -110,10 +128,13 @@ test.describe('problemas en pantalla: el texto real de cada problema, con su lí
     await visualizar(page);
     const aviso = page.getByRole('alert');
     await expect(aviso).toBeVisible();
-    await expect(aviso).toHaveText(/^Línea 3: /);
+    // Tarea 4.5: el aviso lleva el título de su tipo antes del texto con su línea.
+    await expect(aviso).toContainText('Error de compilación');
+    await expect(aviso).toContainText('Línea 3: ');
 
     await escribirEnElEditor(page, PROGRAMA_CORREGIDO);
     await visualizar(page);
+    await irAlFinal(page);
     await expect(page.getByTestId('consola')).toContainText('Ya funciona');
     await expect(page.getByRole('alert')).toHaveCount(0);
   });

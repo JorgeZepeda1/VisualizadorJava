@@ -72,8 +72,6 @@ const DATOS_DE_EJEMPLO: Record<CodigoNoSoportado, Record<string, unknown>> = {
   'paquete-reservado-por-java': { linea: 1, nombre: 'java.miapp' },
   // Tarea 1.39 (W-16): `package jdk.internal.misc;`, el paquete de un módulo del JDK que javac compila y el lanzador no carga.
   'paquete-interno-del-jdk': { linea: 1, nombre: 'jdk.internal.misc' },
-  // Tarea 1.36 (C-5 y W-10): una constante de texto con un número decimal (`"a" + 1.5`) donde Java necesita su valor al compilar.
-  'constante-de-texto-con-decimal-no-soportada': { linea: 1 },
   // Tarea 1.36 (C-4b): un programa que se pasa del tope de tamaño; el texto señala la línea donde se pasó, sin el marco de «construcción».
   'programa-demasiado-grande': { linea: 1 },
   // Tarea 1.37 (W-12): un programa con demasiados niveles de anidamiento; como el de tamaño, no es una construcción sino el programa entero.
@@ -607,25 +605,6 @@ describe('textosNoSoportado — un paquete de un módulo de Java que el lanzador
   });
 });
 
-// Tarea 1.36 (C-5 y W-10): `while ("a" + 1.5 == "a1.5") { }`, `case "d" + 1.5:`. Java trata `"a" + 1.5` como una constante y decide con su valor si un ciclo termina, si una variable queda asignada o si dos
-// etiquetas se repiten; el valor depende de cómo Java convierte un número decimal a texto, y eso todavía no está en el visualizador. El aviso dice qué es, por qué no se puede revisar y qué hacer.
-describe('textosNoSoportado — una constante de texto con un número decimal (C-5 y W-10, tarea 1.36)', () => {
-  it('nombra la construcción y la línea, usa el marco aprobado y da la salida (escribir el texto completo)', () => {
-    const texto = textosNoSoportado['constante-de-texto-con-decimal-no-soportada']({ linea: 4 });
-    expect(texto).toBe(
-      'Tu programa usa una constante de texto con un número decimal (como `"a" + 1.5`) en la línea 4. Es parte de Java, pero este visualizador cubre las unidades 3 a 7 y todavía no sabe ' +
-        'convertir un número decimal a texto como lo hace Java, así que no puedo revisar si esa parte está bien escrita. ' +
-        'Java necesita conocer ese valor al compilar para decidir cosas como si un ciclo termina; si puedes, escribe el texto ya completo (por ejemplo, `"a1.5"`). ' +
-        'No lo ejecuto para no enseñarte un resultado que podría no ser el de Java.',
-    );
-    expect(texto).not.toMatch(/Java sí (lo |la )?(acepta|tiene)|token|constante desconocida/);
-  });
-
-  it('triangulación: con otra línea la frase cambia con ella', () => {
-    expect(textosNoSoportado['constante-de-texto-con-decimal-no-soportada']({ linea: 12 })).toContain('en la línea 12.');
-  });
-});
-
 // Tarea 1.36 (C-4b y S-1): javac rechaza un método de más de 65 535 bytes de bytecode (`limit.code`) y el motor no modela ese tamaño: pone un tope conservador de elementos del programa. Un programa de
 // clase está muy por debajo; el aviso dice dónde se pasó, que el visualizador está pensado para programas de clase y qué hacer, sin afirmar que Java rechace o acepte el programa.
 describe('textosNoSoportado — un programa demasiado grande (C-4b, tarea 1.36)', () => {
@@ -662,8 +641,8 @@ describe('textosNoSoportado — un programa demasiado anidado (W-12, tarea 1.37)
   });
 });
 
-// Tarea 1.36 (C-4a): un texto cuyo largo cae justo en el límite de Java (65 535 bytes) y que el visualizador no sabe medir con seguridad —lleva un decimal, cuyo largo decide `Double.toString`, o hay
-// condiciones fijas que podrían podar código—. El aviso dice qué es, por qué no se revisa y qué hacer; sin la frase de un número exacto que no se tiene.
+// Tarea 1.36 (C-4a): un texto cuyo largo cae justo en el límite de Java (65 535 bytes) y que el visualizador no sabe decidir con seguridad —hay condiciones fijas que podrían podar código—. El aviso dice qué
+// es, por qué no se revisa y qué hacer; sin la frase de un número exacto que no se tiene.
 describe('textosNoSoportado — un texto cerca del límite de tamaño que no se puede medir (C-4a, tarea 1.36)', () => {
   it('señala la línea, usa el marco aprobado y da la salida (acortarlo o dividirlo)', () => {
     const texto = textosNoSoportado['tamano-de-texto-no-revisable']({ linea: 7 });

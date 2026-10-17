@@ -31,6 +31,7 @@
     "oraculo:goldens": "node herramientas/oraculo/generar-goldens.ts",
     "oraculo:verificar": "node herramientas/oraculo/verificar-goldens.ts",
     "oraculo:datos": "node herramientas/oraculo/generar-datos.ts",
+    "oraculo:conjuntos": "node herramientas/oraculo/generar-conjuntos.ts",
     "oraculo:mutantes": "node herramientas/oraculo/mutantes.ts",
     "oraculo:generados": "node herramientas/oraculo/programas-generados.ts",
     "medir:plataforma": "node herramientas/oraculo/medir-plataforma.ts"
@@ -43,6 +44,7 @@
     "@codemirror/language": "6.12.4",
     "@codemirror/commands": "6.11.1",
     "@codemirror/lang-java": "6.0.2",
+    "@lezer/highlight": "1.2.4",
     "lz-string": "1.5.0",
     "workbox-window": "7.4.1"
   },

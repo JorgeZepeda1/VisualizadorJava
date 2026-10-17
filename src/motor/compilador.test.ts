@@ -27,8 +27,12 @@ describe('compilar', () => {
     const resultado = compilar(fuente);
     expect(resultado.ok).toBe(true);
     if (!resultado.ok) throw new Error('se esperaba ok:true');
-    expect(resultado.programa.ir.sentencias).toEqual([{ tipo: 'impresion', texto: 'Hola, mundo' }]);
+    expect(resultado.programa.ir.sentencias).toHaveLength(1);
+    expect(resultado.programa.ir.sentencias[0]).toMatchObject({ forma: 'expresion', clasePaso: 'impresion' });
+    expect(resultado.programa.arranque).toBeNull();
     expect(resultado.vista.fuente).toBe(fuente);
+    expect(resultado.vista.nodos).toHaveLength(1); // Tarea 2.16: la vista trae los nodos del programa (línea y plan de cada paso)
+    expect(resultado.vista.nodos[0]).toMatchObject({ clase: 'expresion', linea: 3 });
   });
 
   it('devuelve ok:false con un Problema real (categoría y línea calibrada de javac) si no compila', () => {
@@ -91,7 +95,7 @@ describe('compilar — el Problema tiene EXACTAMENTE las claves del contrato, ve
     ['un aviso de expresión (ternario, nodo del árbol)', conMain('int x = 1 > 0 ? 1 : 2;'), 'no-disponible'],
     ['un aviso léxico (literal hexadecimal, token)', conMain('int x = 0x10;'), 'no-disponible'],
     ['un aviso de biblioteca (String.split, atribución)', conMain('String s = "a,b"; s.split(",");'), 'no-disponible'],
-    ['lo que el motor todavía no ejecuta (declaración con println)', conMain('int x = 5; System.out.println(x);'), 'no-disponible'],
+    ['lo que el motor no ejecuta con fidelidad (Math.pow, a la espera del puerto de fdlibm)', conMain('double x = Math.pow(2, 3); System.out.println(x);'), 'no-disponible'],
     ['un error de atribución (variable no declarada)', conMain('int x = y;'), 'error-compilacion'],
     ['un error de sintaxis (falta el ";")', conMain('int x = 5'), 'error-compilacion'],
   ] as const)('%s: solo categoria, codigo, rango, linea y datos', (_caso, fuente, categoria) => {
@@ -226,10 +230,11 @@ describe('compilar — "println()" sin argumentos (corrección obligatoria, sub-
     const resultado = compilar(programaCon('System.out.println();'));
     expect(resultado.ok).toBe(true);
     if (!resultado.ok) throw new Error('se esperaba ok:true');
-    expect(resultado.programa.ir.sentencias).toEqual([{ tipo: 'impresion', texto: '' }]);
+    expect(resultado.programa.ir.sentencias).toHaveLength(1);
+    expect(resultado.programa.ir.sentencias[0]).toMatchObject({ forma: 'expresion', clasePaso: 'impresion' });
   });
 
-  it('el programa real de corpus/curso/u6-ciclos-anidados-tabla.java: "println()" ya NO se detecta como no-disponible (el único hueco restante es la IR de "for", del lote 2, no println)', () => {
+  it('el programa real de corpus/curso/u6-ciclos-anidados-tabla.java: "println()" ya NO se detecta como no-disponible y el "for" anidado se ejecuta (compila ok)', () => {
     const fuente = [
       'public class CiclosAnidadosTabla {',
       '    public static void main(String[] args) {',
@@ -243,21 +248,11 @@ describe('compilar — "println()" sin argumentos (corrección obligatoria, sub-
       '}',
     ].join('\n');
     const resultado = compilar(fuente);
-    // Antes de esta corrección, "println()" producía un error de SINTAXIS (categoría
-    // 'error-compilacion', ni siquiera llegaba a clasificarse). Hoy el análisis léxico+sintáctico+
-    // NO-DISP pasa limpio: lo único que falta es la IR real de "for" (lote 2, tarea 2.16) — un
-    // gap YA documentado y ajeno a esta corrección.
-    expect(resultado.ok).toBe(false);
-    if (resultado.ok) throw new Error('se esperaba ok:false (falta la IR de "for", lote 2)');
-    // Tarea 1.27 (agregada por el orquestador, D2): el hueco de IR del "for" ahora se reporta como
-    // 'no-disponible'/'ejecucion-no-disponible' (nunca 'error-compilacion' -- ese código
-    // desaparecería DE VERDAD si "println"/"for" volvieran a mis-clasificarse como una construcción
-    // NO-DISP real: el código sería uno de `CODIGOS_NO_SOPORTADO` DISTINTO de
-    // "ejecucion-no-disponible", p. ej. "for-mejorado-no-soportado" u otro -- esta aserción POSITIVA
-    // sigue probando, más precisa que antes, que ni "println" ni el "for" clásico disparan ningún
-    // código de no-soportado real: solo el hueco honesto de IR del lote 2).
-    expect(resultado.problema.categoria).toBe('no-disponible');
-    expect(resultado.problema.codigo).toBe('ejecucion-no-disponible');
+    // Antes de la corrección 1-C2, "println()" producía un error de SINTAXIS; hasta la tarea 2.16 el "for" no tenía IR y salía `ejecucion-no-disponible`. Hoy la IR baja el "for"
+    // anidado y el programa se ejecuta: ni "println" ni el "for" clásico disparan ningún código de no-soportado.
+    expect(resultado.ok).toBe(true);
+    if (!resultado.ok) throw new Error(`se esperaba ok:true, salió ${resultado.problema.codigo}`);
+    expect(resultado.programa.ir.sentencias[0]).toMatchObject({ forma: 'for' });
   });
 });
 
@@ -921,11 +916,9 @@ describe('compilar — una variable leída en su propio inicializador (N6, tarea
     expect(resultado.problema).toMatchObject({ categoria: 'error-compilacion', codigo: 'variable-posiblemente-no-asignada', linea: 3, datos: { nombre: 'x' } });
   });
 
-  it('control: `int y = (y = 5) + 1;` compila (javac lo acepta): ninguna pasada lo rechaza', () => {
+  it('control: `int y = (y = 5) + 1;` compila (javac lo acepta): ninguna pasada lo rechaza y se ejecuta (y vale 6)', () => {
     const resultado = compilar(['class C {', '  public static void main(String[] a) {', '    int y = (y = 5) + 1;', '  }', '}'].join('\n'));
-    expect(resultado.ok).toBe(false);
-    if (resultado.ok) throw new Error('se esperaba ok:false (falta la IR del lote 2)');
-    expect(resultado.problema).toMatchObject({ categoria: 'no-disponible', codigo: 'ejecucion-no-disponible' });
+    expect(resultado.ok).toBe(true);
   });
 });
 
@@ -984,33 +977,30 @@ describe('compilar — el retorno de carro suelto es un fin de línea (C-2 y W-2
   });
 });
 
-// Tarea 1.36 (C-5 y W-10 de la verificación final del lote 1): `compilar()` de punta a punta con una constante de texto con un `double`. Los 12 + 6 programas del corpus
-// (`corpus/experimentos/constantes-desconocidas/`, con los veredictos de javac) los vigila `constantes-desconocidas-del-corpus.test.ts`; aquí, los cuatro que bastan para cada pasada.
-describe('compilar — una constante de texto con un número decimal es un aviso honesto, nunca una respuesta inventada (C-5 y W-10, tarea 1.36)', () => {
+// Tarea 1.36 (C-5 y W-10 de la verificación final del lote 1) y su cierre en la 2.4: `compilar()` de punta a punta con una constante de texto con un `double`. Los 12 + 6 programas del corpus
+// (`corpus/experimentos/constantes-desconocidas/`, con los veredictos de javac) los vigila `constantes-desconocidas-del-corpus.test.ts`; aquí, los que bastan para cada pasada. Con el `Double.toString`
+// exacto de la biblioteca, el motor decide con el valor real, igual que javac: ya no hay un aviso de «constante de valor desconocido».
+describe('compilar — una constante de texto con un número decimal se pliega y decide como en javac (C-5 y W-10, cierre de la 1.36 en la tarea 2.4)', () => {
   const programa = (...lineas: string[]): string => ['public class P {', '    public static void main(String[] args) {', ...lineas.map((l) => `        ${l}`), '    }', '}', ''].join('\n');
 
-  it.each([
-    ['un ciclo `while` (alcanzabilidad: javac dice «unreachable statement»)', ['while ("a" + 1.5 == "a1.5") { }', 'System.out.println("x");'], 3],
-    ['una etiqueta de `case` (javac la compila)', ['String s = "d1.5";', 'switch (s) {', '    case "d" + 1.5:', '        break;', '    default:', '        break;', '}'], 5],
-    ['una asignación definitiva (javac compila: la condición vale `true`)', ['int x;', 'if ("a" + 1.5 == "a1.5") x = 1;', 'System.out.println(x);'], 4],
-  ])('%s → aviso `constante-de-texto-con-decimal-no-soportada` en la línea de la construcción, ni `ok` ni «ejecución no disponible»', (_descripcion, lineas, linea) => {
-    const resultado = compilar(programa(...lineas));
-    if (resultado.ok) throw new Error('se esperaba un aviso y salió ok: true');
-    expect(resultado.problema).toMatchObject({ categoria: 'no-disponible', codigo: 'constante-de-texto-con-decimal-no-soportada', linea, datos: {} });
+  it('un ciclo `while` con una condición que vale `true` deja inalcanzable lo que sigue: el error exacto de javac, «unreachable statement», en la línea de la sentencia', () => {
+    const resultado = compilar(programa('while ("a" + 1.5 == "a1.5") { }', 'System.out.println("x");'));
+    if (resultado.ok) throw new Error('se esperaba un error y salió ok: true');
+    expect(resultado.problema).toMatchObject({ categoria: 'error-compilacion', codigo: 'sentencia-inalcanzable', linea: 4 });
   });
 
   it.each([
+    ['una etiqueta de `case` (javac la compila)', ['String s = "d1.5";', 'switch (s) {', '    case "d" + 1.5:', '        break;', '    default:', '        break;', '}']],
+    ['una asignación definitiva (javac compila: la condición vale `true`)', ['int x;', 'if ("a" + 1.5 == "a1.5") x = 1;', 'System.out.println(x);']],
     ['se imprime', ['System.out.println("a" + 1.5);']],
     ['se declara y se imprime', ['String s = "a" + 1.5;', 'System.out.println(s);']],
     ['se compara sin decidir nada', ['boolean b = "a" + 1.5 == "a1.5";', 'System.out.println(b);']],
     ['un `if` que no deja ninguna variable sin asignar', ['if ("a" + 1.5 == "a1.5") {', '    System.out.println("x");', '}']],
-  ])('control: un texto con un `double` que NO decide nada (%s) sigue su camino de siempre: «ejecución no disponible», sin aviso de constante', (_descripcion, lineas) => {
-    const resultado = compilar(programa(...lineas));
-    if (resultado.ok) throw new Error('lo que no es un literal todavía no se ejecuta: se esperaba un aviso');
-    expect(resultado.problema).toMatchObject({ categoria: 'no-disponible', codigo: 'ejecucion-no-disponible' });
+  ])('%s: javac lo compila y el motor también: ok, sin ningún aviso', (_descripcion, lineas) => {
+    expect(compilar(programa(...lineas)).ok).toBe(true);
   });
 
-  it('control: una condición constante CONOCIDA sigue dando el error exacto de javac (`while ("a" + 1 == "a2") { … }` es «unreachable statement»)', () => {
+  it('control: una condición constante de enteros sigue dando el error exacto de javac (`while ("a" + 1 == "a2") { … }` es «unreachable statement»)', () => {
     const resultado = compilar(programa('while ("a" + 1 == "a2") {', '    System.out.println("nunca");', '}'));
     if (resultado.ok) throw new Error('se esperaba un error');
     expect(resultado.problema).toMatchObject({ categoria: 'error-compilacion', codigo: 'sentencia-inalcanzable', linea: 3 });
@@ -1295,8 +1285,13 @@ describe('compilar — los límites del archivo de clase de javac (C-4a, tarea 1
     }
   });
 
-  it('un texto con un decimal que cae en la frontera: aviso `tamano-de-texto-no-revisable` en la línea del texto (nunca ok, nunca un error inventado)', () => {
-    expect(problemaDe(programa(`    String s = "${'a'.repeat(65_531)}" + 1.5;`))).toMatchObject({ categoria: 'no-disponible', codigo: 'tamano-de-texto-no-revisable', linea: 3 });
+  it('un texto con un decimal en la frontera: `1.5` mide 3 caracteres, así que 65 531 + 3 caben (ok) y 65 532 + 3 son el error exacto de javac (tarea 2.4, cierre de la 1.36)', () => {
+    expect(compilar(programa(`    String s = "${'a'.repeat(65_531)}" + 1.5;`)).ok).toBe(true);
+    expect(problemaDe(programa(`    String s = "${'a'.repeat(65_532)}" + 1.5;`))).toMatchObject({ categoria: 'error-compilacion', codigo: 'texto-con-demasiados-caracteres', linea: 3 });
+  });
+
+  it('un texto largo dentro de un `if (true)`: javac poda código que el motor no sigue, así que no puede decidir: aviso `tamano-de-texto-no-revisable` en la línea del texto (nunca ok, nunca un error inventado)', () => {
+    expect(problemaDe(programa(`    if (true) {\n      String s = "${'a'.repeat(65_535)}";\n    }`))).toMatchObject({ categoria: 'no-disponible', codigo: 'tamano-de-texto-no-revisable', linea: 4 });
   });
 
   it('un error de una pasada anterior gana: `unreachable statement` se informa aunque el programa también tenga un texto de más', () => {

@@ -11,6 +11,7 @@
 export const textosInterfaz = {
   tituloApp: (): string => 'Visualizador de Java paso a paso',
   botonVisualizar: (): string => 'Visualizar',
+  botonEditar: (): string => 'Editar programa',
   botonAnterior: (): string => '◀ Anterior',
   botonSiguiente: (): string => 'Siguiente ▶',
   pasoActualDeTotal: (paso: number, total: number): string => `Paso ${paso} de ${total}`,

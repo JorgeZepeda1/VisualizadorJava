@@ -18,6 +18,11 @@ import {
   programaDeSwitch,
 } from './tablas-de-atribucion.ts';
 
+/** Todas las pasadas lo aceptaron: se ejecuta (`ok`) o solo le falta la biblioteca / el `double` (`ejecucion-no-disponible`). Un aviso de otra construcción o un error NO es aceptarlo. */
+function aceptadoPorTodasLasPasadas(resultado: ReturnType<typeof compilar>): boolean {
+  return resultado.ok || (resultado.problema.categoria === 'no-disponible' && resultado.problema.codigo === 'ejecucion-no-disponible');
+}
+
 describe('tablas de atribución — la tabla de casts: 64 pares, javac acepta 20', () => {
   it('la tabla tiene los 64 pares y 20 aceptados (guarda contra una tabla mal armada)', () => {
     expect(PARES_DE_CAST).toHaveLength(64);
@@ -26,18 +31,18 @@ describe('tablas de atribución — la tabla de casts: 64 pares, javac acepta 20
 
   it.each(PARES_DE_CAST)('(%s) → (%s)', (origen, destino) => {
     const resultado = compilar(programaDeCast(origen, destino));
-    if (resultado.ok) throw new Error('se esperaba un problema (falta la IR del lote 2 o un rechazo), no ok: true');
     if (CASTS_QUE_JAVAC_ACEPTA.has(`${origen}>${destino}`)) {
-      // javac lo acepta: todas las pasadas también; solo falta ejecutarlo.
-      expect(resultado.problema).toMatchObject({ categoria: 'no-disponible', codigo: 'ejecucion-no-disponible' });
-    } else {
-      expect(resultado.problema).toMatchObject({
-        categoria: 'error-compilacion',
-        codigo: 'cast-invalido',
-        linea: LINEA_DEL_CAST,
-        datos: { origen, destino },
-      });
+      // javac lo acepta: todas las pasadas también. Se ejecuta (`ok`) salvo que use `double` o la biblioteca, que aún no están conectados: entonces es el aviso `ejecucion-no-disponible`.
+      expect(aceptadoPorTodasLasPasadas(resultado), `${origen} → ${destino}`).toBe(true);
+      return;
     }
+    if (resultado.ok) throw new Error('se esperaba un rechazo, no ok: true');
+    expect(resultado.problema).toMatchObject({
+      categoria: 'error-compilacion',
+      codigo: 'cast-invalido',
+      linea: LINEA_DEL_CAST,
+      datos: { origen, destino },
+    });
   });
 });
 
@@ -49,17 +54,17 @@ describe('tablas de atribución — la tabla del `switch`: 39 celdas selector ×
 
   it.each(CELDAS_DE_SWITCH)('selector %s, «case %s» (etiqueta %s)', (selector, etiqueta, tipoDeLaEtiqueta) => {
     const resultado = compilar(programaDeSwitch(selector, SELECTORES_DE_SWITCH[selector], etiqueta));
-    if (resultado.ok) throw new Error('se esperaba un problema (falta la IR del lote 2 o un rechazo), no ok: true');
     if (ETIQUETAS_QUE_JAVAC_ACEPTA.has(`${selector}>${etiqueta}`)) {
-      expect(resultado.problema).toMatchObject({ categoria: 'no-disponible', codigo: 'ejecucion-no-disponible' });
-    } else {
-      expect(resultado.problema).toMatchObject({
-        categoria: 'error-compilacion',
-        codigo: 'etiqueta-de-case-de-otro-tipo',
-        linea: LINEA_DE_LA_ETIQUETA,
-        datos: { etiqueta: tipoDeLaEtiqueta, selector },
-      });
+      expect(aceptadoPorTodasLasPasadas(resultado), `${selector} / ${etiqueta}`).toBe(true);
+      return;
     }
+    if (resultado.ok) throw new Error('se esperaba un rechazo, no ok: true');
+    expect(resultado.problema).toMatchObject({
+      categoria: 'error-compilacion',
+      codigo: 'etiqueta-de-case-de-otro-tipo',
+      linea: LINEA_DE_LA_ETIQUETA,
+      datos: { etiqueta: tipoDeLaEtiqueta, selector },
+    });
   });
 
   it.each(SELECTORES_INVALIDOS_DE_SWITCH)('un selector %s lo rechaza javac él mismo (y nosotros): «case 1:» no da un segundo error', (tipo, valor) => {

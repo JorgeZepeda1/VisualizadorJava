@@ -1,0 +1,3 @@
+antes
+Exception in thread "main" java.lang.ArithmeticException: / by zero
+	at MiPrograma.main(MiPrograma.java:5)

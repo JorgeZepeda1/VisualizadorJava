@@ -1,0 +1,17 @@
+MAX + 1 = -2147483648
+MIN - 1 = 2147483647
+MAX * 2 = -2
+MIN * -1 = -2147483648
+-MIN = -2147483648
+MIN / -1 = -2147483648
+MIN % -1 = 0
+46341 * 46341 = -2147479015
+65536 * 65536 = 0
+123456789 * 987654321 = -67153019
+suma vuelta 0 = 1000000000
+suma vuelta 1 = 2000000000
+suma vuelta 2 = -1294967296
+suma vuelta 3 = -294967296
+suma vuelta 4 = 705032704
+el valor absoluto de MIN sigue siendo negativo
+3 a la 35 en int = -651126885

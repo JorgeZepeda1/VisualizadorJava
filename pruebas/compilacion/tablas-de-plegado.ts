@@ -10,7 +10,7 @@
 // siempre `0x7ff8000000000000`: así se distingue `0.0` de `-0.0` y no se pierde ningún dígito); `boolean` como `true`/`false`; `char` como `c` y su valor numérico; `String` entre comillas.
 import { tokenizar } from '../../src/motor/lexico/analizador-lexico.ts';
 import { Alcance } from '../../src/motor/semantica/alcance.ts';
-import { esDeValorDesconocido, valorConstante, type ValorConstante } from '../../src/motor/semantica/constantes.ts';
+import { valorConstante, type ValorConstante } from '../../src/motor/semantica/constantes.ts';
 import { CursorDeTokens } from '../../src/motor/sintaxis/cursor-de-tokens.ts';
 import { analizarExpresion } from '../../src/motor/sintaxis/expresiones.ts';
 
@@ -164,6 +164,29 @@ export const FILAS_DE_PLEGADO: readonly FilaDePlegado[] = [
   fila('texto-vacio-mas-un-numero', 'String', '"" + 5', '"5"'),
   fila('texto-con-el-minimo-de-int', 'String', '"" + Integer.MIN_VALUE', '"-2147483648"'),
   fila('texto-con-el-minimo-de-long', 'String', '"" + Long.MIN_VALUE', '"-9223372036854775808"'),
+  // Tarea 2.4 (cierre de la 1.36): un `double` concatenado a un texto se pliega con el `Double.toString` de Java, que el JDK 17 usa al compilar (umbrales 10^-3 y 10^7, exponente sin `+`, `Infinity`, `NaN`).
+  fila('texto-con-un-double', 'String', '"a" + 1.5', '"a1.5"'),
+  fila('texto-con-un-double-entero', 'String', '"a" + 2.0', '"a2.0"'),
+  fila('texto-con-un-double-a-la-izquierda', 'String', '1.5 + "a"', '"1.5a"'),
+  fila('texto-con-un-int-convertido-a-double', 'String', '"a" + (double) 1', '"a1.0"'),
+  fila('texto-con-un-long-convertido-a-double-redondea', 'String', '"m=" + (double) 9007199254740993L', '"m=9.007199254740992E15"'),
+  fila('texto-con-la-suma-de-dos-doubles', 'String', '"x" + (0.1 + 0.2)', '"x0.30000000000000004"'),
+  fila('texto-con-un-double-justo-antes-del-umbral-grande', 'String', '"x" + 9999999.0', '"x9999999.0"'),
+  fila('texto-con-un-double-en-el-umbral-grande', 'String', '"x" + 1.0E7', '"x1.0E7"'),
+  fila('texto-con-un-double-en-el-umbral-pequeno', 'String', '"x" + 0.001', '"x0.001"'),
+  fila('texto-con-un-double-bajo-el-umbral-pequeno', 'String', '"x" + 0.0001', '"x1.0E-4"'),
+  fila('texto-con-un-double-muy-grande', 'String', '"x" + 1e20', '"x1.0E20"'),
+  fila('texto-con-un-double-de-empate-exacto', 'String', '"x" + 1e23', '"x9.999999999999999E22"'),
+  fila('texto-con-math-pi', 'String', '"x" + Math.PI', '"x3.141592653589793"'),
+  fila('texto-con-math-e', 'String', '"x" + Math.E', '"x2.718281828459045"'),
+  fila('texto-con-double-max-value', 'String', '"x" + Double.MAX_VALUE', '"x1.7976931348623157E308"'),
+  fila('texto-con-double-min-value', 'String', '"x" + Double.MIN_VALUE', '"x4.9E-324"'),
+  fila('texto-con-infinito', 'String', '"x" + (1.0 / 0)', '"xInfinity"'),
+  fila('texto-con-menos-infinito', 'String', '"x" + (-1.0 / 0)', '"x-Infinity"'),
+  fila('texto-con-nan', 'String', '"x" + (0.0 / 0)', '"xNaN"'),
+  fila('texto-con-menos-cero', 'String', '"x" + -0.0', '"x-0.0"'),
+  fila('texto-con-un-double-igual-a-su-literal', 'boolean', '"a" + 1.5 == "a1.5"', 'true'),
+  fila('texto-con-un-double-distinto-de-su-literal', 'boolean', '"a" + 1.5 == "a1.50"', 'false'),
   fila('texto-igual-se-interna', 'boolean', '"a" == "a"', 'true'),
   fila('texto-plegado-igual-a-otro-literal', 'boolean', '"a" + "b" == "ab"', 'true'),
   fila('texto-distinto', 'boolean', '"a" != "b"', 'true'),
@@ -218,11 +241,11 @@ export const FILAS_DE_PLEGADO: readonly FilaDePlegado[] = [
   fila('cast-boolean-es-la-identidad', 'boolean', '(boolean) true', 'true'),
 ];
 
-/** El resultado del motor para `fila`, en el formato de la cabecera; `null` si el motor no la reconoce como constante de valor conocido. */
+/** El resultado del motor para `fila`, en el formato de la cabecera; `null` si el motor no la reconoce como constante. */
 export function calcularConElMotor(filaDePlegado: FilaDePlegado): string | null {
   const nodo = analizarExpresion(new CursorDeTokens(tokenizar(filaDePlegado.expresion)));
   const constante = valorConstante(nodo, new Alcance());
-  if (constante === null || esDeValorDesconocido(constante)) return null;
+  if (constante === null) return null;
   return formatearConstante(constante);
 }
 

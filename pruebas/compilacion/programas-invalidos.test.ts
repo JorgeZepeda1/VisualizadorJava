@@ -93,7 +93,8 @@ describe('corpus real → a un programa que javac 17 rechaza nunca se le dice qu
       const resultado = compilar(fuente);
       return !resultado.ok && resultado.problema.codigo === 'ejecucion-no-disponible' ? [textoDelProblema(resultado.problema)] : [];
     });
-    expect(textos.length).toBeGreaterThanOrEqual(50);
+    // Antes de conectar la biblioteca (hito 1, parte C) eran ≥ 50; ahora solo quedan los programas con `Math.pow`, un formato sin medir o un segundo `Scanner`. El piso evita un recorrido vacío.
+    expect(textos.length).toBeGreaterThanOrEqual(1);
     for (const texto of textos) expect(texto).toContain('pasó todas mis revisiones');
   });
 });

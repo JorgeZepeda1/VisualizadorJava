@@ -46,8 +46,8 @@ import type {
   NodoSwitch,
 } from '../sintaxis/ast.ts';
 import { Alcance } from './alcance.ts';
-import { constanteDeVariable, esDeValorDesconocido, valorConstante } from './constantes.ts';
-import { avisoDeConstanteDeValorDesconocido, type ProblemaAtribucion } from './diagnostico.ts';
+import { constanteDeVariable, valorConstante } from './constantes.ts';
+import type { ProblemaAtribucion } from './diagnostico.ts';
 
 export function verificarAlcanzabilidad(programa: NodoPrograma): ProblemaAtribucion[] {
   // Tarea 1.15 (REQ-COMP-008): sin "main" no hay cuerpo que recorrer -- nada que reportar aquí (el
@@ -219,10 +219,8 @@ function visitarCiclo(
   alcanzable: boolean,
   problemas: ProblemaAtribucion[],
 ): boolean {
-  // Tarea 1.36 (C-5): una condición CONSTANTE cuyo valor no se sabe calcular (`"a" + 1.5 == "a1.5"`) decide si el ciclo termina y si lo que sigue es alcanzable, y no se puede decidir: aviso honesto,
-  // y a partir de ahí se sigue como si no fuera constante (ningún `sentencia-inalcanzable` inventado).
+  // Una condición CONSTANTE decide si el ciclo termina y si lo que sigue es alcanzable (JLS 14.22), también la que lleva un decimal convertido a texto (`"a" + 1.5 == "a1.5"`, tarea 2.4).
   const valorDeLaCondicion = valorDeUnaCondicionConstante(condicion, alcance);
-  if (valorDeLaCondicion === 'desconocido') problemas.push(avisoDeConstanteDeValorDesconocido(condicion.rango));
   const condicionFalsa = valorDeLaCondicion === false;
   const condicionVerdadera = valorDeLaCondicion === true;
   // "do-while" SIEMPRE ejecuta su cuerpo al menos una vez (JLS 14.22.2) — ignora la condición para
@@ -266,7 +264,6 @@ function visitarFor(sentencia: NodoFor, alcance: Alcance, alcanzable: boolean, p
   const condicion = sentencia.condicion;
   // "for(;;)" (condición OMITIDA) cuenta como constante `true` (JLS 14.21, igual que while(true)).
   const valorDeLaCondicion = condicion === null ? true : valorDeUnaCondicionConstante(condicion, alcance);
-  if (condicion !== null && valorDeLaCondicion === 'desconocido') problemas.push(avisoDeConstanteDeValorDesconocido(condicion.rango)); // tarea 1.36 (C-5), ver `visitarCiclo`
   const condicionFalsa = valorDeLaCondicion === false;
   const condicionVerdadera = valorDeLaCondicion === true;
   const cuerpoAlcanzable = alcanzable && !condicionFalsa;
@@ -277,12 +274,11 @@ function visitarFor(sentencia: NodoFor, alcance: Alcance, alcanzable: boolean, p
 }
 
 /**
- * El valor de `condicion` si es una expresión constante booleana (JLS 15.29, variables `final` constantes incluidas —deuda 3 del commit 999a8ca): `true` o `false`; `'desconocido'` si es constante pero
- * su valor no se sabe calcular todavía (tarea 1.36, C-5: `"a" + 1.5 == "a1.5"`); `null` si no es constante (o no es booleana: eso lo rechaza la atribución).
+ * El valor de `condicion` si es una expresión constante booleana (JLS 15.29, variables `final` constantes incluidas —deuda 3 del commit 999a8ca): `true` o `false`; `null` si no es constante
+ * (o no es booleana: eso lo rechaza la atribución).
  */
-function valorDeUnaCondicionConstante(condicion: NodoExpresion, alcance: Alcance): boolean | 'desconocido' | null {
+function valorDeUnaCondicionConstante(condicion: NodoExpresion, alcance: Alcance): boolean | null {
   const constante = valorConstante(condicion, alcance);
-  if (esDeValorDesconocido(constante)) return constante.tipoJava === 'boolean' ? 'desconocido' : null;
   return constante !== null && constante.tipo === 'boolean' ? constante.valor : null;
 }
 

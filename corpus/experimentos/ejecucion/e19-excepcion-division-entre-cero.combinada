@@ -1,0 +1,4 @@
+cada parte: 25
+antes de dividir
+Exception in thread "main" java.lang.ArithmeticException: / by zero
+	at MiPrograma.main(MiPrograma.java:8)

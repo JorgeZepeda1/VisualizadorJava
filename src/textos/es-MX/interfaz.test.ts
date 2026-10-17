@@ -15,3 +15,15 @@ describe('textosInterfaz.errorEnLinea — antepone la línea al texto del error'
     expect(textosInterfaz.errorEnLinea(28, 'Esta línea nunca se ejecuta.')).toBe('Línea 28: Esta línea nunca se ejecuta.');
   });
 });
+
+describe('textosInterfaz: los botones de la pantalla', () => {
+  it('«Editar programa» vuelve del paso a paso al editor', () => {
+    expect(textosInterfaz.botonEditar()).toBe('Editar programa');
+  });
+
+  it('«Visualizar» y la pareja Anterior / Siguiente siguen igual que en la rebanada vertical', () => {
+    expect(textosInterfaz.botonVisualizar()).toBe('Visualizar');
+    expect(textosInterfaz.botonAnterior()).toBe('◀ Anterior');
+    expect(textosInterfaz.botonSiguiente()).toBe('Siguiente ▶');
+  });
+});

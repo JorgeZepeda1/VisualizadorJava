@@ -153,9 +153,9 @@ describe('manejarMensaje', () => {
     });
   });
 
-  it('"detener" no emite ningún mensaje (silencioso, ADR 007)', () => {
+  it('"detener" se acusa con un mensaje `detenido` (el perro guardián del cliente espera esa respuesta; sin ella a los 300 ms termina el trabajador), aunque la ejecución ya no exista', () => {
     const emitidos: MensajeTrabajadorAUi[] = [];
     manejarMensaje({ tipo: 'detener', id: 1 }, (m) => emitidos.push(m));
-    expect(emitidos).toEqual([]);
+    expect(emitidos).toEqual([{ tipo: 'detenido', id: 1 }]);
   });
 });

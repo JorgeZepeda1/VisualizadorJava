@@ -16,7 +16,7 @@ public class Aviso {
         final String A13 = A12 + A12;
         final String A14 = A13 + A13;
         final String A15 = A14 + A14;
-        String texto = A15 + A14 + A13 + A12 + A11 + A10 + A9 + A8 + A7 + A6 + A5 + A4 + A3 + A1 + A0 + 1.5;
-        System.out.println(texto.length());
+        if (true) return;
+        String texto = A15 + A14 + A13 + A12 + A11 + A10 + A9 + A8 + A7 + A6 + A5 + A4 + A3 + A2 + A1 + A0;
     }
 }

@@ -1,8 +1,9 @@
 // RED de la tarea 0.13: `cliente.ts` es lo único de `trabajador/` que `interfaz` puede importar
 // junto con `protocolo.ts` (matriz de capas). Bajo Vitest (Node/jsdom, sin `Worker` real) usa el
 // transporte en proceso — mismo motor real, sin mocks de negocio — que se ejercita aquí.
-import { describe, expect, it } from 'vitest';
-import { crearClienteTrabajador } from './cliente.ts';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { crearClienteTrabajador, registrarTransporteEnProceso } from './cliente.ts';
+import { manejarMensaje } from './trabajador.ts';
 import type { ConfigEjecucion } from '../motor/index.ts';
 import type { MensajeTrabajadorAUi } from './protocolo.ts';
 
@@ -17,7 +18,44 @@ function configPorOmision(): ConfigEjecucion {
   };
 }
 
+describe('crearClienteTrabajador sin Worker y SIN transporte en proceso registrado (hito 2C)', () => {
+  // El motor NUNCA corre en el hilo principal (CLAUDE.md): el respaldo en proceso existe solo si alguien lo registra (las pruebas de la interfaz bajo jsdom). `cliente.ts` ya no importa
+  // `trabajador.ts`, así que el motor completo no viaja en el paquete principal de la página.
+  it('ejecutar() no ejecuta nada: avisa un error interno con el id de la ejecución', () => {
+    const mensajes: MensajeTrabajadorAUi[] = [];
+    const cliente = crearClienteTrabajador({ onMensaje: (m) => mensajes.push(m) });
+
+    cliente.ejecutar(7, 'class C { public static void main(String[] a) { System.out.println("hola"); } }', configPorOmision());
+
+    expect(mensajes).toHaveLength(1);
+    expect(mensajes[0]).toMatchObject({ tipo: 'error-interno', id: 7 });
+  });
+
+  it('entrada, cerrar entrada y terminar no hacen nada (no hay ejecución a la que llegar)', () => {
+    const mensajes: MensajeTrabajadorAUi[] = [];
+    const cliente = crearClienteTrabajador({ onMensaje: (m) => mensajes.push(m) });
+
+    cliente.darEntrada(7, '5\n');
+    cliente.cerrarEntrada(7);
+    cliente.terminar();
+
+    expect(mensajes).toEqual([]);
+  });
+
+  it('detener() cumple igual con el protocolo: recibe su acuse `detenido`, aunque no hubiera nada que detener', () => {
+    const mensajes: MensajeTrabajadorAUi[] = [];
+    const cliente = crearClienteTrabajador({ onMensaje: (m) => mensajes.push(m) });
+
+    cliente.detener(7);
+
+    expect(mensajes).toEqual([{ tipo: 'detenido', id: 7 }]);
+  });
+});
+
 describe('crearClienteTrabajador (transporte en proceso — sin Worker real bajo Vitest)', () => {
+  beforeAll(() => registrarTransporteEnProceso(manejarMensaje));
+  afterAll(() => registrarTransporteEnProceso(null));
+
   it('ejecutar() produce compilado→pasos→fin para el programa dorado', () => {
     const mensajes: MensajeTrabajadorAUi[] = [];
     const cliente = crearClienteTrabajador({ onMensaje: (m) => mensajes.push(m) });

@@ -18,6 +18,9 @@ export const DEPENDENCIAS_EJECUCION: readonly DependenciaFijada[] = [
   { nombre: '@codemirror/language', version: '6.12.4' },
   { nombre: '@codemirror/commands', version: '6.11.1' },
   { nombre: '@codemirror/lang-java', version: '6.0.2' },
+  // Tarea 4.15: los colores del resaltado de Java (`interfaz/editor/resaltado-de-java.ts`) necesitan sus `tags`. Ya viajaba en el bundle como dependencia de `@codemirror/language`; se declara
+  // porque ahora el código propio lo importa (MIT, ADR 016) — no agrega peso.
+  { nombre: '@lezer/highlight', version: '1.2.4' },
   { nombre: 'lz-string', version: '1.5.0' },
   { nombre: 'workbox-window', version: '7.4.1' },
 ];

@@ -1,0 +1,30 @@
+op = 0
+otro
+op = 1
+uno
+dos
+op = 2
+dos
+op = 3
+tres o cuatro
+op = 4
+tres o cuatro
+op = 5
+otro
+despues del switch sin default
+default al principio 1
+cae a 2
+cae a 2
+tres
+default al principio 4
+cae a 2
+b
+c
+verde
+azul
+unido es verde
+construido es verde
+local = 20
+constante final
+solo default
+switch vacio

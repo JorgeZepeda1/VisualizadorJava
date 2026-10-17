@@ -1,50 +1,759 @@
-// Baja el AST a la IR mínima (design.md §1.2). `plan-evaluacion.ts` y `vista-programa.ts` —también
-// parte de `ir/` en el diseño final— llegan en la tarea 2.16, que es quien primero necesita un
-// plan de evaluación (no hace falta para una sentencia sin subexpresiones como println(literal)).
+// Baja el AST del subconjunto a la IR tipada (tarea 2.16, design.md §3.1, ADR 005 punto 1). Corre DESPUÉS de las pasadas de compilación
+// (léxico, sintaxis, atribución, alcanzabilidad, asignación definitiva), así que el programa ya es válido: aquí no se vuelven a revisar los
+// tipos, se BAJAN. Cada operación recibe su tipo, las conversiones implícitas (la promoción numérica binaria, el ensanchamiento de una
+// asignación, el estrechamiento de una constante `int` a `char`) quedan como nodos `conversion` visibles, cada local tiene su ranura y cada
+// llamada a la biblioteca su CLAVE de firma resuelta con las mismas sobrecargas de la atribución (`semantica/sobrecargas.ts`).
 //
-// La tarea 1.2 amplió la gramática (`NodoElementoBloque`: DeclLocal, "return;") sin tocar la IR
-// real — esa semántica (bajar declaraciones/expresiones/control de flujo) es de las tareas 1.5/
-// 2.16, no de esta. Para que `npm run tipos` siga en verde con el AST más ancho, y para no fingir
-// un resultado que no se implementó (D2), cualquier elemento que no sea "impresion" lanza un error
-// claro en vez de callar — `compilador.ts` ya lo atrapa y lo convierte en `Problema` (D2: nunca un
-// resultado inventado). Ningún caso de esta rebanada vertical ni de las tareas 1.1-1.4 necesita
-// que esto haga algo más: sus propias pruebas son de léxico/sintaxis, no de ejecución.
+// Lo que el puerto de la biblioteca (`interprete/puerto-biblioteca.ts`) no sabe hacer NO se ejecuta: una llamada o un `new` cuya clave no está
+// en el puerto, o cualquier `double` si el puerto no sabe escribir uno, es un `ErrorDeEjecucionNoDisponible` con el rango real (D2, regla 5 de
+// CLAUDE.md) que `compilar()` traduce al aviso `ejecucion-no-disponible`. Es una ruta defensiva PERMANENTE (tarea 1.27): nunca un resultado inventado.
 //
-// Tarea 1.27 (agregada por el orquestador): antes de esta tarea ese error era un `Error` plano SIN
-// posición -- `compilador.ts` lo atrapaba con su catch-all genérico y lo presentaba como
-// `error-compilacion` (línea fija en 1), como si el programa tuviera un error de SINTAXIS. Java SÍ
-// acepta estos programas (verificado contra javac 17 real) -- `ErrorDeEjecucionNoDisponible` lleva
-// el `rango` REAL del elemento para que `compilador.ts` lo traduzca a `categoria:'no-disponible'`
-// con la línea correcta, nunca un resultado inventado (D2). Ruta defensiva PERMANENTE: sigue como
-// respaldo honesto incluso cuando el lote 2 baje todo el subconjunto a IR.
-import type { NodoElementoBloque, NodoPrograma } from '../sintaxis/ast.ts';
+// Hito 1, parte C: lo que la biblioteca marca como «No disponible» y SE PUEDE saber antes de ejecutar se decide aquí, no a media ejecución: un patrón de `printf`/`String.format` literal (o una
+// constante de compilación) con un especificador sin medir (`formatoSoportado`), `Double.parseDouble` de un literal hexadecimal, un segundo `new Scanner(System.in)` (o uno dentro de un ciclo: Java
+// reparte la entrada entre los búferes de los Scanner y el motor no lo modela) y un `Scanner`/`Random` convertido en texto. Lo que depende de un VALOR en ejecución (el patrón que lee una variable,
+// el texto que teclea el alumno) sigue siendo un aviso en ejecución.
+//
+// El árbol sale SIN números de punto (`punto: -1`); `plan-evaluacion.ts` los asigna en el orden en que Java evalúa. Cada paso (declaración,
+// sentencia de expresión, condición…) es un NODO con su plan; `Paso.valores` va alineado con él.
+import { Double, formatoSoportado, NoDisponibleEnEjecucion } from '../biblioteca/index.ts';
+import { caracterDeLiteral } from '../biblioteca/numeros/caracter.ts';
+import { promocionBinaria } from '../biblioteca/numeros/conversiones.ts';
+import { INT_MAXIMO, INT_MINIMO } from '../biblioteca/numeros/enteros.ts';
+import { LONG_MAXIMO, LONG_MINIMO } from '../biblioteca/numeros/largos.ts';
+import type { FirmaMiembro } from '../biblioteca/datos/firmas-jdk.generado.ts';
+import type { Rango } from '../fuente/rango.ts';
+import { TablaDeLineas } from '../fuente/tabla-de-lineas.ts';
+import { PUERTO_VACIO, type PuertoBiblioteca } from '../interprete/puerto-biblioteca.ts';
+import { Alcance, type SimboloVariable } from '../semantica/alcance.ts';
+import { constanteDeVariable, valorConstante } from '../semantica/constantes.ts';
+import { resolverSobrecarga } from '../semantica/sobrecargas.ts';
+import {
+  argumentoDeSobrecarga,
+  campoReflejadoDeSystem,
+  claseDelObjeto,
+  esNombreDeClaseDelCatalogo,
+  tipoDeExpresion,
+  tipoDeNombreDeTipo,
+} from '../semantica/tipos.ts';
+import type {
+  NodoBloque,
+  NodoDeclaracionLocal,
+  NodoElementoBloque,
+  NodoExpresion,
+  NodoFor,
+  NodoLlamada,
+  NodoNuevaInstancia,
+  NodoPrograma,
+  NodoSentencia,
+  NodoSentenciaExpresion,
+  NodoSwitch,
+} from '../sintaxis/ast.ts';
 import { ErrorDeEjecucionNoDisponible } from './error-de-ejecucion-no-disponible.ts';
-import type { ProgramaIr, SentenciaIr } from './ir.ts';
+import type {
+  AritmeticaIr,
+  ClaseDeNodo,
+  CondicionIr,
+  DeclaracionIr,
+  DeclaradorIr,
+  ElementoSwitchIr,
+  ExpresionIr,
+  ExpresionSentenciaIr,
+  ForIr,
+  LecturaIr,
+  LlamadaIr,
+  NodoIr,
+  OperadorAritmeticoIr,
+  OperadorComparacionIr,
+  ProgramaIr,
+  PuntoDelPlan,
+  RamasDeIfIr,
+  RanuraIr,
+  RaizIr,
+  SentenciaIr,
+  SwitchIr,
+  TipoIr,
+  TipoNumericoIr,
+} from './ir.ts';
+import { ConstructorDePlan, numerarExpresion } from './plan-evaluacion.ts';
+import { rangoTextual } from './rango-textual.ts';
 
-export function generarIr(programa: NodoPrograma): ProgramaIr {
-  // Tarea 1.15 (REQ-COMP-008): sin "main" no hay cuerpo que bajar a IR -- `compilador.ts` reporta
-  // el error de ARRANQUE (pasada 5) usando este programa vacío; nunca se ejecuta.
-  if (programa.clase.main === null) return { sentencias: [] };
-  const sentencias = programa.clase.main.cuerpo.elementos.map(generarSentenciaIr);
-  return { sentencias };
+export interface OpcionesDeGeneracion {
+  /** El texto del programa (ya con los fines de línea normalizados): de aquí salen las líneas y el texto de cada expresión. */
+  readonly fuente: string;
+  /** Lo que la biblioteca sabe ejecutar: decide qué llamadas y qué tipos se pueden bajar. */
+  readonly puerto: PuertoBiblioteca;
 }
 
-function generarSentenciaIr(elemento: NodoElementoBloque): SentenciaIr {
-  // Tarea 1.8 (pendiente heredado): la sintaxis ahora acepta `print` y cualquier expresión como
-  // argumento (no solo `println` de un literal-cadena, 0.12) — pero solo ESE caso concreto tiene
-  // IR real todavía. Generalizar la EJECUCIÓN (resolver la sobrecarga real de `print`, evaluar
-  // una expresión general) es del lote 2 (2.16+), igual que el resto de `Sentencia` desde 1.5:
-  // el mismo `throw` honesto de siempre, nunca un resultado a medias o silenciosamente incorrecto.
-  if (elemento.tipo === 'impresion' && elemento.metodo === 'println') {
-    // Corrección obligatoria (sub-lote 1-C2): "println()" sin argumentos SÍ tiene IR real — el
-    // PrintStream real solo emite el separador de línea, así que su texto es la cadena vacía
-    // (design.md §4.8: "println agrega \n"; ese \n lo añade la ejecución real, lote 2, igual que
-    // para println("literal") — aquí solo el texto ya resuelto).
-    if (elemento.argumento === null) return { tipo: 'impresion', texto: '' };
-    if (elemento.argumento.tipo === 'literal-cadena') return { tipo: 'impresion', texto: elemento.argumento.valor };
+/** Baja `programa` a IR. Sin `main` no hay cuerpo que bajar: el programa queda vacío (el arranque lo reporta `crearEjecucion`, tarea 1.15). */
+export function generarIr(programa: NodoPrograma, opciones: OpcionesDeGeneracion = { fuente: '', puerto: PUERTO_VACIO }): ProgramaIr {
+  return new GeneradorDeIr(programa, opciones).generar();
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------
+
+const TIPOS_NUMERICOS: ReadonlySet<TipoIr> = new Set<TipoIr>(['int', 'long', 'double', 'char']);
+
+function esNumerico(tipo: TipoIr | null): tipo is TipoNumericoIr {
+  return tipo !== null && TIPOS_NUMERICOS.has(tipo);
+}
+
+/** Las firmas de `print`/`println` que el propio intérprete resuelve (no necesitan la biblioteca; `double` sí necesita `Double.toString`, lo decide el tipo). */
+export const CLAVES_NATIVAS: ReadonlySet<string> = new Set(
+  ['print', 'println'].flatMap((metodo) =>
+    ['boolean', 'char', 'double', 'int', 'long', 'java.lang.String'].map((parametro) => `PrintStream.${metodo}(${parametro})`),
+  ).concat(['PrintStream.println()']),
+);
+
+const CLAVES_DE_FORMATO: ReadonlySet<string> = new Set(['PrintStream.printf(java.lang.String,java.lang.Object[])', 'String.format(java.lang.String,java.lang.Object[])']);
+const CLAVE_DE_PARSE_DOUBLE = 'Double.parseDouble(java.lang.String)';
+const CLAVE_DE_NUEVO_SCANNER = 'Scanner.<init>(java.io.InputStream)';
+const CLAVE_DE_EQUALS = 'String.equals(java.lang.Object)';
+
+/** Constantes de campos estáticos que el propio intérprete conoce (las demás, como `Math.PI`, también: son valores fijos del JDK). */
+const CAMPOS_CONSTANTES: ReadonlyMap<string, { readonly tipo: TipoIr; readonly valor: number | bigint }> = new Map([
+  ['Integer.MAX_VALUE', { tipo: 'int' as const, valor: INT_MAXIMO }],
+  ['Integer.MIN_VALUE', { tipo: 'int' as const, valor: INT_MINIMO }],
+  ['Long.MAX_VALUE', { tipo: 'long' as const, valor: LONG_MAXIMO }],
+  ['Long.MIN_VALUE', { tipo: 'long' as const, valor: LONG_MINIMO }],
+  ['Double.MAX_VALUE', { tipo: 'double' as const, valor: Number.MAX_VALUE }],
+  ['Double.MIN_VALUE', { tipo: 'double' as const, valor: Number.MIN_VALUE }],
+  ['Math.PI', { tipo: 'double' as const, valor: Math.PI }],
+  ['Math.E', { tipo: 'double' as const, valor: Math.E }],
+]);
+
+function noDisponible(mensaje: string, rango: Rango): never {
+  throw new ErrorDeEjecucionNoDisponible(mensaje, rango);
+}
+
+/** Lo que la expresión ocupa en el texto, con los paréntesis de sus extremos (`rango-textual.ts`): de aquí sale el texto que se le muestra al alumno. */
+function rangoDe(nodo: NodoExpresion): Rango {
+  return rangoTextual(nodo);
+}
+
+function claveDeFirma(firma: FirmaMiembro): string {
+  const nombre = firma.genero === 'constructor' ? '<init>' : firma.nombre;
+  return `${firma.clase}.${nombre}(${firma.parametros.join(',')})`;
+}
+
+/** El tipo de un valor devuelto por la biblioteca (`Class#getTypeName()`); `null` para `void` y para lo que el subconjunto no modela como valor (`PrintStream`). */
+function tipoDeRetorno(reflejado: string): TipoIr | null {
+  switch (reflejado) {
+    case 'int':
+    case 'long':
+    case 'double':
+    case 'boolean':
+    case 'char':
+      return reflejado;
+    case 'java.lang.String':
+      return 'String';
+    case 'java.util.Scanner':
+      return 'Scanner';
+    case 'java.util.Random':
+      return 'Random';
+    default:
+      return null;
   }
-  throw new ErrorDeEjecucionNoDisponible(
-    `la ejecución de "${elemento.tipo}" llega en el lote 2 (tareas 1.5/2.16)`,
-    elemento.rango,
-  );
+}
+
+function tipoDeTipo(tipo: ReturnType<typeof tipoDeNombreDeTipo>, rango: Rango): TipoIr {
+  if (tipo === 'desconocido') return noDisponible('tipo fuera del subconjunto', rango);
+  return tipo;
+}
+
+interface RaizCruda {
+  readonly expresion: ExpresionIr;
+  readonly texto: string;
+  readonly inicio: number;
+  readonly conBiblioteca: boolean;
+}
+
+interface NodoBorrador {
+  readonly id: number;
+  readonly clase: ClaseDeNodo;
+  readonly rango: Rango;
+  readonly linea: number;
+  vivas: readonly number[];
+  plan: readonly PuntoDelPlan[];
+}
+
+class GeneradorDeIr {
+  private readonly programa: NodoPrograma;
+  private readonly fuente: string;
+  private readonly puerto: PuertoBiblioteca;
+  private readonly tabla: TablaDeLineas;
+  private readonly alcance: Alcance;
+  private readonly ranuras: RanuraIr[] = [];
+  private readonly ranuraDe = new Map<SimboloVariable, number>();
+  private readonly nodos: NodoBorrador[] = [];
+  private readonly ramasDeIf: RamasDeIfIr[] = [];
+  private huboBiblioteca = false;
+  /** Cuántos `new Scanner(System.in)` lleva el programa y cuántos ciclos envuelven el punto que se está bajando (el cuerpo, la condición y la actualización; no el inicio de un `for`). */
+  private scannersCreados = 0;
+  private profundidadDeCiclo = 0;
+
+  constructor(programa: NodoPrograma, opciones: OpcionesDeGeneracion) {
+    this.programa = programa;
+    this.fuente = opciones.fuente;
+    this.puerto = opciones.puerto;
+    this.tabla = new TablaDeLineas(opciones.fuente);
+    this.alcance = new Alcance(new Set([programa.clase.nombre]));
+  }
+
+  generar(): ProgramaIr {
+    const clase = this.programa.clase;
+    const paquete = this.programa.paquete?.nombre ?? null;
+    const base = { nombreClase: clase.nombre, paquete };
+    if (clase.main === null) return { sentencias: [], ranuras: [], nodos: [], ramasDeIf: [], ...base };
+    // El parámetro de `main` vive en el alcance (como en la atribución) pero no es una ranura: usarlo ya fue un aviso de arreglo.
+    this.alcance.entrarBloque();
+    this.alcance.declarar({ nombre: clase.main.parametro, tipo: 'desconocido', esFinal: false, rango: clase.main.rango });
+    this.alcance.entrarBloque();
+    const sentencias = clase.main.cuerpo.elementos.map((elemento) => this.bajarElemento(elemento));
+    this.alcance.salirBloque();
+    this.alcance.salirBloque();
+    const nodos: NodoIr[] = this.nodos.map((nodo) => ({ id: nodo.id, clase: nodo.clase, rango: nodo.rango, linea: nodo.linea, vivas: nodo.vivas, plan: nodo.plan }));
+    return { sentencias, ranuras: this.ranuras, nodos, ramasDeIf: this.ramasDeIf, ...base };
+  }
+
+  // --- Nodos y planes --------------------------------------------------------------------------------------------------------
+
+  private reservarNodo(clase: ClaseDeNodo, rango: Rango): number {
+    const id = this.nodos.length;
+    this.nodos.push({ id, clase, rango, linea: this.tabla.ubicar(rango.inicio).linea, vivas: [], plan: [] });
+    return id;
+  }
+
+  private ranurasVivas(): number[] {
+    const vivas: number[] = [];
+    for (const nombre of this.alcance.nombresVisibles()) {
+      const simbolo = this.alcance.buscar(nombre);
+      const ranura = simbolo === null ? undefined : this.ranuraDe.get(simbolo);
+      if (ranura !== undefined) vivas.push(ranura);
+    }
+    return vivas.sort((a, b) => a - b);
+  }
+
+  private cerrarNodo(id: number, plan: readonly PuntoDelPlan[]): void {
+    const nodo = this.nodos[id];
+    nodo.plan = plan;
+    nodo.vivas = this.ranurasVivas();
+  }
+
+  /** Numera las raíces de UN nodo en un mismo plan (una declaración con varios inicializadores comparte el plan) y cierra el nodo. */
+  private numerarRaices(nodo: number, crudas: readonly RaizCruda[]): RaizIr[] {
+    const plan = new ConstructorDePlan();
+    const raices = crudas.map((cruda) => ({
+      expresion: numerarExpresion(cruda.expresion, plan),
+      texto: cruda.texto,
+      inicio: cruda.inicio,
+      conBiblioteca: cruda.conBiblioteca,
+    }));
+    // Un `double` solo se puede mostrar si la biblioteca sabe escribirlo (Double.toString): si no, el programa no se ejecuta (D2).
+    if (this.puerto.doubleATexto === null) {
+      const punto = plan.puntos.find((p) => p.tipo === 'double');
+      if (punto !== undefined) noDisponible('un double necesita Double.toString', punto.rango);
+    }
+    this.cerrarNodo(nodo, plan.puntos);
+    return raices;
+  }
+
+  private bajarRaiz(ast: NodoExpresion, rangoDelTexto: Rango = rangoDe(ast)): RaizCruda {
+    this.huboBiblioteca = false;
+    const expresion = this.bajar(ast);
+    return {
+      expresion,
+      texto: this.fuente.slice(rangoDelTexto.inicio, rangoDelTexto.fin),
+      inicio: rangoDelTexto.inicio,
+      conBiblioteca: this.huboBiblioteca,
+    };
+  }
+
+  // --- Sentencias ------------------------------------------------------------------------------------------------------------
+
+  private bajarElemento(elemento: NodoElementoBloque): SentenciaIr {
+    if (elemento.tipo === 'declaracion-local') return this.bajarDeclaracion(elemento);
+    return this.bajarSentencia(elemento);
+  }
+
+  private bajarBloque(bloque: NodoBloque): SentenciaIr {
+    this.alcance.entrarBloque();
+    const sentencias = bloque.elementos.map((elemento) => this.bajarElemento(elemento));
+    this.alcance.salirBloque();
+    return { forma: 'bloque', sentencias };
+  }
+
+  private bajarDeclaracion(declaracion: NodoDeclaracionLocal): DeclaracionIr {
+    const tipo = tipoDeTipo(tipoDeNombreDeTipo(declaracion.nombreTipo), declaracion.rango);
+    if (tipo === 'double' && this.puerto.doubleATexto === null) noDisponible('un double necesita Double.toString', declaracion.rango);
+    const nodo = this.reservarNodo('declaracion', declaracion.rango);
+    const declaradores: Array<Omit<DeclaradorIr, 'inicializador'> & { cruda: RaizCruda | null }> = [];
+    for (const declarador of declaracion.declaradores) {
+      // Como la atribución (JLS 6.3, 4.12.4): la variable está en alcance en su propio inicializador y, si es `final` con valor constante, guarda ese valor.
+      const valorInicial = declarador.inicializador === null ? null : valorConstante(declarador.inicializador, this.alcance);
+      const constante = declaracion.esFinal ? constanteDeVariable(declaracion.nombreTipo, valorInicial) : undefined;
+      const simbolo: SimboloVariable = { nombre: declarador.nombre, tipo: declaracion.nombreTipo, esFinal: declaracion.esFinal, rango: declarador.rango, constante };
+      this.alcance.declarar(simbolo);
+      const ranura = this.ranuras.length;
+      this.ranuras.push({ indice: ranura, nombre: declarador.nombre, tipo, nodo, esFinal: declaracion.esFinal });
+      this.ranuraDe.set(simbolo, ranura);
+      let cruda: RaizCruda | null = null;
+      if (declarador.inicializador !== null) {
+        const base = this.bajarRaiz(declarador.inicializador);
+        cruda = { ...base, expresion: this.convertirAsignacion(base.expresion, tipo) };
+      }
+      declaradores.push({ ranura, nombre: declarador.nombre, tipo, cruda });
+    }
+    const raices = this.numerarRaices(
+      nodo,
+      declaradores.flatMap((d) => (d.cruda === null ? [] : [d.cruda])),
+    );
+    let siguiente = 0;
+    return {
+      forma: 'declaracion',
+      nodo,
+      declaradores: declaradores.map((d) => ({ ranura: d.ranura, nombre: d.nombre, tipo: d.tipo, inicializador: d.cruda === null ? null : raices[siguiente++] })),
+    };
+  }
+
+  private bajarCondicion(ast: NodoExpresion, clase: 'condicion-if' | 'condicion-ciclo'): CondicionIr {
+    const nodo = this.reservarNodo(clase, rangoDe(ast));
+    const [raiz] = this.numerarRaices(nodo, [this.bajarRaiz(ast)]);
+    return { nodo, raiz };
+  }
+
+  private bajarSentencia(sentencia: NodoSentencia): SentenciaIr {
+    switch (sentencia.tipo) {
+      case 'bloque':
+        return this.bajarBloque(sentencia);
+      case 'impresion': {
+        const nodo = this.reservarNodo('expresion', sentencia.rango);
+        this.huboBiblioteca = false;
+        const llamada = this.construirLlamada(sentencia.rango, 'PrintStream', sentencia.metodo, null, 'out', sentencia.argumento === null ? [] : [sentencia.argumento]);
+        const texto = this.fuente.slice(sentencia.rango.inicio, sentencia.rango.fin).replace(/;\s*$/, '');
+        const raices = this.numerarRaices(nodo, [{ expresion: llamada, texto, inicio: sentencia.rango.inicio, conBiblioteca: this.huboBiblioteca }]);
+        return { forma: 'expresion', nodo, clasePaso: 'impresion', raices };
+      }
+      case 'sentencia-expresion':
+        return this.bajarListaDeExpresiones([sentencia], sentencia.rango);
+      case 'sentencia-vacia':
+        return { forma: 'vacia', nodo: this.cerrarSinPlan(this.reservarNodo('vacia', sentencia.rango)) };
+      case 'retorno':
+        return { forma: 'return', nodo: this.cerrarSinPlan(this.reservarNodo('return', sentencia.rango)) };
+      case 'break':
+        return { forma: 'break', nodo: this.cerrarSinPlan(this.reservarNodo('break', sentencia.rango)) };
+      case 'continue':
+        return { forma: 'continue', nodo: this.cerrarSinPlan(this.reservarNodo('continue', sentencia.rango)) };
+      case 'if': {
+        const condicion = this.bajarCondicion(sentencia.condicion, 'condicion-if');
+        // Antes de bajar las ramas: así los `if` anidados quedan DESPUÉS del que los contiene, en el orden del programa.
+        this.ramasDeIf.push({ nodo: condicion.nodo, entonces: sentencia.entonces.rango, sino: sentencia.sino === null ? null : sentencia.sino.rango });
+        const entonces = this.bajarSentencia(sentencia.entonces);
+        const sino = sentencia.sino === null ? null : this.bajarSentencia(sentencia.sino);
+        return { forma: 'if', condicion, entonces, sino };
+      }
+      case 'while': {
+        const nodo = this.cerrarSinPlan(this.reservarNodo('while', sentencia.rango));
+        return this.dentroDeUnCiclo(() => {
+          const condicion = this.bajarCondicion(sentencia.condicion, 'condicion-ciclo');
+          return { forma: 'while', nodo, condicion, cuerpo: this.bajarSentencia(sentencia.cuerpo) };
+        });
+      }
+      case 'do-while': {
+        const nodo = this.cerrarSinPlan(this.reservarNodo('do-while', sentencia.rango));
+        return this.dentroDeUnCiclo(() => {
+          const cuerpo = this.bajarSentencia(sentencia.cuerpo);
+          return { forma: 'do-while', nodo, cuerpo, condicion: this.bajarCondicion(sentencia.condicion, 'condicion-ciclo') };
+        });
+      }
+      case 'for':
+        return this.bajarFor(sentencia);
+      case 'switch':
+        return this.bajarSwitch(sentencia);
+      case 'no-soportado':
+        return noDisponible('construcción fuera del subconjunto', sentencia.rango);
+    }
+  }
+
+  private cerrarSinPlan(nodo: number): number {
+    this.cerrarNodo(nodo, []);
+    return nodo;
+  }
+
+  /** Una o varias sentencias de expresión (las del inicio o la actualización de un `for` van juntas en un solo paso). */
+  private bajarListaDeExpresiones(sentencias: readonly NodoSentenciaExpresion[], rango: Rango): ExpresionSentenciaIr {
+    const nodo = this.reservarNodo('expresion', rango);
+    const crudas = sentencias.map((s) => this.bajarRaiz(s.expresion));
+    const raices = this.numerarRaices(nodo, crudas);
+    const formas = raices.map((raiz) => raiz.expresion);
+    let clasePaso: ExpresionSentenciaIr['clasePaso'] = 'expresion';
+    if (formas.every((e) => e.forma === 'asignacion' || e.forma === 'asignacion-compuesta' || e.forma === 'incremento')) clasePaso = 'asignacion';
+    else if (formas.length === 1 && formas[0].forma === 'llamada' && formas[0].clave.startsWith('PrintStream.')) clasePaso = 'impresion';
+    return { forma: 'expresion', nodo, clasePaso, raices };
+  }
+
+  private bajarFor(sentencia: NodoFor): ForIr {
+    this.alcance.entrarBloque();
+    const nodo = this.cerrarSinPlan(this.reservarNodo('for', sentencia.rango));
+    let inicio: ForIr['inicio'] = null;
+    if (sentencia.inicializacionDeclaracion !== null) inicio = this.bajarDeclaracion(sentencia.inicializacionDeclaracion);
+    else if (sentencia.inicializacionExpresiones.length > 0) inicio = this.bajarListaDeExpresiones(sentencia.inicializacionExpresiones, sentencia.inicializacionExpresiones[0].rango);
+    const { condicion, cuerpo, actualizacion } = this.dentroDeUnCiclo(() => ({
+      condicion: sentencia.condicion === null ? null : this.bajarCondicion(sentencia.condicion, 'condicion-ciclo'),
+      cuerpo: this.bajarSentencia(sentencia.cuerpo),
+      actualizacion: sentencia.actualizacion.length === 0 ? null : this.bajarListaDeExpresiones(sentencia.actualizacion, sentencia.actualizacion[0].rango),
+    }));
+    this.alcance.salirBloque();
+    return { forma: 'for', nodo, inicio, condicion, actualizacion, cuerpo };
+  }
+
+  /** Baja `bajar` sabiendo que lo que contiene se ejecuta varias veces. */
+  private dentroDeUnCiclo<T>(bajar: () => T): T {
+    this.profundidadDeCiclo += 1;
+    try {
+      return bajar();
+    } finally {
+      this.profundidadDeCiclo -= 1;
+    }
+  }
+
+  private bajarSwitch(sentencia: NodoSwitch): SwitchIr {
+    const nodo = this.reservarNodo('switch', sentencia.rango);
+    const [selector] = this.numerarRaices(nodo, [this.bajarRaiz(sentencia.selector)]);
+    const tipoSelector = selector.expresion.tipo;
+    if (tipoSelector !== 'int' && tipoSelector !== 'char' && tipoSelector !== 'String') return noDisponible('selector de switch fuera del subconjunto', sentencia.rango);
+    // El bloque de un `switch` es un solo alcance (design.md §2.7).
+    this.alcance.entrarBloque();
+    const elementos: ElementoSwitchIr[] = [];
+    for (const elemento of sentencia.elementos) {
+      if (elemento.tipo === 'etiqueta-case') {
+        const constante = valorConstante(elemento.valor, this.alcance);
+        if (constante === null || (constante.tipo !== 'int' && constante.tipo !== 'char' && constante.tipo !== 'String')) return noDisponible('etiqueta de case sin valor conocido', elemento.rango);
+        const etiqueta = this.cerrarSinPlan(this.reservarNodo('caso', elemento.rango));
+        elementos.push({ forma: 'caso', nodo: etiqueta, valor: constante.valor, texto: this.fuente.slice(elemento.valor.rango.inicio, elemento.valor.rango.fin) });
+      } else if (elemento.tipo === 'etiqueta-default') {
+        elementos.push({ forma: 'defecto', nodo: this.cerrarSinPlan(this.reservarNodo('defecto', elemento.rango)) });
+      } else {
+        elementos.push({ forma: 'sentencia', sentencia: this.bajarElemento(elemento) });
+      }
+    }
+    this.alcance.salirBloque();
+    return { forma: 'switch', nodo, selector, tipoSelector, elementos };
+  }
+
+  // --- Expresiones -----------------------------------------------------------------------------------------------------------
+
+  private constante(tipo: TipoIr, valor: number | bigint | boolean | string, rango: Rango): ExpresionIr {
+    return { forma: 'constante', tipo, punto: -1, rango, valor };
+  }
+
+  /** `expresion` convertida a `a` con una conversión implícita visible; la misma expresión si ya es de ese tipo. */
+  private convertir(expresion: ExpresionIr, a: TipoNumericoIr, implicita: boolean): ExpresionIr {
+    if (expresion.tipo === a || !esNumerico(expresion.tipo)) return expresion;
+    return { forma: 'conversion', tipo: a, de: expresion.tipo, punto: -1, rango: expresion.rango, operando: expresion, implicita };
+  }
+
+  /** Conversión de asignación (JLS 5.2): ensanchamiento, o estrechamiento de una constante `int` a `char`. */
+  private convertirAsignacion(expresion: ExpresionIr, destino: TipoIr): ExpresionIr {
+    return esNumerico(destino) ? this.convertir(expresion, destino, true) : expresion;
+  }
+
+  private bajar(nodo: NodoExpresion): ExpresionIr {
+    const rango = rangoDe(nodo);
+    // Una expresión constante de texto (`"ho" + "la"`, `P + "b"` con `final String P = "a"`) es UN valor internado (JLS 15.29): por eso `"ho" + "la" == "hola"` es true.
+    if ((nodo.tipo === 'binaria' || nodo.tipo === 'nombre' || nodo.tipo === 'conversion') && tipoDeExpresion(nodo, this.alcance) === 'String') {
+      const constante = valorConstante(nodo, this.alcance);
+      if (constante !== null && constante.tipo === 'String') return this.constante('String', constante.valor, rango);
+    }
+    switch (nodo.tipo) {
+      case 'literal-entero':
+        return this.constante('int', Number(BigInt.asIntN(32, nodo.valor)), rango);
+      case 'literal-largo':
+        return this.constante('long', BigInt.asIntN(64, nodo.valor), rango);
+      case 'literal-doble':
+        return this.constante('double', nodo.valor, rango);
+      case 'literal-caracter':
+        return this.constante('char', caracterDeLiteral(nodo.valor), rango);
+      case 'literal-cadena':
+        return this.constante('String', nodo.valor, rango);
+      case 'literal-booleano':
+        return this.constante('boolean', nodo.valor, rango);
+      case 'nombre':
+        return this.bajarLectura(nodo.nombre, rango);
+      case 'binaria':
+        return this.bajarBinaria(nodo, rango);
+      case 'unaria':
+        return this.bajarUnaria(nodo, rango);
+      case 'asignacion':
+        return this.bajarAsignacion(nodo, rango);
+      case 'incremento-decremento': {
+        const lectura = this.bajarLectura(this.nombreDeLocal(nodo.operando, rango), rango);
+        if (lectura.tipo !== 'int' && lectura.tipo !== 'long' && lectura.tipo !== 'double' && lectura.tipo !== 'char') return noDisponible('incremento de un tipo fuera del subconjunto', rango);
+        return {
+          forma: 'incremento',
+          tipo: lectura.tipo,
+          punto: -1,
+          rango,
+          ranura: lectura.ranura,
+          nombre: lectura.nombre,
+          delta: nodo.operador === '++' ? 1 : -1,
+          posicion: nodo.posicion,
+        };
+      }
+      case 'llamada':
+        return this.bajarLlamada(nodo, rango);
+      case 'acceso-miembro': {
+        if (nodo.objeto.tipo === 'nombre' && esNombreDeClaseDelCatalogo(nodo.objeto, this.alcance)) {
+          const campo = CAMPOS_CONSTANTES.get(`${nodo.objeto.nombre}.${nodo.miembro}`);
+          if (campo !== undefined) return this.constante(campo.tipo, campo.valor, rango);
+        }
+        return noDisponible('campo de la biblioteca fuera del subconjunto', rango);
+      }
+      case 'nueva-instancia':
+        return this.bajarNuevo(nodo, rango);
+      case 'conversion': {
+        const destino = tipoDeTipo(tipoDeNombreDeTipo(nodo.nombreTipo), rango);
+        const operando = this.bajar(nodo.operando);
+        // Un cast a un tipo de referencia o booleano, o al mismo tipo, no cambia nada (el compilador solo lo acepta entre iguales); entre numéricos es un nodo explícito.
+        if (esNumerico(destino) && esNumerico(operando.tipo)) return this.convertir(operando, destino, false);
+        return operando;
+      }
+      case 'expresion-no-soportada':
+        return noDisponible('expresión fuera del subconjunto', rango);
+    }
+  }
+
+  private nombreDeLocal(expresion: NodoExpresion, rango: Rango): string {
+    if (expresion.tipo !== 'nombre') return noDisponible('el objetivo de una asignación debe ser una variable', rango);
+    return expresion.nombre;
+  }
+
+  private simboloDe(nombre: string, rango: Rango): { simbolo: SimboloVariable; ranura: number } {
+    const simbolo = this.alcance.buscar(nombre);
+    const ranura = simbolo === null ? undefined : this.ranuraDe.get(simbolo);
+    if (simbolo === null || ranura === undefined) return noDisponible(`"${nombre}" no es una variable local`, rango);
+    return { simbolo, ranura };
+  }
+
+  private bajarLectura(nombre: string, rango: Rango): LecturaIr {
+    const { simbolo, ranura } = this.simboloDe(nombre, rango);
+    return { forma: 'lectura', tipo: tipoDeTipo(tipoDeNombreDeTipo(simbolo.tipo), rango), punto: -1, rango, ranura, nombre };
+  }
+
+  private bajarBinaria(nodo: Extract<NodoExpresion, { tipo: 'binaria' }>, rango: Rango): ExpresionIr {
+    const izquierda = this.bajar(nodo.izquierda);
+    const derecha = this.bajar(nodo.derecha);
+    const operador = nodo.operador;
+    if (operador === '&&' || operador === '||') {
+      return { forma: 'logica', tipo: 'boolean', operador, punto: -1, rango, izquierda, derecha };
+    }
+    if (operador === '==' || operador === '!=' || operador === '<' || operador === '>' || operador === '<=' || operador === '>=') {
+      return this.bajarComparacion(operador, izquierda, derecha, rango);
+    }
+    if (operador === '+' && (izquierda.tipo === 'String' || derecha.tipo === 'String')) {
+      this.exigirTextoDeJava(izquierda, rango);
+      this.exigirTextoDeJava(derecha, rango);
+      return { forma: 'concatenacion', tipo: 'String', punto: -1, rango, izquierda, derecha };
+    }
+    if (operador !== '+' && operador !== '-' && operador !== '*' && operador !== '/' && operador !== '%') return noDisponible(`operador "${operador}" fuera del subconjunto`, rango);
+    if (!esNumerico(izquierda.tipo) || !esNumerico(derecha.tipo)) return noDisponible('operandos no numéricos', rango);
+    const tipo = promocionBinaria(izquierda.tipo, derecha.tipo);
+    const aritmetica: AritmeticaIr = {
+      forma: 'aritmetica',
+      tipo,
+      operador: operador as OperadorAritmeticoIr,
+      punto: -1,
+      rango,
+      izquierda: this.convertir(izquierda, tipo, true),
+      derecha: this.convertir(derecha, tipo, true),
+    };
+    return aritmetica;
+  }
+
+  /** `String.valueOf` de un `Scanner` o un `Random` (su `toString` de Java, con dirección y estado) no se modela: no se ejecuta (D2). */
+  private exigirTextoDeJava(operando: ExpresionIr, rango: Rango): void {
+    if (operando.tipo === 'Scanner' || operando.tipo === 'Random') noDisponible('el texto de un objeto de la biblioteca', rango);
+  }
+
+  private bajarComparacion(operador: OperadorComparacionIr, izquierda: ExpresionIr, derecha: ExpresionIr, rango: Rango): ExpresionIr {
+    if (esNumerico(izquierda.tipo) && esNumerico(derecha.tipo)) {
+      const tipoOperandos = promocionBinaria(izquierda.tipo, derecha.tipo);
+      return {
+        forma: 'comparacion',
+        tipo: 'boolean',
+        operador,
+        tipoOperandos,
+        punto: -1,
+        rango,
+        izquierda: this.convertir(izquierda, tipoOperandos, true),
+        derecha: this.convertir(derecha, tipoOperandos, true),
+      };
+    }
+    const tipoOperandos = izquierda.tipo === 'boolean' ? 'boolean' : 'referencia';
+    return { forma: 'comparacion', tipo: 'boolean', operador, tipoOperandos, punto: -1, rango, izquierda, derecha };
+  }
+
+  private bajarUnaria(nodo: Extract<NodoExpresion, { tipo: 'unaria' }>, rango: Rango): ExpresionIr {
+    const operando = this.bajar(nodo.operando);
+    if (nodo.operador === '!') return { forma: 'negacion', tipo: 'boolean', punto: -1, rango, operando };
+    if (!esNumerico(operando.tipo)) return noDisponible('operando no numérico', rango);
+    // Promoción numérica unaria (JLS 5.6.1): un `char` se vuelve `int`; el resto conserva su tipo.
+    const tipo = operando.tipo === 'char' ? 'int' : operando.tipo;
+    const promovido = this.convertir(operando, tipo, true);
+    if (nodo.operador === '+') return promovido;
+    return { forma: 'menos', tipo, punto: -1, rango, operando: promovido };
+  }
+
+  private bajarAsignacion(nodo: Extract<NodoExpresion, { tipo: 'asignacion' }>, rango: Rango): ExpresionIr {
+    const nombre = this.nombreDeLocal(nodo.objetivo, rango);
+    const lectura = this.bajarLectura(nombre, nodo.objetivo.rango);
+    const valor = this.bajar(nodo.valor);
+    if (nodo.operador === '=') {
+      return { forma: 'asignacion', tipo: lectura.tipo, punto: -1, rango, ranura: lectura.ranura, nombre, valor: this.convertirAsignacion(valor, lectura.tipo) };
+    }
+    const operador = nodo.operador.slice(0, -1) as OperadorAritmeticoIr;
+    if (lectura.tipo === 'String') {
+      this.exigirTextoDeJava(valor, rango);
+      return { forma: 'asignacion-compuesta', tipo: 'String', punto: -1, rango, ranura: lectura.ranura, nombre, operador, tipoOperacion: 'String', lectura, valor };
+    }
+    if (!esNumerico(lectura.tipo) || !esNumerico(valor.tipo)) return noDisponible('asignación compuesta fuera del subconjunto', rango);
+    const tipoOperacion = promocionBinaria(lectura.tipo, valor.tipo);
+    return {
+      forma: 'asignacion-compuesta',
+      tipo: lectura.tipo,
+      punto: -1,
+      rango,
+      ranura: lectura.ranura,
+      nombre,
+      operador,
+      tipoOperacion,
+      lectura,
+      valor: this.convertir(valor, tipoOperacion, true),
+    };
+  }
+
+  // --- Biblioteca -------------------------------------------------------------------------------------------------------------
+
+  private bajarLlamada(nodo: NodoLlamada, rango: Rango): ExpresionIr {
+    const callee = nodo.callee;
+    if (callee.tipo !== 'acceso-miembro') return noDisponible('llamada a un método propio', rango);
+    const objeto = callee.objeto;
+    if (campoReflejadoDeSystem(objeto, this.alcance) === 'java.io.PrintStream') {
+      const flujo = objeto.tipo === 'acceso-miembro' && objeto.miembro === 'err' ? 'err' : 'out';
+      return this.construirLlamada(rango, 'PrintStream', callee.miembro, null, flujo, nodo.argumentos);
+    }
+    if (objeto.tipo === 'nombre' && esNombreDeClaseDelCatalogo(objeto, this.alcance)) {
+      return this.construirLlamada(rango, objeto.nombre, callee.miembro, null, null, nodo.argumentos);
+    }
+    const clase = claseDelObjeto(objeto, this.alcance);
+    if (clase === null) return noDisponible('receptor fuera del subconjunto', rango);
+    return this.construirLlamada(rango, clase, callee.miembro, this.bajar(objeto), null, nodo.argumentos);
+  }
+
+  private construirLlamada(
+    rango: Rango,
+    clase: string,
+    miembro: string,
+    receptor: ExpresionIr | null,
+    flujo: 'out' | 'err' | null,
+    argumentosAst: readonly NodoExpresion[],
+  ): LlamadaIr {
+    const firma = resolverSobrecarga(clase, miembro, argumentosAst.map((argumento) => argumentoDeSobrecarga(argumento, this.alcance)));
+    if (firma === null) return noDisponible(`sin firma para ${clase}.${miembro}`, rango);
+    const clave = claveDeFirma(firma);
+    const esNativa = CLAVES_NATIVAS.has(clave);
+    if (!esNativa && !this.puerto.operaciones.has(clave)) return noDisponible(`la biblioteca no sabe ejecutar ${clave}`, rango);
+    if (!esNativa) this.huboBiblioteca = true;
+    this.decidirLoQueSeSabeAntesDeEjecutar(clave, argumentosAst, rango);
+    const bajados = argumentosAst.map((argumento) => this.bajar(argumento));
+    const fijos = firma.esVarargs ? firma.parametros.length - 1 : firma.parametros.length;
+    const variables = firma.esVarargs ? bajados.slice(fijos) : null;
+    // Un argumento variable (`printf("%s", sc)`) se convierte en texto con `toString`: el de un `Scanner` o un `Random` lleva una dirección de memoria y no se modela.
+    for (const variable of variables ?? []) this.exigirTextoDeJava(variable, rango);
+    return {
+      forma: 'llamada',
+      tipo: tipoDeRetorno(firma.retorno),
+      punto: -1,
+      rango,
+      clave,
+      receptor,
+      flujo,
+      argumentos: bajados.slice(0, fijos).map((argumento, indice) => this.adaptarArgumento(argumento, firma.parametros[indice], clave, rango)),
+      variables,
+      esNativa,
+    };
+  }
+
+  /**
+   * Lo que la biblioteca marca «No disponible» en ejecución pero que, si el argumento es una constante de compilación, ya se sabe aquí: un formato con un especificador sin medir
+   * (`formatoSoportado`) y un literal hexadecimal de `Double.parseDouble`. Con un valor que se conoce solo en ejecución (una variable, lo que teclea el alumno) no hay forma de saberlo antes.
+   */
+  private decidirLoQueSeSabeAntesDeEjecutar(clave: string, argumentosAst: readonly NodoExpresion[], rango: Rango): void {
+    if (!CLAVES_DE_FORMATO.has(clave) && clave !== CLAVE_DE_PARSE_DOUBLE) return;
+    const constante = valorConstante(argumentosAst[0], this.alcance);
+    if (constante === null || constante.tipo !== 'String') return;
+    if (clave === CLAVE_DE_PARSE_DOUBLE) {
+      try {
+        Double.parseDouble(constante.valor);
+      } catch (error) {
+        // La `NumberFormatException` de un texto inválido es de la ejecución (el programa la lanza en Java); solo el hexadecimal es «No disponible».
+        if (error instanceof NoDisponibleEnEjecucion) return noDisponible('literal hexadecimal de punto flotante en Double.parseDouble', rango);
+      }
+      return;
+    }
+    const formato = formatoSoportado(constante.valor);
+    if (!formato.soportado) noDisponible(`el especificador ${formato.especificador} de printf/format no está medido contra el JDK`, rango);
+  }
+
+  /**
+   * Lleva un argumento al tipo del parámetro de la firma resuelta (ensanchamiento numérico); lo que el subconjunto no modela (`float`, `Object` con un primitivo) no se ejecuta.
+   * Excepción: `Math.round(int)`, `round(long)` y `round(char)` no existen en Java y se resuelven a `round(float)`; el subconjunto no tiene `float`, así que el argumento va SIN convertir y la
+   * operación del puerto hace el paso a `float` (un solo redondeo desde el `long`).
+   */
+  private adaptarArgumento(argumento: ExpresionIr, parametro: string, clave: string, rango: Rango): ExpresionIr {
+    switch (parametro) {
+      case 'float':
+        if (argumento.tipo === 'int' || argumento.tipo === 'long' || argumento.tipo === 'char') return argumento;
+        return noDisponible('un float', rango);
+      case 'int':
+      case 'long':
+      case 'double':
+      case 'char':
+        return this.convertir(argumento, parametro, true);
+      case 'boolean':
+      case 'java.lang.String':
+      case 'java.util.Random':
+      case 'java.util.Scanner':
+        return argumento;
+      case 'java.lang.CharSequence':
+        // Un `String` es una `CharSequence` (ensanchamiento de referencia, JLS 5.1.5): se pasa tal cual.
+        if (argumento.tipo === 'String') return argumento;
+        return noDisponible('una CharSequence que no es un String', rango);
+      case 'java.lang.Object':
+        if (argumento.tipo === 'String') return argumento;
+        // `s.equals(sc)` es siempre `false` y no necesita el texto del objeto; cualquier otra firma con `Object` sí lo pide (`String.valueOf(sc)`).
+        if ((argumento.tipo === 'Scanner' || argumento.tipo === 'Random') && clave === CLAVE_DE_EQUALS) return argumento;
+        return noDisponible('un primitivo o un objeto de la biblioteca como Object', rango);
+      default:
+        return noDisponible(`parámetro ${parametro} fuera del subconjunto`, rango);
+    }
+  }
+
+  private bajarNuevo(nodo: NodoNuevaInstancia, rango: Rango): ExpresionIr {
+    const tipo = tipoDeTipo(tipoDeNombreDeTipo(nodo.nombreTipo), rango);
+    const firma = resolverSobrecarga(nodo.nombreTipo, '<init>', nodo.argumentos.map((argumento) => argumentoDeSobrecarga(argumento, this.alcance)));
+    if (firma === null) return noDisponible(`sin constructor para ${nodo.nombreTipo}`, rango);
+    const clave = claveDeFirma(firma);
+    if (!this.puerto.operaciones.has(clave)) return noDisponible(`la biblioteca no sabe ejecutar ${clave}`, rango);
+    this.huboBiblioteca = true;
+    // Un solo `new Scanner(System.in)`, y fuera de los ciclos: con dos, Java le da a cada uno su propio búfer de `System.in` (el primero se lleva lo que alcanza a leer) y el motor no lo modela.
+    if (clave === CLAVE_DE_NUEVO_SCANNER) {
+      if (this.scannersCreados > 0 || this.profundidadDeCiclo > 0) return noDisponible('más de un Scanner sobre System.in', rango);
+      this.scannersCreados += 1;
+    }
+    // `new Scanner(System.in)`: el `System.in` ya lo dice la clave del constructor; no queda como argumento.
+    const argumentos = nodo.argumentos.flatMap((argumento, indice) =>
+      campoReflejadoDeSystem(argumento, this.alcance) === 'java.io.InputStream' ? [] : [this.adaptarArgumento(this.bajar(argumento), firma.parametros[indice], clave, rango)],
+    );
+    return { forma: 'nuevo', tipo, punto: -1, rango, clave, argumentos };
+  }
 }

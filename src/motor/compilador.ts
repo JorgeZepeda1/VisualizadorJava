@@ -28,6 +28,9 @@ import type { ProblemaAtribucion } from './semantica/diagnostico.ts';
 import { ErrorDeEjecucionNoDisponible } from './ir/error-de-ejecucion-no-disponible.ts';
 import { generarIr } from './ir/generar-ir.ts';
 import type { ProgramaCompilado } from './ir/ir.ts';
+import { construirVistaPrograma, type VistaPrograma } from './ir/vista-programa.ts';
+import type { PuertoBiblioteca } from './interprete/puerto-biblioteca.ts';
+import { PUERTO_POR_OMISION } from './interprete/puerto-por-omision.ts';
 import type { CodigoDeSintaxis, Problema, ProblemaNoDisponible } from './problemas.ts';
 import { ErrorDeCompilacion } from './error-de-compilacion.ts';
 import { TablaDeLineas } from './fuente/tabla-de-lineas.ts';
@@ -35,9 +38,8 @@ import type { Rango } from './fuente/rango.ts';
 import { normalizarFinesDeLinea } from './fuente/fines-de-linea.ts';
 import { primerTokenFueraDelLimite, ProgramaDemasiadoAnidado } from './limites.ts';
 
-export interface VistaPrograma {
-  readonly fuente: string;
-}
+// Tarea 2.16: la vista (código, variables y nodos con su plan) vive en `ir/vista-programa.ts`; se reexporta para que `index.ts` y `vista.ts` sigan igual.
+export type { VistaPrograma };
 
 export type ResultadoCompilacion =
   | { readonly ok: true; readonly programa: ProgramaCompilado; readonly vista: VistaPrograma }
@@ -70,7 +72,7 @@ const PASADAS_SEMANTICAS: readonly ((programa: NodoPrograma) => readonly Problem
 // ANTES de esa posición, gana el aviso (p. ej. un "\uXXXX" en un comentario que precede a un error
 // de sintaxis genuino más adelante) -- ver `avisoEnmascaraError` para el criterio REAL, refinado en
 // el sub-lote 1-D5 (cierre de C7).
-export function compilar(fuenteOriginal: string): ResultadoCompilacion {
+export function compilar(fuenteOriginal: string, puerto: PuertoBiblioteca = PUERTO_POR_OMISION): ResultadoCompilacion {
   // Tarea 1.36 (C-2 y W-2a, JLS 3.4): un `\r` suelto y la pareja `\r\n` son fines de línea de Java, igual que `\n`. Se llevan todos a `\n` ANTES de leer nada, y de aquí en adelante TODO
   // el motor —los rangos de los problemas, las líneas, `vista.fuente`— habla del texto normalizado. Con el editor (CodeMirror ya entrega `\n`) no cambia nada.
   const fuente = normalizarFinesDeLinea(fuenteOriginal);
@@ -110,9 +112,9 @@ export function compilar(fuenteOriginal: string): ResultadoCompilacion {
         return construirResultadoDeAtribucion(problemas[0]!, fuente);
       }
     }
-    const ir = generarIr(programaAst);
+    const ir = generarIr(programaAst, { fuente, puerto });
     const arranque = verificarArranque(programaAst.clase);
-    return { ok: true, programa: { ir, arranque }, vista: { fuente } };
+    return { ok: true, programa: { ir, arranque }, vista: construirVistaPrograma(ir, fuente) };
   } catch (error) {
     // Tarea 1.27 (agregada por el orquestador, D2/regla 5 de CLAUDE.md): por construcción, este
     // `catch` solo puede recibir un `ErrorDeEjecucionNoDisponible` DESPUÉS de que `analizarPrograma`

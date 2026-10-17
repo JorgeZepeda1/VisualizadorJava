@@ -1,0 +1,9 @@
+antes 1
+Exception in thread "main" java.util.IllegalFormatConversionException: d != java.lang.Double
+	at java.base/java.util.Formatter$FormatSpecifier.failConversion(Formatter.java:4442)
+	at java.base/java.util.Formatter$FormatSpecifier.printInteger(Formatter.java:2963)
+	at java.base/java.util.Formatter$FormatSpecifier.print(Formatter.java:2918)
+	at java.base/java.util.Formatter.format(Formatter.java:2689)
+	at java.base/java.io.PrintStream.format(PrintStream.java:1209)
+	at java.base/java.io.PrintStream.printf(PrintStream.java:1105)
+	at Prueba.main(Prueba.java:4)

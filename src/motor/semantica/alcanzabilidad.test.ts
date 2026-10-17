@@ -303,58 +303,55 @@ describe('verificarAlcanzabilidad — un cast constante a `boolean` cuenta como 
   });
 });
 
-// Tarea 1.36 (C-5 de la verificación final del lote 1, JLS 15.29 y 14.22): `"a" + 1.5 == "a1.5"` es una expresión CONSTANTE para javac —su valor lo decide el `Double.toString` de Java, que
-// llega con la 2.4—, y de ella depende si un ciclo termina o si lo que sigue es alcanzable. El motor la tomaba por «no constante» y aceptaba `while ("a" + 1.5 == "a1.5") { }` seguido de una sentencia
-// (javac: «unreachable statement»). Ahora la condición de valor desconocido es un AVISO honesto: no se puede decidir la alcanzabilidad, y no se inventa una respuesta.
-describe('verificarAlcanzabilidad — la condición de un ciclo es una constante de valor desconocido: aviso, nunca una respuesta inventada (C-5, tarea 1.36)', () => {
-  const AVISO = { categoria: 'no-disponible', codigo: 'constante-de-texto-con-decimal-no-soportada', datos: {} } as const;
-  const dondeEsta = (cuerpo: string, condicion: string): number => `class C { public static void main(String[] a) { ${cuerpo} } }`.indexOf(condicion);
+// Tarea 2.4 (cierre del C-5 de la 1.36, JLS 15.29 y 14.22; verificado con javac 17.0.18, `corpus/experimentos/constantes-desconocidas/c5-*`): `"a" + 1.5 == "a1.5"` es una expresión CONSTANTE para
+// javac, y de ella depende si un ciclo termina o si lo que sigue es alcanzable. Hasta la 1.36 el motor la tomaba por «no constante» y aceptaba `while ("a" + 1.5 == "a1.5") { }` seguido de una sentencia;
+// en la 1.36 daba un aviso porque no sabía convertir un `double` a texto. Con `Double.toString` exacto la condición vale `true` o `false` y javac y el motor dicen lo mismo: «unreachable statement».
+describe('verificarAlcanzabilidad — la condición de un ciclo con un texto con decimales es una constante de valor conocido (C-5, cierre de la 1.36)', () => {
+  const programa = (cuerpo: string): string => `class C { public static void main(String[] a) { ${cuerpo} } }`;
+  const dondeEsta = (cuerpo: string, trozo: string): number => programa(cuerpo).indexOf(trozo);
+  const IMPRIME_X = 'System.out.println("x");';
+  const CUERPO_QUE_NUNCA_CORRE = '{ System.out.println("nunca"); }';
 
   it.each([
-    ['while', 'while ("a" + 1.5 == "a1.5") { } System.out.println("x");', '"a" + 1.5 == "a1.5"'],
-    ['while con != (el cuerpo sería inalcanzable)', 'while ("a" + 1.5 != "a1.5") { System.out.println("nunca"); }', '"a" + 1.5 != "a1.5"'],
-    ['do-while', 'do { } while ("a" + 1.5 == "a1.5"); System.out.println("x");', '"a" + 1.5 == "a1.5"'],
-    ['for', 'for (; "a" + 1.5 == "a1.5"; ) { } System.out.println("x");', '"a" + 1.5 == "a1.5"'],
-    ['while con "" + 1.0', 'while ("" + 1.0 == "1.0") { } System.out.println("x");', '"" + 1.0 == "1.0"'],
-    ['while con el decimal a la izquierda', 'while (1.5 + "a" == "1.5a") { } System.out.println("x");', '1.5 + "a" == "1.5a"'],
-    ['while con dos textos con decimales', 'while ("a" + 1.5 == "a" + 1.5) { } System.out.println("x");', '"a" + 1.5 == "a" + 1.5'],
-    ['while con una negación', 'while (!("a" + 1.5 == "a1.5")) { } System.out.println("x");', '!("a" + 1.5 == "a1.5")'],
-  ])('%s: un solo aviso, en la condición, y ningún «sentencia-inalcanzable» inventado', (_nombre, cuerpo, condicion) => {
+    ['while', 'while ("a" + 1.5 == "a1.5") { } ' + IMPRIME_X, IMPRIME_X],
+    ['do-while', 'do { } while ("a" + 1.5 == "a1.5"); ' + IMPRIME_X, IMPRIME_X],
+    ['for', 'for (; "a" + 1.5 == "a1.5"; ) { } ' + IMPRIME_X, IMPRIME_X],
+    ['while con "" + 1.0', 'while ("" + 1.0 == "1.0") { } ' + IMPRIME_X, IMPRIME_X],
+    ['while con el decimal a la izquierda', 'while (1.5 + "a" == "1.5a") { } ' + IMPRIME_X, IMPRIME_X],
+    ['while con dos textos con decimales', 'while ("a" + 1.5 == "a" + 1.5) { } ' + IMPRIME_X, IMPRIME_X],
+    ['while con un cast a double', 'while ("a" + (double) 2 == "a2.0") { } ' + IMPRIME_X, IMPRIME_X],
+    ['while con && true', 'while (("a" + 1.5 == "a1.5") && true) { } ' + IMPRIME_X, IMPRIME_X],
+    ['while con una variable final String', 'final String K = "a" + 1.5; while (K == "a1.5") { } ' + IMPRIME_X, IMPRIME_X],
+    ['for con una variable final boolean', 'final boolean B = "a" + 1.5 == "a1.5"; for (; B; ) { } ' + IMPRIME_X, IMPRIME_X],
+    ['do-while con una variable final boolean', 'final boolean B = "a" + 1.5 == "a1.5"; do { } while (B); ' + IMPRIME_X, IMPRIME_X],
+    ['while con != (la condición vale false: el cuerpo es inalcanzable)', 'while ("a" + 1.5 != "a1.5") ' + CUERPO_QUE_NUNCA_CORRE, CUERPO_QUE_NUNCA_CORRE],
+    ['while con una negación (vale false)', 'while (!("a" + 1.5 == "a1.5")) ' + CUERPO_QUE_NUNCA_CORRE, CUERPO_QUE_NUNCA_CORRE],
+  ])('%s: UN «sentencia-inalcanzable», justo donde lo dice javac', (_nombre, cuerpo, donde) => {
     const problemas = alcanzabilidadDeCuerpo(cuerpo);
     expect(problemas).toHaveLength(1);
-    expect(problemas[0]).toMatchObject(AVISO);
-    expect(problemas[0]!.rango.inicio).toBe(dondeEsta(cuerpo, condicion));
+    expect(problemas[0]).toMatchObject({ codigo: 'sentencia-inalcanzable' });
+    expect(problemas[0]!.rango.inicio).toBe(dondeEsta(cuerpo, donde));
   });
 
-  it('una variable `final String` con el texto con decimales, usada como condición: aviso', () => {
-    const problemas = alcanzabilidadDeCuerpo('final String K = "a" + 1.5; while (K == "a1.5") { } System.out.println("x");');
-    expect(problemas).toHaveLength(1);
-    expect(problemas[0]).toMatchObject(AVISO);
+  it('control: si el texto con decimales NO da una constante verdadera, el ciclo termina y lo que sigue es alcanzable (`"a" + 1.5 == "a1.50"` vale false: el cuerpo es el inalcanzable)', () => {
+    expect(alcanzabilidadDeCuerpo('while ("a" + 1.5 == "a1.50") ' + CUERPO_QUE_NUNCA_CORRE).map((p) => p.codigo)).toEqual(['sentencia-inalcanzable']);
+    expect(alcanzabilidadDeCuerpo('while ("a" + 1.5 != "a1.50") { break; } ' + IMPRIME_X)).toEqual([]);
   });
 
-  it('una variable `final boolean` de valor desconocido, como condición de un `for` o de un `do-while`: aviso', () => {
-    expect(alcanzabilidadDeCuerpo('final boolean B = "a" + 1.5 == "a1.5"; for (; B; ) { } System.out.println("x");')).toMatchObject([AVISO]);
-    expect(alcanzabilidadDeCuerpo('final boolean B = "a" + 1.5 == "a1.5"; do { } while (B); System.out.println("x");')).toMatchObject([AVISO]);
-  });
-
-  it('una condición compuesta con una parte desconocida (`&&` con una constante) también es de valor desconocido: aviso', () => {
-    expect(alcanzabilidadDeCuerpo('while (("a" + 1.5 == "a1.5") && true) { } System.out.println("x");')).toMatchObject([AVISO]);
-  });
-
-  it('control: sin una constante desconocida nada cambia (`while (true)` inalcanza lo que sigue, `while (false)` su cuerpo)', () => {
+  it('control: sin decimales nada cambia (`while (true)` inalcanza lo que sigue, `while (false)` su cuerpo)', () => {
     expect(alcanzabilidadDeCuerpo('while (true) { } System.out.println("x");').map((p) => p.codigo)).toEqual(['sentencia-inalcanzable']);
-    expect(alcanzabilidadDeCuerpo('while ("a" + 1 == "a2") { System.out.println("x"); }').map((p) => p.codigo)).toEqual(['sentencia-inalcanzable']); // el `1` entero SÍ se pliega: "a1" ≠ "a2" es false
+    expect(alcanzabilidadDeCuerpo('while ("a" + 1 == "a2") { System.out.println("x"); }').map((p) => p.codigo)).toEqual(['sentencia-inalcanzable']); // "a1" ≠ "a2" es false
   });
 
-  it('control: `if` NO decide con la condición (JLS 14.22): una constante desconocida en un `if` no da aviso', () => {
+  it('control: `if` NO decide con la condición (JLS 14.22): una constante con decimales en un `if` no cambia la alcanzabilidad', () => {
     expect(alcanzabilidadDeCuerpo('if ("a" + 1.5 == "a1.5") { System.out.println("x"); } System.out.println("y");')).toEqual([]);
   });
 
-  it('control: declarar y usar un texto con decimales sin que NINGUNA decisión dependa de su valor no da aviso (`String s = "a" + 1.5;`, `final String K = "a" + 1.5;`)', () => {
+  it('control: declarar y usar un texto con decimales sin que NINGUNA decisión dependa de su valor no da problemas (`String s = "a" + 1.5;`, `final String K = "a" + 1.5;`)', () => {
     expect(alcanzabilidadDeCuerpo('String s = "a" + 1.5; final String K = "a" + 2.5; System.out.println(K); System.out.println(s);')).toEqual([]);
   });
 
-  it('control: un ciclo con una condición que NO es constante (`x < 3`, o un texto con un `double` NO constante) sigue sin avisos', () => {
+  it('control: un ciclo con una condición que NO es constante (`x < 3`, o un texto con un `double` NO constante) sigue sin problemas', () => {
     expect(alcanzabilidadDeCuerpo('int x = 0; while (x < 3) { x++; } System.out.println(x);')).toEqual([]);
     expect(alcanzabilidadDeCuerpo('double d = 1.5; while ("a" + d == "a1.5") { break; } System.out.println("x");')).toEqual([]);
   });

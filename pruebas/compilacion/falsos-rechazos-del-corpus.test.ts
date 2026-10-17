@@ -105,14 +105,14 @@ const AVISOS: ReadonlyArray<readonly [archivo: string, codigo: string]> = [
 const VALIDOS: ReadonlyArray<readonly [archivo: string, codigo: string]> = [
   // A — constantes: el valor de `final int A = 'a'` convertido a `char` cabe; un cast a `String`, `int` o `char` de un literal es una constante de `case`; `(boolean) true`
   // es una condición constante para la asignación definitiva y para el ciclo.
-  ['a-constante-char-por-int-valido', 'ejecucion-no-disponible'],
+  ['a-constante-char-por-int-valido', 'ok'],
   ['a-constante-byte-short-valido', 'tipo-primitivo-no-soportado'],
-  ['a-case-cast-a-string-valido', 'ejecucion-no-disponible'],
-  ['a-case-constante-string-con-cast-valido', 'ejecucion-no-disponible'],
-  ['a-case-cast-a-int-valido', 'ejecucion-no-disponible'],
-  ['a-case-cast-a-char-valido', 'ejecucion-no-disponible'],
-  ['a-asignacion-definitiva-cast-boolean-valido', 'ejecucion-no-disponible'],
-  ['a-ciclo-con-cast-boolean-valido', 'ejecucion-no-disponible'],
+  ['a-case-cast-a-string-valido', 'ok'],
+  ['a-case-constante-string-con-cast-valido', 'ok'],
+  ['a-case-cast-a-int-valido', 'ok'],
+  ['a-case-cast-a-char-valido', 'ok'],
+  ['a-asignacion-definitiva-cast-boolean-valido', 'ok'],
+  ['a-ciclo-con-cast-boolean-valido', 'ok'],
   // B, C, D — `instanceof` con patrón o nombre completo, clases selladas y clase anónima.
   ['b-instanceof-con-patron-valido', 'instanceof'],
   ['b-instanceof-con-patron-final-valido', 'instanceof'],
@@ -172,7 +172,7 @@ const VALIDOS: ReadonlyArray<readonly [archivo: string, codigo: string]> = [
   ['p-referencia-a-metodo-de-tipo-generico-valida', 'referencia-metodo'],
   // Q — un emoji en un `char` (aviso) y en una cadena (ya funcionaba).
   ['q-emoji-en-un-char-valido', 'caracter-suplementario-no-soportado'],
-  ['q-emoji-en-una-cadena-valido', 'ejecucion-no-disponible'],
+  ['q-emoji-en-una-cadena-valido', 'ok'],
 ];
 
 describe('corpus/experimentos/falsos-rechazos — el corpus de la tarea 1.35 está completo', () => {

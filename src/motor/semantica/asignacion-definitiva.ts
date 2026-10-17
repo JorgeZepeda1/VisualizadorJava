@@ -42,8 +42,8 @@
 //     estado tras el cuerpo Y antes de cada `continue` (antes la actualización veía solo el estado previo al cuerpo).
 import type { NodoBloque, NodoDeclaracionLocal, NodoElementoBloque, NodoExpresion, NodoPrograma, NodoSentencia } from '../sintaxis/ast.ts';
 import { Alcance } from './alcance.ts';
-import { constanteDeVariable, esDeValorDesconocido, valorConstante } from './constantes.ts';
-import { avisoDeConstanteDeValorDesconocido, type ProblemaAtribucion } from './diagnostico.ts';
+import { constanteDeVariable, valorConstante } from './constantes.ts';
+import type { ProblemaAtribucion } from './diagnostico.ts';
 
 /** El conjunto de variables DEFINITIVAMENTE ASIGNADAS ("DA", JLS 16) en un punto del programa.
  * Inmutable: cada visitante devuelve un conjunto NUEVO, nunca muta el que recibió. */
@@ -400,15 +400,8 @@ interface EstadosDeCondicion {
  */
 function visitarCondicion(expresion: NodoExpresion, alcance: Alcance, entrada: EstadoFlujo, problemas: ProblemaAtribucion[]): EstadosDeCondicion {
   const constante = valorConstante(expresion, alcance);
-  // Tarea 1.36 (W-10, JLS 16.1.1): una condición CONSTANTE cuyo valor no se sabe calcular (`"a" + 1.5 == "a1.5"`) decide qué variables quedan asignadas «vacuamente»: con el valor `true` lo está todo
-  // «si falso», con `false` todo «si verdadero». Si hay alguna variable visible que todavía NO está asignada, esa decisión importa y no se puede tomar: aviso honesto (nunca un
-  // `variable-posiblemente-no-asignada` inventado). Si ya están todas asignadas, vale lo mismo con cualquier valor y no hay nada que decidir. Tras el aviso se sigue como en la recuperación de errores
-  // de javac, sin cascadas: los dos estados son el más permisivo (todo asignado), así que el error que habría dado una lectura posterior no se inventa.
-  if (esDeValorDesconocido(constante)) {
-    const visibles = todasLasVisibles(alcance);
-    if ([...visibles].some((nombre) => !entrada.has(nombre))) problemas.push(avisoDeConstanteDeValorDesconocido(expresion.rango));
-    return { siVerdadero: visibles, siFalso: visibles };
-  }
+  // JLS 16.1.1: una condición CONSTANTE decide qué variables quedan asignadas «vacuamente» (con el valor `true` lo está todo «si falso», con `false` todo «si verdadero»), también la que lleva un
+  // decimal convertido a texto (`"a" + 1.5 == "a1.5"`, tarea 2.4, cierre de W-10 de la 1.36).
   if (constante !== null && constante.tipo === 'boolean') {
     const vacuo = todasLasVisibles(alcance);
     return constante.valor ? { siVerdadero: entrada, siFalso: vacuo } : { siVerdadero: vacuo, siFalso: entrada };

@@ -2303,27 +2303,29 @@ describe('atribuir — `package` con el nombre de una clase que javac ya conoce 
   });
 });
 
-// Tarea 1.36 (W-10 de la verificación final del lote 1, JLS 14.11 y 15.29): `case "d" + 1.5:` es una etiqueta CONSTANTE para javac (el valor lo decide el `Double.toString` de Java) y la compila;
-// el motor la tomaba por «no constante» y daba «Cada "case" necesita un valor fijo». Ahora es un aviso honesto: no se puede revisar si dos etiquetas se repiten, pero tampoco se inventa un error.
-describe('atribuir — una etiqueta de `case` constante de valor desconocido: aviso, nunca «etiqueta-de-case-no-constante» (W-10, tarea 1.36)', () => {
-  const AVISO = { categoria: 'no-disponible', codigo: 'constante-de-texto-con-decimal-no-soportada', datos: {} } as const;
-
+// Tarea 2.4 (cierre del W-10 de la 1.36, JLS 14.11 y 15.29; verificado con javac 17.0.18, `corpus/experimentos/constantes-desconocidas/w10-case-*`): `case "d" + 1.5:` es una etiqueta CONSTANTE para
+// javac (su valor es `"d1.5"`, el `Double.toString` de Java) y la compila. El motor la tomaba por «no constante» y daba «Cada "case" necesita un valor fijo»; la 1.36 lo cambió por un aviso porque no sabía
+// convertir un `double` a texto. Con `Double.toString` exacto la etiqueta vale su texto: se acepta, y se compara con las demás para detectar las repetidas.
+describe('atribuir — una etiqueta de `case` con un texto con decimales es una constante de valor conocido (W-10, cierre de la 1.36)', () => {
   it.each([
     ['una concatenación con un decimal', 'String s = "d1.5"; switch (s) { case "d" + 1.5: break; default: break; }'],
     ['una variable `final String` con un decimal', 'final String K = "d" + 1.5; String s = "d1.5"; switch (s) { case K: break; default: break; }'],
     ['un cast a double dentro del texto', 'String s = "a1.0"; switch (s) { case "a" + (double) 1: break; default: break; }'],
     ['con otra etiqueta conocida al lado', 'String s = "x"; switch (s) { case "x": break; case "d" + 1.5: break; default: break; }'],
-  ])('%s: un solo aviso', (_nombre, cuerpo) => {
-    const problemas = atribuirCuerpo(cuerpo);
-    expect(problemas).toHaveLength(1);
-    expect(problemas[0]).toMatchObject(AVISO);
+  ])('%s: javac la compila y el motor también, sin problemas', (_nombre, cuerpo) => {
+    expect(atribuirCuerpo(cuerpo)).toEqual([]);
   });
 
-  it('el aviso se señala en la etiqueta, y no se cuenta como duplicada de otra (no se puede saber su valor)', () => {
+  it('dos etiquetas con el MISMO valor son una repetida (javac: «duplicate case label»), aunque una se escriba con un decimal: se señala la segunda', () => {
     const cuerpo = 'String s = "d1.5"; switch (s) { case "d" + 1.5: break; case "d1.5": break; default: break; }';
     const problemas = atribuirCuerpo(cuerpo);
-    expect(problemas.map((p) => p.codigo)).toEqual(['constante-de-texto-con-decimal-no-soportada']);
-    expect(problemas[0]!.rango.inicio).toBe(`class C { public static void main(String[] a) { ${cuerpo} } }`.indexOf('case "d" + 1.5'));
+    expect(problemas.map((p) => p.codigo)).toEqual(['etiqueta-de-case-duplicada']);
+    expect(problemas[0]!.rango.inicio).toBe(`class C { public static void main(String[] a) { ${cuerpo} } }`.indexOf('case "d1.5"'));
+  });
+
+  it('se comparan por su VALOR: `"d" + 1.5` y `"d" + 2.5` son distintas, y `"d" + 1.5` y `"d" + 1.50` son la misma (el mismo `double`, el mismo texto "d1.5")', () => {
+    expect(atribuirCuerpo('String s = "d1.5"; switch (s) { case "d" + 1.5: break; case "d" + 2.5: break; default: break; }')).toEqual([]);
+    expect(atribuirCuerpo('String s = "d1.5"; switch (s) { case "d" + 1.5: break; case "d" + 1.50: break; default: break; }').map((p) => p.codigo)).toEqual(['etiqueta-de-case-duplicada']);
   });
 
   it('el TIPO se sigue revisando antes que la constancia (como javac): `case "d" + 1.5:` con un selector `int` es un error de tipos', () => {
@@ -2337,7 +2339,7 @@ describe('atribuir — una etiqueta de `case` constante de valor desconocido: av
     expect(atribuirCuerpo('double d = 1.5; String s = "a"; switch (s) { case "a" + d: break; default: break; }')[0]).toMatchObject({ codigo: 'etiqueta-de-case-no-constante' });
   });
 
-  it('control: una constante CONOCIDA sigue plegándose y revisándose (`"d" + 1` es "d1", y repetirla es un error)', () => {
+  it('control: una constante de enteros sigue plegándose y revisándose (`"d" + 1` es "d1", y repetirla es un error)', () => {
     expect(atribuirCuerpo('String s = "d1"; switch (s) { case "d" + 1: break; default: break; }')).toEqual([]);
     expect(atribuirCuerpo('String s = "d1"; switch (s) { case "d" + 1: break; case "d1": break; default: break; }')[0]).toMatchObject({ codigo: 'etiqueta-de-case-duplicada' });
   });

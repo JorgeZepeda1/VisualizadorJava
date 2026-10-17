@@ -128,10 +128,6 @@ export const CODIGOS_NO_SOPORTADO = {
   // (`GenerarPaquetesDeModulos.java`, 516 de los 871 paquetes de los módulos del sistema del JDK 17.0.18); un subpaquete (`jdk.internal.misc.aula`) sí arranca. Es otra razón que `paqueteReservadoPorJava`
   // (el nombre no está reservado: el paquete ya existe dentro de Java), con su propio texto. Lo emite `semantica/paquete-del-lanzador.ts`, en la misma pasada y antes que el de `java`.
   paqueteInternoDelJdk: 'paquete-interno-del-jdk',
-  // Tarea 1.36 (C-5 y W-10): una expresión constante de texto con un número decimal (`"a" + 1.5`, `"a" + 1.5 == "a1.5"`, una `final` que la guarda) usada donde Java decide con su VALOR —la condición
-  // de un ciclo, la asignación definitiva, una etiqueta de `case`—. Su valor depende de cómo Java convierte un `double` a texto (`Double.toString`, lote 2): hasta entonces es un aviso, nunca una
-  // respuesta inventada. Lo emiten `semantica/alcanzabilidad.ts`, `asignacion-definitiva.ts` y `switch.ts` (vía `semantica/diagnostico.ts`).
-  constanteDeTextoConDecimal: 'constante-de-texto-con-decimal-no-soportada',
   // Tarea 1.36 (C-4b y S-1): el programa tiene más elementos (tokens) que el tope conservador de `motor/limites.ts`. javac rechaza un método de más de 65 535 bytes de bytecode (`limit.code`) y el
   // motor no modela ese tamaño; tampoco revisa un programa tan grande (las pasadas semánticas crecían como n² con las declaraciones locales). Lo emite `compilador.ts`, justo después del léxico.
   programaDemasiadoGrande: 'programa-demasiado-grande',
@@ -139,8 +135,8 @@ export const CODIGOS_NO_SOPORTADO = {
   // operadores…). El tope de tokens no lo acota —4 000 tokens caben en un árbol de 2 000 niveles— y la pila se agotaba en las pasadas: la pantalla decía «Algo falló dentro del visualizador». Lo
   // emite `compilador.ts` cuando `sintaxis/analizador-sintactico.ts` lanza `ProgramaDemasiadoAnidado`.
   programaDemasiadoAnidado: 'programa-demasiado-anidado',
-  // Tarea 1.36 (C-4a): un texto tan largo que se acerca al límite del archivo de clase (65 535 bytes por texto: `limit.string` y `limit.string.overflow` de javac) y cuyo tamaño exacto el motor no puede calcular:
-  // lleva un decimal (su largo lo decide `Double.toString`, que es del lote 2), o hay condiciones constantes que podrían podar el código que lo genera. Lo emite `semantica/limites-del-archivo.ts`.
+  // Tarea 1.36 (C-4a): un texto tan largo que se acerca al límite del archivo de clase (65 535 bytes por texto: `limit.string` y `limit.string.overflow` de javac) y cuyo tamaño exacto el motor no puede
+  // decidir: hay condiciones constantes que podrían podar el código que lo genera. Lo emite `semantica/limites-del-archivo.ts`. (Un decimal en el texto ya no cuenta: desde la tarea 2.4 su largo es exacto.)
   tamanoDeTextoNoRevisable: 'tamano-de-texto-no-revisable',
 
   // ---- Léxico (lexico/literales.ts, lexico/analizador-lexico.ts) — tarea 1.24: antes strings
@@ -308,8 +304,6 @@ export interface DatosPorCodigoNoSoportado {
   'paquete-reservado-por-java': { readonly nombre: string };
   /** Tarea 1.39: el nombre del paquete tal como lo lee javac, sin comentarios ni espacios (`jdk.internal.misc`). */
   'paquete-interno-del-jdk': { readonly nombre: string };
-  /** Tarea 1.36: solo la línea; el texto da el ejemplo (`"a" + 1.5`). */
-  'constante-de-texto-con-decimal-no-soportada': Record<never, never>;
   /** Tarea 1.36: solo la línea donde el programa se pasó del tope. */
   'programa-demasiado-grande': Record<never, never>;
   /** Tarea 1.37: solo la línea donde el programa se pasó de los niveles de anidamiento. */

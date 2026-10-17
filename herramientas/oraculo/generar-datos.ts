@@ -24,10 +24,12 @@ const LIMITE_BYTES_SONDAS = 16 * 1024 * 1024;
 /**
  * Tarea 1.35 (WARNING-1 de la re-verificación del lote 1): el tiempo máximo de CADA corrida de `java` de una sonda. `ejecutar.ts` da 5 s por omisión a un programa (el límite que sirve
  * para detectar el ciclo infinito de un programa del alumno), y las sondas del JDK no son un programa del alumno: la de clases lee todos los módulos (≈ 1,3 s con la máquina libre) y con la
- * CPU cargada o una JVM en frío puede pasar de 5 s, caso en que el sistema la mataba a medio escribir y `npm run test:oraculo` fallaba a ratos con «se leyeron 0 clases». 60 s es 12 veces
- * el límite anterior y queda por debajo de los 120 s de la prueba de integración, así que si una sonda de verdad se cuelga, el error CLARO de esta sonda llega antes que el del tiempo de la prueba.
+ * CPU cargada o una JVM en frío puede pasar de 5 s, caso en que el sistema la mataba a medio escribir y `npm run test:oraculo` fallaba a ratos con «se leyeron 0 clases». Hito 1, parte C: con la
+ * máquina cargada una sonda volvió a pasar de los 60 s de entonces (la de las clases que chocan compila 26 814 candidatos; la de los paquetes de módulos lanza unas 650 JVM), así que el tope subió
+ * a 4 minutos. Sigue por debajo del tope de las pruebas con JDK (`LIMITE_DE_LAS_PRUEBAS_CON_JDK_MS`, 10 minutos), así que si una sonda de verdad se cuelga, el error CLARO de esta sonda llega antes
+ * que el del tiempo de la prueba.
  */
-export const LIMITE_MS_DE_LAS_SONDAS = 60_000;
+export const LIMITE_MS_DE_LAS_SONDAS = 240_000;
 
 export interface OpcionesDeGenerarDatos {
   /** El tope de cada corrida de `java` de una sonda; por omisión `LIMITE_MS_DE_LAS_SONDAS`. Las pruebas lo bajan para FORZAR el tiempo agotado y comprobar el diagnóstico. */
