@@ -8,7 +8,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { EditorView } from '@codemirror/view';
-import { App } from './App.tsx';
+import { App, type PropiedadesApp } from './App.tsx';
 
 const CORPUS_DEL_PO = resolve(import.meta.dirname, '../../corpus/experimentos/ejercicios-del-po');
 
@@ -275,5 +275,41 @@ describe('<App/> — el alumno corrige y vuelve a visualizar', () => {
     expect(aviso.textContent).toContain('Línea 3: ');
     expect(document.querySelector('.cm-problema-error')).not.toBeNull();
     expect(document.querySelector('.cm-marca-problema')?.textContent).toBe('✖');
+  });
+});
+
+// Tarea 5.7 (REQ-PLAT-008): el aviso de versión nueva queda conectado a la pantalla. El registro del service worker se inyecta (jsdom no tiene service workers); el contrato real del registro lo prueba
+// `pwa/registro.test.ts` y el de un navegador de verdad `pruebas/e2e/actualizacion.spec.ts`.
+describe('<App/> — el aviso de versión nueva', () => {
+  type Registrar = NonNullable<PropiedadesApp['registrarPwa']>;
+
+  function registroConVersionNueva(): { registrar: Registrar; publicarVersion: (aplicar: () => void) => void } {
+    let avisar: ((aplicar: () => void) => void) | undefined;
+    const registrar: Registrar = (_navegador, opciones) => {
+      avisar = opciones?.alHaberVersionNueva;
+      return () => undefined;
+    };
+    return { registrar, publicarVersion: (aplicar) => act(() => avisar?.(aplicar)) };
+  }
+
+  it('sin una versión nueva la pantalla no muestra ningún aviso (y la región de estado está lista, vacía)', () => {
+    const { registrar } = registroConVersionNueva();
+    render(<App registrarPwa={registrar} />);
+
+    expect(screen.getByRole('status').innerHTML).toBe('');
+    expect(screen.queryByRole('button', { name: /recargar ahora/i })).toBeNull();
+  });
+
+  it('cuando llega una versión nueva el aviso aparece y «Recargar ahora» la activa, sin sacar al alumno del visualizador', async () => {
+    const { registrar, publicarVersion } = registroConVersionNueva();
+    const aplicar = vi.fn();
+    render(<App registrarPwa={registrar} />);
+
+    publicarVersion(aplicar);
+    expect(screen.getByRole('status').textContent).toContain('Hay una versión nueva del visualizador.');
+    await pulsar(/recargar ahora/i);
+
+    expect(aplicar).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('button', { name: /visualizar/i }).textContent).toBe('Visualizar');
   });
 });

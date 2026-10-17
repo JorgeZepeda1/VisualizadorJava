@@ -634,6 +634,33 @@ li.atenuada {
   font-style: italic;
 }
 
+/* --- Aviso de versión nueva (tarea 5.7) --------------------------------------------------------------------------------------------- */
+/* La región `status` existe siempre (vacía no ocupa lugar); el aviso lleva su propio borde y texto, así que no depende del color: «Hay una versión nueva…» y dos botones con palabras. */
+.aviso-version-nueva {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1.5rem;
+  margin-bottom: 1rem;
+  padding: 0.75rem 1rem;
+  border: 2px solid var(--acento);
+  border-left-width: 0.5rem;
+  border-radius: 0.5rem;
+  background: var(--acento-fondo);
+  color: var(--texto);
+}
+
+.aviso-version-nueva-texto {
+  flex: 1 1 20rem;
+  margin: 0;
+}
+
+.aviso-version-nueva-botones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
 /* --- Controles de reproducción ------------------------------------------------------------------------------------------------------ */
 .barra-controles {
   display: flex;

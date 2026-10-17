@@ -6,3 +6,4 @@ playwright-report/
 *.class
 .DS_Store
 informe-plataforma-pow-*.csv
+dist-ruta-base/
