@@ -361,10 +361,18 @@ export interface NodoIr {
   readonly plan: readonly PuntoDelPlan[];
 }
 
+export interface RamasDeIfIr {
+  readonly nodo: number;
+  readonly entonces: Rango;
+  readonly sino: Rango | null;
+}
+
 export interface ProgramaIr {
   readonly sentencias: readonly SentenciaIr[];
   readonly ranuras: readonly RanuraIr[];
   readonly nodos: readonly NodoIr[];
+  /** Las ramas de cada `if` (hito 2A): el nodo de su condición y los rangos de `then`/`else`; la vista del programa las lleva al editor. */
+  readonly ramasDeIf: readonly RamasDeIfIr[];
   /** La clase del alumno y su paquete (`null` si no declara `package`): de ellos sale el marco `at [paquete.]Clase.main(Clase.java:N)` que la JVM imprime. */
   readonly nombreClase: string;
   readonly paquete: string | null;

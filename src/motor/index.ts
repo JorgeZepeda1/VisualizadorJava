@@ -22,7 +22,8 @@ export type {
 } from './interprete/puerto-biblioteca.ts';
 export { PUERTO_POR_OMISION } from './interprete/puerto-por-omision.ts';
 export { ExcepcionDeEjecucion } from './interprete/excepcion-de-ejecucion.ts';
-export type { ClaveExplicacion, DatosPorClave, ExplicacionPaso } from './traza/explicacion.ts';
+export type { ClaveExplicacion, DatosPorClave, DiagnosticoDeCiclo, ExplicacionPaso } from './traza/explicacion.ts';
+export { diagnosticarCiclo } from './traza/diagnostico-ciclo.ts';
 export { instantaneaEn } from './traza/estado.ts';
 export type { InstantaneaDeEjecucion, VariableDeInstantanea } from './traza/estado.ts';
 export type {

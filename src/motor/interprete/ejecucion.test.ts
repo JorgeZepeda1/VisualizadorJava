@@ -66,7 +66,7 @@ describe('crearEjecucion: el contrato avanzar / fin', () => {
 // EJECUCIÓN -- `compilar()` ya devolvió `ok:true`, pero el `ProgramaCompilado` trae `arranque` distinto de null. `avanzar()` lo reporta en su PRIMER
 // llamado, sin ejecutar ninguna sentencia.
 describe('crearEjecucion — arranque inválido (tarea 1.15)', () => {
-  const IR_VACIO: ProgramaIr = { sentencias: [], ranuras: [], nodos: [], nombreClase: 'Ejercicio3', paquete: null };
+  const IR_VACIO: ProgramaIr = { sentencias: [], ranuras: [], nodos: [], ramasDeIf: [], nombreClase: 'Ejercicio3', paquete: null };
 
   it('avanzar() reporta "error-arranque" en el PRIMER llamado, con el detalle completo y CERO pasos', () => {
     const programa: ProgramaCompilado = {
@@ -192,7 +192,8 @@ describe('límites: la ejecución se detiene con un paso detenido y deja la traz
     expect(corrida.pasos).toHaveLength(11);
     expect(corrida.pasos[10]).toMatchObject({ clase: 'detenido', explicacion: { clave: 'detenido', datos: { causa: 'limite-pasos' } }, fin: { causa: 'limite-pasos' } });
     expect(corrida.salida).toBe('Vuelta\n'.repeat(5));
-    expect(corrida.fin).toEqual({ causa: 'limite-pasos' });
+    // tarea 3.4: sabe en qué ciclo estaba (una condición sin variables no tiene nada que citar)
+    expect(corrida.fin).toEqual({ causa: 'limite-pasos', diagnostico: { ciclo: 'while', linea: 3, condicion: 'true', vueltas: 5, sinCambio: [] } });
   });
 
   it('un `for (;;)` sin condición ni nada que dé pasos en el cuerpo también se detiene (limite-pasos): no cuelga la ejecución', () => {

@@ -1,8 +1,6 @@
-// Protocolo de mensajes UI↔trabajador (design.md §5, ADR 007). `ejecutar`/`detener` están
-// completamente conectados desde esta rebanada vertical; `entrada`/`cerrar-entrada` existen en el
-// protocolo pero el trabajador aún no tiene Scanner que les dé datos (llega en la tarea 2.12). El
-// trabajador de repuesto y el perro guardián (ADR 007) llegan en el lote 3 — no cambian esta forma
-// de mensaje, solo cuándo y cuántos trabajadores hay.
+// Protocolo de mensajes UI↔trabajador (design.md §5, ADR 007), completo desde la tarea 3.5. UI → trabajador: `ejecutar`, `entrada`, `cerrar-entrada`, `detener`. Trabajador → UI: `compilado`, `pasos`
+// (lotes de ≤ 2 000, con el `desde` de cada uno), `espera-entrada`, `fin`, `error-interno` y `detenido` (el acuse de `detener`, que el perro guardián del cliente espera 300 ms). Todos llevan el `id`
+// de la ejecución. Viajan por clonación estructurada: solo datos simples (conserva `BigInt`, `-0` y `NaN`).
 import type { ConfigEjecucion, FinEjecucion, Paso, Problema, VistaPrograma } from '../motor/index.ts';
 
 // Re-exportado para que `cliente.ts`/`interfaz` obtengan el tipo sin importar `motor/index.ts`
@@ -75,9 +73,16 @@ export interface MensajeErrorInterno {
   readonly mensaje: string;
 }
 
+/** El acuse de `detener` (tarea 3.5): el trabajador dejó de correr esa ejecución. Si no llega en 300 ms, el cliente termina el trabajador (perro guardián, tarea 3.6). */
+export interface MensajeDetenido {
+  readonly tipo: 'detenido';
+  readonly id: number;
+}
+
 export type MensajeTrabajadorAUi =
   | MensajeCompilado
   | MensajePasos
   | MensajeEsperaEntrada
   | MensajeFin
-  | MensajeErrorInterno;
+  | MensajeErrorInterno
+  | MensajeDetenido;

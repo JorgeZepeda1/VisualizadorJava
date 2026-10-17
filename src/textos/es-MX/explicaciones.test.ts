@@ -27,6 +27,40 @@ describe('textosExplicacion: una frase por clave', () => {
     ).toBe('Calculo `2 + 3`, que da 5. Creo la variable `suma` de tipo int y le guardo 5.');
   });
 
+  // Arreglo (b) del hito 2A: antes decía «con los valores de ahora es `un Scanner.nextInt()`».
+  it('una lectura del teclado (`int edad = sc.nextInt();`) dice lo que el usuario escribió, sin «calcular» nada', () => {
+    expect(
+      frase({ clave: 'declaracion-con-valor', datos: { nombre: 'edad', tipo: 'int', expresion: 'sc.nextInt()', sustituida: 'sc.nextInt()', valor: '25', leeDelTeclado: true } }),
+    ).toBe('Leo lo que escribiste en el teclado con `sc.nextInt()`: 25. Creo la variable `edad` de tipo int y le guardo 25.');
+    expect(
+      frase({ clave: 'declaracion-con-valor', datos: { nombre: 'nombre', tipo: 'String', expresion: 'sc.nextLine()', sustituida: 'sc.nextLine()', valor: '"Ana"', leeDelTeclado: true } }),
+    ).toBe('Leo lo que escribiste en el teclado con `sc.nextLine()`: "Ana". Creo la variable `nombre` de tipo String y le guardo "Ana".');
+  });
+
+  it('una asignación desde el teclado (`x = sc.nextInt();`), con y sin valor anterior', () => {
+    expect(
+      frase({ clave: 'asignacion', datos: { nombre: 'x', expresion: 'sc.nextInt()', sustituida: 'sc.nextInt()', valor: '9', anterior: null, leeDelTeclado: true } }),
+    ).toBe('Leo lo que escribiste en el teclado con `sc.nextInt()`: 9. Guardo 9 en `x`.');
+    expect(
+      frase({ clave: 'asignacion', datos: { nombre: 'x', expresion: 'sc.nextInt()', sustituida: 'sc.nextInt()', valor: '9', anterior: '4', leeDelTeclado: true } }),
+    ).toBe('Leo lo que escribiste en el teclado con `sc.nextInt()`: 9. Guardo 9 en `x`; antes valía 4.');
+  });
+
+  it('una expresión con una lectura mezclada con otras cosas se calcula como siempre, y como el Scanner no se sustituye no dice «un Scanner.»', () => {
+    expect(
+      frase({ clave: 'declaracion-con-valor', datos: { nombre: 'r', tipo: 'int', expresion: 'sc.nextInt() + base', sustituida: 'sc.nextInt() + 10', valor: '15' } }),
+    ).toBe('Calculo `sc.nextInt() + base`: con los valores de ahora es `sc.nextInt() + 10`, que da 15. Creo la variable `r` de tipo int y le guardo 15.');
+  });
+
+  it('crear el Scanner (`Scanner sc = new Scanner(System.in);`) no «calcula» un valor: dice para qué sirve; igual el Random', () => {
+    expect(
+      frase({ clave: 'declaracion-con-valor', datos: { nombre: 'sc', tipo: 'Scanner', expresion: 'new Scanner(System.in)', sustituida: 'new Scanner(System.in)', valor: 'un Scanner' } }),
+    ).toBe('Creo la variable `sc` de tipo Scanner con `new Scanner(System.in)`. Con ella voy a leer lo que escribas en el teclado.');
+    expect(
+      frase({ clave: 'declaracion-con-valor', datos: { nombre: 'azar', tipo: 'Random', expresion: 'new Random(7)', sustituida: 'new Random(7)', valor: 'un Random' } }),
+    ).toBe('Creo la variable `azar` de tipo Random con `new Random(7)`. Con ella voy a sacar números aleatorios.');
+  });
+
   it('declaración sin valor: avisa que todavía no se puede usar', () => {
     expect(frase({ clave: 'declaracion-sin-valor', datos: { nombre: 'total', tipo: 'int' } })).toBe(
       'Creo la variable `total` de tipo int. Todavía no tiene valor: Java no te deja usarla hasta que le guardes algo.',
@@ -205,6 +239,17 @@ describe('textosExplicacion: una frase por clave', () => {
     expect(frase({ clave: 'detenido', datos: { causa: 'limite-caracteres' } })).toBe('Paré el programa: un texto creció demasiado.');
     expect(frase({ clave: 'detenido', datos: { causa: 'no-disponible-en-ejecucion' } })).toBe('Paré aquí: esta parte todavía no sé ejecutarla.');
     expect(frase({ clave: 'detenido', datos: { causa: 'error-interno' } })).toBe('Algo falló dentro del visualizador y tuve que parar.');
+    expect(frase({ clave: 'detenido', datos: { causa: 'limite-tiempo' } })).toBe('Paré el programa: llevaba demasiado tiempo calculando.');
+  });
+
+  it('detenido por pasos o por tiempo con la evidencia del ciclo (tarea 3.4): cita la variable que no cambió, no una pregunta genérica', () => {
+    const diagnostico = { ciclo: 'while', linea: 5, condicion: 'contador <= 5', vueltas: 100, sinCambio: [{ nombre: 'contador', valor: '1' }] } as const;
+    expect(frase({ clave: 'detenido', datos: { causa: 'limite-pasos', diagnostico } })).toBe(
+      'Paré el programa: ya llevaba demasiados pasos. En el ciclo `while` de la línea 5, `contador` siempre valió 1 en las últimas 100 vueltas, así que la condición `contador <= 5` nunca dejó de cumplirse.',
+    );
+    expect(frase({ clave: 'detenido', datos: { causa: 'limite-tiempo', diagnostico } })).toBe(
+      'Paré el programa: llevaba demasiado tiempo calculando. En el ciclo `while` de la línea 5, `contador` siempre valió 1 en las últimas 100 vueltas, así que la condición `contador <= 5` nunca dejó de cumplirse.',
+    );
   });
 });
 

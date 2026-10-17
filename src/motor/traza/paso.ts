@@ -3,7 +3,7 @@
 // clave y los datos con los que el catálogo es-MX arma la frase del robot, ADR 015). Definición de tipos — se ejercita en traza.test.ts,
 // ejecucion.test.ts y compilador.test.ts.
 import type { CausaFin, ProblemaArranque } from '../problemas.ts';
-import type { ExplicacionPaso } from './explicacion.ts';
+import type { DiagnosticoDeCiclo, ExplicacionPaso } from './explicacion.ts';
 
 export type ClasePaso =
   | 'declaracion'
@@ -33,7 +33,10 @@ export type Valor =
 export interface Cambio {
   /** La variable, por su nombre (Java prohíbe el sombreado, así que no es ambiguo en un mismo momento). */
   readonly ranura: string;
-  /** Lo que tenía la variable antes (`undefined` si aún no tenía nada); hace el cambio reversible. */
+  /**
+   * Lo que tenía ESA variable antes (`undefined` si aún no tenía nada). Es por variable, no por nombre: dos `for` seguidos con `int i` son dos variables, y la declaración de la segunda
+   * llega con `anterior` vacío aunque el nombre ya valiera algo. Por eso la traza nunca deshace con él: para ir a un paso anterior parte de un punto de control y avanza.
+   */
   readonly anterior: Valor | undefined;
   /** El valor nuevo; `null` cuando la declaración deja la variable existente pero SIN valor (`int x;`). */
   readonly nuevo: Valor | null;
@@ -53,6 +56,11 @@ export interface FinEjecucion {
   /** Presente sii `causa === 'error-arranque'` (tarea 1.15, ADR 004 pasada 5) — el detalle que
    * `crearEjecucion` copia de `ProgramaCompilado.arranque` al reportarlo en el primer `avanzar()`. */
   readonly arranque?: ProblemaArranque;
+  /**
+   * Presente solo en `limite-pasos` y `limite-tiempo`, cuando el programa estaba dentro de un ciclo con condición (tarea 3.4): la evidencia de ese ciclo («`contador` siempre valió 1»).
+   * El aviso de «Se detuvo por seguridad» la saca de aquí; el mismo dato va en el paso `detenido` (`explicacion.datos.diagnostico`).
+   */
+  readonly diagnostico?: DiagnosticoDeCiclo;
 }
 
 export interface Paso {

@@ -12,15 +12,50 @@ export interface LecturaExplicada {
 
 export type TipoDeCiclo = 'while' | 'for' | 'do-while';
 
+/**
+ * La evidencia de un ciclo que no termina (tarea 3.3, REQ-EJEC-007): el ciclo más interno que seguía activo cuando el visualizador detuvo el programa por seguridad, visto en sus
+ * últimas 100 vueltas. Sale de la traza, nunca de una suposición. Viaja en `FinEjecucion.diagnostico` y en los datos del paso `detenido`.
+ */
+export interface DiagnosticoDeCiclo {
+  readonly ciclo: TipoDeCiclo;
+  /** La línea donde está la condición del ciclo. */
+  readonly linea: number;
+  /** La condición tal como está escrita (`intentos <= 5`). */
+  readonly condicion: string;
+  /** Cuántas revisiones de la condición se miraron (2 a 100). */
+  readonly vueltas: number;
+  /**
+   * Las variables de la condición que valieron LO MISMO en todas esas vueltas, con su valor escrito como Java lo escribe (`intentos` valió `1`). Solo se llena cuando ninguna variable de
+   * la condición cambió: si alguna sí cambió (el ciclo puede ser solo largo), o la condición lee la entrada o un `Random`, queda vacía y no hay nada que citar.
+   */
+  readonly sinCambio: readonly LecturaExplicada[];
+}
+
 export interface DatosPorClave {
   /** `int edad = 17;` (un solo declarador con valor). `sustituida` es `expresion` con sus variables cambiadas por su valor; `valor` es el resultado. */
-  readonly 'declaracion-con-valor': { readonly nombre: string; readonly tipo: string; readonly expresion: string; readonly sustituida: string; readonly valor: string };
+  readonly 'declaracion-con-valor': {
+    readonly nombre: string;
+    readonly tipo: string;
+    readonly expresion: string;
+    readonly sustituida: string;
+    readonly valor: string;
+    /** Presente (y `true`) cuando la expresión ES una sola lectura del teclado (`sc.nextInt()`): el valor es lo que el usuario escribió. */
+    readonly leeDelTeclado?: true;
+  };
   /** `int total;` — la variable existe pero todavía no tiene valor. */
   readonly 'declaracion-sin-valor': { readonly nombre: string; readonly tipo: string };
   /** `int a = 1, b, c = 3;` — varios declaradores en un solo paso. `valor` es `null` si ese declarador no tiene inicializador. */
   readonly 'declaracion-varias': { readonly variables: readonly { readonly nombre: string; readonly tipo: string; readonly valor: string | null }[] };
   /** `x = x + 1;` — `expresion` es el lado derecho. `anterior` es lo que valía `nombre` (`null` si todavía no tenía valor). */
-  readonly asignacion: { readonly nombre: string; readonly expresion: string; readonly sustituida: string; readonly valor: string; readonly anterior: string | null };
+  readonly asignacion: {
+    readonly nombre: string;
+    readonly expresion: string;
+    readonly sustituida: string;
+    readonly valor: string;
+    readonly anterior: string | null;
+    /** Presente (y `true`) cuando el lado derecho ES una sola lectura del teclado (`x = sc.nextInt();`). */
+    readonly leeDelTeclado?: true;
+  };
   /** `total += precio;` — `operador` es `+=`, `-=`, `*=`, `/=` o `%=`; `derecho` es el valor del lado derecho; `anterior` lo que valía `nombre`. */
   readonly 'asignacion-compuesta': {
     readonly nombre: string;
@@ -70,8 +105,14 @@ export interface DatosPorClave {
   readonly vacia: Record<never, never>;
   /** Java detuvo el programa: `clase` es el nombre calificado (`java.lang.ArithmeticException`), `mensaje` el de Java (`null` si no tiene). */
   readonly excepcion: { readonly clase: string; readonly mensaje: string | null };
-  /** El visualizador detuvo la ejecución por su cuenta. */
-  readonly detenido: { readonly causa: 'limite-pasos' | 'limite-caracteres' | 'no-disponible-en-ejecucion' | 'error-interno' };
+  /**
+   * El visualizador detuvo la ejecución por su cuenta. `diagnostico` (solo en `limite-pasos` y `limite-tiempo`, y solo si el programa estaba dentro de un ciclo con condición) es la evidencia
+   * del ciclo que no terminaba (tarea 3.3).
+   */
+  readonly detenido: {
+    readonly causa: 'limite-pasos' | 'limite-caracteres' | 'limite-tiempo' | 'no-disponible-en-ejecucion' | 'error-interno';
+    readonly diagnostico?: DiagnosticoDeCiclo;
+  };
 }
 
 export type ClaveExplicacion = keyof DatosPorClave;

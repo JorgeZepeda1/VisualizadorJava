@@ -25,6 +25,22 @@ export class LimiteDePasosExcedido extends Error {
   }
 }
 
+/**
+ * El programa lleva más tiempo de cómputo del que el visualizador le da (`ConfigEjecucion.limiteTiempoMs`, 15 s por omisión). Es COOPERATIVO: el director mira el reloj cada tanto
+ * entre un paso y otro y nunca interrumpe una sentencia a medias. Lo que no coopera (un trabajador que ni siquiera termina un paso) lo ataja el perro guardián del cliente.
+ */
+export class LimiteDeTiempoExcedido extends Error {
+  readonly causa = 'limite-tiempo' as const;
+
+  constructor() {
+    super('límite de tiempo');
+    this.name = 'LimiteDeTiempoExcedido';
+  }
+}
+
+/** Los milisegundos de cómputo que se le dan a un programa cuando la configuración no dice otra cosa (design.md §3.5). */
+export const LIMITE_DE_TIEMPO_POR_OMISION_MS = 15_000;
+
 /** La consola cabe cuatro veces lo que una cadena (design.md §3.5: 4 194 304 contra 1 048 576). */
 const FACTOR_DE_LA_CONSOLA = 4;
 
