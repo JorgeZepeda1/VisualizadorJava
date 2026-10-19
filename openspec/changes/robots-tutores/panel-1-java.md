@@ -1,0 +1,47 @@
+# Panel 1, anexo: informe del experto en Java
+
+Resumen fiel del informe de `experto-java` (2026-10-17), verificado con `openjdk 17.0.18 (Temurin-17.0.18+8)` sobre unos 70 programas (directorio temporal de la sesión, `panel/java/`). Contraste independiente: `javac -Xlint:fallthrough,empty` sobre los 60 programas del corpus curricular solo avisa en `u5-switch-sin-break-fallthrough` (`case 2`, `case 3`, `default`): **la etiqueta de CR1 es correcta.** La propuesta consolidada está en `panel-1.md`.
+
+## Errores técnicos
+
+- **E1. El narrador dice que `25 / 3` «da 8.0».** `int suma = 25; double promedio = suma / 3;` imprime `8.0`, pero `25 / 3` es `int` y vale 8 (JLS 15.17.2); el 8.0 nace al guardar (JLS 5.2). Igual con `3 / 2` («1.0»), `double d = 5` («5.0»), `double e = 'a'` («97.0»), `char c = 65` («'A'»), `Math.abs(a / b)` («3.0», pero `abs(int)` da 3). Corrección: separar cálculo y conversión. (Corrección C1 de `panel-1.md`.)
+- **E2. Trampa 1: sus dos formas más frecuentes no compilan.** `for (int i = 1; i <= 3; i++); System.out.println("Hola " + i);` → `cannot find symbol … variable i`, y el motor dice «¿La declaraste antes?». `if (n % 2 == 0); … else …` → `'else' without 'if'`, y el motor dice «revisa las llaves». REQ-REV-003 prohíbe buscar trampas si hay error de compilación. Corrección: enmendar REQ-REV-003 para que el porqué de las familias `nombres` y `estructura` diga el hecho cuando la sentencia anterior es un `if`/`for`/`while` con cuerpo `;` («Ese `;` es todo el cuerpo del `for`; `i` solo existe dentro del `for`»). Contraste: `int i; for (i = 1; i <= 3; i++); println("i vale " + i);` compila, imprime `i vale 4`, y la regla 1 acierta.
+- **E3. Regla 4.** Falso negativo grave: `for (…) { String nombre = sc.nextLine(); int edad = sc.nextInt(); … }` con `Ana⏎20⏎Luis⏎30⏎` → la segunda vuelta lee `""` y truena con `InputMismatchException` (línea 9, exit 1); la regla exige ambas lecturas seguidas en la misma lista de sentencias. Extender al último token del cuerpo del ciclo y a la primera `nextLine()` del cuerpo, o declararlo límite conocido. Falso positivo práctico: `int edad = sc.nextInt(); String basura = sc.nextLine(); String nombre = sc.nextLine();` funciona y la regla avisaría; considerar «usado» solo si la variable se lee después o entra en una expresión.
+- **E4. `==`/`!=` con `String`.** `while (op != "salir")` con `a⏎salir⏎b⏎` nunca sale (stderr `NoSuchElementException`, exit 1); el narrador dice «op vale "salir", así que es verdadero». REQ-REV-006 solo contempla `==`; con `!=` lo que sorprende es `true`. En el reto, la cadena `"si" == "si"` → `false` se ve como contradicción: la opción correcta debe llevar la razón de identidad. No decir «`==` no sirve con `String`».
+- **E5. `etiqueta-de-case-no-constante`** dice «no una variable», pero `final int K = 3; case K + 1:` compila. (Corrección C3.)
+- **E6. Incrementos y asignaciones compuestas:** cifras correctas, texto confuso (`i++ + i`, `i = i++`, `x += 2.7` con `x` entero). (Corrección C2.)
+- **E7. Trampa 3, spec contra diseño.** Un grupo que termina en bloque `{ }` o en `if/else` y cae no lo ve la regla del diseño (javac `-Xlint:fallthrough` sí). Ajustar la spec («cuya última sentencia es simple») o usar `semantica/alcanzabilidad.ts` (JLS 14.22) para saber si el grupo completa normalmente.
+- **E8. Notas sin pérdida real.** Trampa 5 con división exacta (`100 / 4` → `25.0`): emitir la nota solo si `a % b != 0`. Trampa 4 con resto no vacío (`20 Juan⏎` → `" Juan"`): emitir solo si el resto es vacío o solo blancos. Evitar «`nextInt` se come el salto»: no lo consume; «lo que quedaba del renglón después del 20» es exacto.
+
+## Evidencia por regla
+
+- **Regla 1** (`;` como cuerpo): avisa bien en `if (edad >= 18); {…}`, `while (i < 3); {…}` (no termina), `for (…); {…}` (una vez). No avisa en bloques vacíos `{ }` ni en `do … while (k < 3);`. Casi-trampas intencionales donde avisa un hecho cierto: `while (n++ < 5);`, `for (p = 0; …; p++);` (saltar blancos), `if (c); else …`. `javac -Xlint:empty` solo avisa de `if`.
+- **Regla 2** (`==`/`!=` con `String`): positivas con `sc.next()`, `new String`, concatenación en ejecución, dos lecturas, `!=` en `while`. Literales internados (`"hola" == "hola"`, constantes `final`) dan `true`: el aviso del paso 0 no puede decir que dará `false`. `toLowerCase`/`trim`/`substring(0)`/`replace`/`valueOf` pueden devolver el mismo objeto (`true`); el motor coincide con el JDK en todos. `switch` con `String` usa `equals`: no avisa.
+- **Regla 3** (`case` que sigue de largo): avisa bien en caídas simples, con `String` y con `default` en medio; no avisa en etiquetas apiladas ni en grupos que terminan en `break`/`continue`/`return`. Caída intencional (pines acumulados): hecho cierto. Grupos que terminan en bloque o `if/else` y caen: no avisa (E7).
+- **Regla 4** (renglón pendiente): `20⏎Juan⏎` → `""`; `20 Juan⏎` → `" Juan"`; `20  ⏎` → `"  "`; `20\r\nJuan\r\n` → `""`; `20` sin salto final → `NoSuchElementException: No line found`. Avisa bien con `nextInt`/`next`/`nextDouble`/`nextBoolean` seguidos de `nextLine`; no avisa con la lectura extra, con `nextLine` antes de `nextInt` ni con `parseInt(sc.nextLine())`. Falsos: E3.
+- **Regla 5** (división entera que se vuelve `double`): avisa en todas las positivas (`suma / 3`, `1 / 2 * base * altura` → `0.0`, `(double) (a / b)`, `a / b * 1.0`, `Math.ceil(a / b)`, `Math.sqrt(a / b)`, `3 * (a / b) + 0.5`); no avisa en `(double) a / b`, `a / 2.0`, `a * 1.0 / b`, `int mitad = n / 2`, `"Cociente: " + a / b`. Avisaría en divisiones exactas (E8). Falso negativo consciente: `println("Promedio: " + suma / n)` (REQ-REV-004).
+
+## Retos
+
+Los cuatro retos de MaquinaSnacks `a1 2 50` (líneas 24, 53, 66 y 72) y los del corpus (`u6-error-por-uno`, `u6-suma-1-a-n`, `u6-prediccion-while-no-ejecuta`, `u5-escalera-else-if-orden-incorrecto`, `u5-switch-sin-break-fallthrough`, `u6-bandera-numero-negativo`) son correctos: la opción marcada es lo que hace Java y ningún distractor es verdadero. Reglas verificadas con un programa: `||` con izquierda `false` sí evalúa la derecha y con `true` no; `&&` con izquierda `false` no; `i < 10` da 9 vueltas e `i <= 10`, 10; `while` con `8 <= 5` no entra; `do-while` entra una vez; la escalera no evalúa las siguientes; `if/else` excluyentes; un `for` de 3 vueltas revisa 4 veces.
+
+Riesgos:
+- **R4.1** La refutación de `o-se-detiene-con-false` debe decir «con `||` Java deja de revisar solo si el primer lado es `true`; aquí fue `false`, así que revisó `2 > 3`».
+- **R4.2** `otra-etiqueta` con etiquetas apiladas (`case 'a': case 'e':`) da la misma salida: elegir otro grupo.
+- **R4.3** `while (true)` y `do … while (true)`: retos triviales.
+- **R4.4** Condiciones que leen entrada, azar o tienen efectos (`sc.nextInt() != 0`, `rand.nextInt(2) == 0`, `++i > 3`, `n-- > 0`) no traen sustitución: decidir qué hace el reto (sin eso CR4 no se cumple al 100 %); además preguntar sobre un número que el alumno aún no escribe es adivinar.
+- **R4.5** Distractores aritméticamente falsos («`2 > 3` es true»): ¿cuentan como «nunca relleno»? (pedagógico).
+
+## El libro contra el subconjunto
+
+Ningún título contradice el subconjunto, pero estos ejemplos «naturales» darían aviso hoy: `programa-y-main` (métodos propios, `args[0]`); `variables-y-tipos` (`byte`, `short`, `float`); `salida` (`%x`, `%+d`, `%e`: hoy se detienen con `ejecucion-no-disponible`); `entrada-con-scanner` (`hasNextInt`, `nextLong`); `constantes` (`static final double IVA = 0.16;` a nivel de clase, el ejemplo más común); `conversiones` (`Integer.valueOf/toString`); `operadores-logicos` (`&`, `|`, `^`); `math-y-random` (**`Math.pow` aún no se ejecuta**, `sin/cos/log`, `nextInt(a, b)`); `if-else`/`else-if` (ternario); `switch` (flecha, `yield`, `case 1, 2:`, enum); `comparar-textos` (`compareToIgnoreCase`, `isBlank`, `matches`, `null`); `for` (for mejorado); `break-y-continue` (`break etiqueta;`); `depurar-con-el-visualizador` (no hay puntos de interrupción). Sin tema: `String` (`length`, `charAt`, `substring`, `indexOf`), `char`/`Character`, `Integer.parseInt`, `long`. Cuidado con dos hechos: Java rechaza `return; println();`, `while (true) {} println();` y el cuerpo de `while (false)`, pero NO el cuerpo de `if (false) { … }`; para la asignación definitiva basta que TODAS las ramas asignen.
+
+## Preguntas
+
+- Para el maestro: cómo avisar de trampas intencionales sin sonar a «te equivocaste»; nota de la trampa 4 con resto no vacío; distractores aritméticamente falsos y retos sobre `while (true)` o entrada; valores intermedios de `i++ + i` y `x += 2.7`; coherencia de «Así terminó: sin errores» con trampas avisadas; temas de `String`, `char`, `parseInt`, `long`; porqué de cada excepción como con los errores de compilación.
+- Para el diseñador: cómo mostrar `"si" == "si"` → `false` sin que parezca un error del visualizador; dónde van las notas cuando hay varias trampas en la misma línea.
+- Para el PO: que la entrada preparada termine cada renglón con salto de línea, como en NetBeans; aprobar el ajuste de REQ-REV-003 (E2).
+
+## Posición técnica sobre PR-1 a PR-5
+
+PR-1 sin objeción, con la condición de definir el reto en condiciones sin sustitución (R4.4). PR-2 (A) viable y la más segura, con E4, R4.1, R4.2 y R4.3. PR-3 sin objeción. PR-4 sin objeción; `revisor=despues` no ayuda en las formas de la trampa 1 que son errores de compilación. PR-5: ceñir cada tema al subconjunto y pasar a la oleada 1 los temas que enlazan las trampas 4 y 5 y `||`/`&&`.

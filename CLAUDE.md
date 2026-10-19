@@ -37,6 +37,18 @@ Versión exacta esperada: Temurin `17.0.18+8`. `herramientas/oraculo/jdk.ts` abo
 11. **Definición de Terminado de cada lote** (`proposal.md` §13): sin TODO/mocks/"versiones demo" en producción; TDD estricto real, no simulado; `npm test` + `lint` + `tipos` en verde con salidas acotadas, CI verde; textos es-MX reales; accesible (teclado, AA, nada solo por color, `aria-live`, movimiento reducido) en lo que el lote agrega; cero red; `main` siempre desplegable; commits convencionales sin atribución de IA, con confirmación explícita.
 12. **Guardas de capa (ADR 001):** `src/motor` no importa nada fuera de sí mismo y no toca DOM/Node (0 dependencias npm). La matriz completa "quién puede importar qué" vive como datos en `herramientas/eslint/matriz-capas.ts` y la hace cumplir `eslint.config.js` — no la debiliten para que un import "de una vez" compile; ajusten la matriz y justifíquenlo en el ADR si el diseño cambia de verdad.
 
+## Panel de expertos (decisión del PO, 2026-10-17)
+
+Para que la pantalla sea fácil de usar y el alumno aprenda en una secuencia lógica y atractiva, tres agentes del proyecto (`.claude/agents/`) revisan juntos el mismo material:
+
+- `disenador-ux`: pantallas, flujos e interacción, con capturas reales de la página.
+- `maestro-pedagogo`: secuencia de aprendizaje, textos del robot y del libro, retos y su retroalimentación.
+- `experto-java`: exactitud técnica de cada explicación, distractor, ejemplo y trampa, comprobada contra el JDK 17 real.
+
+**Cuándo se reúne:** antes de construir una pantalla o interacción nueva (robots, modo reto, libro, galería), antes de publicar textos pedagógicos y en la verificación de cada hito que toque la interfaz.
+
+**Cómo:** los tres trabajan en paralelo sobre el mismo material y cada uno entrega su informe. El orquestador los consolida en una sola propuesta para el PO, con acuerdos, desacuerdos y decisiones pendientes. El panel aconseja y el PO decide. Los agentes del panel no escriben código de producción.
+
 ## Comandos del proyecto
 
 ```
