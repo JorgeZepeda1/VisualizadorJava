@@ -34,7 +34,8 @@
     "oraculo:conjuntos": "node herramientas/oraculo/generar-conjuntos.ts",
     "oraculo:mutantes": "node herramientas/oraculo/mutantes.ts",
     "oraculo:generados": "node herramientas/oraculo/programas-generados.ts",
-    "medir:plataforma": "node herramientas/oraculo/medir-plataforma.ts"
+    "medir:plataforma": "node herramientas/oraculo/medir-plataforma.ts",
+    "libro:borradores": "node herramientas/libro-borradores.ts"
   },
   "dependencies": {
     "react": "19.3.0",

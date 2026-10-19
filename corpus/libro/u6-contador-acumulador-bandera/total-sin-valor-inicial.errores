@@ -1,0 +1,7 @@
+TotalSinValorInicial.java:10: error: variable total might not have been initialized
+            total = total + precio;
+                    ^
+TotalSinValorInicial.java:13: error: variable total might not have been initialized
+        System.out.println("Total: " + total);
+                                       ^
+2 errors
