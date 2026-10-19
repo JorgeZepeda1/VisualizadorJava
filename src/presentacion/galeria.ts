@@ -1,4 +1,4 @@
-// La galería «Ejemplos» (tarea R0.11, REQ-AULA-001, ADR 017): secciones por unidad (U3 a U7) y «Para empezar» con los programas del curso y la máquina de snacks del PO, cada uno con su código y su entrada
+// La galería «Ejemplos» (tarea R0.11, REQ-AULA-001, ADR 017): secciones por unidad (U3 a U7) y «Ejercicio de la clase» con la máquina de snacks del PO y, por unidad, los programas del curso, cada uno con su código y su entrada
 // preparada tal como la usó el oráculo (cada renglón con su salto de línea, como en NetBeans). Todo se arma desde el TEXTO CRUDO de los archivos —la presentación no toca Vite ni el disco: el
 // `import.meta.glob` vive en `interfaz/datos/programas-crudos.ts`, un fragmento diferido— y desde el catálogo es-MX (`textos/es-MX/galeria.ts`), que manda: un archivo que el catálogo no conoce no entra, y
 // un programa que el catálogo conoce pero cuyo archivo falta no se ofrece (nunca un ejemplo inventado). Puro, sin DOM.
@@ -21,7 +21,7 @@ export interface ProgramaDeGaleria {
   readonly titulo: string;
   readonly queObservar: string;
   readonly origen: OrigenDeUnPrograma;
-  /** La unidad del curso, o `null` para el ejercicio del PO de «Para empezar». */
+  /** La unidad del curso, o `null` para el ejercicio del PO de «Ejercicio de la clase». */
   readonly unidad: UnidadDeGaleria | null;
   readonly codigo: string;
   /** La entrada con la que el oráculo ejecutó el programa (byte a byte, cada renglón con su `\n`); vacía si el programa no lee datos. */
@@ -42,12 +42,14 @@ export interface GaleriaVista {
   readonly secciones: readonly SeccionDeGaleria[];
 }
 
+/** `-3\n0\n7\n` → `['-3', '0', '7']`: un dato por renglón de la entrada preparada, sin los renglones vacíos (el salto de línea final no es un dato). Vacía si la entrada está vacía. */
+export function datosDeLaEntrada(entrada: string): readonly string[] {
+  return entrada.split('\n').filter((renglon) => renglon !== '');
+}
+
 /** `a1\n2\n50\n` → `a1 · 2 · 50`. */
 export function etiquetaDeLaEntrada(entrada: string): string {
-  return entrada
-    .split('\n')
-    .filter((renglon) => renglon !== '')
-    .join(' · ');
+  return datosDeLaEntrada(entrada).join(' · ');
 }
 
 function muestrasDeLaMaquinaDeSnacks(archivos: ArchivosCrudos): readonly (MuestraDeGaleria & { readonly codigo: string })[] {
@@ -86,7 +88,7 @@ export function armarGaleria(archivos: ArchivosCrudos): GaleriaVista {
   const secciones = ORDEN_DE_LA_GALERIA.flatMap(({ unidad, programas }): SeccionDeGaleria[] => {
     const disponibles = programas.flatMap((id) => programaDe(id, unidad, archivos) ?? []);
     if (disponibles.length === 0) return [];
-    return [{ unidad, titulo: unidad === null ? textosGaleria.seccion.paraEmpezar() : textosGaleria.seccion.unidad(unidad), programas: disponibles }];
+    return [{ unidad, titulo: unidad === null ? textosGaleria.seccion.ejercicioDeLaClase() : textosGaleria.seccion.unidad(unidad), programas: disponibles }];
   });
   return { secciones };
 }

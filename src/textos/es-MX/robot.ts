@@ -47,7 +47,12 @@ function cuentaDePasos(pasos: number): string {
 const POR_SEGURIDAD = 'Así terminó: el visualizador lo detuvo por seguridad';
 
 const RESUMENES_DEL_FIN: { readonly [K in CausaFin]: (datos: DatosDelResumen) => string } = {
-  terminado: ({ pasos }) => `Así terminó: sin errores, en ${cuentaDePasos(pasos)}.`,
+  // V6 del maestro (panel R0): el fin CIERRA la predicción que el paso 0 pidió («anota qué crees que va a aparecer»): pide comparar y dice a dónde volver si algo no coincide.
+  // Sin pasos (un `main` vacío) no hay a dónde volver: queda solo el resumen.
+  terminado: ({ pasos }) => {
+    const resumen = `Así terminó: sin errores, en ${cuentaDePasos(pasos)}.`;
+    return pasos === 0 ? resumen : `${resumen} ¿La consola muestra lo que anotaste al principio? Si algo no coincide, regresa con «Anterior» al paso donde Java hizo otra cosa.`;
+  },
   // «Mira el mensaje en rojo» dependía del color (panel 1, H15): la consola marca el mensaje con la palabra «Error» y su ícono.
   excepcion: () => 'Así terminó: Java detuvo el programa por un error y lo que seguía ya no se ejecutó. Lee en la consola el mensaje marcado «Error»: dice qué pasó.',
   'error-arranque': () => 'Así terminó: el programa no pudo arrancar.',
@@ -59,17 +64,21 @@ const RESUMENES_DEL_FIN: { readonly [K in CausaFin]: (datos: DatosDelResumen) =>
 };
 
 export const textosRobot = {
-  /** Mientras el alumno escribe o pega su programa (ya pasó el saludo con las puertas): qué hacer para verlo paso a paso. */
-  sinEjecutar: (): string => 'Cuando tu programa esté listo, pulsa «Visualizar» y te muestro cómo lo ejecuta Java, paso a paso.',
+  /** Mientras el alumno escribe o pega su programa (ya pasó el saludo con las puertas): qué hacer aquí (escribirlo o pegarlo, también desde NetBeans) y cómo verlo paso a paso. */
+  sinEjecutar: (): string =>
+    'Escribe o pega aquí tu programa (puedes copiarlo de NetBeans). Cuando esté listo, pulsa «Visualizar» y te muestro cómo lo ejecuta Java, paso a paso.',
   compilando: (): string => 'Java está revisando tu programa…',
   /** El alumno editó el código después de un aviso (error de compilación, «no disponible»…): el aviso viejo ya no describe el programa y el editor ya no lo marca (C4 del panel 1). */
   programaCambiado: (): string => 'Cambiaste el programa. Pulsa «Visualizar» para que Java lo revise otra vez.',
   /**
    * El paso 0 (T3 del maestro): todavía no se ejecuta nada y el robot invita a PREDECIR antes de ver (PRIMM; Naps 2002) sin adelantar nada de la ejecución. `lineaSiguiente` es la del primer paso
-   * que el motor calculó (`null` si aún no hay ninguno).
+   * que el motor calculó (`null` si aún no hay ninguno). V7 del maestro (panel R0): si el programa trae datos preparados, `datos` los nombra («Este programa va a leer estos datos: -3, 0 y 7.») para que
+   * el alumno pueda predecir con ellos; los pone quien llama, tomados de la entrada preparada, nunca inventados. Sin datos (el alumno escribe los suyos, o el programa no lee) no se menciona ninguno.
    */
-  alInicio: (lineaSiguiente: number | null): string => {
-    const invitacion = 'Todavía no se ejecuta nada. Antes de empezar, lee el programa y anota qué crees que va a aparecer en la consola.';
+  alInicio: (lineaSiguiente: number | null, datos: readonly string[] = []): string => {
+    const losDatos =
+      datos.length === 0 ? '' : ` Este programa va a leer ${datos.length === 1 ? 'este dato' : 'estos datos'}: ${datos.length === 1 ? datos[0] : `${datos.slice(0, -1).join(', ')} y ${datos[datos.length - 1]}`}.`;
+    const invitacion = `Todavía no se ejecuta nada.${losDatos} Antes de empezar, lee el programa y anota qué crees que va a aparecer en la consola.`;
     return lineaSiguiente === null
       ? `${invitacion} Luego pulsa «Siguiente» para empezar.`
       : `${invitacion} Luego pulsa «Siguiente» y lo comprobamos desde la línea ${lineaSiguiente}.`;

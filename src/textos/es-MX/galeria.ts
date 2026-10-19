@@ -46,7 +46,10 @@ export type IdDeGaleria =
 export type UnidadDeGaleria = 3 | 4 | 5 | 6 | 7;
 export type OrigenDeUnPrograma = 'curricular' | 'del-po';
 
-/** Las secciones en el orden en que se muestran: «Para empezar» (el ejercicio del PO) y las unidades 3 a 7, con sus programas en el orden en que conviene verlos. */
+/**
+ * Las secciones en el orden en que se muestran: «Ejercicio de la clase» (el ejercicio del PO) y las unidades 3 a 7, con sus programas en el orden en que conviene verlos. El orden de U5 y de U6 es el del
+ * maestro (panel R0): en U6 recorre, acumula, levanta una bandera, repite hasta cumplir, predice el `while` y las trampas, y deja el ciclo anidado al final; en U5 la decisión anidada va tras las escaleras.
+ */
 export const ORDEN_DE_LA_GALERIA: readonly { readonly unidad: UnidadDeGaleria | null; readonly programas: readonly IdDeGaleria[] }[] = [
   { unidad: null, programas: ['maquina-snacks'] },
   {
@@ -73,9 +76,9 @@ export const ORDEN_DE_LA_GALERIA: readonly { readonly unidad: UnidadDeGaleria | 
     programas: [
       'u5-if-else-verificar-voto',
       'u5-par-o-impar',
-      'u5-decision-anidada-licencia',
       'u5-escalera-else-if-correcta',
       'u5-escalera-else-if-orden-incorrecto',
+      'u5-decision-anidada-licencia',
       'u5-switch-menu-calculadora',
       'u5-switch-sin-break-fallthrough',
     ],
@@ -83,16 +86,16 @@ export const ORDEN_DE_LA_GALERIA: readonly { readonly unidad: UnidadDeGaleria | 
   {
     unidad: 6,
     programas: [
-      'u6-contador-de-pares',
+      'u6-tabla-de-multiplicar',
       'u6-suma-1-a-n',
+      'u6-contador-de-pares',
       'u6-acumulador-promedio-calificaciones',
       'u6-bandera-numero-negativo',
       'u6-pedir-numero-positivo',
-      'u6-tabla-de-multiplicar',
-      'u6-ciclos-anidados-tabla',
-      'u6-error-por-uno',
       'u6-prediccion-while-no-ejecuta',
+      'u6-error-por-uno',
       'u6-ciclo-infinito-demo',
+      'u6-ciclos-anidados-tabla',
     ],
   },
   { unidad: 7, programas: ['u7-proyecto-cajero-automatico'] },
@@ -106,27 +109,27 @@ interface TextoDeUnPrograma {
 const PROGRAMAS: { readonly [I in IdDeGaleria]: TextoDeUnPrograma } = {
   'maquina-snacks': {
     titulo: 'Máquina de snacks',
-    queObservar: 'Un `switch` elige el producto según el código, un `if` con `||` revisa la cantidad y el dinero, y `return` termina el programa: prueba los cinco datos y mira qué camino toma Java en cada uno.',
+    queObservar: 'Un `switch` elige el producto según el código; dos `if` con `||` revisan que la cantidad y el dinero estén en rango, y un `if` con `else` decide si alcanza el dinero. Cada `return` termina el programa antes de tiempo. Antes de avanzar, ¿qué camino crees que toma Java con cada dato?',
   },
   'u3-hola-mundo': {
     titulo: '«Hola, mundo»',
-    queObservar: 'El programa más corto: una sola instrucción, `System.out.println`, y el texto entre comillas aparece en la consola tal cual.',
+    queObservar: 'El programa más corto: una sola instrucción, `System.out.println`. El texto entre comillas aparece en la consola tal cual, pero sin las comillas.',
   },
   'u3-bienvenida': {
     titulo: 'Bienvenida al curso',
-    queObservar: 'Otro `println`: mira cómo el texto que escribiste entre comillas sale idéntico en la consola, con su salto de línea.',
+    queObservar: 'Otro `println`: el texto entre comillas sale idéntico en la consola y después Java pasa a la línea siguiente.',
   },
   'u3-tipos-basicos-y-constantes': {
     titulo: 'Tipos básicos y constantes',
-    queObservar: 'Cada variable nace con su tipo (`int`, `double`, `boolean`, `char`, `String`); `contador` se crea sin valor y recibe uno después, e `IVA` es `final`: nunca cambia.',
+    queObservar: 'Cada variable nace con su tipo (`int`, `double`, `boolean`, `char`, `String`); `contador` se crea sin valor y recibe uno después, e `IVA` es `final`: Java no deja cambiar su valor.',
   },
   'u3-area-rectangulo-valores-fijos': {
     titulo: 'Área de un rectángulo con valores fijos',
-    queObservar: 'Mira cómo `area` se calcula con `base * altura` y cómo un `double` se imprime siempre con su punto decimal.',
+    queObservar: 'Mira cómo `area` se calcula con `base * altura` y cómo un `double` con valor entero se imprime con `.0`.',
   },
   'u3-area-rectangulo-con-scanner': {
     titulo: 'Área de un rectángulo con datos del teclado',
-    queObservar: 'Java se detiene en cada `nextDouble()` hasta tener el dato; con los datos de ejemplo, 5.0 y 3.0, `area` vale 15.0.',
+    queObservar: 'Java se detiene en cada `nextDouble()` hasta tener el dato; con los datos de ejemplo, 5.0 y 3.0, mira cómo se calcula `area` con lo que leyó.',
   },
   'u3-saludo-con-scanner': {
     titulo: 'Saludo con tu nombre',
@@ -134,35 +137,35 @@ const PROGRAMAS: { readonly [I in IdDeGaleria]: TextoDeUnPrograma } = {
   },
   'u3-cuadrado-de-un-numero': {
     titulo: 'Cuadrado de un número',
-    queObservar: 'El número que se lee del teclado se multiplica por sí mismo: con el dato de ejemplo, 5, imprime 25.',
+    queObservar: 'El número que se lee del teclado se multiplica por sí mismo, y el resultado es lo que se imprime.',
   },
   'u4-precedencia-de-operadores': {
     titulo: 'Precedencia de operadores',
-    queObservar: '`2 + 3 * 4` da 14 y `(2 + 3) * 4` da 20: Java multiplica antes de sumar, a menos que los paréntesis le digan otra cosa.',
+    queObservar: 'Java multiplica antes de sumar, a menos que los paréntesis le digan otra cosa: mira cómo se calculan `2 + 3 * 4` y `(2 + 3) * 4`.',
   },
   'u4-prediccion-precedencia': {
     titulo: 'Predice: la precedencia',
-    queObservar: 'Antes de pulsar «Siguiente», calcula a mano `a + b * 3 - 1` con `a` = 4 y `b` = 2. ¿Qué número crees que imprime? Compáralo con lo que calcula Java.',
+    queObservar: 'Antes de pulsar «Siguiente», calcula a mano `a + b * 3 - 1`, con `a` valiendo 4 y `b` valiendo 2. ¿Qué número crees que imprime? Compáralo con lo que calcula Java.',
   },
   'u4-casting-basico': {
     titulo: 'Conversión de `double` a `int`',
-    queObservar: '`(int)` no redondea: corta los decimales. Mira qué le pasa a 8.75 y a 8.99 al convertirlos.',
+    queObservar: 'La variable se llama `promedioRedondeado`, pero `(int)` no redondea: corta los decimales. Antes de avanzar, predice qué queda de 8.99.',
   },
   'u4-calificacion-final': {
     titulo: 'Calificación final',
-    queObservar: 'El promedio es un `double`, `(int)` lo convierte en entero y la comparación `promedio >= 6.0` guarda `true` o `false` en un `boolean`.',
+    queObservar: 'El promedio es un `double`; `(int)` le corta los decimales para la calificación entera, y el resultado de `promedio >= 6.0`, `true` o `false`, se guarda en el `boolean` `aprobado`.',
   },
   'u4-division-entera-y-modulo': {
     titulo: 'División entera y módulo',
-    queObservar: '`10 / 3` entre enteros da 3, pero `10.0 / 3` da decimales; `%` da el residuo y `numero % 2 == 0` pregunta si un número es par.',
+    queObservar: 'Compara `10 / 3`, entre enteros, con `10.0 / 3`: el tipo de los números decide si hay decimales. `%` da el residuo y `numero % 2 == 0` pregunta si un número es par.',
   },
   'u4-cociente-residuo': {
     titulo: 'Cociente y residuo con datos del teclado',
-    queObservar: 'Con los datos de ejemplo, 17 y 5, `/` da el cociente (3) y `%` da el residuo (2).',
+    queObservar: '`/` da el cociente y `%` da el residuo de dividir los dos números que se leen. Con los datos de ejemplo, 17 y 5, calcula los dos a mano antes de avanzar.',
   },
   'u4-calculadora-vueltos': {
-    titulo: 'Calculadora de vueltos',
-    queObservar: '`/` y `%` trabajan juntos: de 350 pesos salen 3 billetes de $100 y sobran $50.',
+    titulo: 'Calculadora de cambio',
+    queObservar: '`/` y `%` trabajan juntos: `/` cuenta cuántos billetes de $100 caben y `%` da lo que sobra. Con 350 pesos, calcula a mano los dos antes de avanzar.',
   },
   'u4-operador-logico-and': {
     titulo: 'El operador lógico `&&`',
@@ -170,19 +173,19 @@ const PROGRAMAS: { readonly [I in IdDeGaleria]: TextoDeUnPrograma } = {
   },
   'u4-prediccion-or-logico': {
     titulo: 'Predice: el operador lógico `||`',
-    queObservar: 'Con `edad` = 16 y `tienePermiso` en `true`, ¿`puedeEntrar` será `true` o `false`? Decídelo antes de avanzar y compruébalo.',
+    queObservar: '`edad` vale 16 y `tienePermiso` vale `true`: ¿`puedeEntrar` será `true` o `false`? Decídelo antes de avanzar y compruébalo.',
   },
   'u4-verificar-acceso': {
     titulo: 'Verificar el acceso con `||`',
-    queObservar: '`||` da `true` si basta con que uno de sus lados lo sea: con 110 cm de estatura y un adulto que acompaña, mira qué lado decide.',
+    queObservar: 'Con `||` basta con que uno de los dos lados dé `true`. Con 110 cm de estatura y un adulto que acompaña, mira cuál de los dos lados lo da.',
   },
   'u5-if-else-verificar-voto': {
     titulo: '¿Puede votar? (`if` con `else`)',
-    queObservar: 'Con 17 años, `edad >= 18` da `false`: Java se salta el bloque del `if` y ejecuta el del `else`. Solo se ejecuta uno de los dos.',
+    queObservar: 'Con 17 años, ¿Java entra al `if` o al `else`? Mira qué da `edad >= 18`: de los dos bloques, solo se ejecuta uno.',
   },
   'u5-par-o-impar': {
     titulo: 'Par o impar',
-    queObservar: '`numero % 2 == 0` pregunta si el residuo es 0: mira qué rama toma Java con el dato de ejemplo, 8.',
+    queObservar: '`numero % 2 == 0` pregunta si el residuo de dividir entre 2 es 0: mira qué bloque ejecuta Java con el dato de ejemplo, 8.',
   },
   'u5-decision-anidada-licencia': {
     titulo: 'Decisiones anidadas: la licencia',
@@ -190,10 +193,10 @@ const PROGRAMAS: { readonly [I in IdDeGaleria]: TextoDeUnPrograma } = {
   },
   'u5-escalera-else-if-correcta': {
     titulo: 'Escalera de `else if` en orden correcto',
-    queObservar: 'Java revisa de arriba hacia abajo y se queda con la primera condición que da `true`: con 85 salta las de 90 y entra a la de 80.',
+    queObservar: 'Java revisa de arriba hacia abajo y se queda con la primera condición que da `true`. Con 85, ¿en cuál se queda? Fíjate en que las de abajo ya no se revisan.',
   },
   'u5-escalera-else-if-orden-incorrecto': {
-    titulo: 'Escalera con el orden incorrecto',
+    titulo: 'Predice: ¿qué letra le toca al 95?',
     queObservar: 'Con 95, ¿qué letra crees que se imprime? Mira en qué orden revisa Java las condiciones y qué pasa con las que quedan más abajo.',
   },
   'u5-switch-menu-calculadora': {
@@ -201,20 +204,20 @@ const PROGRAMAS: { readonly [I in IdDeGaleria]: TextoDeUnPrograma } = {
     queObservar: '`switch` salta al `case` que coincide con `opcion` y `break` lo termina; con los datos de ejemplo, 1, 10 y 5, suma.',
   },
   'u5-switch-sin-break-fallthrough': {
-    titulo: '`switch` sin `break`',
-    queObservar: 'Con `diaSemana` = 2, ¿cuántos textos crees que se imprimen? Mira qué hace Java al llegar al final de un `case` que no tiene `break`.',
+    titulo: 'Predice: un `switch` sin `break`',
+    queObservar: '`diaSemana` vale 2: ¿cuántos textos crees que se imprimen? Mira qué hace Java al llegar al final de un `case` que no tiene `break`.',
   },
   'u6-contador-de-pares': {
     titulo: 'Contador de números pares',
-    queObservar: 'El `if` dentro del `for` decide en cada vuelta si `contador` sube: mira cómo solo cambia en las vueltas pares.',
+    queObservar: 'El `if` dentro del `for` decide en cada vuelta si `contador` sube: mira cómo solo cambia cuando `i` es par. Antes de avanzar, ¿cuántos pares hay del 1 al 20?',
   },
   'u6-suma-1-a-n': {
     titulo: 'Suma de 1 a n',
-    queObservar: 'El acumulador `suma` crece una vuelta a la vez; con el dato de ejemplo, n = 5, se suman 1, 2, 3, 4 y 5.',
+    queObservar: '`suma` es un acumulador: en cada vuelta le agrega el valor de `i`. `n` vale 5 con el dato de ejemplo: antes de avanzar, calcula cuánto valdrá `suma` al final.',
   },
   'u6-acumulador-promedio-calificaciones': {
     titulo: 'Promedio de cinco calificaciones',
-    queObservar: '`suma` acumula cada calificación que se lee dentro del `for`; al final se divide entre 5 para sacar el promedio.',
+    queObservar: '`calificacion` guarda solo la última calificación que se leyó; `suma` es la que las va juntando todas. Al final, `suma` se divide entre 5 para sacar el promedio.',
   },
   'u6-bandera-numero-negativo': {
     titulo: 'Bandera: ¿hubo un número negativo?',
@@ -222,7 +225,7 @@ const PROGRAMAS: { readonly [I in IdDeGaleria]: TextoDeUnPrograma } = {
   },
   'u6-pedir-numero-positivo': {
     titulo: 'Pedir un número positivo con `do-while`',
-    queObservar: 'El `do-while` revisa al final: pide el número al menos una vez y repite mientras sea `<= 0`. Con los datos de ejemplo, -3, 0 y 7, da tres vueltas.',
+    queObservar: 'El `do-while` revisa al final: pide el número al menos una vez y repite mientras `numero <= 0`. Los datos de ejemplo son -3, 0 y 7: ¿con cuál termina? ¿El 0 hace que repita?',
   },
   'u6-tabla-de-multiplicar': {
     titulo: 'Tabla de multiplicar',
@@ -230,19 +233,19 @@ const PROGRAMAS: { readonly [I in IdDeGaleria]: TextoDeUnPrograma } = {
   },
   'u6-ciclos-anidados-tabla': {
     titulo: 'Ciclos anidados: tabla de 3 × 3',
-    queObservar: 'El ciclo de adentro da todas sus vueltas por cada vuelta del de afuera: mira cuántas vueltas lleva `columna` en cada `fila`.',
+    queObservar: 'Por cada vuelta del `for` de `fila`, el `for` de `columna` da sus 3 vueltas completas. Antes de avanzar: ¿cuántas veces se ejecuta el `print` en total?',
   },
   'u6-error-por-uno': {
-    titulo: 'Error por uno',
+    titulo: 'Predice: tres `for` casi iguales',
     queObservar: 'Tres ciclos casi iguales: ¿cuántas vueltas crees que da cada uno? Compara `<=` con `<` y empezar en 0 o en 1.',
   },
   'u6-prediccion-while-no-ejecuta': {
-    titulo: 'Predice: un `while` que no entra',
-    queObservar: 'Con `contador` = 8 y la condición `contador <= 5`, ¿cuántas vueltas crees que da el `while`? ¿Qué se imprime?',
+    titulo: 'Predice: ¿cuántas vueltas da este `while`?',
+    queObservar: '`contador` empieza en 8 y la condición es `contador <= 5`. ¿Cuántas vueltas crees que da el `while`? ¿Qué se imprime?',
   },
   'u6-ciclo-infinito-demo': {
-    titulo: 'Ciclo infinito',
-    queObservar: 'Mira qué variable de la condición nunca cambia: por eso el ciclo no termina y el visualizador lo detiene por seguridad.',
+    titulo: 'Predice: ¿cuándo termina este `while`?',
+    queObservar: '¿Cuántas líneas crees que imprime este programa? Avanza unas vueltas y mira el panel de variables: ¿qué tendría que cambiar para que `contador <= 5` dé `false`?',
   },
   'u7-proyecto-cajero-automatico': {
     titulo: 'Proyecto: cajero automático',
@@ -261,13 +264,16 @@ const DEMOSTRACIONES: readonly IdDeGaleria[] = [
   'u4-prediccion-precedencia',
 ];
 
-/** Los cinco datos de ejemplo de la máquina de snacks: el nombre del archivo del corpus (sin extensión) y qué pasa con esos datos, verificado contra lo que imprimió el JDK. */
+/**
+ * Los cinco datos de ejemplo de la máquina de snacks: el nombre del archivo del corpus (sin extensión) y QUÉ datos se le dan al programa, verificado contra cada `.entrada.txt`. No dicen qué resulta:
+ * quien ve «Código a1, 2 piezas, paga con $50» todavía puede predecir el camino que toma Java (G2 del maestro, panel R0).
+ */
 const MUESTRAS_DE_LA_MAQUINA_DE_SNACKS: readonly { readonly archivo: string; readonly descripcion: string }[] = [
-  { archivo: 'maquina-snacks-a1-2-50', descripcion: 'Compra completa: 2 papas pagadas con $50 y con cambio' },
-  { archivo: 'maquina-snacks-b2-3-40', descripcion: 'No alcanza el dinero: 3 refrescos cuestan $66 y se pagan $40' },
-  { archivo: 'maquina-snacks-b3', descripcion: 'Producto agotado: el jugo B3' },
-  { archivo: 'maquina-snacks-z9', descripcion: 'Código inválido: Z9 no existe' },
-  { archivo: 'maquina-snacks-a2-5', descripcion: 'Cantidad no válida: se piden 5 y solo se aceptan de 1 a 3' },
+  { archivo: 'maquina-snacks-a1-2-50', descripcion: 'Código a1, 2 piezas, paga con $50' },
+  { archivo: 'maquina-snacks-b2-3-40', descripcion: 'Código b2, 3 piezas, paga con $40' },
+  { archivo: 'maquina-snacks-b3', descripcion: 'Código b3' },
+  { archivo: 'maquina-snacks-z9', descripcion: 'Código z9' },
+  { archivo: 'maquina-snacks-a2-5', descripcion: 'Código a2 y 5 piezas' },
 ];
 
 const TITULOS_DE_UNIDAD: Readonly<Record<UnidadDeGaleria, string>> = {
@@ -278,13 +284,18 @@ const TITULOS_DE_UNIDAD: Readonly<Record<UnidadDeGaleria, string>> = {
   7: 'Unidad 7 · Proyecto',
 };
 
+/** Un atributo accesible es texto plano: las comillas invertidas que marcan código en un título no se leen, así que se quitan. */
+function sinComillasInvertidas(texto: string): string {
+  return texto.replaceAll('`', '');
+}
+
 export const textosGaleria = {
   titulo: (): string => 'Ejemplos',
   ayuda: (): string => 'Elige un programa: se abre en «Paso a paso», listo para que lo veas ejecutarse una instrucción a la vez.',
   cargando: (): string => 'Cargando los ejemplos…',
   noSeCargaron: (): string => 'No se pudieron cargar los ejemplos. Recarga la página para intentarlo otra vez.',
   seccion: {
-    paraEmpezar: (): string => 'Para empezar',
+    ejercicioDeLaClase: (): string => 'Ejercicio de la clase',
     unidad: (unidad: UnidadDeGaleria): string => TITULOS_DE_UNIDAD[unidad],
   },
   programa: (id: IdDeGaleria): TextoDeUnPrograma => PROGRAMAS[id],
@@ -292,9 +303,9 @@ export const textosGaleria = {
   queObservar: (): string => 'Qué observar',
   verPasoAPaso: (): string => 'Ver paso a paso',
   conMisDatos: (): string => 'Con mis datos',
-  /** El nombre accesible de un botón de la galería: la acción y el programa, para que 36 «Ver paso a paso» no suenen todos igual. */
-  nombreDeLaAccion: (accion: string, titulo: string): string => `${accion}: ${titulo}`,
-  datosDeEjemplo: (datos: string): string => `Datos de ejemplo: ${datos}`,
+  /** El nombre accesible de un botón de la galería: la acción y el programa, para que 36 «Ver paso a paso» no suenen todos igual. El título puede traer código entre comillas invertidas: aquí va sin ellas. */
+  nombreDeLaAccion: (accion: string, titulo: string): string => `${accion}: ${sinComillasInvertidas(titulo)}`,
+  datosDeEjemplo: (datos: string): string => `Datos de ejemplo: ${sinComillasInvertidas(datos)}`,
   demostraciones: DEMOSTRACIONES,
   muestrasDeLaMaquinaDeSnacks: MUESTRAS_DE_LA_MAQUINA_DE_SNACKS,
 };

@@ -5,8 +5,11 @@ import type { EstadoDeLaEjecucion } from './robot.ts';
 
 export type IdDePuerta = 'leer-un-tema' | 'ver-un-ejemplo' | 'probar-mi-programa';
 
-/** El accesorio del robot que ayuda en ese destino: la puerta muestra el accesorio (el libro, el puntero, la lupa), no tres caras que compitan por la atención del principiante. */
-export type AccesorioDePuerta = 'libro-abierto' | 'puntero' | 'lupa';
+/**
+ * El dibujo de cada puerta: el accesorio del robot que ayuda en ese destino (el libro, el puntero), no tres caras que compitan por la atención del principiante. «Probar mi programa» lleva una hoja con
+ * código y un lápiz que no es de ningún robot: la lupa es del revisor y será la marca de trampa (panel R0, diseñador).
+ */
+export type AccesorioDePuerta = 'libro-abierto' | 'puntero' | 'hoja-con-lapiz';
 
 export interface Puerta {
   readonly id: IdDePuerta;
@@ -19,7 +22,8 @@ export type AccionDeFin = 'anterior' | 'probar-con-otros-datos' | 'modificar-el-
 export type Ranura =
   | { readonly tipo: 'puertas'; readonly puertas: readonly Puerta[] }
   | { readonly tipo: 'navegacion'; readonly alPrincipio: boolean; readonly alFinal: boolean }
-  | { readonly tipo: 'fin'; readonly acciones: readonly AccionDeFin[] }
+  /** `principal`: la acción que se destaca y recibe el foco (panel R0: «Probar con otros datos» solo si el programa lee datos; en un ciclo que el visualizador detuvo, «Modificar el programa»). */
+  | { readonly tipo: 'fin'; readonly acciones: readonly AccionDeFin[]; readonly principal: AccionDeFin }
   | { readonly tipo: 'ninguna' };
 
 export interface DestinosDelSaludo {
@@ -32,7 +36,7 @@ export function puertasDelSaludo({ hayTemasPublicados }: DestinosDelSaludo): rea
   return [
     ...(hayTemasPublicados ? [{ id: 'leer-un-tema', accesorio: 'libro-abierto' } as const] : []),
     { id: 'ver-un-ejemplo', accesorio: 'puntero' },
-    { id: 'probar-mi-programa', accesorio: 'lupa' },
+    { id: 'probar-mi-programa', accesorio: 'hoja-con-lapiz' },
   ];
 }
 
@@ -42,9 +46,20 @@ export interface EntradaDeLaRanura extends DestinosDelSaludo {
   readonly paso: number;
   /** Cuántos pasos tiene la traza hasta ahora. */
   readonly total: number;
+  /** ¿El programa leyó datos (algún paso consumió entrada, preparada o tecleada)? Solo entonces tiene sentido «Probar con otros datos» (panel R0). */
+  readonly leeDatos: boolean;
 }
 
-export function derivarRanura({ ejecucion, paso, total, hayTemasPublicados }: EntradaDeLaRanura): Ranura {
+/** Las causas con que el visualizador detiene un ciclo (o un texto) que no termina: probar otros datos no lo arregla, lo que hay que hacer es corregir el programa. */
+const DETENCIONES_POR_SEGURIDAD: ReadonlySet<string> = new Set(['limite-pasos', 'limite-tiempo', 'limite-caracteres']);
+
+function accionesDelFin(total: number, leeDatos: boolean, causa: string): Ranura {
+  const principal: AccionDeFin = leeDatos && !DETENCIONES_POR_SEGURIDAD.has(causa) ? 'probar-con-otros-datos' : 'modificar-el-programa';
+  const acciones: AccionDeFin[] = [...(total > 0 ? (['anterior'] as const) : []), ...(leeDatos ? (['probar-con-otros-datos'] as const) : []), 'modificar-el-programa'];
+  return { tipo: 'fin', acciones, principal };
+}
+
+export function derivarRanura({ ejecucion, paso, total, hayTemasPublicados, leeDatos }: EntradaDeLaRanura): Ranura {
   switch (ejecucion.estado) {
     case 'saludo':
       return { tipo: 'puertas', puertas: puertasDelSaludo({ hayTemasPublicados }) };
@@ -54,7 +69,7 @@ export function derivarRanura({ ejecucion, paso, total, hayTemasPublicados }: En
       return { tipo: 'ninguna' };
     case 'terminada':
       // Solo en el ÚLTIMO paso de un programa que terminó: ahí lo que sigue ya no es otro paso sino probar otra cosa. Sin pasos (cero) no hay a dónde volver.
-      if (paso >= total) return { tipo: 'fin', acciones: total > 0 ? ['anterior', 'probar-con-otros-datos', 'modificar-el-programa'] : ['probar-con-otros-datos', 'modificar-el-programa'] };
+      if (paso >= total) return accionesDelFin(total, leeDatos, ejecucion.fin.causa);
       return { tipo: 'navegacion', alPrincipio: paso <= 0, alFinal: false };
     case 'calculando':
     case 'esperando-entrada':

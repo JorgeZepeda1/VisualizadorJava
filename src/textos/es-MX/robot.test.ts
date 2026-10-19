@@ -21,7 +21,10 @@ const CAUSAS: readonly CausaFin[] = [
 describe('textosRobot: lo que dice el robot fuera de la explicación de un paso', () => {
   // El saludo con las puertas (S0) vive en `pantalla.ts` (R0.4); esto es lo que dice el robot mientras el alumno escribe o pega su programa.
   it('mientras el alumno escribe su programa, dice qué hacer para verlo paso a paso', () => {
-    expect(textosRobot.sinEjecutar()).toBe('Cuando tu programa esté listo, pulsa «Visualizar» y te muestro cómo lo ejecuta Java, paso a paso.');
+    // Texto del maestro (panel R0): primero dice QUÉ hacer aquí (escribir o pegar, incluso copiado de NetBeans) y luego cómo se ve.
+    expect(textosRobot.sinEjecutar()).toBe(
+      'Escribe o pega aquí tu programa (puedes copiarlo de NetBeans). Cuando esté listo, pulsa «Visualizar» y te muestro cómo lo ejecuta Java, paso a paso.',
+    );
   });
 
   it('si el alumno cambia el programa después de un aviso, el robot ya no repite el error: invita a revisar otra vez (C4 del panel 1)', () => {
@@ -46,6 +49,27 @@ describe('textosRobot: lo que dice el robot fuera de la explicación de un paso'
     );
   });
 
+  // V7 del maestro (panel R0): si el programa trae datos preparados, el paso 0 los nombra para que el alumno pueda predecir con ellos. Los datos los pone quien llama (la entrada preparada de la presentación).
+  it('V7, en el paso 0 de un programa que lee datos dice cuáles va a leer y sigue pidiendo predecir', () => {
+    expect(textosRobot.alInicio(5, ['-3', '0', '7'])).toBe(
+      'Todavía no se ejecuta nada. Este programa va a leer estos datos: -3, 0 y 7. Antes de empezar, lee el programa y anota qué crees que va a aparecer en la consola. Luego pulsa «Siguiente» y lo comprobamos desde la línea 5.',
+    );
+    expect(textosRobot.alInicio(null, ['a1', '2', '50'])).toBe(
+      'Todavía no se ejecuta nada. Este programa va a leer estos datos: a1, 2 y 50. Antes de empezar, lee el programa y anota qué crees que va a aparecer en la consola. Luego pulsa «Siguiente» para empezar.',
+    );
+  });
+
+  it('V7: con un solo dato lo dice en singular, con dos los une con «y» y con muchos separa con comas', () => {
+    expect(textosRobot.alInicio(7, ['17'])).toContain('Este programa va a leer este dato: 17. Antes de empezar');
+    expect(textosRobot.alInicio(7, ['5.0', '3.0'])).toContain('Este programa va a leer estos datos: 5.0 y 3.0. Antes de empezar');
+    expect(textosRobot.alInicio(7, ['1', '2', '500', '3', '2000', '3', '300', '9', '4'])).toContain('estos datos: 1, 2, 500, 3, 2000, 3, 300, 9 y 4. Antes de empezar');
+  });
+
+  it('V7: sin datos preparados (el alumno escribe los suyos, o el programa no lee) no menciona ninguno', () => {
+    expect(textosRobot.alInicio(7, [])).toBe(textosRobot.alInicio(7));
+    expect(textosRobot.alInicio(7, [])).not.toContain('va a leer');
+  });
+
   it('etiqueta cada explicación con su línea («Línea 12»)', () => {
     expect(textosRobot.etiquetaDeLinea(12)).toBe('Línea 12');
   });
@@ -59,8 +83,27 @@ describe('textosRobot: lo que dice el robot fuera de la explicación de un paso'
   });
 
   it('el resumen de un programa que terminó bien cuenta los pasos, en singular y en plural', () => {
-    expect(textosRobot.resumenDelFin.terminado({ pasos: 26 })).toBe('Así terminó: sin errores, en 26 pasos.');
-    expect(textosRobot.resumenDelFin.terminado({ pasos: 1 })).toBe('Así terminó: sin errores, en 1 paso.');
+    expect(textosRobot.resumenDelFin.terminado({ pasos: 26 })).toContain('Así terminó: sin errores, en 26 pasos.');
+    expect(textosRobot.resumenDelFin.terminado({ pasos: 1 })).toContain('Así terminó: sin errores, en 1 paso.');
+  });
+
+  // V6 del maestro (panel R0): el fin CIERRA la predicción del paso 0 («anota qué crees que va a aparecer»): pide comparar y dice a dónde volver si algo no coincide.
+  it('V6, el resumen de un programa que terminó bien cierra la predicción y manda a «Anterior» si algo no coincide', () => {
+    expect(textosRobot.resumenDelFin.terminado({ pasos: 26 })).toBe(
+      'Así terminó: sin errores, en 26 pasos. ¿La consola muestra lo que anotaste al principio? Si algo no coincide, regresa con «Anterior» al paso donde Java hizo otra cosa.',
+    );
+  });
+
+  it('V6: un programa sin pasos (un `main` vacío) no manda a «Anterior»: no hay a dónde volver', () => {
+    expect(textosRobot.resumenDelFin.terminado({ pasos: 0 })).toBe('Así terminó: sin errores, en 0 pasos.');
+  });
+
+  it('V6: solo cierra la predicción cuando el programa terminó bien (una excepción o un límite no la piden)', () => {
+    for (const causa of CAUSAS.filter((c) => c !== 'terminado')) expect(textosRobot.resumenDelFin[causa]({ pasos: 4 }), causa).not.toContain('anotaste');
+  });
+
+  it('el resumen de un programa que terminó bien dice la cuenta de pasos, en singular y en plural', () => {
+    expect(textosRobot.resumenDelFin.terminado({ pasos: 2 })).toMatch(/^Así terminó: sin errores, en 2 pasos\./);
   });
 
   it('el resumen de una excepción manda a la consola, donde está el mensaje de Java', () => {

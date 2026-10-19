@@ -25,6 +25,8 @@ const DECLARACION: Paso = paso({
   explicacion: { clave: 'declaracion-con-valor', datos: { nombre: 'edad', tipo: 'int', expresion: '17', sustituida: '17', valor: '17' } },
   cambios: [{ ranura: 'edad', anterior: undefined, nuevo: 17 }],
 });
+/** Un programa que LEE un dato: su primer paso consumió entrada (`Paso.entrada`), preparada o tecleada. */
+const LECTURA: Paso = { ...DECLARACION, entrada: { cursor: 3 } };
 const IMPRESION: Paso = paso({
   clase: 'impresion',
   nodo: 1,
@@ -49,6 +51,10 @@ const compilado = (id: number): MensajeTrabajadorAUi => ({ tipo: 'compilado', id
 
 function trabajadorQueTermina(): void {
   trabajadorQueResponde((id) => [compilado(id), { tipo: 'pasos', id, desde: 0, pasos: [DECLARACION, IMPRESION] }, { tipo: 'fin', id, fin: { causa: 'terminado' } }]);
+}
+
+function trabajadorQueLeeYTermina(): void {
+  trabajadorQueResponde((id) => [compilado(id), { tipo: 'pasos', id, desde: 0, pasos: [LECTURA, IMPRESION] }, { tipo: 'fin', id, fin: { causa: 'terminado' } }]);
 }
 
 async function pulsar(nombre: string | RegExp): Promise<void> {
@@ -99,7 +105,7 @@ describe('<Visualizador/> — la primera visita: el saludo con tres puertas (REQ
 
     await vi.waitFor(() => expect(document.activeElement).toBe(document.querySelector('.cm-content')));
     expect(screen.queryByRole('button', { name: 'Ver un ejemplo paso a paso' })).toBeNull();
-    expect(globo()).toContain('Cuando tu programa esté listo');
+    expect(globo()).toContain('Cuando esté listo, pulsa «Visualizar»');
   });
 
   it('el robot que habla es uno solo (el paso a paso) y su nombre está bajo la figura', () => {
@@ -164,6 +170,49 @@ describe('<Visualizador/> — la navegación y los ajustes de la clase (REQ-PANT
     // La distribución de proyector: la tabla de variables sin «Tipo» y el código con ajuste de línea (a 24 px una línea de 53 caracteres no cabe sin partirla).
     expect(screen.getAllByRole('columnheader').map((columna) => columna.textContent)).toEqual(['Nombre', 'Valor']);
     expect(document.querySelector('.cm-content')?.classList.contains('cm-lineWrapping')).toBe(true);
+  });
+
+  // Panel R0 (diseñador, «Antes de publicar» 2): en el proyector la consola no cabía en la ventana (9 de 26 pasos a 1280×720). Con el proyector encendido va DEBAJO del código, como la ventana «Output» de
+  // NetBeans; apagado, queda en la columna derecha como siempre. La traza y lo que la consola ya mostró no cambian.
+  it('con el proyector encendido la consola va debajo del código (tras los controles) y, apagado, en la columna derecha', async () => {
+    render(<Visualizador />);
+    await pulsar('Visualizar');
+    await pulsar(/siguiente/i);
+    await pulsar(/siguiente/i);
+    expect(screen.getByTestId('consola').textContent).toContain('Hola');
+    expect(document.querySelector('.columna-estado .zona-consola')).not.toBeNull();
+    expect(document.querySelector('.columna-codigo .zona-consola')).toBeNull();
+
+    await pulsar('Ajustes de la clase');
+    await userEvent.setup().click(screen.getByRole('switch', { name: /Modo proyector/ }));
+
+    expect(document.querySelector('.columna-estado .zona-consola')).toBeNull();
+    const enElCodigo = document.querySelector('.columna-codigo .zona-consola');
+    expect(enElCodigo).not.toBeNull();
+    expect(document.querySelector('.columna-codigo .barra-controles')?.nextElementSibling).toBe(enElCodigo);
+    expect(screen.getByRole('heading', { name: 'Consola' })).toBeTruthy();
+    expect(screen.getByTestId('consola').textContent).toContain('Hola');
+    expect(screen.getAllByText('Paso 2 de 2').length).toBeGreaterThan(0);
+
+    await userEvent.setup().click(screen.getByRole('switch', { name: /Modo proyector/ }));
+    expect(document.querySelector('.columna-estado .zona-consola')).not.toBeNull();
+    expect(document.querySelector('.columna-codigo .zona-consola')).toBeNull();
+  });
+
+  // Panel R0 (diseñador, «Antes de publicar» 1): robot, globo y ranura son UNA zona (la que se fija arriba de la columna derecha); el panel de condición y la cadena de sustitución van aparte, debajo.
+  it('el robot, el globo y la ranura son una sola zona, y lo que se desplaza (condición, variables, consola) queda fuera de ella', async () => {
+    render(<Visualizador />);
+    await pulsar('Visualizar');
+    await pulsar(/siguiente/i);
+
+    const zona = document.querySelector('.columna-estado > .zona-explicacion');
+    expect(zona).not.toBeNull();
+    expect(zona?.querySelector('[data-personaje]')).not.toBeNull();
+    expect(zona?.querySelector('[data-testid="globo-del-robot"]')).not.toBeNull();
+    expect(zona?.querySelector('[data-testid="ranura-de-acciones"]')).not.toBeNull();
+    expect(zona?.querySelector('.panel-condicion, .cadena-de-sustitucion')).toBeNull();
+    expect(zona?.nextElementSibling?.classList.contains('zona-condicion')).toBe(true);
+    expect(zona?.querySelector('[data-testid="consola"]')).toBeNull();
   });
 
   it('la velocidad de la reproducción se cambia desde los ajustes, ya no desde la barra de controles', async () => {
@@ -287,16 +336,43 @@ describe('<Visualizador/> — un dueño por dato y pistas de lectura (REQ-PANT-0
 });
 
 describe('<Visualizador/> — el fin del recorrido ofrece qué sigue (REQ-PANT-007)', () => {
-  it('en el último paso de un programa que terminó la ranura ofrece «Probar con otros datos» y «Modificar el programa»', async () => {
+  it('en el último paso de un programa que lee datos la ranura ofrece «Probar con otros datos» (principal) y «Modificar el programa»', async () => {
+    trabajadorQueLeeYTermina();
     render(<Visualizador />);
     await pulsar('Visualizar');
     await pulsar(/^fin\b/i);
 
     const acciones = within(laRanura()).getAllByRole('button').map((boton) => boton.textContent);
     expect(acciones).toEqual(['◀ Anterior', 'Probar con otros datos', 'Modificar el programa']);
+    expect(within(laRanura()).getByRole('button', { name: 'Probar con otros datos' }).className).toContain('boton-principal');
   });
 
-  it('al llegar al fin con «Siguiente» el foco no se pierde: pasa a la primera acción del fin', async () => {
+  // Panel R0 (diseñador): si el programa no lee nada, no hay «otros datos» que probar; lo que sigue es modificarlo.
+  it('en el último paso de un programa que NO lee datos no hay «Probar con otros datos» y «Modificar el programa» es el principal', async () => {
+    render(<Visualizador />);
+    await pulsar('Visualizar');
+    await pulsar(/^fin\b/i);
+
+    const acciones = within(laRanura()).getAllByRole('button').map((boton) => boton.textContent);
+    expect(acciones).toEqual(['◀ Anterior', 'Modificar el programa']);
+    expect(within(laRanura()).getByRole('button', { name: 'Modificar el programa' }).className).toContain('boton-principal');
+  });
+
+  it('un ciclo que el visualizador detuvo: aunque lea datos, lo principal es «Modificar el programa» y ahí cae el foco', async () => {
+    trabajadorQueResponde((id) => [compilado(id), { tipo: 'pasos', id, desde: 0, pasos: [LECTURA, IMPRESION] }, { tipo: 'fin', id, fin: { causa: 'limite-pasos' } }]);
+    render(<Visualizador />);
+    await pulsar('Visualizar');
+    await pulsar(/siguiente/i);
+    await pulsar(/siguiente/i);
+
+    const principal = within(laRanura()).getByRole('button', { name: 'Modificar el programa' });
+    expect(principal.className).toContain('boton-principal');
+    expect(within(laRanura()).getByRole('button', { name: 'Probar con otros datos' }).className).not.toContain('boton-principal');
+    await vi.waitFor(() => expect(document.activeElement).toBe(principal));
+  });
+
+  it('al llegar al fin con «Siguiente» el foco no se pierde: pasa a la acción principal del fin', async () => {
+    trabajadorQueLeeYTermina();
     render(<Visualizador />);
     await pulsar('Visualizar');
     await pulsar(/siguiente/i);
@@ -305,6 +381,7 @@ describe('<Visualizador/> — el fin del recorrido ofrece qué sigue (REQ-PANT-0
   });
 
   it('«Probar con otros datos» vuelve a visualizar desde el paso 0, con la entrada del alumno y no la preparada', async () => {
+    trabajadorQueLeeYTermina();
     render(<Visualizador />);
     await pulsar('Visualizar');
     await pulsar(/^fin\b/i);

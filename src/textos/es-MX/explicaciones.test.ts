@@ -33,19 +33,30 @@ describe('textosExplicacion: una frase por clave', () => {
   it('una lectura del teclado (`int edad = sc.nextInt();`) dice lo que se escribió, sin «calcular» nada', () => {
     expect(
       frase({ clave: 'declaracion-con-valor', datos: { nombre: 'edad', tipo: 'int', expresion: 'sc.nextInt()', sustituida: 'sc.nextInt()', valor: '25', leeDelTeclado: true } }),
-    ).toBe('Java lee lo que se escribió en el teclado con `sc.nextInt()`: 25. Después crea la variable `edad` de tipo int y le guarda 25.');
+    ).toBe('Java lee con `sc.nextInt()` lo que se escribió y obtiene 25. Después crea la variable `edad` de tipo int y le guarda 25.');
     expect(
       frase({ clave: 'declaracion-con-valor', datos: { nombre: 'nombre', tipo: 'String', expresion: 'sc.nextLine()', sustituida: 'sc.nextLine()', valor: '"Ana"', leeDelTeclado: true } }),
-    ).toBe('Java lee lo que se escribió en el teclado con `sc.nextLine()`: "Ana". Después crea la variable `nombre` de tipo String y le guarda "Ana".');
+    ).toBe('Java lee con `sc.nextLine()` lo que se escribió y obtiene "Ana". Después crea la variable `nombre` de tipo String y le guarda "Ana".');
   });
 
   it('una asignación desde el teclado (`x = sc.nextInt();`), con y sin valor anterior', () => {
     expect(
       frase({ clave: 'asignacion', datos: { nombre: 'x', expresion: 'sc.nextInt()', sustituida: 'sc.nextInt()', valor: '9', anterior: null, leeDelTeclado: true } }),
-    ).toBe('Java lee lo que se escribió en el teclado con `sc.nextInt()`: 9. Después guarda 9 en `x`.');
+    ).toBe('Java lee con `sc.nextInt()` lo que se escribió y obtiene 9. Después guarda 9 en `x`.');
     expect(
       frase({ clave: 'asignacion', datos: { nombre: 'x', expresion: 'sc.nextInt()', sustituida: 'sc.nextInt()', valor: '9', anterior: '4', leeDelTeclado: true } }),
-    ).toBe('Java lee lo que se escribió en el teclado con `sc.nextInt()`: 9. Después guarda 9 en `x`; antes valía 4.');
+    ).toBe('Java lee con `sc.nextInt()` lo que se escribió y obtiene 9. Después guarda 9 en `x`; antes valía 4.');
+  });
+
+  // A3 del panel R0 (experto en Java): con `nextDouble()` y un `8` tecleado, «lo que se escribió en el teclado: 8.0» afirmaba que el alumno tecleó «8.0». Lo que Java obtiene (8.0) no es lo que se escribió (8):
+  // la frase ya no los iguala. El dato sale de la entrada; la conversión es del motor.
+  it('A3: `nextDouble()` con un entero tecleado no afirma que se escribió «8.0»: dice lo que Java obtiene', () => {
+    expect(
+      frase({ clave: 'declaracion-con-valor', datos: { nombre: 'nota', tipo: 'double', expresion: 'teclado.nextDouble()', sustituida: 'teclado.nextDouble()', valor: '8.0', leeDelTeclado: true } }),
+    ).toBe('Java lee con `teclado.nextDouble()` lo que se escribió y obtiene 8.0. Después crea la variable `nota` de tipo double y le guarda 8.0.');
+    expect(
+      frase({ clave: 'asignacion', datos: { nombre: 'nota', expresion: 'teclado.nextDouble()', sustituida: 'teclado.nextDouble()', valor: '8.0', anterior: '7.5', leeDelTeclado: true } }),
+    ).toBe('Java lee con `teclado.nextDouble()` lo que se escribió y obtiene 8.0. Después guarda 8.0 en `nota`; antes valía 7.5.');
   });
 
   it('una expresión con una lectura mezclada con otras cosas se calcula como siempre, y como el Scanner no se sustituye no dice «un Scanner.»', () => {
@@ -83,6 +94,63 @@ describe('textosExplicacion: una frase por clave', () => {
     ).toBe('Java crea estas variables: `a` (int) con 1 y `b` (int) sin valor todavía.');
   });
 
+  // A1 del panel R0 (experto en Java): la lista se armaba con una expresión regular que cambiaba la ÚLTIMA coma del texto, y un `String` con comas ("Hola, mundo") salía como «Hola y mundo».
+  it('A1: un String con comas no se toca (`String s = "x", t = "Hola, mundo";`)', () => {
+    expect(
+      frase({
+        clave: 'declaracion-varias',
+        datos: {
+          variables: [
+            { nombre: 's', tipo: 'String', valor: '"x"' },
+            { nombre: 't', tipo: 'String', valor: '"Hola, mundo"' },
+          ],
+        },
+      }),
+    ).toBe('Java crea estas variables: `s` (String) con "x" y `t` (String) con "Hola, mundo".');
+    expect(
+      frase({
+        clave: 'declaracion-varias',
+        datos: {
+          variables: [
+            { nombre: 'w', tipo: 'String', valor: '"a"' },
+            { nombre: 'x', tipo: 'String', valor: '"b, c, d"' },
+          ],
+        },
+      }),
+    ).toBe('Java crea estas variables: `w` (String) con "a" y `x` (String) con "b, c, d".');
+  });
+
+  it('A1: con tres o más variables separa con comas y une las dos últimas con «y»; con una sola no agrega nada', () => {
+    expect(
+      frase({
+        clave: 'declaracion-varias',
+        datos: {
+          variables: [
+            { nombre: 'a', tipo: 'int', valor: '1' },
+            { nombre: 'b', tipo: 'String', valor: '"uno, dos"' },
+            { nombre: 'c', tipo: 'int', valor: null },
+          ],
+        },
+      }),
+    ).toBe('Java crea estas variables: `a` (int) con 1, `b` (String) con "uno, dos" y `c` (int) sin valor todavía.');
+    expect(frase({ clave: 'declaracion-varias', datos: { variables: [{ nombre: 'a', tipo: 'int', valor: '1' }] } })).toBe('Java crea estas variables: `a` (int) con 1.');
+  });
+
+  // V1 del maestro: un valor `boolean` es código, igual que en las condiciones. Un String "true" lleva comillas y no se confunde.
+  it('V1: declaración de varias variables con un boolean', () => {
+    expect(
+      frase({
+        clave: 'declaracion-varias',
+        datos: {
+          variables: [
+            { nombre: 'activo', tipo: 'boolean', valor: 'true' },
+            { nombre: 'texto', tipo: 'String', valor: '"true"' },
+          ],
+        },
+      }),
+    ).toBe('Java crea estas variables: `activo` (boolean) con `true` y `texto` (String) con "true".');
+  });
+
   it('asignación literal, con cálculo y sin valor anterior', () => {
     expect(frase({ clave: 'asignacion', datos: { nombre: 'x', expresion: '6', sustituida: '6', valor: '6', anterior: '5' } })).toBe(
       'Java guarda 6 en `x`; antes valía 5.',
@@ -92,6 +160,37 @@ describe('textosExplicacion: una frase por clave', () => {
     );
     expect(frase({ clave: 'asignacion', datos: { nombre: 'y', expresion: '3', sustituida: '3', valor: '3', anterior: null } })).toBe(
       'Java guarda 3 en `y`.',
+    );
+  });
+
+  // V1 del maestro (panel R0): `true` y `false` como código también en los VALORES (14 frases de 9 programas del curso salían con la palabra suelta).
+  it('V1: un valor boolean es código al guardarlo, calcularlo y reasignarlo', () => {
+    expect(frase({ clave: 'declaracion-con-valor', datos: { nombre: 'activo', tipo: 'boolean', expresion: 'false', sustituida: 'false', valor: 'false' } })).toBe(
+      'Java crea la variable `activo` de tipo boolean y le guarda `false`.',
+    );
+    expect(
+      frase({ clave: 'declaracion-con-valor', datos: { nombre: 'aprobado', tipo: 'boolean', expresion: 'promedio >= 6.0', sustituida: '8.5 >= 6.0', valor: 'true' } }),
+    ).toBe('Java calcula `promedio >= 6.0`: con los valores de ahora es `8.5 >= 6.0`, que da `true`. Después crea la variable `aprobado` de tipo boolean y le guarda `true`.');
+    expect(frase({ clave: 'declaracion-con-valor', datos: { nombre: 'a', tipo: 'boolean', expresion: '3 > 5', sustituida: '3 > 5', valor: 'false' } })).toBe(
+      'Java calcula `3 > 5`, que da `false`. Después crea la variable `a` de tipo boolean y le guarda `false`.',
+    );
+    expect(frase({ clave: 'asignacion', datos: { nombre: 'seEncontroNegativo', expresion: 'true', sustituida: 'true', valor: 'true', anterior: 'false' } })).toBe(
+      'Java guarda `true` en `seEncontroNegativo`; antes valía `false`.',
+    );
+    expect(frase({ clave: 'asignacion', datos: { nombre: 'ok', expresion: 'a && b', sustituida: 'true && false', valor: 'false', anterior: null } })).toBe(
+      'Java calcula `a && b`: con los valores de ahora es `true && false`, que da `false`. Después guarda `false` en `ok`.',
+    );
+    expect(frase({ clave: 'asignacion', datos: { nombre: 'ok', expresion: 'teclado.nextBoolean()', sustituida: 'teclado.nextBoolean()', valor: 'true', anterior: 'false', leeDelTeclado: true } })).toBe(
+      'Java lee con `teclado.nextBoolean()` lo que se escribió y obtiene `true`. Después guarda `true` en `ok`; antes valía `false`.',
+    );
+  });
+
+  it('V1: un String "true" o "false" lleva comillas y no se convierte en código', () => {
+    expect(frase({ clave: 'declaracion-con-valor', datos: { nombre: 's', tipo: 'String', expresion: '"true"', sustituida: '"true"', valor: '"true"' } })).toBe(
+      'Java crea la variable `s` de tipo String y le guarda "true".',
+    );
+    expect(frase({ clave: 'asignacion', datos: { nombre: 's', expresion: '"false"', sustituida: '"false"', valor: '"false"', anterior: '"true"' } })).toBe(
+      'Java guarda "false" en `s`; antes valía "true".',
     );
   });
 
@@ -159,7 +258,7 @@ describe('textosExplicacion: una frase por clave', () => {
         clave: 'declaracion-con-valor',
         datos: { nombre: 'x', tipo: 'double', expresion: 'sc.nextInt()', sustituida: 'sc.nextInt()', valor: '5.0', leeDelTeclado: true, conversion: { tipo: 'double', antes: '5' } },
       }),
-    ).toBe('Java lee lo que se escribió en el teclado con `sc.nextInt()`: 5. Después crea la variable `x` de tipo double. Como `x` es `double`, guarda 5.0.');
+    ).toBe('Java lee con `sc.nextInt()` lo que se escribió y obtiene 5. Después crea la variable `x` de tipo double. Como `x` es `double`, guarda 5.0.');
   });
 
   it('C1: una asignación que convierte (`g = a / b;`) dice el cálculo y luego lo que se guarda, con y sin valor anterior', () => {
@@ -322,6 +421,37 @@ describe('textosExplicacion: una frase por clave', () => {
     );
   });
 
+  // V2 del maestro (panel R0): una condición que es UNA variable boolean no necesita «queda `true`, que da `true`»; basta decir que vale `true`.
+  it('V2: una condición que es una sola variable boolean dice «que vale `true`», sin repetir el valor', () => {
+    const licencia = { condicion: 'tieneLicencia', sustituida: 'true', lecturas: [{ nombre: 'tieneLicencia', valor: 'true' }] };
+    expect(frase({ clave: 'condicion-if', datos: { ...licencia, resultado: true, tieneSino: false } })).toBe('Java revisa `tieneLicencia`, que vale `true`. Entra al `if`.');
+    expect(frase({ clave: 'condicion-if', datos: { ...licencia, sustituida: 'false', resultado: false, tieneSino: true } })).toBe(
+      'Java revisa `tieneLicencia`, que vale `false`. Se salta el `if` y entra al `else`.',
+    );
+  });
+
+  it('V2: en los ciclos, la primera revisión dice «que vale» y las siguientes «que ahora vale»; el do-while ya trae «Ahora» en el prefijo', () => {
+    const continuar = { ciclo: 'while', condicion: 'continuar', sustituida: 'true', lecturas: [{ nombre: 'continuar', valor: 'true' }] } as const;
+    expect(frase({ clave: 'condicion-ciclo', datos: { ...continuar, resultado: true, vuelta: 1 } })).toBe(
+      'Antes de la primera vuelta, Java revisa `continuar`, que vale `true`. Entra al cuerpo del `while`.',
+    );
+    expect(frase({ clave: 'condicion-ciclo', datos: { ...continuar, sustituida: 'false', resultado: false, vuelta: 7 } })).toBe(
+      'Terminó la vuelta 6. Java revisa otra vez `continuar`, que ahora vale `false`. El ciclo termina y el programa sigue después del `while`.',
+    );
+    expect(frase({ clave: 'condicion-ciclo', datos: { ...continuar, resultado: true, vuelta: 3 } })).toBe(
+      'Terminó la vuelta 2. Java revisa otra vez `continuar`, que ahora vale `true`. Empieza la vuelta 3.',
+    );
+    expect(frase({ clave: 'condicion-ciclo', datos: { ...continuar, ciclo: 'do-while', sustituida: 'false', resultado: false, vuelta: 2 } })).toBe(
+      'Terminó la vuelta 2 del `do-while`. Ahora Java revisa `continuar`, que vale `false`. Sale del ciclo.',
+    );
+  });
+
+  it('V2: una comparación o una negación NO es «una sola variable»: conserva «queda…, que da…»', () => {
+    expect(frase({ clave: 'condicion-if', datos: { condicion: '!activo', sustituida: '!true', lecturas: [{ nombre: 'activo', valor: 'true' }], resultado: false, tieneSino: false } })).toBe(
+      'Java revisa `!activo`. Con los valores de ahora queda `!true`, que da `false`. Se salta el bloque del `if` y sigue después de él.',
+    );
+  });
+
   it('T1: una condición compuesta conserva la sustitución completa (las piezas llegan con el modo reto, R1)', () => {
     expect(
       frase({
@@ -403,7 +533,9 @@ describe('textosExplicacion: una frase por clave', () => {
   it('break, continue, return y sentencia vacía', () => {
     expect(frase({ clave: 'break', datos: { en: 'ciclo' } })).toBe('`break`: Java sale del ciclo ahora mismo.');
     expect(frase({ clave: 'break', datos: { en: 'switch' } })).toBe('`break`: Java termina el `switch` ahora mismo.');
-    expect(frase({ clave: 'continue', datos: { ciclo: 'while' } })).toBe('`continue`: Java se salta lo que falta de esta vuelta del `while` y sigue con la siguiente.');
+    // A2 del panel R0 (experto en Java): en `while` y `do-while` el `continue` salta a REVISAR LA CONDICIÓN, que puede terminar el ciclo; «sigue con la siguiente» prometía una vuelta que quizá no ocurre.
+    expect(frase({ clave: 'continue', datos: { ciclo: 'while' } })).toBe('`continue`: Java se salta lo que falta de esta vuelta del `while` y pasa a revisar la condición.');
+    expect(frase({ clave: 'continue', datos: { ciclo: 'do-while' } })).toBe('`continue`: Java se salta lo que falta de esta vuelta del `do-while` y pasa a revisar la condición.');
     expect(frase({ clave: 'continue', datos: { ciclo: 'for' } })).toBe('`continue`: Java se salta lo que falta de esta vuelta del `for` y sigue con su actualización.');
     expect(frase({ clave: 'return', datos: {} })).toBe('`return` termina `main`, y con eso termina el programa.');
     expect(frase({ clave: 'vacia', datos: {} })).toBe('Una sentencia vacía (solo `;`): no hace nada, pero cuenta como un paso.');

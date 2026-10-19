@@ -10,7 +10,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { escribirEnElEditor, globoDelRobot, irAlFinal, irAlFinalDelPrograma, visualizar } from './ayudas.ts';
+import { abrirLaMaquinaDeSnacks, escribirEnElEditor, globoDelRobot, irAlFinal, irAlFinalDelPrograma, teclearCuandoElProgramaEspere, visualizar } from './ayudas.ts';
 
 const MAQUINA_DE_SNACKS = readFileSync(resolve('corpus/experimentos/ejercicios-del-po/maquina-snacks-a1-2-50.java'), 'utf8');
 const ETIQUETAS_WCAG = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'];
@@ -78,6 +78,49 @@ test.describe('escritorio 1366×768: el robot, su globo y la ranura sin desplaza
     await sinDesplazamientoHorizontal(page);
   });
 
+  // Correcciones del panel R0 (diseñador, «Antes de publicar» 1): con «Con mis datos», al teclear el tercer dato la página bajaba 188 px y el robot y «Así terminó» quedaban fuera de la vista del paso 22 al 26.
+  // Ahora el robot, el globo y la ranura se quedan fijos arriba de la columna derecha.
+  test('con «Con mis datos» el robot, el globo y la ranura no salen de la vista al teclear los datos ni hasta «Así terminó»', async ({ page }) => {
+    await abrirLaMaquinaDeSnacks(page, { conMisDatos: true });
+    const ventana = { width: 1366, height: 768 };
+    const enLaVista = async (momento: string): Promise<void> => {
+      await dentroDeLaVentana(page.locator('[data-personaje]:visible'), ventana, `el robot ${momento}`);
+      await dentroDeLaVentana(globoDelRobot(page), ventana, `el globo ${momento}`);
+      await dentroDeLaVentana(page.getByTestId('ranura-de-acciones'), ventana, `la ranura ${momento}`);
+    };
+
+    for (const dato of ['a1', '2', '50']) {
+      await teclearCuandoElProgramaEspere(page, dato);
+      await enLaVista(`al teclear «${dato}»`);
+    }
+    // El campo de la consola puede quedar fuera de la ventana (la página baja para mostrarlo); la narración, no.
+    await irAlFinalDelPrograma(page);
+    await enLaVista('en el fin');
+    await expect(globoDelRobot(page)).toContainText('Así terminó');
+    await dentroDeLaVentana(page.getByRole('button', { name: 'Probar con otros datos' }), ventana, 'Probar con otros datos');
+
+    // Recorriendo los pasos hacia atrás hasta el principio, la narración sigue a la vista en cada uno.
+    const anterior = page.getByRole('button', { name: /anterior/i });
+    for (let paso = 0; paso < 26; paso += 1) {
+      await anterior.click();
+      await enLaVista(`al volver ${paso + 1} pasos`);
+    }
+  });
+
+  // Panel R0 (diseñador): «Siguiente» se movía con la altura del globo (14 px a 1366). Con un alto mínimo del globo de ≈ 4 renglones queda en su lugar de un paso a otro.
+  test('«Siguiente» no se mueve de un paso a otro en la máquina de snacks', async ({ page }) => {
+    await abrirLaMaquinaDeSnacks(page);
+    const siguiente = page.getByRole('button', { name: /siguiente/i });
+    const altos: number[] = [];
+    for (let paso = 0; paso < 26; paso += 1) {
+      const caja = await siguiente.boundingBox();
+      expect(caja, `paso ${paso}`).not.toBeNull();
+      if (caja !== null) altos.push(caja.y);
+      await siguiente.click();
+    }
+    expect(Math.max(...altos) - Math.min(...altos), `«Siguiente» se movió entre ${Math.min(...altos)} y ${Math.max(...altos)} px`).toBeLessThanOrEqual(1);
+  });
+
   test('«Siguiente» es el botón primario y la leyenda de ▶ y ▷ acompaña al editor', async ({ page }) => {
     await pegarYVisualizar(page, MAQUINA_DE_SNACKS);
     await expect(page.getByRole('button', { name: /siguiente/i })).toHaveClass(/boton-principal/);
@@ -135,6 +178,34 @@ for (const ancho of [390, 320]) {
       const centroDelEditor = contenedor.y + contenedor.height / 2;
       expect(Math.abs(centroDeLaLinea - centroDelEditor), 'la línea que sigue está cerca del centro del editor').toBeLessThanOrEqual(contenedor.height * 0.3);
       await sinDesplazamientoHorizontal(page);
+    });
+
+    // Marcar la línea que sigue se desplaza hacia ella, pero nunca de lado: una línea más ancha que el editor del celular dejaba el inicio del código cortado por la izquierda.
+    test('al marcar las líneas que siguen el código no se desplaza de lado', async ({ page }) => {
+      await pegarYVisualizar(page, MAQUINA_DE_SNACKS);
+      const siguiente = page.getByRole('button', { name: /siguiente/i });
+      for (let paso = 0; paso < 6; paso += 1) {
+        // Unos píxeles de margen (el del propio CodeMirror al llevar el inicio de la línea a la vista): el defecto eran 100 a 170 px, que cortaban el principio de cada línea.
+        expect(await page.locator('.cm-scroller').evaluate((elemento) => elemento.scrollLeft), `el código se desplazó de lado en el paso ${paso}`).toBeLessThanOrEqual(8);
+        await siguiente.click();
+      }
+    });
+
+    // Panel R0: la condición (la cadena de sustitución) salió de la zona del robot para que esta pueda fijarse arriba; en el celular debe seguir ESTANDO debajo del globo, no arriba del editor.
+    test('la cadena de sustitución queda debajo del código y del globo, no arriba del editor', async ({ page }) => {
+      await pegarYVisualizar(page, MAQUINA_DE_SNACKS);
+      await page.getByRole('button', { name: /siguiente/i }).click();
+      await expect(page.locator('.cadena-de-sustitucion')).toBeVisible();
+
+      const editor = await page.locator('.cm-editor').boundingBox();
+      const globo = await globoDelRobot(page).boundingBox();
+      const cadena = await page.locator('.cadena-de-sustitucion').boundingBox();
+      expect(editor).not.toBeNull();
+      expect(globo).not.toBeNull();
+      expect(cadena).not.toBeNull();
+      if (editor === null || globo === null || cadena === null) return;
+      expect(cadena.y, 'la cadena va debajo del editor').toBeGreaterThanOrEqual(editor.y + editor.height - 1);
+      expect(cadena.y, 'la cadena va debajo del globo').toBeGreaterThanOrEqual(globo.y + globo.height - 1);
     });
 
     test('el saludo y la galería tampoco desbordan la pantalla', async ({ page }) => {

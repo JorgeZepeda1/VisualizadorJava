@@ -23,7 +23,10 @@ export interface PropiedadesRanuraDeAcciones {
   readonly refPrimariaDelFin?: Ref<HTMLButtonElement>;
 }
 
-function AccionDelFin({ accion, props }: { readonly accion: AccionDeFin; readonly props: PropiedadesRanuraDeAcciones }) {
+/** La acción principal del fin (la que se destaca) lleva el estilo primario y la referencia del foco; las demás, no. */
+function AccionDelFin({ accion, principal, props }: { readonly accion: AccionDeFin; readonly principal: AccionDeFin; readonly props: PropiedadesRanuraDeAcciones }) {
+  const esLaPrincipal = accion === principal;
+  const propiedadesDeLaPrincipal = esLaPrincipal ? { className: 'boton-principal', ref: props.refPrimariaDelFin } : {};
   switch (accion) {
     case 'anterior':
       return (
@@ -33,13 +36,13 @@ function AccionDelFin({ accion, props }: { readonly accion: AccionDeFin; readonl
       );
     case 'probar-con-otros-datos':
       return (
-        <button type="button" className="boton-principal" ref={props.refPrimariaDelFin} onClick={props.alProbarConOtrosDatos}>
+        <button type="button" {...propiedadesDeLaPrincipal} onClick={props.alProbarConOtrosDatos}>
           {textosPantalla.fin.probarConOtrosDatos()}
         </button>
       );
     case 'modificar-el-programa':
       return (
-        <button type="button" onClick={props.alModificarElPrograma}>
+        <button type="button" {...propiedadesDeLaPrincipal} onClick={props.alModificarElPrograma}>
           {textosPantalla.fin.modificarElPrograma()}
         </button>
       );
@@ -64,7 +67,7 @@ export function RanuraDeAcciones(props: PropiedadesRanuraDeAcciones) {
       {ranura.tipo === 'fin' && (
         <div className="ranura-botones" role="group" aria-label={textosPantalla.fin.etiqueta()}>
           {ranura.acciones.map((accion) => (
-            <AccionDelFin key={accion} accion={accion} props={props} />
+            <AccionDelFin key={accion} accion={accion} principal={ranura.principal} props={props} />
           ))}
         </div>
       )}

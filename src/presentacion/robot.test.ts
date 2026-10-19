@@ -48,7 +48,7 @@ describe('derivarRobot: antes de que haya pasos', () => {
     expect(derivarRobot({ ejecucion: { estado: 'sin-ejecutar' }, aplicados: [], siguiente: null, total: 0, vista: null })).toEqual({
       animo: 'normal',
       linea: null,
-      texto: 'Cuando tu programa esté listo, pulsa «Visualizar» y te muestro cómo lo ejecuta Java, paso a paso.',
+      texto: 'Escribe o pega aquí tu programa (puedes copiarlo de NetBeans). Cuando esté listo, pulsa «Visualizar» y te muestro cómo lo ejecuta Java, paso a paso.',
       nota: null,
       aviso: null,
       asertivo: false,
@@ -82,6 +82,20 @@ describe('derivarRobot: el paso 0', () => {
     expect(robot.texto).toBe(T3_LINEA_7);
     expect(robot.linea).toBeNull();
     expect(robot.animo).toBe('normal');
+  });
+
+  // V7 del maestro (panel R0): los datos salen de la entrada preparada que la presentación ya tiene (una lista de renglones); el robot nunca los inventa.
+  it('V7: si el programa trae datos preparados, el paso 0 dice cuáles va a leer', () => {
+    const robot = derivarRobot({ ejecucion: { estado: 'calculando' }, aplicados: [], siguiente: pasoDeImpresion(5), total: 5, vista: VISTA, datosPreparados: ['-3', '0', '7'] });
+    expect(robot.texto).toBe(
+      'Todavía no se ejecuta nada. Este programa va a leer estos datos: -3, 0 y 7. Antes de empezar, lee el programa y anota qué crees que va a aparecer en la consola. Luego pulsa «Siguiente» y lo comprobamos desde la línea 5.',
+    );
+  });
+
+  it('V7: sin datos preparados el paso 0 es el de siempre', () => {
+    const base = { ejecucion: { estado: 'calculando' } as const, aplicados: [], siguiente: pasoDeImpresion(7), total: 5, vista: VISTA };
+    expect(derivarRobot({ ...base, datosPreparados: [] }).texto).toBe(T3_LINEA_7);
+    expect(derivarRobot(base).texto).toBe(T3_LINEA_7);
   });
 
   it('si el motor aún no calculó ningún paso, no inventa una línea', () => {
@@ -269,7 +283,9 @@ describe('derivarRobot: espera de un dato', () => {
 describe('derivarRobot: cómo terminó', () => {
   it('terminó bien: resume los pasos y está contento', () => {
     const robot = derivarRobot({ ejecucion: terminada('terminado'), aplicados: pasosHasta(26), siguiente: null, total: 26, vista: VISTA });
-    expect(robot.nota).toBe('Así terminó: sin errores, en 26 pasos.');
+    expect(robot.nota).toBe(
+      'Así terminó: sin errores, en 26 pasos. ¿La consola muestra lo que anotaste al principio? Si algo no coincide, regresa con «Anterior» al paso donde Java hizo otra cosa.',
+    );
     expect(robot.animo).toBe('feliz');
     expect(robot.aviso).toBeNull();
     expect(robot.asertivo).toBe(false);

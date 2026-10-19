@@ -46,6 +46,8 @@ export interface EntradaDelRobot {
   readonly siguiente: Paso | null;
   readonly total: number;
   readonly vista: VistaPrograma | null;
+  /** Los datos de la entrada preparada del programa abierto (V7, panel R0): el paso 0 los nombra. Vacía o ausente, no menciona ninguno. */
+  readonly datosPreparados?: readonly string[];
 }
 
 type CausaFin = FinEjecucion['causa'];
@@ -95,7 +97,7 @@ function sinPaso(texto: string, animo: AnimoDelRobot = 'normal', nota: string | 
   return { animo, linea: null, texto, nota, aviso: null, asertivo: false };
 }
 
-function alInicio({ ejecucion, siguiente, total, vista }: EntradaDelRobot): RobotVista {
+function alInicio({ ejecucion, siguiente, total, vista, datosPreparados }: EntradaDelRobot): RobotVista {
   if (ejecucion.estado === 'terminada' && total === 0) {
     return sinPaso(textosRobot.resumenDelFin[ejecucion.fin.causa]({ pasos: 0 }), animoDelFin(ejecucion.fin.causa));
   }
@@ -106,7 +108,7 @@ function alInicio({ ejecucion, siguiente, total, vista }: EntradaDelRobot): Robo
   const notaDeLaEspera = esperando && total === 0 && lineaDeLaLectura !== null ? textosRobot.esperandoUnDato(lineaDeLaLectura) : null;
   // Un programa que el visualizador detuvo por seguridad lo adelanta desde el paso 0, pero como intriga: dice QUE no terminó solo y deja el POR QUÉ (la evidencia del ciclo) para el final (C7 del panel 1).
   const notaDelLimite = ejecucion.estado === 'terminada' ? textoIntrigaDelLimite(ejecucion.fin.causa) : null;
-  return sinPaso(textosRobot.alInicio(lineaSiguiente), esperando && total === 0 ? 'esperando' : 'normal', notaDeLaEspera ?? notaDelLimite);
+  return sinPaso(textosRobot.alInicio(lineaSiguiente, datosPreparados), esperando && total === 0 ? 'esperando' : 'normal', notaDeLaEspera ?? notaDelLimite);
 }
 
 /**

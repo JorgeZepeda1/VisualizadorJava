@@ -1,4 +1,4 @@
-// La galería «Ejemplos» (tarea R0.11, REQ-AULA-001, ADR 017): los programas del curso por unidad (U3 a U7) y, primero, el ejercicio del PO en «Para empezar». Cada programa lleva su título, su origen marcado
+// La galería «Ejemplos» (tarea R0.11, REQ-AULA-001, ADR 017): los programas del curso por unidad (U3 a U7) y, primero, el ejercicio del PO en «Ejercicio de la clase». El título puede traer código entre comillas invertidas: se pinta como código, igual que «Qué observar». Cada programa lleva su título, su origen marcado
 // (del curso o ejercicio del profesor), UNA línea de «Qué observar» y su acción «Ver paso a paso»: con los datos de ejemplo que usó el oráculo si el programa lee del teclado, y «Con mis datos» para
 // escribirlos uno mismo; la máquina de snacks ofrece cinco datos de ejemplo, cada uno con lo que pasa. Presentacional puro: recibe la galería ya armada (`null` mientras carga) y avisa qué se abrió y con
 // qué entrada. Cuando la lista aparece, la PRIMERA acción recibe el foco: con el teclado, de la puerta del saludo a un ejemplo en una sola acción más.
@@ -21,7 +21,9 @@ function Programa({ programa, alAbrir }: { readonly programa: ProgramaDeGaleria;
   const pideDatos = entradaPreparada !== '';
   return (
     <li className="programa-de-galeria" data-programa={programa.id}>
-      <h4>{titulo}</h4>
+      <h4>
+        <FraseConCodigo texto={titulo} />
+      </h4>
       <p className="programa-origen">{textosGaleria.origen(programa.origen)}</p>
       <p className="programa-que-observar">
         <strong>{textosGaleria.queObservar()}</strong>

@@ -148,6 +148,7 @@ export function Visualizador() {
     total,
     ejecucion: ejecucionParaElModelo(estado),
     pantalla: { seccion: estado.seccion, hayProblema: problemaParaElGlobo !== null, hayTemasPublicados: hayTemas },
+    entradaPreparada: estado.entradaPreparada,
   });
   const visualizando = estado.modo === 'visualizacion';
   const resaltados = visualizando ? derivarResaltados(modelo, vista) : null;
@@ -323,8 +324,17 @@ export function Visualizador() {
 
   // --- Pantalla -----------------------------------------------------------------------------------------------------------------------------------
   const enElPasoAPaso = estado.seccion === 'paso-a-paso';
+  const proyector = estado.ajustes.proyector;
+  // La consola con su búfer. Con el proyector encendido va DEBAJO del código, como la ventana «Output» de NetBeans (panel R0, diseñador: en la columna derecha quedaba fuera de la ventana en 9 de 26 pasos
+  // a 1280×720); apagado, queda en la columna derecha. Se mueve de columna, no se duplica: es la misma consola con lo mismo.
+  const consola = (
+    <div className="zona zona-consola">
+      <Consola segmentos={modelo.consola}>{modelo.esperandoEntrada && <CampoEntrada alEnviar={enviarDato} />}</Consola>
+      <FranjaBufer bufer={modelo.bufer} />
+    </div>
+  );
   return (
-    <div className="aplicacion" data-testid="contenedor-de-la-pantalla" data-modo={estado.modo} data-proyector={estado.ajustes.proyector ? 'encendido' : undefined}>
+    <div className="aplicacion" data-testid="contenedor-de-la-pantalla" data-modo={estado.modo} data-proyector={proyector ? 'encendido' : undefined}>
       <header className="encabezado">
         <h1>{textosInterfaz.tituloApp()}</h1>
         <Navegacion seccionActual={estado.seccion} hayTemasPublicados={hayTemas} alIr={(seccion) => despachar({ tipo: 'ir-a-seccion', seccion })} />
@@ -347,7 +357,7 @@ export function Visualizador() {
               soloLectura={estado.modo !== 'edicion'}
               onCambio={(codigo) => despachar({ tipo: 'editar', codigo })}
               alIntentarEditar={() => setIntentoDeEditar(true)}
-              ajusteDeLinea={estado.ajustes.proyector}
+              ajusteDeLinea={proyector}
               resaltados={resaltados}
               problema={problemaEnElCodigo}
             />
@@ -402,9 +412,12 @@ export function Visualizador() {
               alIrAlPaso={(destino) => despachar({ tipo: 'ir-al-paso', paso: destino, total: traza.total })}
             />
           )}
+          {proyector && consola}
         </div>
 
         <div className="columna columna-estado">
+          {/* El robot, su globo y la ranura de acciones son UNA zona que se queda fija arriba de la columna derecha (panel R0, diseñador): la narración y «Siguiente» no salen de la vista aunque la página
+              baje (por ejemplo, al teclear un dato en la consola). Lo que sí se desplaza —la condición, las variables— va debajo. */}
           <div className="zona zona-explicacion">
             <Explicacion robot={modelo.robot} hablante={modelo.hablante} problema={problemaParaElGlobo} />
             <RanuraDeAcciones
@@ -418,6 +431,9 @@ export function Visualizador() {
               refSiguiente={refSiguiente}
               refPrimariaDelFin={refPrimariaDelFin}
             />
+          </div>
+
+          <div className="zona zona-condicion">
             {visualizando && (
               <>
                 <PanelCondicion condicion={modelo.condicion} />
@@ -427,13 +443,10 @@ export function Visualizador() {
           </div>
 
           <div className="zona zona-estado" aria-label={textosPaneles.zonas.estado()} role="group">
-            <PanelVariables variables={modelo.variables} compacto={estado.ajustes.proyector} />
+            <PanelVariables variables={modelo.variables} compacto={proyector} />
           </div>
 
-          <div className="zona zona-consola">
-            <Consola segmentos={modelo.consola}>{modelo.esperandoEntrada && <CampoEntrada alEnviar={enviarDato} />}</Consola>
-            <FranjaBufer bufer={modelo.bufer} />
-          </div>
+          {!proyector && consola}
         </div>
       </div>
 

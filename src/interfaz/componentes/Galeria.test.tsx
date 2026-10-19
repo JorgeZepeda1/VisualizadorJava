@@ -1,4 +1,4 @@
-// RED de la tarea R0.11 (REQ-AULA-001, ADR 017): la galería «Ejemplos». Programas por unidad (U3 a U7) y «Para empezar» con el ejercicio del PO; cada programa con su título, su origen marcado (del curso o
+// RED de la tarea R0.11 (REQ-AULA-001, ADR 017): la galería «Ejemplos». Programas por unidad (U3 a U7) y «Ejercicio de la clase» con el ejercicio del PO; cada programa con su título, su origen marcado (del curso o
 // ejercicio del profesor), una línea de «Qué observar» y su botón «Ver paso a paso»; la máquina de snacks con sus cinco datos de ejemplo. Presentacional puro: recibe la galería ya armada (o `null`
 // mientras carga) y avisa qué se abrió y con qué entrada. La primera acción recibe el foco: con el teclado, de la puerta del saludo a un ejemplo en tres acciones.
 import { describe, expect, it, vi } from 'vitest';
@@ -28,10 +28,10 @@ function programa(id: string) {
 }
 
 describe('<Galeria/> — la lista de ejemplos', () => {
-  it('lleva el título «Ejemplos», una ayuda y una sección con su título por «Para empezar» y por cada unidad', () => {
+  it('lleva el título «Ejemplos», una ayuda y una sección con su título por «Ejercicio de la clase» y por cada unidad', () => {
     render(<Galeria galeria={GALERIA} alAbrir={() => undefined} />);
     expect(screen.getByRole('heading', { level: 2, name: 'Ejemplos' })).toBeTruthy();
-    expect(screen.getAllByRole('heading', { level: 3 }).map((titulo) => titulo.textContent)).toEqual(['Para empezar', 'Unidad 3 · Primeros programas', 'Unidad 6 · Ciclos']);
+    expect(screen.getAllByRole('heading', { level: 3 }).map((titulo) => titulo.textContent)).toEqual(['Ejercicio de la clase', 'Unidad 3 · Primeros programas', 'Unidad 6 · Ciclos']);
   });
 
   it('cada programa tiene su título como encabezado, su origen marcado y «Qué observar» con el código pintado como código', () => {
@@ -42,6 +42,16 @@ describe('<Galeria/> — la lista de ejemplos', () => {
     expect(within(hola).getAllByText('System.out.println', { selector: 'code' })).toHaveLength(1);
     const snacks = screen.getByRole('heading', { level: 4, name: 'Máquina de snacks' }).closest('li') as HTMLElement;
     expect(within(snacks).getByText('Ejercicio del profesor')).toBeTruthy();
+  });
+
+  // Item 6 del diseñador (panel R0): un título con comillas invertidas se pinta como código —como «Qué observar»— y el nombre accesible de sus botones no las dice.
+  it('un título con código (`for`) se pinta como código y sus botones lo nombran sin comillas invertidas', () => {
+    render(<Galeria galeria={GALERIA} alAbrir={() => undefined} />);
+    const titulo = screen.getByRole('heading', { level: 4, name: 'Predice: tres for casi iguales' });
+    expect(titulo.textContent).toBe('Predice: tres for casi iguales');
+    expect(titulo.querySelector('code')?.textContent).toBe('for');
+    expect(screen.getByRole('button', { name: 'Ver paso a paso: Predice: tres for casi iguales' })).toBeTruthy();
+    expect(document.body.innerHTML).not.toContain('`');
   });
 
   it('un programa sin datos preparados se abre con «Ver paso a paso» y su entrada vacía', async () => {
@@ -76,7 +86,7 @@ describe('<Galeria/> — la lista de ejemplos', () => {
     const grupo = screen.getByRole('group', { name: 'Datos de ejemplo: Máquina de snacks' });
     const botones = within(grupo).getAllByRole('button');
     expect(botones.map((boton) => boton.querySelector('.muestra-etiqueta')?.textContent)).toEqual(['a1 · 2 · 50', 'b3', 'z9']);
-    expect(botones[0]?.textContent).toContain('Compra completa: 2 papas pagadas con $50 y con cambio');
+    expect(botones[0]?.textContent).toContain('Código a1, 2 piezas, paga con $50');
 
     await usuario.click(botones[1] as HTMLElement);
     expect(alAbrir).toHaveBeenLastCalledWith(programa('maquina-snacks'), 'b3\n');

@@ -311,6 +311,23 @@ describe('<EditorJava/> — la línea actual en el celular', () => {
     expect(alDesplazar.mock.calls.at(-1)?.[1]).toMatchObject({ y: 'nearest' });
   });
 
+  // Panel R0: con el ajuste de línea (proyector) una línea ocupa varios renglones, y su etiqueta («✗ Java se salta este bloque») queda al final del último. Desplazar solo hasta el INICIO de la línea la dejaba
+  // con la etiqueta fuera del editor: se desplaza hasta que la línea ENTERA esté a la vista (su inicio y su final).
+  it('desplaza hasta que la línea ENTERA esté a la vista: pide el rango completo de la línea, no solo su inicio', () => {
+    pantallaAngosta(false);
+    const alDesplazar = vi.spyOn(EditorView, 'scrollIntoView');
+    render(<EditorJava valor={PROGRAMA} soloLectura resaltados={RESALTADOS} />);
+    expect(alDesplazar.mock.calls.at(-1)?.[0]).toMatchObject({ from: 10, to: 19 });
+  });
+
+  // Pero lo que MANDA es el inicio: con una línea más ancha que el editor (un celular), pedir el final desplazaba el código de lado y el principio de la línea quedaba cortado por la izquierda.
+  it('el inicio de la línea es la cabeza del rango: una línea más ancha que el editor no se desplaza de lado', () => {
+    pantallaAngosta(true);
+    const alDesplazar = vi.spyOn(EditorView, 'scrollIntoView');
+    render(<EditorJava valor={PROGRAMA} soloLectura resaltados={RESALTADOS} />);
+    expect(alDesplazar.mock.calls.at(-1)?.[0]).toMatchObject({ head: 10, anchor: 19 });
+  });
+
   it('sin `matchMedia` (jsdom) se comporta como en una pantalla ancha', () => {
     // @ts-expect-error: jsdom no trae `matchMedia`; así se prueba la ausencia.
     window.matchMedia = undefined;
@@ -352,5 +369,54 @@ describe('<EditorJava/> — sangría colgante de las líneas partidas (proyector
     expect(sangriasDeLasLineas(container)).toEqual([null, '2']);
     rerender(<EditorJava valor={'      c\nd'} ajusteDeLinea />);
     expect(sangriasDeLasLineas(container)).toEqual(['6', null]);
+  });
+});
+
+// Panel R0 (diseñador, «Antes de publicar» 3): a 1024 px el partido de líneas dejaba un renglón numerado vacío (el navegador cortaba justo después de la sangría) y partía palabras («Cantida|d»). Con el ajuste
+// de línea, la sangría de cada línea se marca para que la hoja de estilos no deje cortar tras ella, y después de cada `.` y de cada `(` hay un punto de corte posible. Son marcas del editor, no texto: el
+// programa y lo que se copia no cambian. (La medida de los renglones, en el navegador de verdad, está en `pruebas/e2e/proyector.spec.ts`.)
+describe('<EditorJava/> — dónde se puede partir una línea en el proyector', () => {
+  const LINEA = '        System.out.println("Hola");';
+
+  it('la sangría de la línea queda marcada, completa, para que no se corte justo después de ella', () => {
+    const { container } = render(<EditorJava valor={LINEA} ajusteDeLinea />);
+    const marcas = Array.from(container.querySelectorAll('.cm-sangria'));
+    expect(marcas.map((marca) => marca.textContent)).toEqual(['        ']);
+  });
+
+  it('después de cada punto y de cada paréntesis que abre hay un punto de corte posible, y solo ahí', () => {
+    const { container } = render(<EditorJava valor={LINEA} ajusteDeLinea />);
+    const cortes = Array.from(container.querySelectorAll('.cm-corte')).map((marca) => marca.textContent);
+    expect(cortes).toEqual(['.', '.', '(']);
+  });
+
+  it('las marcas no cambian el programa: el texto del editor es el mismo', () => {
+    const { container } = render(<EditorJava valor={LINEA} ajusteDeLinea />);
+    expect(container.querySelector('.cm-line')?.textContent).toBe(LINEA);
+  });
+
+  it('una línea sin sangría no marca sangría, y una de pura sangría no marca nada', () => {
+    const { container } = render(<EditorJava valor={'a.b(c)\n      '} ajusteDeLinea />);
+    expect(container.querySelectorAll('.cm-sangria')).toHaveLength(0);
+    expect(Array.from(container.querySelectorAll('.cm-corte')).map((marca) => marca.textContent)).toEqual(['.', '(']);
+  });
+
+  it('con tabuladores la sangría también se marca', () => {
+    const { container } = render(<EditorJava valor={'\t\tfoo.bar();'} ajusteDeLinea />);
+    expect(Array.from(container.querySelectorAll('.cm-sangria')).map((marca) => marca.textContent)).toEqual(['\t\t']);
+  });
+
+  it('sin ajuste de línea (el modo normal) no se agrega ninguna marca', () => {
+    const { container } = render(<EditorJava valor={LINEA} />);
+    expect(container.querySelectorAll('.cm-sangria, .cm-corte')).toHaveLength(0);
+  });
+
+  it('al apagar el proyector las marcas se van, y al volver a encenderlo vuelven, sin recrear el editor', () => {
+    const { container, rerender } = render(<EditorJava valor={LINEA} ajusteDeLinea />);
+    expect(container.querySelectorAll('.cm-corte')).toHaveLength(3);
+    rerender(<EditorJava valor={LINEA} />);
+    expect(container.querySelectorAll('.cm-sangria, .cm-corte')).toHaveLength(0);
+    rerender(<EditorJava valor={LINEA} ajusteDeLinea />);
+    expect(container.querySelectorAll('.cm-corte')).toHaveLength(3);
   });
 });

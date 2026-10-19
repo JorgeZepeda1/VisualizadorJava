@@ -32,8 +32,44 @@ describe('<Saludo/> — las puertas del saludo', () => {
     expect(accesorios).toEqual([
       { accesorio: 'libro-abierto', decorativo: 'true' },
       { accesorio: 'puntero', decorativo: 'true' },
-      { accesorio: 'lupa', decorativo: 'true' },
+      { accesorio: 'hoja-con-lapiz', decorativo: 'true' },
     ]);
+  });
+
+  // Panel R0 (diseñador, «Antes de publicar» 4): la lupa del revisor estaba también en la puerta «Probar mi programa». Ahora esa puerta lleva una hoja con dos renglones de código y un lápiz, en SVG en línea,
+  // sin ningún trazo, clase ni color de los robots, y con una silueta que no se confunde con el libro ni con el puntero aunque la pantalla esté en escala de grises.
+  describe('el dibujo de «Probar mi programa»', () => {
+    function iconos(): Record<string, Element> {
+      render(<Saludo puertas={puertasDelSaludo({ hayTemasPublicados: true })} alElegir={() => undefined} />);
+      return Object.fromEntries(Array.from(document.querySelectorAll('[data-icono-accesorio]')).map((icono) => [icono.getAttribute('data-icono-accesorio') ?? '', icono]));
+    }
+
+    it('es una hoja con exactamente dos renglones de código y un lápiz', () => {
+      const hoja = iconos()['hoja-con-lapiz'];
+      expect(hoja?.tagName.toLowerCase()).toBe('svg');
+      expect(hoja?.querySelectorAll('.icono-hoja')).toHaveLength(1);
+      expect(hoja?.querySelectorAll('.icono-renglon')).toHaveLength(2);
+      expect(hoja?.querySelectorAll('.icono-lapiz')).toHaveLength(1);
+    });
+
+    it('no pertenece a ningún robot: ni una clase `robot-*` ni la lupa del revisor', () => {
+      const hoja = iconos()['hoja-con-lapiz'];
+      const clases = Array.from(hoja?.querySelectorAll('[class]') ?? []).flatMap((elemento) => Array.from(elemento.classList));
+      expect(clases.length).toBeGreaterThan(0);
+      expect(clases.filter((clase) => clase.startsWith('robot-'))).toEqual([]);
+      expect(hoja?.querySelector('circle')).toBeNull();
+    });
+
+    it('se distingue de los otros dos dibujos por su forma (no por el color): ninguno comparte la composición de trazos', () => {
+      const firmas = Object.values(iconos()).map((icono) =>
+        Array.from(icono.children)
+          .map((hijo) => `${hijo.tagName.toLowerCase()}.${hijo.getAttribute('class') ?? ''}`)
+          .sort()
+          .join('|'),
+      );
+      expect(firmas).toHaveLength(3);
+      expect(new Set(firmas).size).toBe(3);
+    });
   });
 
   it('las puertas no dibujan robots: la zona del robot sigue teniendo uno solo', () => {

@@ -1,8 +1,8 @@
 // RED de la tarea R0.11 (REQ-AULA-001, ADR 017): la galería «Ejemplos», armada desde el TEXTO CRUDO de los programas (la presentación no toca Vite ni el disco: el `import.meta.glob` vive en
-// `interfaz/datos/`). Secciones por unidad (U3 a U7) y «Para empezar» (el ejercicio del PO), cada programa con su código y su entrada preparada tal como la usó el oráculo —cada renglón con su salto de
+// `interfaz/datos/`). Secciones por unidad (U3 a U7) y «Ejercicio de la clase» (el ejercicio del PO), cada programa con su código y su entrada preparada tal como la usó el oráculo —cada renglón con su salto de
 // línea—, y la máquina de snacks como UNA entrada con cinco datos de ejemplo. Puro, sin DOM.
 import { describe, expect, it } from 'vitest';
-import { armarGaleria } from './galeria.ts';
+import { armarGaleria, datosDeLaEntrada, etiquetaDeLaEntrada } from './galeria.ts';
 
 const CODIGO = (nombre: string) => `// código de ${nombre}`;
 
@@ -32,7 +32,7 @@ function seccionDe(unidad: number | null) {
 }
 
 describe('armarGaleria: secciones', () => {
-  it('«Para empezar» va primero y luego las unidades que tienen programas, en orden', () => {
+  it('«Ejercicio de la clase» va primero y luego las unidades que tienen programas, en orden', () => {
     expect(armarGaleria(ARCHIVOS).secciones.map((seccion) => seccion.unidad)).toEqual([null, 3, 4, 6]);
   });
 
@@ -42,7 +42,7 @@ describe('armarGaleria: secciones', () => {
   });
 
   it('cada sección lleva su título del catálogo', () => {
-    expect(seccionDe(null).titulo).toBe('Para empezar');
+    expect(seccionDe(null).titulo).toBe('Ejercicio de la clase');
     expect(seccionDe(3).titulo.startsWith('Unidad 3')).toBe(true);
     expect(seccionDe(6).titulo.startsWith('Unidad 6')).toBe(true);
   });
@@ -107,11 +107,11 @@ describe('armarGaleria: la máquina de snacks del PO, con sus cinco datos de eje
 
   it('cada dato de ejemplo dice qué pasa con él, con las palabras del catálogo', () => {
     expect(snacks().muestras.map((muestra) => muestra.descripcion)).toEqual([
-      'Compra completa: 2 papas pagadas con $50 y con cambio',
-      'No alcanza el dinero: 3 refrescos cuestan $66 y se pagan $40',
-      'Producto agotado: el jugo B3',
-      'Código inválido: Z9 no existe',
-      'Cantidad no válida: se piden 5 y solo se aceptan de 1 a 3',
+      'Código a1, 2 piezas, paga con $50',
+      'Código b2, 3 piezas, paga con $40',
+      'Código b3',
+      'Código z9',
+      'Código a2 y 5 piezas',
     ]);
   });
 
@@ -119,5 +119,26 @@ describe('armarGaleria: la máquina de snacks del PO, con sus cinco datos de eje
     const sinB3 = Object.fromEntries(Object.entries(ARCHIVOS).filter(([nombre]) => !nombre.startsWith('maquina-snacks-b3')));
     const programa = armarGaleria(sinB3).secciones[0]?.programas[0];
     expect(programa?.muestras.map((muestra) => muestra.etiqueta)).toEqual(['a1 · 2 · 50', 'b2 · 3 · 40', 'z9', 'a2 · 5']);
+  });
+});
+
+// V7 del maestro (panel R0): el robot del paso 0 nombra los datos que el programa va a leer; salen de la entrada preparada, un dato por renglón, sin el salto final.
+describe('datosDeLaEntrada', () => {
+  it('un dato por renglón, sin el renglón vacío que deja el salto de línea final', () => {
+    expect(datosDeLaEntrada('-3\n0\n7\n')).toEqual(['-3', '0', '7']);
+    expect(datosDeLaEntrada('Carlos\n')).toEqual(['Carlos']);
+    expect(datosDeLaEntrada('a1\n2\n50')).toEqual(['a1', '2', '50']);
+  });
+
+  it('una entrada vacía no tiene datos (el alumno escribe los suyos)', () => {
+    expect(datosDeLaEntrada('')).toEqual([]);
+  });
+
+  it('los renglones en blanco no se nombran como datos (una lista «Ana, , 7» no se entendería): igual que en la etiqueta de la galería', () => {
+    expect(datosDeLaEntrada('Ana\n\n7\n')).toEqual(['Ana', '7']);
+  });
+
+  it('la etiqueta de la galería une los mismos datos con « · »', () => {
+    expect(etiquetaDeLaEntrada('a1\n2\n50\n')).toBe('a1 · 2 · 50');
   });
 });

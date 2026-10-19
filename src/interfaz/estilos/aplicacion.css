@@ -261,6 +261,32 @@ button:disabled {
   }
 }
 
+/* La zona de la condición (panel de condición y cadena de sustitución) puede estar vacía —antes de visualizar, o en un paso sin condición—: así no ocupa lugar ni agrega un hueco entre zonas. */
+.zona-condicion:empty {
+  display: none;
+}
+
+/* El narrador fijo (panel R0, diseñador «Antes de publicar» 1): con dos columnas, el robot, su globo y la ranura de acciones (`.zona-explicacion`) se quedan pegados arriba de la columna derecha mientras la
+   página se desplaza. Antes, al teclear el tercer dato de la máquina de snacks la página bajaba 188 px y la narración y «Así terminó» quedaban fuera de la vista. Un hijo `sticky` de una cuadrícula solo se
+   mueve dentro de su propio renglón, así que la columna derecha pasa a ser una columna flexible que ocupa todo el alto del renglón. Con una ventana baja (menos de 42rem ≈ 672 px) el narrador no se fija:
+   ocuparía más de la mitad de la ventana. */
+@media (min-width: 60.0625rem) and (min-height: 42rem) {
+  .columna-estado {
+    display: flex;
+    flex-direction: column;
+    align-self: stretch;
+  }
+
+  .zona-explicacion {
+    position: sticky;
+    top: 0.5rem;
+    z-index: 10;
+    /* Opaco: lo que se desplaza por debajo (condición, variables) no se transparenta. */
+    padding-bottom: 0.5rem;
+    background: var(--fondo);
+  }
+}
+
 .acciones {
   display: flex;
   flex-wrap: wrap;
@@ -482,6 +508,15 @@ li.atenuada {
 .cadena-de-sustitucion {
   margin: 0 0 0.5rem;
   line-height: 2;
+}
+
+/* Cada pieza de la cadena (`cantidad < 1 || cantidad > 3`, `2 < 1 || 2 > 3`, `false`) es un bloque en línea: la línea se corta ENTRE las piezas (en las flechas) y no por dentro de una comparación. Solo si
+   una pieza sola no cabe en el ancho disponible se parte por dentro. Lo mismo vale para el código de una frase del globo (panel R0, diseñador «Antes de publicar» 3). */
+.cadena-de-sustitucion code,
+.globo code {
+  display: inline-block;
+  max-width: 100%;
+  vertical-align: baseline;
 }
 
 .flecha {
@@ -774,6 +809,15 @@ li.atenuada {
   line-height: 1.5;
 }
 
+/* Un alto mínimo de ≈ 4 a 5 renglones (panel R0, diseñador): «Siguiente» queda en su lugar de un paso a otro en vez de subir y bajar con el largo de cada frase. Son 5 renglones de 1.5 × la letra del globo
+   (el paso 0, que ahora nombra los datos que el programa va a leer, ocupa 5 a 1366 px; los demás pasos de la máquina de snacks, 4 o menos), más su relleno (0.75rem × 2) y su borde (3px × 2). En el proyector,
+   con la letra más grande, bastan 4: ahí cada renglón cuesta más alto de ventana. En el celular no hace falta: la ranura está en la barra fija de abajo. */
+@media (min-width: 43.75rem) {
+  .globo-contenido {
+    min-height: calc(7.5em + 1.5rem + 6px);
+  }
+}
+
 /* La ranura de acciones, pegada debajo del globo (REQ-PANT-003): reserva su alto aunque esté vacía, así la pantalla no se mueve cuando aparece algo. Sus botones son de buen tamaño. */
 .ranura {
   min-height: 3.25rem;
@@ -811,8 +855,39 @@ li.atenuada {
   --robot-punta: #ff8a65;
 }
 
-[data-icono-accesorio='lupa'] {
-  --robot-trazo: #6b4300;
+/* «Probar mi programa»: la hoja con lápiz no es de ningún robot, así que no usa sus colores. En escala de grises se distingue por su forma —una hoja de pie con un lápiz en diagonal—, no por el color. */
+[data-icono-accesorio='hoja-con-lapiz'] {
+  --icono-trazo: #232838;
+  --icono-lapiz: #f5b82e;
+}
+
+.icono-hoja {
+  fill: #ffffff;
+  stroke: var(--icono-trazo);
+  stroke-width: 2.4;
+  stroke-linejoin: round;
+}
+
+.icono-doblez {
+  fill: none;
+  stroke: var(--icono-trazo);
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+
+.icono-renglon {
+  fill: none;
+  stroke: var(--icono-trazo);
+  stroke-width: 2.2;
+  stroke-linecap: round;
+}
+
+.icono-lapiz rect,
+.icono-lapiz polygon {
+  fill: var(--icono-lapiz);
+  stroke: var(--icono-trazo);
+  stroke-width: 1.8;
+  stroke-linejoin: round;
 }
 
 [data-icono-accesorio='libro-abierto'] {
@@ -1100,7 +1175,8 @@ li.atenuada {
     order: 1;
   }
 
-  .zona-explicacion {
+  .zona-explicacion,
+  .zona-condicion {
     order: 2;
   }
 

@@ -12,7 +12,7 @@ export interface PropiedadesApp {
 export function App({ registrarPwa }: PropiedadesApp = {}) {
   return (
     <main>
-      {/* El aviso va ANTES del título: con Tab es lo primero que alcanza quien lo necesita, y el lector de pantalla lo anuncia sin mover el foco. */}
+      {/* El aviso va ANTES del título: el lector de pantalla lo anuncia sin mover el foco. Con teclado se alcanza con Mayús+Tab, porque el saludo deja el foco en su primera puerta (ADR 017, W4). */}
       <VersionNueva registrar={registrarPwa} />
       <Visualizador />
     </main>

@@ -73,7 +73,7 @@ export const textosPaneles = {
     cadenaDeCondiciones: (): string => 'Condiciones revisadas, en orden',
     casoIgualado: (etiqueta: string): string => `Coincide con \`case ${etiqueta}\``,
     casoCae: (etiqueta: string | null): string =>
-      `Cae ${etiqueta === null ? 'al `default`' : `a \`case ${etiqueta}\``} porque no hubo \`break\``,
+      `Sigue de largo ${etiqueta === null ? 'al `default`' : `a \`case ${etiqueta}\``}: no hubo \`break\``,
     casoPorDefecto: (): string => 'Ningún `case` coincide: va al `default`',
     sinCoincidencia: (): string => 'Ningún `case` coincide y no hay `default`: sigue después del `switch`',
   },
@@ -111,7 +111,7 @@ export const textosPaneles = {
     lineaEjecutada: (): string => 'Línea recién ejecutada',
     lineaSiguiente: (): string => 'Línea siguiente',
     /** La etiqueta junto a la rama del `if` que el programa se salta (el código se atenúa, nunca se oculta). */
-    ramaNoTomada: (): string => '✗ esta rama no se ejecuta',
+    ramaNoTomada: (): string => '✗ Java se salta este bloque',
     /** El nombre de un carácter invisible (el título que sale al pasar el ratón sobre su marca roja). */
     caracterEspecial: (codigo: number): string => `${NOMBRES_DE_CARACTERES_ESPECIALES.get(codigo) ?? 'Carácter de control'} (${codigoUnicode(codigo)})`,
   },

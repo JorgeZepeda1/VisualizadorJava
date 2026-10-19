@@ -166,6 +166,15 @@ describe('derivarModeloVista: el paso 0 y la espera de un dato', () => {
     expect(modelo.robot.texto).toBe('Todavía no se ejecuta nada. Antes de empezar, lee el programa y anota qué crees que va a aparecer en la consola. Luego pulsa «Siguiente» y lo comprobamos desde la línea 4.');
   });
 
+  // V7 del maestro (panel R0): los datos del paso 0 salen de la ENTRADA PREPARADA (renglones), nunca se inventan; una entrada vacía (el alumno escribe los suyos) no menciona ninguno.
+  it('V7: con una entrada preparada, el paso 0 nombra los datos que el programa va a leer', () => {
+    const base = { vista: VISTA, aplicados: [], siguiente: PASO_CONDICION, instantanea: instantanea({}), total: 2, ejecucion: { estado: 'calculando' } } as const;
+    expect(derivarModeloVista({ ...base, entradaPreparada: '-3\n0\n7\n' }).robot.texto).toContain('Este programa va a leer estos datos: -3, 0 y 7. Antes de empezar');
+    expect(derivarModeloVista({ ...base, entradaPreparada: 'Carlos\n' }).robot.texto).toContain('Este programa va a leer este dato: Carlos. Antes de empezar');
+    expect(derivarModeloVista({ ...base, entradaPreparada: '' }).robot.texto).not.toContain('va a leer');
+    expect(derivarModeloVista(base).robot.texto).not.toContain('va a leer');
+  });
+
   it('en el último paso, con el programa esperando un dato, la línea siguiente es la de la lectura que espera', () => {
     const modelo = derivarModeloVista({
       vista: VISTA,
@@ -206,7 +215,7 @@ describe('derivarModeloVista: antes de ejecutar', () => {
     expect(modelo.variables).toEqual([]);
     expect(modelo.vueltas).toEqual([]);
     expect(modelo.lineas).toEqual({ ejecutada: null, siguiente: null });
-    expect(modelo.robot.texto).toContain('Cuando tu programa esté listo');
+    expect(modelo.robot.texto).toContain('Cuando esté listo, pulsa «Visualizar»');
   });
 });
 
@@ -253,9 +262,16 @@ describe('derivarModeloVista: la ranura de acciones', () => {
     expect(enMedio.ranura).toEqual({ tipo: 'navegacion', alPrincipio: false, alFinal: false });
   });
 
-  it('en el último paso de un programa que terminó la ranura ofrece qué sigue', () => {
+  it('en el último paso de un programa que NO lee datos la ranura ofrece volver atrás y modificar el programa (no hay otros datos que probar)', () => {
     const modelo = derivarModeloVista({ ...calculando, aplicados: [PASO_CONDICION, PASO_ASIGNACION], siguiente: null, total: 2, ejecucion: { estado: 'terminada', fin: { causa: 'terminado' } } });
-    expect(modelo.ranura).toEqual({ tipo: 'fin', acciones: ['anterior', 'probar-con-otros-datos', 'modificar-el-programa'] });
+    expect(modelo.ranura).toEqual({ tipo: 'fin', acciones: ['anterior', 'modificar-el-programa'], principal: 'modificar-el-programa' });
+  });
+
+  // Panel R0 (diseñador): el programa «lee datos» si algún paso consumió entrada (`Paso.entrada`), de la entrada preparada de un ejemplo o de lo que el alumno tecleó.
+  it('en el último paso de un programa que SÍ lee datos la ranura ofrece también «Probar con otros datos», como acción principal', () => {
+    const lectura: Paso = paso({ clase: 'asignacion', nodo: 2, linea: 5, explicacion: ASIGNACION, entrada: { cursor: 3 } });
+    const modelo = derivarModeloVista({ ...calculando, aplicados: [PASO_CONDICION, lectura], siguiente: null, total: 2, ejecucion: { estado: 'terminada', fin: { causa: 'terminado' } } });
+    expect(modelo.ranura).toEqual({ tipo: 'fin', acciones: ['anterior', 'probar-con-otros-datos', 'modificar-el-programa'], principal: 'probar-con-otros-datos' });
   });
 
   it('mientras el alumno escribe no hay nada en la ranura', () => {

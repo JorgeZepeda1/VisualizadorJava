@@ -144,7 +144,7 @@ describe('<Visualizador/> — el robot explica cada paso', () => {
     await pulsar(/visualizar/i);
     await pulsar(/fin/i);
 
-    expect(screen.getByTestId('globo-del-robot').querySelector('.globo-nota')?.textContent).toBe('Así terminó: sin errores, en 2 pasos.');
+    expect(screen.getByTestId('globo-del-robot').querySelector('.globo-nota')?.textContent).toMatch(/^Así terminó: sin errores, en 2 pasos\. ¿La consola muestra lo que anotaste al principio\?/);
     expect(screen.getByRole('img').getAttribute('data-animo')).toBe('feliz');
   });
 
@@ -326,7 +326,7 @@ describe('<Visualizador/> — volver a editar', () => {
     expect(document.querySelector('.cm-content')?.getAttribute('contenteditable')).toBe('true');
     expect(screen.queryByRole('button', { name: /siguiente/i })).toBeNull();
     expect(screen.queryByRole('button', { name: /editar programa/i })).toBeNull();
-    expect(globo()).toContain('Cuando tu programa esté listo');
+    expect(globo()).toContain('Cuando esté listo, pulsa «Visualizar»');
   });
 
   it('no ofrece «Editar programa» cuando todavía no se visualiza nada', () => {

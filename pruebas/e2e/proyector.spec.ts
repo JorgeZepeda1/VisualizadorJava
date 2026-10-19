@@ -3,8 +3,12 @@
 //   - Una línea de 53 caracteres, que a 24 px no cabe en la columna del código, se parte en dos renglones y NO hay desplazamiento horizontal.
 //   - La tabla de variables no muestra la columna «Tipo» y la consola deja a la vista sus últimas líneas.
 //   - Ningún panel se superpone ni corta su texto, y la página no se desplaza de lado.
+// Correcciones del panel R0 (diseñador, «Antes de publicar» 2 y 3), con la máquina de snacks del PO:
+//   - la consola (sus últimas cuatro líneas) va DEBAJO del código, como la ventana «Output» de NetBeans, y se ve en CADA paso;
+//   - el partido de líneas no deja renglones numerados vacíos ni parte palabras, y la continuación lleva la sangría colgante de la línea más 2 columnas;
+//   - en la condición y en el globo, las piezas de la cadena de sustitución no se parten por dentro.
 import { expect, test, type Page } from '@playwright/test';
-import { escribirEnElEditor, globoDelRobot, irAlFinal, visualizar } from './ayudas.ts';
+import { abrirLaMaquinaDeSnacks, escribirEnElEditor, globoDelRobot, irAlFinal, problemasDelPartidoEnTodoElCodigo, renglonesDeTexto, teclearDato, visualizar } from './ayudas.ts';
 
 /** 8 + 19 + 24 + 2 = 53 caracteres en la línea de la impresión. */
 const LINEA_DE_53 = '        System.out.println("0123456789012345678901");';
@@ -169,6 +173,136 @@ for (const ventana of [
         if (linea === null || desplazador === null) return;
         expect(linea.y, 'la línea no queda arriba del editor').toBeGreaterThanOrEqual(desplazador.y - 1);
         expect(linea.y + linea.height, 'la línea no queda abajo del editor').toBeLessThanOrEqual(desplazador.y + desplazador.height + 1);
+      }).toPass({ timeout: 5_000 });
+    });
+
+    test('la consola, debajo del código, se ve completa en CADA paso de la máquina de snacks, con el robot y «Siguiente» a la vista', async ({ page }) => {
+      await abrirLaMaquinaDeSnacks(page);
+      await encenderElProyector(page);
+
+      const siguiente = page.getByRole('button', { name: /siguiente/i });
+      let pasos = 0;
+      for (;;) {
+        const consola = await page.getByTestId('consola').boundingBox();
+        const editor = await page.locator('.cm-editor').boundingBox();
+        expect(consola, `paso ${pasos}: la consola se pinta`).not.toBeNull();
+        expect(editor).not.toBeNull();
+        if (consola === null || editor === null) return;
+        expect(consola.y, `paso ${pasos}: la consola va debajo del código`).toBeGreaterThanOrEqual(editor.y + editor.height - 1);
+        expect(consola.y, `paso ${pasos}: la consola empieza dentro de la ventana`).toBeGreaterThanOrEqual(0);
+        expect(consola.y + consola.height, `paso ${pasos}: la consola termina dentro de la ventana`).toBeLessThanOrEqual(ventana.alto + 1);
+        const impresos = page.getByTestId('consola').locator('[data-flujo]');
+        const ultima = (await impresos.count()) === 0 ? null : await impresos.last().boundingBox();
+        if (ultima !== null) {
+          expect(ultima.y, `paso ${pasos}: lo último que se imprimió empieza dentro de la consola`).toBeGreaterThanOrEqual(consola.y - 1);
+          expect(ultima.y + ultima.height, `paso ${pasos}: lo último que se imprimió termina dentro de la consola`).toBeLessThanOrEqual(consola.y + consola.height + 1);
+        }
+        for (const [elemento, nombre] of [
+          [page.locator('[data-personaje]:visible'), 'el robot'],
+          [globoDelRobot(page), 'el globo'],
+          [page.getByTestId('ranura-de-acciones'), 'la ranura'],
+        ] as const) {
+          const caja = await elemento.boundingBox();
+          expect(caja, `paso ${pasos}: ${nombre}`).not.toBeNull();
+          if (caja !== null) {
+            expect(caja.y, `paso ${pasos}: ${nombre} no queda arriba de la ventana`).toBeGreaterThanOrEqual(-1);
+            expect(caja.y + caja.height, `paso ${pasos}: ${nombre} cabe en la ventana`).toBeLessThanOrEqual(ventana.alto + 1);
+          }
+        }
+        if ((await siguiente.count()) === 0) break;
+        await siguiente.click();
+        pasos += 1;
+        expect(pasos, 'la máquina de snacks termina').toBeLessThan(60);
+      }
+      expect(pasos, 'la máquina de snacks con a1 · 2 · 50 tiene 26 pasos').toBe(26);
+      await expect(globoDelRobot(page)).toContainText('Así terminó');
+    });
+
+    test('con «Con mis datos» el campo de la consola, el robot y «Siguiente» se ven mientras se teclean los tres datos, sin desplazar la página', async ({ page }) => {
+      await abrirLaMaquinaDeSnacks(page, { conMisDatos: true });
+      await encenderElProyector(page);
+
+      const campoDeDato = page.getByRole('textbox', { name: /dato/i });
+      for (const dato of ['a1', '2', '50']) {
+        // Igual que `teclearCuandoElProgramaEspere`, pero midiendo el campo ANTES de enviar el dato (después de enviarlo desaparece).
+        await expect(async () => {
+          await irAlFinal(page);
+          await expect(campoDeDato).toBeFocused({ timeout: 1_000 });
+        }).toPass({ timeout: 15_000 });
+        const campo = await campoDeDato.boundingBox();
+        expect(campo, `el campo de «${dato}» se pinta`).not.toBeNull();
+        if (campo !== null) expect(campo.y + campo.height, `el campo de «${dato}» cabe en la ventana`).toBeLessThanOrEqual(ventana.alto + 1);
+        await teclearDato(page, dato);
+        for (const [elemento, nombre] of [
+          [page.locator('[data-personaje]:visible'), 'el robot'],
+          [globoDelRobot(page), 'el globo'],
+        ] as const) {
+          const caja = await elemento.boundingBox();
+          expect(caja, nombre).not.toBeNull();
+          if (caja !== null) expect(caja.y + caja.height, `${nombre} cabe en la ventana`).toBeLessThanOrEqual(ventana.alto + 1);
+        }
+      }
+      expect(await page.evaluate(() => window.scrollY), 'la página no se desplazó').toBe(0);
+    });
+
+    test('el partido de líneas de toda la máquina de snacks: sin renglones numerados vacíos, sin palabras partidas y con la sangría colgante de la línea más 2 columnas', async ({ page }) => {
+      await abrirLaMaquinaDeSnacks(page);
+      await encenderElProyector(page);
+
+      const { problemas, lineasPartidas } = await problemasDelPartidoEnTodoElCodigo(page);
+      expect(lineasPartidas.length, 'la prueba midió líneas partidas de verdad').toBeGreaterThanOrEqual(5);
+      expect(problemas).toEqual([]);
+    });
+
+    test('en la línea 53 las piezas de la cadena de sustitución no se parten por dentro, ni en el panel de la condición ni en el globo', async ({ page }) => {
+      await abrirLaMaquinaDeSnacks(page);
+      await encenderElProyector(page);
+
+      const siguiente = page.getByRole('button', { name: /siguiente/i });
+      for (let intento = 0; intento < 40; intento += 1) {
+        if (((await globoDelRobot(page).locator('.globo-linea').first().textContent({ timeout: 300 }).catch(() => '')) ?? '') === 'Línea 53') break;
+        await siguiente.click();
+      }
+      await expect(globoDelRobot(page).locator('.globo-linea')).toHaveText('Línea 53');
+
+      const enLaCondicion = page.locator('.panel-condicion .cadena-de-sustitucion code');
+      const enElGlobo = globoDelRobot(page).locator('code');
+      expect(await enLaCondicion.count(), 'la cadena trae sus piezas').toBeGreaterThanOrEqual(2);
+      expect(await enElGlobo.count(), 'el globo trae sus piezas').toBeGreaterThanOrEqual(2);
+      for (const [piezas, donde] of [
+        [enLaCondicion, 'la condición'],
+        [enElGlobo, 'el globo'],
+      ] as const) {
+        for (const pieza of await piezas.all()) {
+          expect(await renglonesDeTexto(pieza), `«${await pieza.textContent()}» en ${donde} se parte por dentro`).toBe(1);
+        }
+      }
+      const medidas = await page.evaluate(() => ({ ancho: document.documentElement.clientWidth, contenido: document.documentElement.scrollWidth }));
+      expect(medidas.contenido).toBeLessThanOrEqual(medidas.ancho);
+    });
+
+    // La etiqueta «✗ Java se salta este bloque» de la línea 53 es una píldora: si no cabe al final de la línea pasa ENTERA al renglón siguiente, no se parte en dos pedazos (la segunda mitad quedaba bajo el borde del editor).
+    test('en la línea 53 la etiqueta de la rama que no se toma no se parte en dos renglones', async ({ page }) => {
+      await abrirLaMaquinaDeSnacks(page);
+      await encenderElProyector(page);
+      const siguiente = page.getByRole('button', { name: /siguiente/i });
+      for (let intento = 0; intento < 40; intento += 1) {
+        if (((await globoDelRobot(page).locator('.globo-linea').first().textContent({ timeout: 300 }).catch(() => '')) ?? '') === 'Línea 53') break;
+        await siguiente.click();
+      }
+      const etiqueta = page.locator('.cm-etiqueta-rama-no-tomada');
+      await expect(etiqueta).toHaveCount(1);
+      await expect(etiqueta).toContainText('Java se salta este bloque');
+      expect(await renglonesDeTexto(etiqueta), 'la etiqueta ocupa un solo renglón').toBe(1);
+      // Y la línea entera, con su etiqueta al final, queda a la vista dentro del editor (no tapada por su borde de abajo).
+      await expect(async () => {
+        const caja = await etiqueta.boundingBox();
+        const editor = await page.locator('.cm-scroller').boundingBox();
+        expect(caja).not.toBeNull();
+        expect(editor).not.toBeNull();
+        if (caja === null || editor === null) return;
+        expect(caja.y, 'la etiqueta no queda arriba del editor').toBeGreaterThanOrEqual(editor.y - 1);
+        expect(caja.y + caja.height, 'la etiqueta no queda abajo del editor').toBeLessThanOrEqual(editor.y + editor.height + 1);
       }).toPass({ timeout: 5_000 });
     });
 

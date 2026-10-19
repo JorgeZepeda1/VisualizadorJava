@@ -3,7 +3,7 @@
 // análisis es del motor), caracteres invisibles a la vista (lo que el alumno pega desde una página o un PDF), un `Compartment` de solo lectura (en visualización) y el campo de resaltados
 // (`./resaltados.ts`). Tab NO se captura (sin `indentWithTab`): sin trampa de teclado, WCAG 2.1.2.
 import { useEffect, useImperativeHandle, useRef, type Ref } from 'react';
-import { Compartment, EditorState, Prec, type Extension, type StateEffect } from '@codemirror/state';
+import { Compartment, EditorSelection, EditorState, Prec, type Extension, type StateEffect } from '@codemirror/state';
 import { EditorView, highlightSpecialChars, keymap, lineNumbers } from '@codemirror/view';
 import { bracketMatching, indentOnInput } from '@codemirror/language';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
@@ -220,11 +220,14 @@ export function EditorJava({ valor, soloLectura = false, onCambio, resaltados = 
     if (!vista) return;
     const { lineas, problema: delProblema } = resaltadosRef.current;
     const efectos: StateEffect<unknown>[] = [establecerResaltados.of({ lineas, problema: delProblema })];
-    // El código largo se desplaza para que la línea que se marca quede a la vista; en un celular, donde el editor ocupa ≈ 35 % del alto, queda en el CENTRO (REQ-PANT-005).
+    // El código largo se desplaza para que la línea que se marca quede a la vista; en un celular, donde el editor ocupa ≈ 35 % del alto, queda en el CENTRO (REQ-PANT-005). Se pide el rango de la línea ENTERA
+    // (no solo su inicio): con el ajuste de línea del proyector una línea ocupa varios renglones y su etiqueta queda al final del último. La CABEZA del rango es el inicio (`range(to, from)`): si la línea es más ancha
+    // que el editor (un celular, sin ajuste de línea) manda el inicio y el código no se desplaza de lado, en vez de dejar el principio cortado.
     const linea = lineas?.lineaEjecutada ?? lineas?.lineaSiguiente ?? delProblema?.linea ?? null;
     if (linea !== null && linea >= 1 && linea <= vista.state.doc.lines) {
       const enCelular = typeof window.matchMedia === 'function' && window.matchMedia(PANTALLA_DE_CELULAR).matches;
-      efectos.push(EditorView.scrollIntoView(vista.state.doc.line(linea).from, { y: enCelular ? 'center' : 'nearest', yMargin: 48 }));
+      const { from, to } = vista.state.doc.line(linea);
+      efectos.push(EditorView.scrollIntoView(EditorSelection.range(to, from), { y: enCelular ? 'center' : 'nearest', yMargin: 48 }));
     }
     vista.dispatch({ effects: efectos });
   }, [claveDeResaltados]);

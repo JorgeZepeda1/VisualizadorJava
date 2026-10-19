@@ -83,18 +83,34 @@ describe('<RanuraDeAcciones/> — «◀ Anterior · Siguiente ▶» (REQ-PANT-00
 });
 
 describe('<RanuraDeAcciones/> — el fin del recorrido (REQ-PANT-007)', () => {
-  const FIN: Ranura = { tipo: 'fin', acciones: ['anterior', 'probar-con-otros-datos', 'modificar-el-programa'] };
+  const FIN: Ranura = { tipo: 'fin', acciones: ['anterior', 'probar-con-otros-datos', 'modificar-el-programa'], principal: 'probar-con-otros-datos' };
 
   it('ofrece volver atrás, probar con otros datos y modificar el programa, con «Probar con otros datos» como botón primario', () => {
     render(<RanuraDeAcciones {...propiedades(FIN)} />);
     const grupo = screen.getByRole('group', { name: 'Qué sigue' });
     expect(within(grupo).getAllByRole('button').map((boton) => boton.textContent)).toEqual(['◀ Anterior', 'Probar con otros datos', 'Modificar el programa']);
     expect(screen.getByRole('button', { name: 'Probar con otros datos' }).className).toContain('boton-principal');
+    expect(screen.getByRole('button', { name: 'Modificar el programa' }).className).not.toContain('boton-principal');
     expect(screen.queryByRole('button', { name: /siguiente/i })).toBeNull();
   });
 
+  // Panel R0 (diseñador): en un ciclo que el visualizador detuvo, probar otros datos no lo arregla; lo principal es corregir el programa.
+  it('si la acción principal es «Modificar el programa» (un ciclo detenido), ese es el botón primario y el foco del fin', () => {
+    const refPrimariaDelFin = createRef<HTMLButtonElement>();
+    render(<RanuraDeAcciones {...propiedades({ tipo: 'fin', acciones: ['anterior', 'probar-con-otros-datos', 'modificar-el-programa'], principal: 'modificar-el-programa' }, { refPrimariaDelFin })} />);
+    expect(screen.getByRole('button', { name: 'Modificar el programa' }).className).toContain('boton-principal');
+    expect(screen.getByRole('button', { name: 'Probar con otros datos' }).className).not.toContain('boton-principal');
+    expect(refPrimariaDelFin.current).toBe(screen.getByRole('button', { name: 'Modificar el programa' }));
+  });
+
+  it('un programa que no lee datos no trae «Probar con otros datos»', () => {
+    render(<RanuraDeAcciones {...propiedades({ tipo: 'fin', acciones: ['anterior', 'modificar-el-programa'], principal: 'modificar-el-programa' })} />);
+    expect(screen.queryByRole('button', { name: 'Probar con otros datos' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Modificar el programa' }).className).toContain('boton-principal');
+  });
+
   it('un programa de cero pasos no ofrece «Anterior»: no hay a dónde volver', () => {
-    render(<RanuraDeAcciones {...propiedades({ tipo: 'fin', acciones: ['probar-con-otros-datos', 'modificar-el-programa'] })} />);
+    render(<RanuraDeAcciones {...propiedades({ tipo: 'fin', acciones: ['probar-con-otros-datos', 'modificar-el-programa'], principal: 'probar-con-otros-datos' })} />);
     expect(screen.queryByRole('button', { name: /anterior/i })).toBeNull();
   });
 
@@ -114,7 +130,7 @@ describe('<RanuraDeAcciones/> — el fin del recorrido (REQ-PANT-007)', () => {
     expect(alAnterior).toHaveBeenCalledTimes(1);
   });
 
-  it('la primera acción primaria del fin recibe la referencia para el foco', () => {
+  it('la acción primaria del fin recibe la referencia para el foco', () => {
     const refPrimariaDelFin = createRef<HTMLButtonElement>();
     render(<RanuraDeAcciones {...propiedades(FIN, { refPrimariaDelFin })} />);
     expect(refPrimariaDelFin.current).toBe(screen.getByRole('button', { name: 'Probar con otros datos' }));

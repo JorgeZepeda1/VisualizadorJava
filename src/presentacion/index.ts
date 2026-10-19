@@ -12,7 +12,7 @@ export { derivarModeloVista, type ContextoDePantalla, type EntradaModeloVista, t
 export { derivarRanura, puertasDelSaludo, type AccesorioDePuerta, type AccionDeFin, type IdDePuerta, type Puerta, type Ranura } from './ranura.ts';
 export type { EstadoDeLaEjecucion, RobotVista } from './robot.ts';
 export { derivarHablante, type EntradaDelHablante, type Hablante } from './hablante.ts';
-export { armarGaleria, etiquetaDeLaEntrada, type ArchivosCrudos, type GaleriaVista, type MuestraDeGaleria, type ProgramaDeGaleria, type SeccionDeGaleria } from './galeria.ts';
+export { armarGaleria, datosDeLaEntrada, etiquetaDeLaEntrada, type ArchivosCrudos, type GaleriaVista, type MuestraDeGaleria, type ProgramaDeGaleria, type SeccionDeGaleria } from './galeria.ts';
 export type { Seccion } from './secciones.ts';
 export type { VariableVista } from './variables.ts';
 export type { CondicionVista, Evaluacion, Rama } from './condicion.ts';

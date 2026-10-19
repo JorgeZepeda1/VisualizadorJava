@@ -1,5 +1,5 @@
-// El accesorio de un robot, en chiquito (tarea R0.8, REQ-PANT-001, ADR 017): las puertas del saludo muestran el accesorio del robot que ayuda ahí —el libro abierto, el puntero ▶, la lupa con «!»—, no tres
-// caras que compitan por la atención de quien llega por primera vez. Es un dibujo decorativo (`aria-hidden`): el texto del botón ya dice a dónde lleva. Los mismos trazos que sostiene cada robot (`Robot.tsx`),
+// El dibujo de una puerta, en chiquito (tarea R0.8, REQ-PANT-001, ADR 017): las puertas del saludo muestran el accesorio del robot que ayuda ahí —el libro abierto, el puntero ▶—, no tres caras que compitan por
+// la atención de quien llega por primera vez. «Probar mi programa» lleva una hoja con código y un lápiz que no pertenece a ningún robot (panel R0: la lupa con «!» es del revisor y será la marca de trampa). Es un dibujo decorativo (`aria-hidden`): el texto del botón ya dice a dónde lleva. Los mismos trazos que sostiene cada robot (`Robot.tsx`),
 // con los colores de su dueño (la hoja de estilos los pone por `data-icono-accesorio`).
 import type { ReactElement } from 'react';
 import type { AccesorioDePuerta } from '../../presentacion/index.ts';
@@ -13,12 +13,17 @@ const DIBUJOS: Readonly<Record<AccesorioDePuerta, ReactElement>> = {
     </>
   ),
   puntero: <polygon className="robot-punta" points="7,4 27,16 7,28" />,
-  lupa: (
+  // «Probar mi programa»: una hoja con dos renglones de código (el segundo con sangría) y un lápiz en diagonal. No es de ningún robot: sus clases son `icono-*`, no `robot-*`.
+  'hoja-con-lapiz': (
     <>
-      <line className="robot-mango" x1="20" y1="20" x2="28" y2="28" />
-      <circle className="robot-cristal" cx="13" cy="13" r="9.5" />
-      <line className="robot-trazo" x1="13" y1="7.5" x2="13" y2="14.5" />
-      <circle className="robot-ojo" cx="13" cy="18.5" r="1.6" />
+      <path className="icono-hoja" d="M5 3 H19 L25 9 V29 H5 Z" />
+      <path className="icono-doblez" d="M19 3 V9 H25" />
+      <path className="icono-renglon" d="M9 13 H17" />
+      <path className="icono-renglon" d="M12 18 H20" />
+      <g className="icono-lapiz" transform="rotate(45 22 22)">
+        <rect x="19.5" y="9" width="5" height="14" />
+        <polygon points="19.5,23 24.5,23 22,29" />
+      </g>
     </>
   ),
 };

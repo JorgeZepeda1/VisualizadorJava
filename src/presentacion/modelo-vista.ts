@@ -5,6 +5,7 @@
 import type { InstantaneaDeEjecucion, Paso, Rango, Segmento, VistaPrograma } from '../motor/vista.ts';
 import { derivarBufer, type BuferVista } from './bufer.ts';
 import { derivarCondicion, type CondicionVista } from './condicion.ts';
+import { datosDeLaEntrada } from './galeria.ts';
 import { derivarHablante, type Hablante } from './hablante.ts';
 import { derivarRanura, type Ranura } from './ranura.ts';
 import { ramaNoTomada } from './ramas-del-if.ts';
@@ -40,6 +41,8 @@ export interface EntradaModeloVista {
   readonly total: number;
   readonly ejecucion: EstadoDeLaEjecucion;
   readonly pantalla?: Partial<ContextoDePantalla>;
+  /** La entrada preparada del programa abierto (renglones con su salto de línea): el paso 0 nombra sus datos (V7, panel R0). Vacía o ausente, el programa no trae datos. */
+  readonly entradaPreparada?: string;
 }
 
 export interface ModeloVista {
@@ -71,7 +74,7 @@ function totalConocido(ejecucion: EstadoDeLaEjecucion, total: number): number | 
 }
 
 export function derivarModeloVista(entrada: EntradaModeloVista): ModeloVista {
-  const { vista, aplicados, siguiente, instantanea, total, ejecucion } = entrada;
+  const { vista, aplicados, siguiente, instantanea, total, ejecucion, entradaPreparada = '' } = entrada;
   const { seccion = 'paso-a-paso', hayProblema = false, hayTemasPublicados = false } = entrada.pantalla ?? {};
   const paso = aplicados.length;
   const ultimo = aplicados.at(-1) ?? null;
@@ -89,9 +92,9 @@ export function derivarModeloVista(entrada: EntradaModeloVista): ModeloVista {
     vueltas: vista === null ? [] : derivarVueltas(aplicados, vista),
     consola: instantanea.salida,
     bufer: derivarBufer(aplicados),
-    robot: derivarRobot({ ejecucion, aplicados, siguiente, total, vista }),
+    robot: derivarRobot({ ejecucion, aplicados, siguiente, total, vista, datosPreparados: datosDeLaEntrada(entradaPreparada) }),
     hablante: derivarHablante({ seccion, hayProblema }),
-    ranura: derivarRanura({ ejecucion, paso, total, hayTemasPublicados }),
+    ranura: derivarRanura({ ejecucion, paso, total, hayTemasPublicados, leeDatos: aplicados.some((aplicado) => aplicado.entrada !== undefined) }),
     posicion: { paso, total: totalConocido(ejecucion, total) },
     ramaNoTomada: ramaNoTomada(ultimo, vista),
     esperandoEntrada,

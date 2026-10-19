@@ -33,9 +33,10 @@ describe('<Ejemplos/> — carga diferida de la galería', () => {
     expect(() => entregar(ARCHIVOS)).not.toThrow();
   });
 
+  // `import()` real de Vite: con toda la suite corriendo a la vez tarda más de 1 s (la espera por omisión de `findBy*`), y bajo cobertura aún más (S1 del informe de verificación de R0).
   it('por omisión pide el fragmento real de Vite (`datos/programas-crudos`) y trae las 36 entradas de la galería', async () => {
     render(<Ejemplos alAbrir={() => undefined} />);
-    expect(await screen.findByRole('heading', { level: 4, name: 'Máquina de snacks' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { level: 4, name: 'Máquina de snacks' }, { timeout: 15_000 })).toBeTruthy();
     expect(screen.getAllByRole('heading', { level: 4 })).toHaveLength(36);
-  });
+  }, 20_000);
 });

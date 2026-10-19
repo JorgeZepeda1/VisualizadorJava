@@ -113,7 +113,7 @@ test.describe('MaquinaSnacks con entrada interactiva (el ejercicio del PO)', () 
     // La rama que no corre está atenuada, nunca oculta.
     await expect(page.locator('li.atenuada')).toContainText('No entra al if');
     // En el editor, el bloque que el programa se salta («Cantidad no válida» + `return`) se atenúa Y lleva una etiqueta en palabras; al pasar a la sentencia siguiente, desaparece.
-    await expect(page.locator('.cm-etiqueta-rama-no-tomada')).toHaveText('✗ esta rama no se ejecuta');
+    await expect(page.locator('.cm-etiqueta-rama-no-tomada')).toHaveText('✗ Java se salta este bloque');
     expect((await page.locator('.cm-rama-no-tomada').allTextContents()).join('')).toContain('Cantidad no válida');
     // La línea recién ejecutada y la siguiente llevan DOS marcas distintas.
     await expect(page.locator('.cm-linea-ejecutada')).toHaveCount(1);
