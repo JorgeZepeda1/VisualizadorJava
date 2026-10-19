@@ -1,4 +1,4 @@
-public class NoDaNiUnaVuelta {
+public class PagarConElSaldo {
     public static void main(String[] args) {
         int saldo = 50;
         while (saldo >= 100) {

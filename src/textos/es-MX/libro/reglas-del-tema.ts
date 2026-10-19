@@ -2,13 +2,13 @@
 // del tema: las usan las pruebas del catálogo, la que cruza el catálogo con `corpus/libro/` y el guion que arma los borradores para el PO. Lo que tiene que ver con los programas y sus goldens (que existan,
 // que coincidan con el JDK, que ningún texto repita una salida) necesita leer archivos y vive en `pruebas/libro/`, fuera de esta capa.
 import { IDS_DE_TEMAS } from './tipos.ts';
-import type { IdPrograma, PapelDelPrograma, Tema } from './tipos.ts';
+import type { IdPrograma, IdTema, PapelDelPrograma, Tema } from './tipos.ts';
 
 /** Las palabras que un tema debería tener y las que no puede pasar (REQ-LIBRO-002; maestro H8: una sola idea por tema). */
 export const META_DE_PALABRAS = 400;
 export const MAXIMO_DE_PALABRAS = 550;
 
-export type ReglaDelTema = 'para-empezar' | 'idea' | 'errores-tipicos' | 'ponte-a-prueba' | 'ahora-hazlo-tu' | 'resumen' | 'palabras' | 'vocabulario' | 'programas' | 'relacionados';
+export type ReglaDelTema = 'para-empezar' | 'idea' | 'errores-tipicos' | 'ponte-a-prueba' | 'ahora-hazlo-tu' | 'resumen' | 'palabras' | 'vocabulario' | 'afirmaciones' | 'programas' | 'relacionados';
 
 export interface Incumplimiento {
   readonly regla: ReglaDelTema;
@@ -75,6 +75,59 @@ const FORMAS_PROHIBIDAS: readonly { readonly patron: RegExp; readonly porQue: st
   { patron: /\btrampas?\b(?! de Java)/iu, porQue: 'se dice «trampa de Java»' },
 ];
 
+interface AfirmacionDesmentida {
+  readonly patron: RegExp;
+  /** Cuándo la misma frase SÍ es cierta (por el tema en que está o por lo que acota el propio texto). */
+  readonly salvo?: (tema: Tema, texto: string) => boolean;
+  readonly porQue: string;
+}
+
+/** El `while` y el `for` revisan la condición antes de cada vuelta; el `do-while` la revisa al final (panel R0, maestro L2 y experto en Java A5). */
+const TEMAS_QUE_REVISAN_ANTES: readonly IdTema[] = ['u6-while', 'u6-for'];
+
+// Frases que parecen inofensivas pero un programa real desmiente (panel R0). Se buscan en el texto completo, con su código en línea, porque lo que las desmiente suele estar dentro de él (`i++`, `false`). Cada
+// una trae la versión que sí es cierta, para que quien redacta sepa cómo acotarla. Se verificaron con el JDK 17 real: `char c = 'a'; c++;` compila y `c = c + 1;` no; `boolean todosAprobaron = true;` es una bandera
+// válida; un `while` sin llaves repite solo su primera instrucción; un `break` termina un ciclo cuya condición nunca da `false`; y con `continue` el `for` hace su cambio y el `while` no.
+const AFIRMACIONES_DESMENTIDAS: readonly AfirmacionDesmentida[] = [
+  {
+    patron: /\bel ciclo nunca termina\b/iu,
+    porQue: 'un `break` o una excepción también terminan un ciclo: di que la condición nunca da `false`',
+  },
+  {
+    patron: /\bantes de cada vuelta\b/iu,
+    salvo: (tema, texto) => TEMAS_QUE_REVISAN_ANTES.includes(tema.id) || /`(?:while|for)`/u.test(texto),
+    porQue: 'solo el `while` y el `for` revisan la condición antes de cada vuelta, y el `do-while` la revisa al final: nombra el ciclo o di «para decidir si da otra vuelta»',
+  },
+  {
+    patron: /`(\w+)\+\+`[^.]*`\1 = \1 \+ 1`/u,
+    salvo: (_tema, texto) => texto.includes('`int`'),
+    porQue: '`i++` e `i = i + 1` solo son iguales con una variable `int` usada como instrucción: con un `char`, `c++;` compila y `c = c + 1;` no',
+  },
+  {
+    patron: /(?<!suele )\bempiezan? en `false`|\bla bandera en `false`/iu,
+    porQue: 'una bandera suele empezar en `false`, pero no siempre: `boolean todosAprobaron = true;` también es una bandera',
+  },
+  {
+    patron: /\bmismo trabajo que un `while`/iu,
+    porQue: 'con `continue`, el `for` hace su cambio y el `while` no: di que hace un trabajo parecido',
+  },
+  {
+    patron: /\bllaves[^.]*marcan lo que se repite/iu,
+    salvo: (_tema, texto) => /\bsin llaves\b/iu.test(texto),
+    porQue: 'sin llaves solo se repite la primera instrucción: dilo junto a la frase',
+  },
+];
+
+function incumplimientosDeAfirmaciones(tema: Tema): readonly Incumplimiento[] {
+  return textosDelTema(tema).flatMap((texto) =>
+    AFIRMACIONES_DESMENTIDAS.flatMap(({ patron, salvo, porQue }): readonly Incumplimiento[] => {
+      const coincidencia = patron.exec(texto);
+      if (coincidencia === null || salvo?.(tema, texto) === true) return [];
+      return [{ regla: 'afirmaciones', detalle: `«${coincidencia[0]}» en «${resumirTexto(texto)}»: ${porQue}.` }];
+    }),
+  );
+}
+
 function resumirTexto(texto: string): string {
   return texto.length <= 50 ? texto : `${texto.slice(0, 47)}…`;
 }
@@ -117,7 +170,7 @@ export function reglasDelTema(tema: Tema): readonly Incumplimiento[] {
   if (tema.resumen.length !== 3 || tema.resumen.some((vineta) => vineta.trim() === '')) agregar('resumen', '«En resumen» son tres viñetas con texto.');
   const palabras = palabrasDelTema(tema);
   if (palabras > MAXIMO_DE_PALABRAS) agregar('palabras', `El tema tiene ${palabras} palabras sin contar el código y el máximo es ${MAXIMO_DE_PALABRAS} (la meta es ${META_DE_PALABRAS}).`);
-  incumplimientos.push(...incumplimientosDeVocabulario(tema), ...incumplimientosDeProgramas(tema));
+  incumplimientos.push(...incumplimientosDeVocabulario(tema), ...incumplimientosDeAfirmaciones(tema), ...incumplimientosDeProgramas(tema));
   for (const relacionado of tema.relacionados ?? []) {
     if (relacionado === tema.id || !IDS_DE_TEMAS.includes(relacionado)) agregar('relacionados', `«${relacionado}» no es otro tema del libro.`);
   }

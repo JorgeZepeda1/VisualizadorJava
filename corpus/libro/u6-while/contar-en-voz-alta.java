@@ -1,4 +1,4 @@
-public class ContarDel1Al5 {
+public class ContarEnVozAlta {
     public static void main(String[] args) {
         int numero = 1;
         while (numero <= 5) {

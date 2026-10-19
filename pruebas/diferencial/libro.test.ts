@@ -20,7 +20,7 @@ describe('el libro contra el JDK 17 real: cada programa de corpus/libro (REQ-LIB
   });
 
   it('el programa semilla del tema `while` es «Contar del 1 al 5» y el JDK imprimió esos cinco números y «Listo»', () => {
-    const semilla = programas.find((programa) => programa.id === 'u6-while/contar-del-1-al-5');
+    const semilla = programas.find((programa) => programa.id === 'u6-while/contar-en-voz-alta');
     expect(semilla, 'el programa semilla de R0.13').toBeDefined();
     expect(semilla?.salida).toBe('1\n2\n3\n4\n5\nListo\n');
     expect(semilla?.meta).toEqual({ papel: 'para-empezar', esperado: 'ejecuta' });

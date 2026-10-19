@@ -19,7 +19,7 @@ function temaDeMuestra(cambios: Partial<Tema> = {}): Tema {
     orden: 2,
     titulo: 'El ciclo `while`',
     estado: 'borrador',
-    paraEmpezar: { situacion: palabras(10), programa: 'u6-while/contar-del-1-al-5' },
+    paraEmpezar: { situacion: palabras(10), programa: 'u6-while/contar-en-voz-alta' },
     idea: [palabras(5), palabras(5), palabras(5)],
     comoSeEscribe: [
       { tipo: 'parrafo', texto: palabras(7) },
@@ -28,7 +28,7 @@ function temaDeMuestra(cambios: Partial<Tema> = {}): Tema {
       { tipo: 'lista', elementos: [palabras(2), palabras(2)] },
     ],
     pasoAPaso: { queObservar: palabras(6), programa: 'u6-while/cuenta-regresiva', sugerirReto: true },
-    erroresTipicos: [{ texto: palabras(8), programa: 'u6-while/no-da-ni-una-vuelta' }],
+    erroresTipicos: [{ texto: palabras(8), programa: 'u6-while/pagar-con-el-saldo' }],
     ponteAPrueba: [
       { pregunta: palabras(9), programa: 'u6-while/prueba-uno' },
       { pregunta: palabras(9), programa: 'u6-while/prueba-dos' },
@@ -86,9 +86,9 @@ describe('textosDelTema: todos los textos que lee el alumno, para revisar su voz
 describe('programasDelTema: los programas que usa un tema, en el orden de sus secciones y con su papel', () => {
   it('Para empezar, Míralo paso a paso, errores típicos, Ponte a prueba y las soluciones de Ahora hazlo tú', () => {
     expect(programasDelTema(temaDeMuestra())).toEqual([
-      { id: 'u6-while/contar-del-1-al-5', papel: 'para-empezar' },
+      { id: 'u6-while/contar-en-voz-alta', papel: 'para-empezar' },
       { id: 'u6-while/cuenta-regresiva', papel: 'paso-a-paso' },
-      { id: 'u6-while/no-da-ni-una-vuelta', papel: 'error-tipico' },
+      { id: 'u6-while/pagar-con-el-saldo', papel: 'error-tipico' },
       { id: 'u6-while/prueba-uno', papel: 'ponte-a-prueba' },
       { id: 'u6-while/prueba-dos', papel: 'ponte-a-prueba' },
       { id: 'u6-while/solucion-modificar', papel: 'solucion' },
@@ -167,10 +167,69 @@ describe('reglasDelTema: un tema de muestra válido no incumple nada; cada regla
     expect(reglasDelTema(temaDeMuestra({ idea }))).toEqual([]);
   });
 
+  // Correcciones del panel R0 (experto en Java A5, B5 y B6; maestro L2): frases que parecen inofensivas y Java desmiente. Cada una se prueba con la frase desmentida (se detecta) y con su versión acotada (pasa).
+  describe('afirmaciones que Java desmiente (panel R0)', () => {
+    /** Solo la regla `afirmaciones`: el tema de muestra cambia de id y sus programas ya no son «suyos». */
+    function afirmaciones(cambios: Partial<Tema>): readonly string[] {
+      return reglasDelTema(temaDeMuestra(cambios))
+        .filter((incumplimiento) => incumplimiento.regla === 'afirmaciones')
+        .map((incumplimiento) => incumplimiento.detalle);
+    }
+
+    const enLaIdea = (frase: string): Partial<Tema> => ({ idea: [frase, palabras(5), palabras(5)] });
+
+    it.each([
+      ['«el ciclo nunca termina» (un `break` o una excepción lo terminan)', 'Si nada cambia, el ciclo nunca termina.'],
+      ['«igual que `i = i + 1`» sin acotar al `int` (con `char c`, `c = c + 1;` ni compila)', '`i++` suma 1 a `i`, igual que `i = i + 1`.'],
+      ['«una bandera empieza en `false`» (`boolean todosAprobaron = true;` es normal)', 'Una bandera es una variable `boolean` que empieza en `false`.'],
+      ['«la bandera en `false`»', 'Los dos empiezan en 0, y la bandera en `false`.'],
+      ['«mismo trabajo que un `while`» (con `continue` el `for` sí hace su cambio)', 'Hace el mismo trabajo que un `while`, pero con las tres partes juntas.'],
+      ['«las llaves marcan lo que se repite» sin decir qué pasa sin llaves', 'Las llaves `{ }` marcan lo que se repite.'],
+    ])('se detecta: %s', (_porQue, frase) => {
+      expect(afirmaciones(enLaIdea(frase))).toHaveLength(1);
+    });
+
+    it.each([
+      ['«nunca da `false`»', 'Si nada cambia, la condición nunca da `false`.'],
+      ['«con una variable `int` usada como instrucción»', 'Con una variable `int` usada como instrucción, `i++` suma 1 a `i`, igual que `i = i + 1`.'],
+      ['«suele empezar en `false`»', 'Una bandera es una variable `boolean` que suele empezar en `false`.'],
+      ['«la bandera suele empezar en `false`»', 'Los dos empiezan en 0, y la bandera suele empezar en `false`.'],
+      ['«un trabajo parecido al de un `while`»', 'Hace un trabajo parecido al de un `while`, pero con las tres partes juntas.'],
+      ['«sin llaves, solo se repite la primera instrucción»', 'Las llaves `{ }` marcan lo que se repite. Sin llaves, solo se repite la primera instrucción.'],
+    ])('se acepta la versión acotada: %s', (_porQue, frase) => {
+      expect(afirmaciones(enLaIdea(frase))).toEqual([]);
+    });
+
+    it('«antes de cada vuelta» solo es cierto con `while` y `for`: en un tema general se detecta, y se acepta si la frase nombra el ciclo', () => {
+      const general: Partial<Tema> = { id: 'u6-que-es-un-ciclo', ...enLaIdea('Antes de cada vuelta, Java revisa una condición.') };
+      expect(afirmaciones(general)).toHaveLength(1);
+      expect(afirmaciones({ id: 'u6-que-es-un-ciclo', ...enLaIdea('Con el `while`, antes de cada vuelta, Java revisa una condición.') })).toEqual([]);
+      expect(afirmaciones({ id: 'u6-que-es-un-ciclo', ...enLaIdea('Para decidir si da otra vuelta, Java revisa una condición.') })).toEqual([]);
+    });
+
+    it('«antes de cada vuelta» es cierto en los temas del `while` y del `for` aunque la frase no nombre el ciclo, y en el `do-while` se detecta', () => {
+      const frase = enLaIdea('Java revisa la condición antes de cada vuelta.');
+      expect(afirmaciones({ id: 'u6-while', ...frase })).toEqual([]);
+      expect(afirmaciones({ id: 'u6-for', ...frase })).toEqual([]);
+      expect(afirmaciones({ id: 'u6-do-while', ...frase })).toHaveLength(1);
+    });
+
+    it('el detalle dice cuál es la frase y por qué Java la desmiente', () => {
+      const [detalle] = afirmaciones(enLaIdea('Si nada cambia, el ciclo nunca termina.'));
+      expect(detalle).toContain('el ciclo nunca termina');
+      expect(detalle).toContain('`break`');
+    });
+
+    it('revisa todos los textos del tema, no solo «La idea»: también el resumen y las notas de «Cómo se escribe»', () => {
+      expect(afirmaciones({ resumen: [palabras(3), 'Si no cambia, el ciclo nunca termina.', palabras(3)] })).toHaveLength(1);
+      expect(afirmaciones({ comoSeEscribe: [{ tipo: 'nota', texto: 'Las llaves `{ }` marcan lo que se repite.' }] })).toHaveLength(1);
+    });
+  });
+
   it('un programa de otro tema o repetido se detecta: cada tema usa solo los suyos y cada uno una vez', () => {
     const ajeno = temaDeMuestra({ pasoAPaso: { queObservar: palabras(6), programa: 'u6-for/suma-de-1-a-n', sugerirReto: true } });
     expect(reglasDelTema(ajeno).map((i) => i.regla)).toEqual(['programas']);
-    const repetido = temaDeMuestra({ pasoAPaso: { queObservar: palabras(6), programa: 'u6-while/contar-del-1-al-5', sugerirReto: true } });
+    const repetido = temaDeMuestra({ pasoAPaso: { queObservar: palabras(6), programa: 'u6-while/contar-en-voz-alta', sugerirReto: true } });
     expect(reglasDelTema(repetido).map((i) => i.regla)).toEqual(['programas']);
   });
 
@@ -180,7 +239,7 @@ describe('reglasDelTema: un tema de muestra válido no incumple nada; cada regla
   });
 
   it('el tema empieza por una situación: una situación vacía se detecta', () => {
-    const sinSituacion = temaDeMuestra({ paraEmpezar: { situacion: '   ', programa: 'u6-while/contar-del-1-al-5' } });
+    const sinSituacion = temaDeMuestra({ paraEmpezar: { situacion: '   ', programa: 'u6-while/contar-en-voz-alta' } });
     expect(reglasDelTema(sinSituacion).map((i) => i.regla)).toEqual(['para-empezar']);
   });
 
@@ -188,7 +247,7 @@ describe('reglasDelTema: un tema de muestra válido no incumple nada; cada regla
     expect(reglasDelTema(temaDeMuestra({ erroresTipicos: [] })).map((i) => i.regla)).toEqual(['errores-tipicos']);
     const dos = temaDeMuestra({
       erroresTipicos: [
-        { texto: palabras(8), programa: 'u6-while/no-da-ni-una-vuelta' },
+        { texto: palabras(8), programa: 'u6-while/pagar-con-el-saldo' },
         { texto: palabras(8), programa: 'u6-while/orden-del-cuerpo' },
       ],
     });

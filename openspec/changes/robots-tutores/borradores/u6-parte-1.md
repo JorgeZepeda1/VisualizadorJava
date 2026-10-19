@@ -4,20 +4,32 @@ Generado con `npm run libro:borradores` desde el catálogo (`src/textos/es-MX/li
 
 Cómo leerlo: cada tema sigue las ocho secciones del libro. Toda salida es lo que imprimió el JDK 17 real (Temurin 17.0.18) y el motor del visualizador da exactamente lo mismo. Lo que se teclea no aparece en la salida: va en «Entrada de prueba». «Ahora hazlo tú» le muestra al alumno solo la salida esperada; la solución de referencia queda aquí para ti. Palabras: lo que el alumno lee, sin contar el código (un fragmento de código en línea cuenta como una palabra); la meta es 400 y el máximo 550.
 
+## Cambios desde la versión anterior
+
+- Cinco programas tenían un nombre que contestaba la predicción: `UnaSolaVuelta` → `PrimerDoWhile`, `NoDaNiUnaVuelta` → `PagarConElSaldo`, `SinVueltas` → `ForQueEmpiezaEn5`, `DoblarHastaPasarDe20` → `DoblarUnNumero`, `ContarDel1Al5` → `ContarEnVozAlta`. Las salidas son las mismas (goldens regenerados con el JDK 17).
+- Tema 1: «antes de cada vuelta» ya no se dice de todos los ciclos (el `do-while` revisa al final), solo del `while`; «si no, el ciclo nunca termina» pasa a «nunca da `false`» (también en el tema 2); las tres partes del ciclo se nombran con el código del ejemplo.
+- Tema 2: el paso 3 incluye el ciclo que ni siquiera empieza; la nota de las llaves avisa qué pasa sin ellas; el primer error típico explica por qué se imprime el 6.
+- Tema 3: la forma general ya cambia el valor y pone el contador y la bandera dentro de un `if`; la bandera «suele empezar en `false`»; la pregunta 1 de «Ponte a prueba» pide contar cuántas veces se ejecuta `mayores = mayores + 1;`.
+- Tema 4: nuevo «Crear» (leer números hasta un 7 y escribir «Intentos:» con cuántos leyó), con programa y golden nuevos; reemplaza al del doble de un número positivo.
+- Tema 5: `i++` se iguala a `i = i + 1` solo para una variable `int` usada como instrucción, y el `for` hace «un trabajo parecido» al del `while`.
+- Los dos errores de alcance (`do-while` y `for`) ya no citan el mensaje del visualizador, porque contradice al libro: muestran lo que dijo javac y la explicación, y el robot revisor (R3) dará el mensaje propio.
+- Las consignas escriben entre « » lo que el programa imprime (cruzado con el golden); «Para comprobar» con entrada trae el aviso de NetBeans; el reto se invita con «Prueba este ejemplo con el modo reto encendido».
+- Regla automática nueva: ningún tema vuelve a escribir frases que Java desmiente.
+
 | # | Tema | Palabras | Programas | Estado |
 |---|---|---|---|---|
-| 1 | ¿Qué es un ciclo? | 329 | 7 | borrador |
-| 2 | El ciclo `while` | 355 | 9 | borrador |
-| 3 | Contador, acumulador y bandera | 383 | 9 | borrador |
-| 4 | El ciclo `do-while` | 324 | 9 | borrador |
-| 5 | El ciclo `for` | 380 | 9 | borrador |
-| | **Promedio** | 354 | 43 | |
+| 1 | ¿Qué es un ciclo? | 347 | 7 | borrador |
+| 2 | El ciclo `while` | 398 | 9 | borrador |
+| 3 | Contador, acumulador y bandera | 414 | 9 | borrador |
+| 4 | El ciclo `do-while` | 318 | 9 | borrador |
+| 5 | El ciclo `for` | 390 | 9 | borrador |
+| | **Promedio** | 373 | 43 | |
 
 ---
 
 ## 1. ¿Qué es un ciclo?
 
-`u6-que-es-un-ciclo` · U6 · oleada 1 · borrador · 329 palabras (meta 400, máximo 550) · 7 programas
+`u6-que-es-un-ciclo` · U6 · oleada 1 · borrador · 347 palabras (meta 400, máximo 550) · 7 programas
 
 ### Para empezar
 
@@ -51,13 +63,13 @@ Lista terminada
 
 - Un ciclo es una parte del programa que Java repite, para que no tengas que copiar las mismas instrucciones muchas veces.
 - Cada vez que la repite, da una vuelta.
-- Antes de cada vuelta, Java revisa una condición: una pregunta que se responde con `true` o con `false`.
+- Para decidir si da otra vuelta, Java revisa una condición: una pregunta que se responde con `true` o con `false`.
 - Si la condición da `true`, Java da otra vuelta.
 - Si da `false`, el ciclo termina y el programa sigue con lo que viene después.
 
 ### Cómo se escribe
 
-Casi todo ciclo tiene tres partes. Las tres están en el programa de «Para empezar».
+Casi todo ciclo tiene tres partes, y las tres están en el programa de «Para empezar»: el valor inicial (`int alumno = 1;`), la condición (`alumno <= 3`) y el cambio (`alumno = alumno + 1;`).
 
 ```java
 valor inicial
@@ -71,7 +83,7 @@ while (condición) {
 2. Java revisa la condición. Con `true` hace una vuelta; con `false` sale del ciclo.
 3. En cada vuelta, el cambio mueve el valor y Java vuelve a revisar la condición.
 
-> Aquí usamos `while`, el ciclo más sencillo. En este curso verás otros dos, `do-while` y `for`, en los siguientes temas.
+> Aquí usamos `while`, el ciclo más sencillo: revisa la condición antes de cada vuelta. En este curso verás otros dos, `do-while` y `for`, en los siguientes temas.
 
 ### Míralo paso a paso
 
@@ -99,7 +111,7 @@ public class CuentaRegresiva {
 ¡Despegue!
 ```
 
-*Se sugiere encender el modo reto en este ejemplo.*
+*Prueba este ejemplo con el modo reto encendido.*
 
 ### Errores típicos
 
@@ -209,9 +221,11 @@ public class CuentaRegresivaDe2En2 {
 }
 ```
 
-**Crear.** Escribe un programa que lea un número entero `n` con `Scanner` y escriba la palabra `Hola`, una vez por renglón, `n` veces. No escribas nada más.
+**Crear.** Escribe un programa que lea un número entero `n` con `Scanner` y escriba la palabra «Hola», una vez por renglón, `n` veces. No escribas nada más.
 
 **Para comprobar: con esta entrada debe imprimir**
+
+*En NetBeans también verás los datos que escribiste; aquí solo aparece lo que imprime el programa.*
 
 Entrada:
 
@@ -249,21 +263,21 @@ public class SaludosNVeces {
 ### En resumen
 
 - Un ciclo repite instrucciones, y cada repetición es una vuelta.
-- Antes de cada vuelta, Java revisa la condición: con `true` da otra vuelta y con `false` termina.
-- Dentro del ciclo algo debe cambiar el valor que mira la condición; si no, el ciclo nunca termina.
+- Java revisa una condición para decidir: con `true` da otra vuelta y con `false` termina.
+- Dentro del ciclo algo debe cambiar el valor que mira la condición; si no, nunca da `false`.
 
 ---
 
 ## 2. El ciclo `while`
 
-`u6-while` · U6 · oleada 1 · borrador · 355 palabras (meta 400, máximo 550) · 9 programas
+`u6-while` · U6 · oleada 1 · borrador · 398 palabras (meta 400, máximo 550) · 9 programas
 
 ### Para empezar
 
 Cuentas en voz alta: dices un número, le sumas 1 y dices el siguiente, hasta llegar a la meta. Este programa lo hace con un `while`.
 
 ```java
-public class ContarDel1Al5 {
+public class ContarEnVozAlta {
     public static void main(String[] args) {
         int numero = 1;
         while (numero <= 5) {
@@ -307,9 +321,9 @@ Java sigue siempre este orden:
 
 1. Revisa la condición.
 2. Si da `true`, ejecuta las instrucciones de adentro. Eso es una vuelta. Luego regresa al paso 1.
-3. Si da `false`, se salta el ciclo y sigue con lo que está después de la llave `}`.
+3. Si da `false`, el ciclo termina (o ni siquiera empieza) y Java sigue con lo que está después de la llave `}` que lo cierra.
 
-> Las llaves `{ }` marcan lo que se repite. Lo que queda afuera se ejecuta una sola vez.
+> Las llaves `{ }` marcan lo que se repite. Lo que queda afuera se ejecuta una sola vez. Sin llaves, solo se repite la primera instrucción, así que escríbelas siempre.
 
 ### Míralo paso a paso
 
@@ -349,11 +363,11 @@ public class CuentaHastaN {
 Fin
 ```
 
-*Se sugiere encender el modo reto en este ejemplo.*
+*Prueba este ejemplo con el modo reto encendido.*
 
 ### Errores típicos
 
-**1.** El orden importa. Aquí `numero` cambia antes del `println`, así que el primer número que se escribe ya no es el 1.
+**1.** El orden importa. Aquí `numero` cambia antes del `println`, así que el primer número que se escribe ya no es el 1. Y fíjate en el 6: se imprime aunque `6 <= 5` da `false`, porque Java solo revisa la condición al empezar cada vuelta, no a la mitad.
 
 ```java
 public class OrdenDelCuerpo {
@@ -458,7 +472,7 @@ Vueltas: 6
 **3.** ¿Qué imprime? Revisa primero si la condición da `true` la primera vez.
 
 ```java
-public class NoDaNiUnaVuelta {
+public class PagarConElSaldo {
     public static void main(String[] args) {
         int saldo = 50;
         while (saldo >= 100) {
@@ -481,6 +495,8 @@ Saldo final: 50
 **Modificar.** Abre el programa de «Míralo paso a paso» y cámbialo para que cuente de 2 en 2, empezando en 2. Los mensajes se quedan igual.
 
 **Para comprobar: con esta entrada debe imprimir**
+
+*En NetBeans también verás los datos que escribiste; aquí solo aparece lo que imprime el programa.*
 
 Entrada:
 
@@ -523,6 +539,8 @@ public class CuentaDe2En2 {
 
 **Para comprobar: con esta entrada debe imprimir**
 
+*En NetBeans también verás los datos que escribiste; aquí solo aparece lo que imprime el programa.*
+
 Entrada:
 
 ```text
@@ -560,13 +578,13 @@ public class MultiplosDe5 {
 
 - El `while` revisa su condición antes de cada vuelta: con `true` da otra vuelta y con `false` termina.
 - Si la condición da `false` desde el principio, no da ni una vuelta.
-- Algo dentro del ciclo debe cambiar lo que la condición mira; si no, el ciclo nunca termina.
+- Algo dentro del ciclo debe cambiar lo que la condición mira; si no, nunca da `false`.
 
 ---
 
 ## 3. Contador, acumulador y bandera
 
-`u6-contador-acumulador-bandera` · U6 · oleada 1 · borrador · 383 palabras (meta 400, máximo 550) · 9 programas
+`u6-contador-acumulador-bandera` · U6 · oleada 1 · borrador · 414 palabras (meta 400, máximo 550) · 9 programas
 
 ### Para empezar
 
@@ -612,7 +630,7 @@ Total: 70
 - Para eso se usan variables que se crean antes del ciclo y se actualizan en cada vuelta.
 - Un contador cuenta cuántas veces pasa algo: le suma 1 cada vez.
 - Un acumulador junta valores: le suma el valor que lee o que calcula.
-- Una bandera es una variable `boolean` que empieza en `false` y cambia a `true` cuando algo ocurre.
+- Una bandera es una variable `boolean` que suele empezar en `false` y cambia a `true` cuando algo ocurre, como una bandera que se levanta para avisar.
 
 ### Cómo se escribe
 
@@ -621,17 +639,22 @@ int cuantos = 0;
 int total = 0;
 boolean hubo = false;
 while (condición) {
-    cuantos = cuantos + 1;
     total = total + valor;
-    hubo = true;
+    if (pasó lo que cuentas) {
+        cuantos = cuantos + 1;
+    }
+    if (pasó lo que buscas) {
+        hubo = true;
+    }
+    cambio del valor
 }
 ```
 
-1. Contador: `cuantos = cuantos + 1;` anota que pasó una vez más.
+1. Contador: `cuantos = cuantos + 1;` anota que pasó una vez más; casi siempre va dentro de un `if`.
 2. Acumulador: `total = total + valor;` suma el valor de esta vuelta a lo que ya había.
-3. Bandera: `hubo = true;` avisa que algo ocurrió.
+3. Bandera: `hubo = true;` va dentro del `if` que detecta lo que buscas; una vez en `true`, ya no vuelve a `false`.
 
-Las tres se crean antes del ciclo, con su valor inicial. El contador y el acumulador de una suma empiezan en 0, y la bandera en `false`. Así Java las conserva de una vuelta a la siguiente.
+Las tres se crean antes del ciclo, con su valor inicial. El contador y el acumulador de una suma empiezan en 0, y la bandera suele empezar en `false`. Así Java las conserva de una vuelta a la siguiente.
 
 ### Míralo paso a paso
 
@@ -761,7 +784,7 @@ Total: 15
 
 ### Ponte a prueba
 
-**1.** Con la entrada de prueba, ¿qué imprime? Anota cuántas veces Java ejecuta la línea de `mayores`.
+**1.** Con la entrada de prueba, ¿qué imprime? Anota cuántas veces Java ejecuta `mayores = mayores + 1;`.
 
 ```java
 import java.util.Scanner;
@@ -859,9 +882,11 @@ public class HuboUnNegativo {
 
 ### Ahora hazlo tú
 
-**Modificar.** Abre el programa de «Míralo paso a paso» y cámbialo para que cuente los reprobados (los que sacan menos de 6) en lugar de los aprobados. El mensaje de esa línea debe empezar con `Reprobados:` y los otros dos se quedan igual.
+**Modificar.** Abre el programa de «Míralo paso a paso» y cámbialo para que cuente los reprobados (los que sacan menos de 6) en lugar de los aprobados. El mensaje de esa línea debe empezar con «Reprobados:» y los otros dos se quedan igual.
 
 **Para comprobar: con esta entrada debe imprimir**
+
+*En NetBeans también verás los datos que escribiste; aquí solo aparece lo que imprime el programa.*
 
 Entrada:
 
@@ -911,9 +936,11 @@ public class ResumenConReprobados {
 }
 ```
 
-**Crear.** Escribe un programa que lea 5 números enteros y escriba `Mayores que 100:`, un espacio y cuántos de los números fueron mayores que 100. No escribas nada más.
+**Crear.** Escribe un programa que lea 5 números enteros y escriba «Mayores que 100:», un espacio y cuántos de los números fueron mayores que 100. No escribas nada más.
 
 **Para comprobar: con esta entrada debe imprimir**
+
+*En NetBeans también verás los datos que escribiste; aquí solo aparece lo que imprime el programa.*
 
 Entrada:
 
@@ -963,14 +990,14 @@ public class MayoresQue100 {
 
 ## 4. El ciclo `do-while`
 
-`u6-do-while` · U6 · oleada 1 · borrador · 324 palabras (meta 400, máximo 550) · 9 programas
+`u6-do-while` · U6 · oleada 1 · borrador · 318 palabras (meta 400, máximo 550) · 9 programas
 
 ### Para empezar
 
 Aquí hay un ciclo con una forma distinta a la que conoces. Léelo con calma antes de predecir.
 
 ```java
-public class UnaSolaVuelta {
+public class PrimerDoWhile {
     public static void main(String[] args) {
         int numero = 8;
         do {
@@ -1051,7 +1078,7 @@ Escribe tu edad (de 1 a 120):
 Tu edad es 17
 ```
 
-*Se sugiere encender el modo reto en este ejemplo.*
+*Prueba este ejemplo con el modo reto encendido.*
 
 ### Errores típicos
 
@@ -1088,11 +1115,7 @@ VariableDelBloque.java:9: error: cannot find symbol
 2 errors
 ```
 
-**El visualizador le dice al alumno**
-
-```text
-Línea 9: No existe una variable llamada "edad". ¿La declaraste antes? ¿Se te fue un error de dedo?
-```
+*El mensaje del visualizador para este error se escribe en R3 (robot revisor), por eso no se cita aquí.*
 
 **2.** El `do-while` termina con `;` después de la condición. Si lo olvidas, Java no compila el programa.
 
@@ -1151,7 +1174,7 @@ Fin del juego
 **2.** ¿Qué imprime? Escribe cuánto vale `n` al empezar cada vuelta.
 
 ```java
-public class DoblarHastaPasarDe20 {
+public class DoblarUnNumero {
     public static void main(String[] args) {
         int n = 1;
         do {
@@ -1209,9 +1232,11 @@ Acceso permitido
 
 ### Ahora hazlo tú
 
-**Modificar.** Abre el programa de «Míralo paso a paso» y cámbialo para que acepte solo edades de 12 a 18. El aviso debe decir `de 12 a 18` y lo demás se queda igual.
+**Modificar.** Abre el programa de «Míralo paso a paso» y cámbialo para que acepte solo edades de 12 a 18. El aviso debe decir «de 12 a 18» y lo demás se queda igual.
 
 **Para comprobar: con esta entrada debe imprimir**
+
+*En NetBeans también verás los datos que escribiste; aquí solo aparece lo que imprime el programa.*
 
 Entrada:
 
@@ -1248,41 +1273,41 @@ public class ValidarEdadDe12A18 {
 }
 ```
 
-**Crear.** Escribe un programa con un `do-while`. Debe escribir `Número mayor que 0:` en un renglón y leer un número, y repetir eso mientras el número sea 0 o menor. Al final debe escribir `Su doble es`, un espacio y el doble del número.
+**Crear.** Escribe un programa con un `do-while` que lea números hasta que llegue un 7. Al final debe escribir «Intentos:», un espacio y cuántos números leyó. No escribas nada más.
 
 **Para comprobar: con esta entrada debe imprimir**
+
+*En NetBeans también verás los datos que escribiste; aquí solo aparece lo que imprime el programa.*
 
 Entrada:
 
 ```text
--3
-0
-4
+3
+9
+7
 ```
 
 Salida esperada:
 
 ```text
-Número mayor que 0:
-Número mayor que 0:
-Número mayor que 0:
-Su doble es 8
+Intentos: 3
 ```
 
-Solución de referencia (solo para el docente; el alumno no la ve): `corpus/libro/u6-do-while/pedir-numero-positivo.java`
+Solución de referencia (solo para el docente; el alumno no la ve): `corpus/libro/u6-do-while/intentos-hasta-el-7.java`
 
 ```java
 import java.util.Scanner;
 
-public class PedirNumeroPositivo {
+public class IntentosHastaEl7 {
     public static void main(String[] args) {
         Scanner teclado = new Scanner(System.in);
         int numero;
+        int intentos = 0;
         do {
-            System.out.println("Número mayor que 0:");
             numero = teclado.nextInt();
-        } while (numero <= 0);
-        System.out.println("Su doble es " + numero * 2);
+            intentos = intentos + 1;
+        } while (numero != 7);
+        System.out.println("Intentos: " + intentos);
     }
 }
 ```
@@ -1297,7 +1322,7 @@ public class PedirNumeroPositivo {
 
 ## 5. El ciclo `for`
 
-`u6-for` · U6 · oleada 1 · borrador · 380 palabras (meta 400, máximo 550) · 9 programas
+`u6-for` · U6 · oleada 1 · borrador · 390 palabras (meta 400, máximo 550) · 9 programas
 
 ### Para empezar
 
@@ -1330,7 +1355,7 @@ Fin de la tabla
 ### La idea
 
 - El `for` es un ciclo que junta en un solo renglón sus tres partes: el valor inicial, la condición y el cambio.
-- Hace el mismo trabajo que un `while`, pero con las tres partes juntas y a la vista.
+- Hace un trabajo parecido al de un `while`, pero con las tres partes juntas y a la vista.
 - Se usa cuando sabes cuántas vueltas quieres o hasta dónde vas a contar.
 - La variable que se crea en el `for` solo existe dentro del ciclo.
 
@@ -1349,7 +1374,7 @@ Las tres partes van separadas por `;`. Java sigue este orden:
 3. Si da `true`, ejecuta las instrucciones. Eso es una vuelta.
 4. Ejecuta el cambio y regresa al paso 2.
 
-> `i++` suma 1 a `i`, igual que `i = i + 1`. Por eso se usa tanto en el cambio.
+> Con una variable `int` usada como instrucción, `i++` suma 1 a `i`, igual que `i = i + 1`. Por eso se usa tanto en el cambio.
 
 ### Míralo paso a paso
 
@@ -1383,7 +1408,7 @@ public class SumaDe1AN {
 La suma es 10
 ```
 
-*Se sugiere encender el modo reto en este ejemplo.*
+*Prueba este ejemplo con el modo reto encendido.*
 
 ### Errores típicos
 
@@ -1411,11 +1436,7 @@ VariableFueraDelFor.java:6: error: cannot find symbol
 1 error
 ```
 
-**El visualizador le dice al alumno**
-
-```text
-Línea 6: No existe una variable llamada "i". ¿La declaraste antes? ¿Se te fue un error de dedo?
-```
+*El mensaje del visualizador para este error se escribe en R3 (robot revisor), por eso no se cita aquí.*
 
 **2.** Un `;` justo después del paréntesis es el cuerpo completo del `for`: una instrucción vacía. Las llaves de abajo ya no forman parte del ciclo y se ejecutan una sola vez.
 
@@ -1461,7 +1482,7 @@ public class De4En4 {
 **2.** ¿Qué imprime? Revisa la condición antes de dar por hecho que hay vueltas.
 
 ```java
-public class SinVueltas {
+public class ForQueEmpiezaEn5 {
     public static void main(String[] args) {
         for (int i = 5; i <= 3; i++) {
             System.out.println("Vuelta " + i);
@@ -1499,9 +1520,11 @@ Suma: 30
 
 ### Ahora hazlo tú
 
-**Modificar.** Abre el programa de «Míralo paso a paso» y cámbialo para que escriba el producto de los números del 1 al `n`, en lugar de la suma. El mensaje debe empezar con `El producto es`.
+**Modificar.** Abre el programa de «Míralo paso a paso» y cámbialo para que escriba el producto de los números del 1 al `n`, en lugar de la suma. El mensaje debe empezar con «El producto es».
 
 **Para comprobar: con esta entrada debe imprimir**
+
+*En NetBeans también verás los datos que escribiste; aquí solo aparece lo que imprime el programa.*
 
 Entrada:
 
@@ -1536,6 +1559,8 @@ public class ProductoDe1AN {
 **Crear.** Escribe un programa que lea un número entero `n` y escriba su tabla del 1 al 10, un renglón por producto. Cada renglón tiene la forma `n x i = resultado`, con los valores en lugar de las letras.
 
 **Para comprobar: con esta entrada debe imprimir**
+
+*En NetBeans también verás los datos que escribiste; aquí solo aparece lo que imprime el programa.*
 
 Entrada:
 

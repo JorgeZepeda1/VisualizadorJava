@@ -170,6 +170,11 @@ describe('las ocho secciones de un tema, en este orden y empezando por el ejempl
     expect(ETIQUETAS_DEL_LIBRO.verLaRespuesta).toBe('Ver la respuesta');
   });
 
+  it('la invitación al modo reto y el aviso de la entrada tienen su frase fija (maestro, «Puede esperar»)', () => {
+    expect(ETIQUETAS_DEL_LIBRO.sugerenciaDelReto).toBe('Prueba este ejemplo con el modo reto encendido.');
+    expect(ETIQUETAS_DEL_LIBRO.avisoDeLaEntrada).toBe('En NetBeans también verás los datos que escribiste; aquí solo aparece lo que imprime el programa.');
+  });
+
   it('«Para comprobar» dice qué entrada se usa solo cuando el programa lee del teclado', () => {
     expect(ETIQUETAS_DEL_LIBRO.paraComprobar(false)).toBe('Para comprobar: debe imprimir');
     expect(ETIQUETAS_DEL_LIBRO.paraComprobar(true)).toBe('Para comprobar: con esta entrada debe imprimir');

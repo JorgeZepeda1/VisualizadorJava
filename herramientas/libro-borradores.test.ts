@@ -4,12 +4,12 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { SECCIONES_DEL_TEMA } from '../src/textos/es-MX/libro/etiquetas.ts';
+import { ETIQUETAS_DEL_LIBRO, SECCIONES_DEL_TEMA } from '../src/textos/es-MX/libro/etiquetas.ts';
 import { temaCompleto } from '../src/textos/es-MX/libro/indice.ts';
 import { palabrasDelTema, programasDelTema } from '../src/textos/es-MX/libro/reglas-del-tema.ts';
 import type { ContenidoDelTema } from '../src/textos/es-MX/libro/tipos.ts';
 import { TEMAS_DE_U6 } from '../src/textos/es-MX/libro/u6.ts';
-import { BORRADORES, escaparCelda, generarBorrador, renderizarBorradores } from './libro-borradores.ts';
+import { BORRADORES, escaparCelda, generarBorrador, mensajeDelMotorReal, renderizarBorradores } from './libro-borradores.ts';
 import { RAIZ_DEL_PROYECTO, leerProgramaDelLibro } from './libro-programas.ts';
 import type { ProgramaDelLibro } from './libro-programas.ts';
 
@@ -26,6 +26,7 @@ const CONTENIDO: ContenidoDelTema = {
   erroresTipicos: [
     { texto: 'Un error que corre.', programa: 'u6-while/error-que-corre' },
     { texto: 'Un error que javac rechaza.', programa: 'u6-while/error-que-no-compila' },
+    { texto: 'Un error de alcance.', programa: 'u6-while/error-de-alcance', mensajeDelVisualizadorPendiente: true },
   ],
   ponteAPrueba: [
     { pregunta: 'Primera pregunta.', programa: 'u6-while/prueba-uno' },
@@ -63,6 +64,12 @@ const PROGRAMAS_FALSOS: Readonly<Record<string, ProgramaDelLibro>> = Object.from
       meta: { papel: 'error-tipico', esperado: 'error-compilacion' },
       oraculo: { compilo: false, codigoSalida: null, agotoTiempo: false, desenlace: 'error-compilacion' },
     }),
+    programaFalso('u6-while/error-de-alcance', {
+      salida: '',
+      errores: 'Alcance.java:7: error: cannot find symbol\n  symbol:   variable edad\n1 error\n',
+      meta: { papel: 'error-tipico', esperado: 'error-compilacion' },
+      oraculo: { compilo: false, codigoSalida: null, agotoTiempo: false, desenlace: 'error-compilacion' },
+    }),
     programaFalso('u6-while/prueba-uno'),
     programaFalso('u6-while/prueba-dos'),
     programaFalso('u6-while/solucion-modificar', { entrada: '9\n' }),
@@ -71,13 +78,21 @@ const PROGRAMAS_FALSOS: Readonly<Record<string, ProgramaDelLibro>> = Object.from
 );
 
 const TEMA = temaCompleto('u6-while', CONTENIDO);
+const AVISO_DEL_MENSAJE_PENDIENTE = '*El mensaje del visualizador para este error se escribe en R3 (robot revisor), por eso no se cita aquí.*';
 
-function documento(): string {
+function mensajeDeMuestra(fuente: string): string | null {
+  if (fuente.includes('error_que_no_compila')) return 'Línea 6: No existe una variable llamada "i".';
+  if (fuente.includes('error_de_alcance')) return 'Línea 7: No existe una variable llamada "edad". ¿La declaraste antes? ¿Se te fue un error de dedo?';
+  return null;
+}
+
+function documento(cambios?: readonly string[]): string {
   return renderizarBorradores({
     titulo: 'Borradores de muestra',
     temas: [TEMA],
     leerPrograma: (id) => PROGRAMAS_FALSOS[id] as ProgramaDelLibro,
-    mensajeDelMotor: (fuente) => (fuente.includes('error_que_no_compila') ? 'Línea 6: No existe una variable llamada "i".' : null),
+    mensajeDelMotor: mensajeDeMuestra,
+    ...(cambios === undefined ? {} : { cambios }),
   });
 }
 
@@ -94,7 +109,7 @@ describe('renderizarBorradores: el documento que lee el PO, armado desde el cat�
   it('cada tema lleva su título, su id, su unidad, su oleada, su estado, sus palabras contra la meta y su cuenta de programas', () => {
     const md = documento();
     expect(md).toContain('## 1. El ciclo `while`');
-    expect(md).toContain(`\`u6-while\` · U6 · oleada 1 · borrador · ${palabrasDelTema(TEMA)} palabras (meta 400, máximo 550) · 8 programas`);
+    expect(md).toContain(`\`u6-while\` · U6 · oleada 1 · borrador · ${palabrasDelTema(TEMA)} palabras (meta 400, máximo 550) · 9 programas`);
   });
 
   it('las ocho secciones salen con su título, en el orden del libro', () => {
@@ -134,7 +149,9 @@ describe('renderizarBorradores: el documento que lee el PO, armado desde el cat�
     const seccion = md.slice(md.indexOf('### Míralo paso a paso'), md.indexOf('### Errores típicos'));
     expect(seccion).toContain('Mira `numero`.');
     expect(seccion).toContain('**Entrada de prueba**\n\n```text\n3\n```');
-    expect(seccion).toContain('Se sugiere encender el modo reto');
+    expect(seccion).toContain(`*${ETIQUETAS_DEL_LIBRO.sugerenciaDelReto}*`);
+    expect(seccion).toContain('Prueba este ejemplo con el modo reto encendido.');
+    expect(seccion).not.toContain('Se sugiere');
   });
 
   it('«Errores típicos»: el que se ejecuta muestra su salida; el que javac rechaza muestra lo que dijo javac y lo que le dice el visualizador al alumno', () => {
@@ -147,6 +164,18 @@ describe('renderizarBorradores: el documento que lee el PO, armado desde el cat�
     expect(seccion).toContain('Falla.java:6: error: cannot find symbol');
     expect(seccion).toContain('**El visualizador le dice al alumno**');
     expect(seccion).toContain('Línea 6: No existe una variable llamada "i".');
+  });
+
+  it('«Errores típicos»: el error con el mensaje del visualizador pendiente muestra lo que dijo javac y la explicación, pero NO cita el mensaje (panel R0, A4)', () => {
+    const md = documento();
+    const seccion = md.slice(md.indexOf('### Errores típicos'), md.indexOf('### Ponte a prueba'));
+    const alcance = seccion.slice(seccion.indexOf('Un error de alcance.'));
+    expect(alcance).toContain('**javac dice**');
+    expect(alcance).toContain('Alcance.java:7: error: cannot find symbol');
+    expect(alcance).not.toContain('**El visualizador le dice al alumno**');
+    expect(md).not.toContain('¿La declaraste antes?');
+    expect(alcance).toContain(AVISO_DEL_MENSAJE_PENDIENTE);
+    expect(seccion.split(AVISO_DEL_MENSAJE_PENDIENTE)).toHaveLength(2);
   });
 
   it('«Ponte a prueba»: cada pregunta numerada con su programa y «Ver la respuesta» con el golden', () => {
@@ -166,6 +195,12 @@ describe('renderizarBorradores: el documento que lee el PO, armado desde el cat�
     expect(seccion).toContain('**Crear.** Crea un programa.');
     expect(seccion).toContain('**Para comprobar: con esta entrada debe imprimir**');
     expect(seccion).toContain('**Para comprobar: debe imprimir**');
+    // El aviso de NetBeans solo tiene sentido cuando el programa lee del teclado: está en la tarea con entrada y no en la que no la tiene.
+    expect(seccion.split(ETIQUETAS_DEL_LIBRO.avisoDeLaEntrada)).toHaveLength(2);
+    const deModificar = seccion.slice(seccion.indexOf('**Modificar.**'), seccion.indexOf('**Crear.**'));
+    expect(deModificar).toContain(ETIQUETAS_DEL_LIBRO.avisoDeLaEntrada);
+    expect(deModificar.indexOf('Para comprobar: con esta entrada debe imprimir')).toBeLessThan(deModificar.indexOf(ETIQUETAS_DEL_LIBRO.avisoDeLaEntrada));
+    expect(deModificar.indexOf(ETIQUETAS_DEL_LIBRO.avisoDeLaEntrada)).toBeLessThan(deModificar.indexOf('Entrada:'));
     expect(seccion).toContain('```text\n9\n```');
     expect(seccion).toContain('```text\nSALIDA-DE-u6-while/solucion-modificar\n```');
     expect(seccion).toContain('Solución de referencia (solo para el docente; el alumno no la ve): `corpus/libro/u6-while/solucion-crear.java`');
@@ -181,6 +216,21 @@ describe('renderizarBorradores: el documento que lee el PO, armado desde el cat�
   it('no deja marcadores sin resolver', () => {
     const md = documento();
     expect(md).not.toMatch(/undefined|\[object|NaN/);
+  });
+});
+
+describe('«Cambios desde la versión anterior»: lo que el PO necesita ver primero cuando el borrador se corrige', () => {
+  it('sin cambios no hay sección (el documento de muestra no inventa una)', () => {
+    expect(documento()).not.toContain('Cambios desde la versión anterior');
+  });
+
+  it('con cambios, la sección va después de la introducción y antes de la tabla y de los temas, con una viñeta por cambio', () => {
+    const md = documento(['Primer cambio.', 'Segundo cambio.']);
+    const posicion = md.indexOf('## Cambios desde la versión anterior\n');
+    expect(posicion).toBeGreaterThan(md.indexOf('Cómo leerlo:'));
+    expect(posicion).toBeLessThan(md.indexOf('| # | Tema |'));
+    expect(posicion).toBeLessThan(md.indexOf('## 1. El ciclo `while`'));
+    expect(md).toContain('## Cambios desde la versión anterior\n\n- Primer cambio.\n- Segundo cambio.\n');
   });
 });
 
@@ -204,6 +254,24 @@ describe('BORRADORES y el archivo para el PO (R0.14)', () => {
     const ruta = resolve(RAIZ_DEL_PROYECTO, parte1?.archivo ?? '');
     expect(existsSync(ruta), 'corre `npm run libro:borradores` para generarlo').toBe(true);
     expect(readFileSync(ruta, 'utf-8')).toBe(generarBorrador(parte1 as NonNullable<typeof parte1>));
+  });
+
+  it('el borrador trae su sección «Cambios desde la versión anterior» (corta) antes del primer tema', () => {
+    const md = generarBorrador(parte1 as NonNullable<typeof parte1>);
+    const posicion = md.indexOf('## Cambios desde la versión anterior\n');
+    expect(posicion).toBeGreaterThan(0);
+    expect(posicion).toBeLessThan(md.indexOf('## 1. ¿Qué es un ciclo?'));
+    const vinetas = md.slice(posicion, md.indexOf('| # | Tema |')).split('\n').filter((renglon) => renglon.startsWith('- '));
+    expect(vinetas.length).toBeGreaterThanOrEqual(5);
+    expect(vinetas.length).toBeLessThanOrEqual(12);
+  });
+
+  it('ningún error típico del libro cita el mensaje «¿La declaraste antes?» del visualizador: los que lo recibirían llevan el mensaje pendiente (panel R0, A4)', () => {
+    const errores = TEMAS_DE_U6.flatMap((tema) => tema.erroresTipicos);
+    const conMensajeQueContradice = errores.filter((error) => (mensajeDelMotorReal(leerProgramaDelLibro(error.programa).fuente) ?? '').includes('¿La declaraste antes?'));
+    expect(conMensajeQueContradice.map((error) => error.programa).sort()).toEqual(['u6-do-while/variable-del-bloque', 'u6-for/variable-fuera-del-for']);
+    expect(conMensajeQueContradice.every((error) => error.mensajeDelVisualizadorPendiente === true)).toBe(true);
+    expect(generarBorrador(parte1 as NonNullable<typeof parte1>)).not.toContain('¿La declaraste antes?');
   });
 
   it('el documento real trae los cinco temas, cada salida del golden de cada programa y el veredicto de javac de los errores que no compilan', () => {

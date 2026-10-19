@@ -1,4 +1,4 @@
-public class DoblarHastaPasarDe20 {
+public class DoblarUnNumero {
     public static void main(String[] args) {
         int n = 1;
         do {

@@ -1,4 +1,4 @@
-public class UnaSolaVuelta {
+public class PrimerDoWhile {
     public static void main(String[] args) {
         int numero = 8;
         do {
