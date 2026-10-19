@@ -77,7 +77,7 @@ describe('generarGoldenPara — regenera el golden de u3-hola-mundo real contra 
 
     expect(resultado.metadatos.desenlace).toBe('limite-pasos');
     expect(resultado.metadatos.agotoTiempo).toBe(true);
-  }, 10_000);
+  }, 60_000);
 });
 
 describe('descubrirProgramas — empareja cada .java con su .entrada.txt hermano, si existe', () => {

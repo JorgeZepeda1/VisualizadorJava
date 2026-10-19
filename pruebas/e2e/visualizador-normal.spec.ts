@@ -189,7 +189,7 @@ test.describe('navegar con teclado y con mouse', () => {
   test('«Editar programa» devuelve el editor; se corrige y se vuelve a visualizar', async ({ page }) => {
     await pegarYVisualizar(page, MAQUINA_DE_SNACKS);
     await page.getByRole('button', { name: /editar programa/i }).click();
-    await expect(page.locator('.cm-content')).toHaveAttribute('contenteditable', 'true');
+    await expect(page.locator('.cm-content')).toBeEditable(); // «contenteditable» vacío también es editable (HTML): no se compara el texto del atributo
     await expect(page.locator('.cm-content')).toBeFocused();
     await expect(page.getByRole('button', { name: /siguiente/i })).toHaveCount(0);
   });
