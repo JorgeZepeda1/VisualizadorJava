@@ -36,10 +36,10 @@ afterEach(() => {
 
 describe('idsDeProgramasDelLibro: cada .java de corpus/libro, como «tema/programa»', () => {
   it('devuelve los ids ordenados, sin extensión, y no cuenta los archivos que no son .java', () => {
-    programaCompleto('u6-while/contar-del-1-al-5');
+    programaCompleto('u6-while/contar-en-voz-alta');
     programaCompleto('u6-for/suma-de-1-a-n', { entrada: '4\n' });
     programaCompleto('u6-do-while/validar-edad');
-    expect(idsDeProgramasDelLibro(raiz)).toEqual(['u6-do-while/validar-edad', 'u6-for/suma-de-1-a-n', 'u6-while/contar-del-1-al-5']);
+    expect(idsDeProgramasDelLibro(raiz)).toEqual(['u6-do-while/validar-edad', 'u6-for/suma-de-1-a-n', 'u6-while/contar-en-voz-alta']);
   });
 
   it('con la carpeta vacía devuelve una lista vacía (no falla)', () => {
@@ -68,8 +68,8 @@ describe('leerProgramaDelLibro: el programa con su entrada, sus goldens y su met
   });
 
   it('si no hay entrada preparada, la entrada es null (el programa no lee del teclado)', () => {
-    programaCompleto('u6-while/contar-del-1-al-5');
-    expect(leerProgramaDelLibro('u6-while/contar-del-1-al-5', raiz).entrada).toBeNull();
+    programaCompleto('u6-while/contar-en-voz-alta');
+    expect(leerProgramaDelLibro('u6-while/contar-en-voz-alta', raiz).entrada).toBeNull();
   });
 
   it('un programa que javac rechazó trae el veredicto de javac en `errores` y `esperado: error-compilacion`', () => {
@@ -85,9 +85,9 @@ describe('leerProgramaDelLibro: el programa con su entrada, sus goldens y su met
   });
 
   it.each(['.salida', '.errores', '.combinada', '.oraculo.json', '.meta.json'])('si falta %s, falla y dice la ruta del archivo', (sufijo) => {
-    programaCompleto('u6-while/contar-del-1-al-5');
-    rmSync(join(raiz, 'corpus', 'libro', `u6-while/contar-del-1-al-5${sufijo}`));
-    expect(() => leerProgramaDelLibro('u6-while/contar-del-1-al-5', raiz)).toThrow(`corpus/libro/u6-while/contar-del-1-al-5${sufijo}`);
+    programaCompleto('u6-while/contar-en-voz-alta');
+    rmSync(join(raiz, 'corpus', 'libro', `u6-while/contar-en-voz-alta${sufijo}`));
+    expect(() => leerProgramaDelLibro('u6-while/contar-en-voz-alta', raiz)).toThrow(`corpus/libro/u6-while/contar-en-voz-alta${sufijo}`);
   });
 
   it.each([
@@ -96,8 +96,8 @@ describe('leerProgramaDelLibro: el programa con su entrada, sus goldens y su met
     ['sin papel', '{ "esperado": "ejecuta" }'],
     ['un JSON roto', '{ "papel": '],
   ])('un .meta.json con %s se rechaza con la ruta a la vista', (_caso, meta) => {
-    programaCompleto('u6-while/contar-del-1-al-5', { meta });
-    expect(() => leerProgramaDelLibro('u6-while/contar-del-1-al-5', raiz)).toThrow('corpus/libro/u6-while/contar-del-1-al-5.meta.json');
+    programaCompleto('u6-while/contar-en-voz-alta', { meta });
+    expect(() => leerProgramaDelLibro('u6-while/contar-en-voz-alta', raiz)).toThrow('corpus/libro/u6-while/contar-en-voz-alta.meta.json');
   });
 
   it('los cinco papeles del diseño son válidos', () => {

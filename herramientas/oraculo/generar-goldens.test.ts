@@ -154,7 +154,7 @@ describe('las carpetas del corpus que recorre el oráculo (R0.13)', () => {
 describe('corpus/libro lo descubre el generador de goldens (R0.13)', () => {
   it('encuentra el programa semilla del tema `while`, que no lee del teclado', () => {
     const programas = descubrirProgramas(resolve('corpus', 'libro'));
-    const semilla = programas.find((programa) => programa.rutaBase.endsWith('u6-while/contar-del-1-al-5'));
+    const semilla = programas.find((programa) => programa.rutaBase.endsWith('u6-while/contar-en-voz-alta'));
     expect(semilla, 'el programa semilla de R0.13').toBeDefined();
     expect(semilla?.rutaEntrada).toBeNull();
     expect(programas.every((programa) => programa.rutaFuente.includes('/corpus/libro/'))).toBe(true);

@@ -45,7 +45,7 @@ export type Unidad = 3 | 4 | 5 | 6 | 7;
 export type Oleada = 1 | 2;
 export type EstadoDelTema = 'borrador' | 'aprobado';
 
-/** Un programa del libro vive en `corpus/libro/<id-tema>/<programa>.java`: `u6-while/contar-del-1-al-5`. */
+/** Un programa del libro vive en `corpus/libro/<id-tema>/<programa>.java`: `u6-while/contar-en-voz-alta`. */
 export type IdPrograma = `${IdTema}/${string}`;
 
 /** Para qué sirve un programa dentro del tema (su `.meta.json` en el corpus lo repite y una prueba exige que coincidan). */
@@ -74,6 +74,11 @@ export type Bloque =
 export interface ErrorTipico {
   readonly texto: string;
   readonly programa: IdPrograma;
+  /**
+   * El mensaje que hoy da el visualizador para este programa contradice la explicación del tema (panel R0, experto en Java A4): para una variable declarada en un bloque que ya cerró dice «¿La declaraste
+   * antes?», y sí la declaró. Mientras el motor no distinga el caso, el borrador no cita ese mensaje: muestra lo que dijo javac y la explicación, y el revisor (R3, E2) dará el mensaje propio.
+   */
+  readonly mensajeDelVisualizadorPendiente?: true;
 }
 
 /** Una predicción: el alumno lee el programa y adivina; la respuesta que ve es el golden de ese programa. */

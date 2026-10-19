@@ -1,13 +1,14 @@
 import java.util.Scanner;
 
-public class PedirNumeroPositivo {
+public class IntentosHastaEl7 {
     public static void main(String[] args) {
         Scanner teclado = new Scanner(System.in);
         int numero;
+        int intentos = 0;
         do {
-            System.out.println("Número mayor que 0:");
             numero = teclado.nextInt();
-        } while (numero <= 0);
-        System.out.println("Su doble es " + numero * 2);
+            intentos = intentos + 1;
+        } while (numero != 7);
+        System.out.println("Intentos: " + intentos);
     }
 }

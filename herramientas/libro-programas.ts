@@ -25,9 +25,9 @@ export interface VeredictoDelOraculo {
 }
 
 export interface ProgramaDelLibro {
-  /** `u6-while/contar-del-1-al-5`. */
+  /** `u6-while/contar-en-voz-alta`. */
   readonly id: string;
-  /** Ruta de la fuente relativa a la raíz del proyecto, con `/`: `corpus/libro/u6-while/contar-del-1-al-5.java`. */
+  /** Ruta de la fuente relativa a la raíz del proyecto, con `/`: `corpus/libro/u6-while/contar-en-voz-alta.java`. */
   readonly rutaFuente: string;
   readonly fuente: string;
   /** La entrada preparada (cada renglón con su salto de línea), o `null` si el programa no lee del teclado. */

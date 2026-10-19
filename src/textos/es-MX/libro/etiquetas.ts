@@ -26,4 +26,8 @@ export const ETIQUETAS_DEL_LIBRO = {
   verLaRespuesta: 'Ver la respuesta',
   /** El encabezado de lo que debe imprimir la solución de una tarea (PQ-5: el alumno ve la salida esperada, no la solución). `conEntrada`: el programa lee del teclado y se le da una entrada de prueba. */
   paraComprobar: (conEntrada: boolean): string => (conEntrada ? 'Para comprobar: con esta entrada debe imprimir' : 'Para comprobar: debe imprimir'),
+  /** Va en «Míralo paso a paso» cuando el tema tiene condiciones que predecir (panel R0, maestro: una invitación, no una sugerencia). */
+  sugerenciaDelReto: 'Prueba este ejemplo con el modo reto encendido.',
+  /** Va en «Para comprobar» cuando el programa lee del teclado: NetBeans repite en la consola lo que se teclea y el visualizador no, así que las dos salidas no se ven iguales (panel R0, maestro). */
+  avisoDeLaEntrada: 'En NetBeans también verás los datos que escribiste; aquí solo aparece lo que imprime el programa.',
 };
