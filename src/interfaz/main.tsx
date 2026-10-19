@@ -6,6 +6,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App.tsx';
 import './estilos/aplicacion.css';
+import './estilos/proyector.css';
 
 const raiz = document.getElementById('raiz');
 if (!raiz) {

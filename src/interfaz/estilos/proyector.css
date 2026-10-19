@@ -1,0 +1,91 @@
+/*
+ * Modo proyector (tarea R0.12, REQ-AULA-004, ADR 017; absorbe la tarea 5.5 de `visualizador-java`). Se enciende desde «Ajustes de la clase» (o con el enlace) y pone `data-proyector="encendido"` en
+ * `.aplicacion` (`contenedores/Visualizador.tsx`). Es la distribución «reto proyectado» que midió el diseñador: el código al 58 % del ancho y a 24 px o más (con ajuste de línea: a 24 px una línea de
+ * 53 caracteres no cabe en 1024 px, así que se parte en dos renglones con su número de línea una sola vez, sin desplazamiento horizontal), la tabla de variables sin la columna «Tipo» (lo decide
+ * `PanelVariables compacto`) y la consola con sus últimas cuatro líneas, para que la columna derecha deje lugar al robot, a su ranura de acciones y —desde R1— a la pregunta y las tres tarjetas.
+ *
+ * Solo aplica a pantallas de escritorio o tableta (≥ 700 px): en un celular manda la distribución de celular. Nada de lo que hay aquí mueve, anima ni se apoya solo en el color.
+ */
+@media (min-width: 43.75rem) {
+  /* El código: ≥ 24 px (nunca menos, aunque el navegador tenga otra letra base) y las líneas respiran un poco más. */
+  .aplicacion[data-proyector='encendido'] .cm-editor {
+    font-size: max(24px, 1.5rem);
+    line-height: 1.35;
+  }
+
+  .aplicacion[data-proyector='encendido'] .cm-scroller {
+    min-height: 14rem;
+    max-height: 62vh;
+  }
+
+  /* Una línea que no cabe se parte en un espacio si puede y, si una sola palabra no cabe en el renglón, dentro de ella (`overflow-wrap: anywhere`); las filas de continuación siguen la sangría de SU línea
+     (`--sangria`, en columnas: la pone `editor/sangria-colgante.ts`): se leen como la misma línea, no como otra. El número de línea sale una sola vez. */
+  .aplicacion[data-proyector='encendido'] .cm-lineWrapping .cm-line {
+    padding-left: calc(6px + var(--sangria, 0) * 1ch);
+    text-indent: calc(var(--sangria, 0) * -1ch);
+    overflow-wrap: anywhere;
+  }
+
+  .aplicacion[data-proyector='encendido'] .cm-etiqueta-de-vuelta,
+  .aplicacion[data-proyector='encendido'] .cm-etiqueta-rama-no-tomada {
+    font-size: 0.6em;
+  }
+
+  /* Controles ampliados: ninguno baja de 44 px de alto (WCAG 2.5.5) y la letra se lee desde el fondo del salón. */
+  .aplicacion[data-proyector='encendido'] button,
+  .aplicacion[data-proyector='encendido'] select {
+    min-height: 2.75rem;
+    font-size: 1.1rem;
+  }
+
+  .aplicacion[data-proyector='encendido'] .ranura button {
+    min-height: 3.25rem;
+    font-size: 1.25rem;
+  }
+
+  /* El robot y su globo. */
+  .aplicacion[data-proyector='encendido'] .globo-contenido,
+  .aplicacion[data-proyector='encendido'] .globo > .aviso {
+    font-size: 1.3rem;
+  }
+
+  .aplicacion[data-proyector='encendido'] .leyenda-del-editor,
+  .aplicacion[data-proyector='encendido'] .ayuda-de-atajos {
+    font-size: 1.05rem;
+  }
+
+  /* Variables y condición: la letra más grande, sin la columna «Tipo». */
+  .aplicacion[data-proyector='encendido'] .panel {
+    font-size: 1.15rem;
+  }
+
+  /* La consola muestra sus últimas cuatro líneas (`Consola` siempre baja hasta lo último que se imprimió); la que se desborda se desplaza con el teclado. El margen de arriba es un borde (no se desplaza)
+     para que, con el registro al final, se vean cuatro renglones COMPLETOS y no un quinto cortado por la mitad. */
+  .aplicacion[data-proyector='encendido'] .consola {
+    min-height: 0;
+    padding: 0 1rem 0.75rem;
+    border-top: 0.6rem solid var(--consola-fondo);
+    max-height: calc(4 * 1.5em + 1.35rem);
+    font-size: 1.15rem;
+  }
+
+  .aplicacion[data-proyector='encendido'] .consola-vacia {
+    padding-top: 0.6rem;
+    font-size: 1.15rem;
+  }
+
+  .aplicacion[data-proyector='encendido'] .robot {
+    width: 9rem;
+  }
+
+  .aplicacion[data-proyector='encendido'] .explicacion {
+    grid-template-columns: 9rem minmax(0, 1fr);
+  }
+}
+
+/* El código al 58 % del ancho: solo cuando hay dos columnas (en una columna se apilan, como siempre). */
+@media (min-width: 60.0625rem) {
+  .aplicacion[data-proyector='encendido'] .visualizador {
+    grid-template-columns: minmax(0, 58fr) minmax(0, 42fr);
+  }
+}

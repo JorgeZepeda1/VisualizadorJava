@@ -7,6 +7,9 @@
  *   - "Atenuado" NO usa `opacity` (bajaría el contraste del texto): usa un color más suave que sigue pasando AA.
  *   - Movimiento: toda animación vive dentro de `prefers-reduced-motion: no-preference`; con movimiento reducido el robot queda quieto y no se pierde ninguna información.
  *   - Zoom al 200 %: la disposición usa `rem` y una sola columna por debajo de 60rem, sin desplazamiento horizontal de la página.
+ *
+ * Hito R0 (ADR 017): encabezado con navegación y ajustes, ranura de acciones bajo el globo, tres robots y tres distribuciones —escritorio, celular (< 700 px: barra inferior fija) y proyector
+ * (`estilos/proyector.css`, `data-proyector="encendido"`)—. Todo atributo `data-*` que se lee aquí lo pone `contenedores/Visualizador.tsx`.
  */
 :root {
   color-scheme: light;
@@ -29,6 +32,7 @@
   --consola-texto: #e9edf7;
   --consola-error: #ffb3ba;
   --consola-eco: #ffd479;
+  /* El color de cada robot es su TERCERA pista (la primera es la silueta de la cabeza y la segunda su accesorio): el trazo oscuro siempre pasa AA (3:1 como mínimo) sobre el blanco del globo. */
   --robot-trazo: #1a2a62;
   --robot-cabeza: #dbe5ff;
   --robot-cuerpo: #c3d2ff;
@@ -54,8 +58,13 @@ main {
   padding: 1rem;
 }
 
+/* Un elemento con `hidden` desaparece aunque otra regla le dé `display` (el visualizador oculto al ver «Ejemplos» sigue montado: REQ-PANT-002). */
+[hidden] {
+  display: none !important;
+}
+
 h1 {
-  margin: 0 0 1rem;
+  margin: 0;
   font-size: 1.5rem;
 }
 
@@ -127,11 +136,106 @@ button:disabled {
   box-shadow: 0 0 0 5px #ffffff;
 }
 
+/* --- Encabezado: título, navegación «Paso a paso · Libro · Ejemplos» y «Ajustes de la clase» (REQ-PANT-002, REQ-PANT-006) ------------------------------------- */
+/* `minmax(0, 1fr)`: sin él, una línea larga de código (o una palabra larga del globo) ensancharía toda la página y empujaría la navegación fuera de la pantalla en un celular. */
+.aplicacion {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+}
+
+.encabezado {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1.5rem;
+}
+
+.navegacion {
+  flex: 1 1 auto;
+}
+
+.navegacion ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* La sección actual NO se distingue solo por el color: lleva negrita, una raya gruesa debajo y el fondo suave (`aria-current="page"`). */
+.navegacion button {
+  min-height: 2.5rem;
+  border-width: 0 0 4px;
+  border-color: transparent;
+  border-radius: 0.4rem 0.4rem 0 0;
+  background: transparent;
+  font-weight: 600;
+}
+
+.navegacion button[aria-current='page'] {
+  border-bottom-color: var(--acento);
+  background: var(--acento-fondo);
+  font-weight: 800;
+}
+
+.ajustes-de-la-clase {
+  position: relative;
+  margin-left: auto;
+}
+
+.ajustes-panel {
+  position: absolute;
+  top: calc(100% + 0.4rem);
+  right: 0;
+  z-index: 30;
+  display: grid;
+  gap: 0.6rem;
+  min-width: 19rem;
+  padding: 0.9rem 1rem;
+  border: 2px solid var(--acento);
+  border-radius: 0.6rem;
+  background: var(--superficie);
+  box-shadow: 0 0.4rem 1.2rem rgba(15, 20, 36, 0.25);
+}
+
+.ajuste {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-weight: 600;
+}
+
+.ajuste input[type='checkbox'] {
+  width: 1.4rem;
+  height: 1.4rem;
+  accent-color: var(--acento);
+}
+
+.ajuste strong[data-estado='encendido'] {
+  text-decoration: underline;
+}
+
+.ajuste-descripcion {
+  margin: 0;
+  color: var(--texto-suave);
+  font-size: 0.9rem;
+}
+
+.ajuste select {
+  min-height: 2.5rem;
+  padding: 0.3rem 0.5rem;
+  border: 2px solid var(--borde);
+  border-radius: 0.4rem;
+  background: var(--superficie);
+}
+
 /* --- Disposición: cuatro zonas en el mismo campo visual (design.md §6.2) -------------------------------------------------------------- */
-/* Izquierda: el código y los controles de reproducción. Derecha: el robot que explica, las variables y la consola. En una sola columna (pantallas angostas o zoom al 200 %) se apilan en ese orden. */
+/* Escritorio: el código al 55 % y, a la derecha, el robot que explica con su ranura de acciones, las variables y la consola. En una sola columna (celular o zoom al 200 %) se apilan: ver más abajo. */
 .visualizador {
   display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 55fr) minmax(0, 45fr);
   gap: 1rem;
   align-items: start;
 }
@@ -150,6 +254,7 @@ button:disabled {
   gap: 0.75rem;
 }
 
+/* Pantallas medianas o zoom: una sola columna, en el orden de lectura. */
 @media (max-width: 60rem) {
   .visualizador {
     grid-template-columns: minmax(0, 1fr);
@@ -189,16 +294,37 @@ button:disabled {
   border-right: 1px solid var(--borde);
 }
 
-/* Línea RECIÉN EJECUTADA: fondo verde Y barra sólida a la izquierda Y ▶ en el margen. Línea SIGUIENTE: fondo ámbar Y contorno de rayas Y ▷. Dos marcas distintas, no solo color (REQ-VIS-004). */
+/* Línea RECIÉN EJECUTADA: fondo verde Y barra sólida a la izquierda Y ▶ en el margen. Línea SIGUIENTE: contorno punteado tenue Y ▷. Dos marcas distintas, no solo color (REQ-VIS-004). La que acaba de
+   ejecutarse es la MÁS destacada (panel 1, H9): antes la siguiente —amarilla y punteada— llamaba más la atención que la actual. */
 .cm-linea-ejecutada {
   background: var(--ejecutada-fondo);
-  box-shadow: inset 5px 0 0 var(--ejecutada-borde);
+  box-shadow: inset 6px 0 0 var(--ejecutada-borde);
 }
 
 .cm-linea-siguiente {
-  background: var(--siguiente-fondo);
-  outline: 2px dashed var(--siguiente-borde);
-  outline-offset: -2px;
+  background: transparent;
+  outline: 1px dotted var(--siguiente-borde);
+  outline-offset: -1px;
+}
+
+/* La leyenda de las marcas ▶ y ▷ (REQ-PANT-004). */
+.leyenda-del-editor {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1.25rem;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--texto-suave);
+  font-size: 0.9rem;
+}
+
+/* El aviso de «Para cambiar el código pulsa «Editar programa»»: la región existe siempre (reserva su renglón) y se llena cuando el alumno intenta teclear. */
+.aviso-de-edicion {
+  min-height: 1.5rem;
+  margin-top: 0.25rem;
+  color: var(--aviso);
+  font-weight: 700;
 }
 
 .cm-margen-de-marcas {
@@ -398,6 +524,32 @@ li.atenuada {
 }
 
 /* --- Consola (design.md §6.4) ------------------------------------------------------------------------------------------------------- */
+/* Con su título visible; mientras está vacía, la ayuda «Aquí aparecerá lo que imprima tu programa» ocupa el mismo lugar que el texto (fuera del registro: el registro sigue vacío). */
+.consola-caja {
+  display: grid;
+}
+
+.consola-titulo {
+  margin: 0 0 0.4rem;
+  font-size: 1rem;
+}
+
+.consola-vacia {
+  grid-row: 2;
+  grid-column: 1;
+  align-self: start;
+  margin: 0;
+  padding: 0.75rem 1rem;
+  color: #b8c0d8;
+  font-style: italic;
+  pointer-events: none;
+}
+
+.consola-caja > .consola {
+  grid-row: 2;
+  grid-column: 1;
+}
+
 .consola {
   margin: 0;
   padding: 0.75rem 1rem;
@@ -487,14 +639,79 @@ li.atenuada {
 /* --- El robot y su globo (tarea 4.11) ---------------------------------------------------------------------------------------------- */
 .explicacion {
   display: grid;
-  grid-template-columns: 7rem minmax(0, 1fr);
+  grid-template-columns: 8rem minmax(0, 1fr);
   gap: 0.75rem;
   align-items: start;
 }
 
+/* Cada robot con su paleta: el revisor en ámbar y el del libro en verde (el paso a paso es el azul de siempre). `data-personaje` va en el dibujo; `data-hablante` en la zona, para que el globo tome el mismo color. */
+[data-personaje='revisor'],
+[data-hablante='revisor'] {
+  --robot-trazo: #6b4300;
+  --robot-cabeza: #ffe7b0;
+  --robot-cuerpo: #ffd98a;
+  --robot-punta: #d9480f;
+}
+
+[data-personaje='libro'],
+[data-hablante='libro'] {
+  --robot-trazo: #14532d;
+  --robot-cabeza: #d6f5df;
+  --robot-cuerpo: #b7ebc8;
+  --robot-punta: #f59e0b;
+}
+
+.robot-figura {
+  display: grid;
+  justify-items: center;
+  gap: 0.15rem;
+  margin: 0;
+}
+
 .robot {
-  width: 7rem;
+  width: 8rem;
   height: auto;
+}
+
+.robot-nombre {
+  color: var(--robot-trazo);
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1.2;
+  text-align: center;
+}
+
+/* El cristal de la lupa y los lentes del libro: blanco el primero, translúcido el segundo (los ojos se ven a través). */
+.robot-cristal {
+  fill: #ffffff;
+  stroke: var(--robot-trazo);
+  stroke-width: 4;
+}
+
+.robot-lente {
+  fill: rgba(255, 255, 255, 0.45);
+  stroke: var(--robot-trazo);
+  stroke-width: 3;
+}
+
+.robot-mango {
+  stroke: var(--robot-trazo);
+  stroke-width: 6;
+  stroke-linecap: round;
+}
+
+.robot-pagina {
+  fill: #ffffff;
+  stroke: var(--robot-trazo);
+  stroke-width: 2.5;
+  stroke-linejoin: round;
+}
+
+.robot-renglon {
+  fill: none;
+  stroke: var(--robot-trazo);
+  stroke-width: 1.8;
+  stroke-linecap: round;
 }
 
 .robot-cabeza {
@@ -555,6 +772,51 @@ li.atenuada {
   background: var(--superficie);
   font-size: 1.05rem;
   line-height: 1.5;
+}
+
+/* La ranura de acciones, pegada debajo del globo (REQ-PANT-003): reserva su alto aunque esté vacía, así la pantalla no se mueve cuando aparece algo. Sus botones son de buen tamaño. */
+.ranura {
+  min-height: 3.25rem;
+}
+
+.ranura-botones,
+.saludo {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.ranura button {
+  min-height: 3rem;
+  font-size: 1.05rem;
+}
+
+.puerta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding-block: 0.45rem;
+  text-align: left;
+}
+
+.icono-accesorio {
+  flex: none;
+  width: 2rem;
+  height: 2rem;
+}
+
+/* Cada accesorio con los colores de su robot. */
+[data-icono-accesorio='puntero'] {
+  --robot-trazo: #1a2a62;
+  --robot-punta: #ff8a65;
+}
+
+[data-icono-accesorio='lupa'] {
+  --robot-trazo: #6b4300;
+}
+
+[data-icono-accesorio='libro-abierto'] {
+  --robot-trazo: #14532d;
 }
 
 /* La colita del globo apunta al robot. */
@@ -673,18 +935,6 @@ li.atenuada {
   background: var(--superficie);
 }
 
-.barra-controles select {
-  min-height: 2.5rem;
-  padding: 0.3rem 0.5rem;
-  border: 2px solid var(--borde);
-  border-radius: 0.4rem;
-  background: var(--superficie);
-}
-
-.selector-de-velocidad label {
-  font-weight: 600;
-}
-
 .posicion {
   display: inline-flex;
   flex: 1 1 14rem;
@@ -710,6 +960,258 @@ li.atenuada {
   white-space: nowrap;
 }
 
+/* --- Galería «Ejemplos» (REQ-AULA-001, R0.11): una tarjeta por programa, agrupadas por unidad. Todo es texto y botones: nada se apoya solo en el color, y los botones heredan el foco visible. --- */
+.galeria {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.galeria h2 {
+  margin: 0;
+}
+
+.galeria-ayuda {
+  margin: 0;
+  color: var(--texto-suave);
+}
+
+.seccion-de-galeria h3 {
+  margin: 0.5rem 0;
+  padding-bottom: 0.25rem;
+  border-bottom: 3px solid var(--acento);
+}
+
+.seccion-de-galeria ul {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 19rem), 1fr));
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.programa-de-galeria {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-width: 0;
+  padding: 0.75rem 0.9rem;
+  border: 2px solid var(--borde);
+  border-radius: 0.6rem;
+  background: var(--superficie);
+}
+
+.programa-de-galeria h4 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.programa-de-galeria p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.programa-origen {
+  color: var(--texto-suave);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.programa-que-observar {
+  flex: 1 1 auto;
+}
+
+.programa-datos {
+  color: var(--texto-suave);
+  font-size: 0.9rem;
+}
+
+.acciones-del-programa,
+.muestras {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.muestras {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.muestras button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+  text-align: left;
+}
+
+.muestra-etiqueta {
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+}
+
+.muestra-descripcion {
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+/* --- Celular: menos de 700 px (REQ-PANT-005, ADR 017) ------------------------------------------------------------------------------------ */
+/* El código ocupa ≈ 35 % del alto de la ventana (centrado en la línea actual: lo hace `EditorJava`), el globo del robot va justo después y `Anterior` / `Siguiente` quedan en una BARRA INFERIOR FIJA:
+   el botón que más se usa siempre está a la mano. Las dos columnas se vuelven una sola con `display: contents` y `order`: en el paso 0 el robot y su globo se ven sin desplazar. */
+@media (max-width: 43.75rem) {
+  main {
+    padding: 0.75rem;
+  }
+
+  .encabezado {
+    gap: 0.4rem 0.75rem;
+  }
+
+  .ajustes-de-la-clase {
+    margin-left: 0;
+  }
+
+  .ajustes-panel {
+    position: static;
+    min-width: 0;
+    margin-top: 0.4rem;
+    box-shadow: none;
+  }
+
+  .visualizador {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+  }
+
+  /* En un contenedor flex, cada hijo tiene `min-width: auto`: sin esto un renglón de código sin partir lo ensancharía. */
+  .visualizador > *,
+  .columna > * {
+    min-width: 0;
+  }
+
+  .columna {
+    display: contents;
+  }
+
+  .zona-codigo {
+    order: 1;
+  }
+
+  .zona-explicacion {
+    order: 2;
+  }
+
+  .barra-controles {
+    order: 3;
+  }
+
+  .zona-estado {
+    order: 4;
+  }
+
+  .zona-consola {
+    order: 5;
+  }
+
+  /* ≈ 35 % del alto de la ventana; si la ventana es baja, cede alto (hasta 7.5rem, unas seis líneas) para que el robot y su globo se vean en el paso 0 sin desplazar: lo demás de la pantalla (título,
+     navegación, botones, leyenda, el robot con su globo y la barra fija) mide ≈ 32.5rem a 320 px de ancho. */
+  .cm-scroller {
+    min-height: 0;
+    max-height: clamp(7.5rem, calc(100vh - 32.5rem), 35vh);
+  }
+
+  .explicacion {
+    grid-template-columns: 5.5rem minmax(0, 1fr);
+    gap: 0.6rem;
+  }
+
+  .robot {
+    width: 5.5rem;
+  }
+
+  .robot-nombre {
+    font-size: 0.7rem;
+  }
+
+  .globo-contenido,
+  .globo > .aviso {
+    padding: 0.6rem 0.75rem;
+    font-size: 1rem;
+  }
+
+  .barra-controles {
+    padding: 0.5rem;
+  }
+
+  .ayuda-de-atajos {
+    display: none;
+  }
+
+  /* El aviso de edición ya no reserva un renglón en blanco entre el código y el robot: crece solo si el alumno intenta teclear. */
+  .aviso-de-edicion {
+    min-height: 0;
+  }
+
+  /* La barra inferior fija: mientras se visualiza, lo que hay en la ranura (Anterior · Siguiente, o las acciones del fin) se queda abajo, a la mano del pulgar. */
+  .aplicacion[data-modo='visualizacion'] {
+    padding-bottom: 5rem;
+  }
+
+  .aplicacion[data-modo='visualizacion']:has(.ranura[data-ranura='fin']) {
+    padding-bottom: 9.5rem;
+  }
+
+  .aplicacion[data-modo='visualizacion'] .ranura {
+    position: fixed;
+    inset: auto 0 0 0;
+    z-index: 20;
+    padding: 0.5rem 0.75rem;
+    border-top: 2px solid var(--borde);
+    background: var(--superficie);
+  }
+
+  .aplicacion[data-modo='visualizacion'] .ranura-botones {
+    flex-wrap: wrap;
+  }
+
+  .aplicacion[data-modo='visualizacion'] .ranura-botones button {
+    flex: 1 1 8rem;
+  }
+
+  .ajuste-velocidad {
+    flex-wrap: wrap;
+  }
+
+  h1 {
+    font-size: 1.2rem;
+  }
+}
+
+/* Teléfonos de 320 a 360 px: el título cabe en una línea y el robot cede ancho al globo (el primer texto del paso 0 es largo): así el robot y su globo se ven sin desplazar en el paso 0. */
+@media (max-width: 22.5rem) {
+  h1 {
+    font-size: 1.05rem;
+  }
+
+  .explicacion {
+    grid-template-columns: 4.5rem minmax(0, 1fr);
+    gap: 0.4rem;
+  }
+
+  .robot {
+    width: 4.5rem;
+  }
+
+  .globo-contenido,
+  .globo > .aviso {
+    padding: 0.5rem 0.6rem;
+    font-size: 0.95rem;
+  }
+}
+
 /* --- Movimiento: solo si el sistema no pidió reducirlo --------------------------------------------------------------------------- */
 @media (prefers-reduced-motion: no-preference) {
   .robot-antena {
@@ -726,6 +1228,20 @@ li.atenuada {
     transform-box: fill-box;
     transform-origin: center;
     animation: robot-parpadeo 5s ease-in-out infinite;
+  }
+
+  /* Al cambiar el hablante entra la figura del robot nuevo con un fundido de 150 ms (REQ-PANT-009). Solo el dibujo: ningún texto pasa por una opacidad menor a 1, así que el contraste se mide siempre completo. */
+  .robot {
+    animation: robot-aparece 0.15s ease-out;
+  }
+
+  @keyframes robot-aparece {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
   }
 
   .globo-contenido {

@@ -36,9 +36,11 @@ function ValorDeVariable({ variable }: { readonly variable: VariableVista }) {
 
 export interface PropiedadesPanelVariables {
   readonly variables: readonly VariableVista[];
+  /** Sin la columna «Tipo» (modo proyector, REQ-AULA-004): solo nombre y valor. */
+  readonly compacto?: boolean;
 }
 
-export function PanelVariables({ variables }: PropiedadesPanelVariables) {
+export function PanelVariables({ variables, compacto = false }: PropiedadesPanelVariables) {
   const idDelTitulo = useId();
   return (
     <section className="panel panel-variables" aria-labelledby={idDelTitulo}>
@@ -50,7 +52,7 @@ export function PanelVariables({ variables }: PropiedadesPanelVariables) {
           <thead>
             <tr>
               <th scope="col">{textosPaneles.variables.columnas.nombre()}</th>
-              <th scope="col">{textosPaneles.variables.columnas.tipo()}</th>
+              {!compacto && <th scope="col">{textosPaneles.variables.columnas.tipo()}</th>}
               <th scope="col">{textosPaneles.variables.columnas.valor()}</th>
             </tr>
           </thead>
@@ -63,7 +65,7 @@ export function PanelVariables({ variables }: PropiedadesPanelVariables) {
                 className={variable.fueraDeAlcance ? 'atenuada' : undefined}
               >
                 <th scope="row">{variable.nombre}</th>
-                <td>{variable.tipo}</td>
+                {!compacto && <td>{variable.tipo}</td>}
                 <td>
                   <ValorDeVariable variable={variable} />
                 </td>

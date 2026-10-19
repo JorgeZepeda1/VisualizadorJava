@@ -20,11 +20,14 @@ export interface PropiedadesAvisoProblema {
   /** Cuántos avisos más encontró el motor además del que se muestra (REQ-SUB-006). */
   readonly adicionales?: number;
   readonly anunciar?: boolean;
+  /** El nombre del robot que empieza a hablar, solo si cambió el hablante (REQ-PANT-009): se dice ANTES del título, solo para lectores de pantalla. */
+  readonly nombreDelRobot?: string | null;
 }
 
-export function AvisoProblema({ tipo, children, adicionales = 0, anunciar = true }: PropiedadesAvisoProblema) {
+export function AvisoProblema({ tipo, children, adicionales = 0, anunciar = true, nombreDelRobot = null }: PropiedadesAvisoProblema) {
   return (
     <div className="aviso" data-tipo={tipo} role={anunciar ? 'alert' : undefined}>
+      {nombreDelRobot !== null && <span className="solo-lectores">{`${nombreDelRobot}: `}</span>}
       <p className="aviso-titulo">
         <span data-icono aria-hidden="true">
           {ICONOS[tipo]}

@@ -91,7 +91,6 @@ export const textosPaneles = {
     yaTermino: (): string => 'terminó',
   },
   consola: {
-    titulo: (): string => 'Consola',
     etiquetaDelError: (): string => 'Error',
     etiquetaDeLoTecleado: (): string => 'Lo que tecleaste',
     etiquetaDelCampo: (): string => 'Escribe tu dato y pulsa Enter',

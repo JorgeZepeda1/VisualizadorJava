@@ -118,7 +118,6 @@ describe('textosPaneles.vueltas (REQ-VIS-007)', () => {
 
 describe('textosPaneles.consola (REQ-VIS-008, REQ-VIS-009)', () => {
   it('nombra la consola, el error y el campo de entrada', () => {
-    expect(textosPaneles.consola.titulo()).toBe('Consola');
     expect(textosPaneles.consola.etiquetaDelError()).toBe('Error');
     expect(textosPaneles.consola.etiquetaDeLoTecleado()).toBe('Lo que tecleaste');
     expect(textosPaneles.consola.etiquetaDelCampo()).toBe('Escribe tu dato y pulsa Enter');

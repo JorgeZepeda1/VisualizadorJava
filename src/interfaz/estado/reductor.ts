@@ -1,8 +1,12 @@
 // El estado de la pantalla (tarea 4.13, design.md §6.1, ADR 013): `EstadoApp` y su reductor. Es una función pura: la `Traza` (almacén mutable con versión) y el cliente del trabajador viven FUERA
 // de React; lo que llega del trabajador y lo que hace el alumno entran como acciones. La posición se acota con el `total` de la traza que cada acción de navegación trae —la traza es la única
-// fuente de verdad de cuántos pasos hay—. Los ajustes (nivel Normal/Detallado, predicción, proyector, regional, semilla) y los diálogos llegan en los lotes 5 y 6.
+// fuente de verdad de cuántos pasos hay—.
+//
+// Hito R0 (tarea R0.7, REQ-PANT-001, 002, 006; REQ-AULA-001; ADR 017): el estado también sabe en qué SECCIÓN está el alumno (cambiar de sección no toca el programa ni la traza), si todavía está el SALUDO
+// (hasta su primera acción), los AJUSTES DE LA CLASE (proyector y velocidad; el reto y el revisor se suman en R1 y R3), la ENTRADA PREPARADA con la que se ejecuta el programa, DE DÓNDE vino el programa y el
+// programa del alumno GUARDADO mientras mira un ejemplo. Los demás ajustes (nivel Normal/Detallado, regional, semilla) y los diálogos llegan en los lotes 5 y 6.
 import type { FinEjecucion, VistaPrograma } from '../../motor/vista.ts';
-import type { ResaltadoDeProblema, SegmentoDeTexto } from '../../presentacion/index.ts';
+import type { ResaltadoDeProblema, Seccion, SegmentoDeTexto } from '../../presentacion/index.ts';
 import type { NivelDeVelocidad } from '../../textos/es-MX/controles.ts';
 import type { TipoDeAviso } from '../../textos/es-MX/paneles.ts';
 
@@ -38,9 +42,26 @@ export interface NavegacionApp {
   /** A cuántos pasos aplicados se mira (0 = todavía no se ejecuta nada). */
   readonly paso: number;
   readonly reproduciendo: boolean;
-  readonly velocidad: NivelDeVelocidad;
   /** Tras escribir un dato: ¿pasar al paso nuevo (el de la lectura) en cuanto llegue? */
   readonly seguirAlLlegar: boolean;
+}
+
+/** Lo que el docente ajusta para la clase (REQ-PANT-006). El modo reto y el momento del aviso del revisor se agregan en R1 y R3. */
+export interface AjustesApp {
+  readonly proyector: boolean;
+  readonly velocidad: NivelDeVelocidad;
+}
+
+/** De dónde vino el programa del editor: lo escribió el alumno, lo abrió de la galería de ejemplos o lo trajo un enlace. Los temas del libro se suman en R2. */
+export type OrigenDelPrograma =
+  | { readonly tipo: 'propio' }
+  | { readonly tipo: 'galeria'; readonly id: string; readonly demostracion: boolean }
+  | { readonly tipo: 'enlace' };
+
+/** El programa del alumno, guardado mientras mira un ejemplo, para poder volver a él. */
+export interface ProgramaGuardado {
+  readonly codigo: string;
+  readonly entrada: string;
 }
 
 export interface EstadoApp {
@@ -49,11 +70,21 @@ export interface EstadoApp {
   readonly ejecucion: EjecucionApp;
   readonly aviso: AvisoDeEdicion | null;
   readonly navegacion: NavegacionApp;
+  /** La sección que se ve. Cambiar de sección NO desmonta el editor ni toca la traza (REQ-PANT-002). */
+  readonly seccion: Seccion;
+  /** El saludo con las tres puertas, hasta la primera acción del alumno (una puerta, editar, visualizar o abrir un programa; REQ-PANT-001). */
+  readonly saludo: boolean;
+  readonly ajustes: AjustesApp;
+  /** Los renglones que el oráculo usó como entrada del programa (cada uno con su salto de línea, como en NetBeans); vacía si el alumno escribe sus propios datos. */
+  readonly entradaPreparada: string;
+  readonly origen: OrigenDelPrograma;
+  readonly programaGuardado: ProgramaGuardado | null;
 }
 
 export type Accion =
   | { readonly tipo: 'editar'; readonly codigo: string }
-  | { readonly tipo: 'visualizar'; readonly id: number }
+  /** `entradaPreparada`: con ella se cambia la entrada preparada de esta ejecución («Probar con otros datos» la vacía); sin ella se conserva la del programa abierto. */
+  | { readonly tipo: 'visualizar'; readonly id: number; readonly entradaPreparada?: string }
   | { readonly tipo: 'compilado-ok'; readonly vista: VistaPrograma }
   | { readonly tipo: 'problema-al-revisar'; readonly aviso: AvisoDeEdicion }
   | { readonly tipo: 'volver-a-editar' }
@@ -69,14 +100,33 @@ export type Accion =
   | { readonly tipo: 'ir-al-paso'; readonly paso: number; readonly total: number }
   | { readonly tipo: 'alternar-reproduccion'; readonly total: number }
   | { readonly tipo: 'tic'; readonly total: number }
-  | { readonly tipo: 'velocidad'; readonly velocidad: NivelDeVelocidad };
+  | { readonly tipo: 'ir-a-seccion'; readonly seccion: Seccion }
+  /** «Probar mi programa»: el alumno ya empezó por su cuenta, el saludo con las puertas termina. */
+  | { readonly tipo: 'terminar-saludo' }
+  | { readonly tipo: 'cambiar-ajuste'; readonly ajuste: 'proyector'; readonly valor: boolean }
+  | { readonly tipo: 'cambiar-ajuste'; readonly ajuste: 'velocidad'; readonly valor: NivelDeVelocidad }
+  /** Abre un programa que no escribió el alumno (un ejemplo, un tema, un enlace): guarda el suyo y vuelve a «Paso a paso» en edición. */
+  | { readonly tipo: 'cargar-programa'; readonly codigo: string; readonly entradaPreparada: string; readonly origen: OrigenDelPrograma }
+  | { readonly tipo: 'volver-a-mi-programa' };
 
 const EJECUCION_NUEVA = (id: number): EjecucionApp => ({ id, estado: 'calculando', nodoEnEspera: null, fin: null, vista: null });
 
-const NAVEGACION_AL_INICIO = (velocidad: NivelDeVelocidad): NavegacionApp => ({ paso: 0, reproduciendo: false, velocidad, seguirAlLlegar: false });
+const NAVEGACION_AL_INICIO: NavegacionApp = { paso: 0, reproduciendo: false, seguirAlLlegar: false };
 
 export function estadoInicial(codigo: string): EstadoApp {
-  return { modo: 'edicion', codigo, ejecucion: EJECUCION_NUEVA(0), aviso: null, navegacion: NAVEGACION_AL_INICIO(3) };
+  return {
+    modo: 'edicion',
+    codigo,
+    ejecucion: EJECUCION_NUEVA(0),
+    aviso: null,
+    navegacion: NAVEGACION_AL_INICIO,
+    seccion: 'paso-a-paso',
+    saludo: true,
+    ajustes: { proyector: false, velocidad: 3 },
+    entradaPreparada: '',
+    origen: { tipo: 'propio' },
+    programaGuardado: null,
+  };
 }
 
 function acotar(paso: number, total: number): number {
@@ -107,15 +157,19 @@ export function reductor(estado: EstadoApp, accion: Accion): EstadoApp {
       return {
         ...estado,
         codigo: accion.codigo,
+        // Una edición que de verdad cambia el código es la primera acción del alumno: el saludo termina. El eco de un programa que el editor ya tenía no cuenta.
+        saludo: estado.saludo && accion.codigo === estado.codigo,
         aviso: estado.aviso === null ? null : { ...estado.aviso, resaltado: null, ...(accion.codigo === estado.codigo ? {} : { caducado: true as const }) },
       };
     case 'visualizar':
       return {
         ...estado,
         modo: 'compilando',
+        saludo: false,
+        entradaPreparada: accion.entradaPreparada ?? estado.entradaPreparada,
         ejecucion: EJECUCION_NUEVA(accion.id),
         aviso: null,
-        navegacion: NAVEGACION_AL_INICIO(estado.navegacion.velocidad),
+        navegacion: NAVEGACION_AL_INICIO,
       };
     case 'compilado-ok':
       return { ...estado, modo: 'visualizacion', ejecucion: { ...estado.ejecucion, vista: accion.vista } };
@@ -125,7 +179,7 @@ export function reductor(estado: EstadoApp, accion: Accion): EstadoApp {
         modo: 'edicion',
         ejecucion: EJECUCION_NUEVA(estado.ejecucion.id),
         aviso: accion.aviso,
-        navegacion: NAVEGACION_AL_INICIO(estado.navegacion.velocidad),
+        navegacion: NAVEGACION_AL_INICIO,
       };
     case 'volver-a-editar':
       return {
@@ -133,7 +187,7 @@ export function reductor(estado: EstadoApp, accion: Accion): EstadoApp {
         modo: 'edicion',
         ejecucion: EJECUCION_NUEVA(estado.ejecucion.id),
         aviso: null,
-        navegacion: NAVEGACION_AL_INICIO(estado.navegacion.velocidad),
+        navegacion: NAVEGACION_AL_INICIO,
       };
     case 'pasos-recibidos': {
       const { navegacion } = estado;
@@ -181,7 +235,41 @@ export function reductor(estado: EstadoApp, accion: Accion): EstadoApp {
     }
     case 'tic':
       return alTic(estado, accion.total);
-    case 'velocidad':
-      return { ...estado, navegacion: { ...estado.navegacion, velocidad: accion.velocidad } };
+    case 'ir-a-seccion':
+      // Ir a otra sección es una puerta del saludo: lo termina. «Ir» a la sección en la que ya está no es una acción.
+      return { ...estado, seccion: accion.seccion, saludo: estado.saludo && accion.seccion === estado.seccion };
+    case 'terminar-saludo':
+      return estado.saludo ? { ...estado, saludo: false } : estado;
+    case 'cambiar-ajuste':
+      return { ...estado, ajustes: accion.ajuste === 'proyector' ? { ...estado.ajustes, proyector: accion.valor } : { ...estado.ajustes, velocidad: accion.valor } };
+    case 'cargar-programa':
+      return {
+        ...estado,
+        modo: 'edicion',
+        seccion: 'paso-a-paso',
+        saludo: false,
+        codigo: accion.codigo,
+        entradaPreparada: accion.entradaPreparada,
+        origen: accion.origen,
+        // Se guarda el programa del alumno; abrir un segundo ejemplo no pisa el suyo con el primero.
+        programaGuardado: estado.origen.tipo === 'propio' ? { codigo: estado.codigo, entrada: estado.entradaPreparada } : estado.programaGuardado,
+        ejecucion: EJECUCION_NUEVA(estado.ejecucion.id),
+        aviso: null,
+        navegacion: NAVEGACION_AL_INICIO,
+      };
+    case 'volver-a-mi-programa':
+      if (estado.programaGuardado === null) return estado;
+      return {
+        ...estado,
+        modo: 'edicion',
+        seccion: 'paso-a-paso',
+        codigo: estado.programaGuardado.codigo,
+        entradaPreparada: estado.programaGuardado.entrada,
+        origen: { tipo: 'propio' },
+        programaGuardado: null,
+        ejecucion: EJECUCION_NUEVA(estado.ejecucion.id),
+        aviso: null,
+        navegacion: NAVEGACION_AL_INICIO,
+      };
   }
 }

@@ -4,8 +4,8 @@
 // pise lo tecleado — con transacciones iguales a las que CodeMirror aplica al teclear. La
 // interacción real de teclado/pegado se prueba en pruebas/e2e/ (tarea 0.15) — ADR 013 ya anota
 // que "los componentes con CodeMirror se prueban sobre todo en E2E porque jsdom no hace layout".
-import { describe, expect, it } from 'vitest';
-import { render } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { fireEvent, render } from '@testing-library/react';
 import { EditorView } from '@codemirror/view';
 import { EditorJava, type ManejadorDelEditor } from './EditorJava.tsx';
 
@@ -183,5 +183,174 @@ describe('<EditorJava/> — enfocar en una línea', () => {
     manejador.current?.enfocar();
     expect(document.activeElement).toBe(container.querySelector('.cm-content'));
     expect(vistaDe(container).state.selection.main.head).toBe(antes);
+  });
+});
+
+// R0.10 (REQ-PANT-004, panel 1 H9): teclear en el editor mientras se visualiza no hacía nada y nada lo explicaba. Con el editor en solo lectura, una tecla que intentaría ESCRIBIR avisa al contenedor
+// (que dice «Para cambiar el código pulsa «Editar programa»»); las teclas de navegación y los atajos (flechas, Tab, Inicio, Fin, Escape, espacio, Ctrl/Cmd+algo) no avisan.
+describe('<EditorJava/> — intentar escribir con el programa en solo lectura', () => {
+  function contenido(contenedor: HTMLElement): Element {
+    const nodo = contenedor.querySelector('.cm-content');
+    if (nodo === null) throw new Error('No se encontró el contenido del editor');
+    return nodo;
+  }
+
+  it('una letra, un número o un símbolo avisan que se intentó editar, y el código no cambia', () => {
+    const alIntentarEditar = vi.fn();
+    const { container } = render(<EditorJava valor="int x = 1;" soloLectura alIntentarEditar={alIntentarEditar} />);
+    for (const key of ['a', '7', ';', 'ñ']) fireEvent.keyDown(contenido(container), { key });
+    expect(alIntentarEditar).toHaveBeenCalledTimes(4);
+    expect(textoMostrado(container)).toBe('int x = 1;');
+  });
+
+  it('Enter, Retroceso y Suprimir también son editar', () => {
+    const alIntentarEditar = vi.fn();
+    const { container } = render(<EditorJava valor="x" soloLectura alIntentarEditar={alIntentarEditar} />);
+    for (const key of ['Enter', 'Backspace', 'Delete']) fireEvent.keyDown(contenido(container), { key });
+    expect(alIntentarEditar).toHaveBeenCalledTimes(3);
+    // y los comandos del teclado tampoco cambian el código mientras se visualiza (antes Enter o Retroceso lo modificaban aunque el editor no fuera editable)
+    expect(textoMostrado(container)).toBe('x');
+  });
+
+  it('las flechas, Tab, Escape, Inicio, Fin, el espacio y los atajos con Ctrl o Cmd NO avisan: son navegación o del navegador', () => {
+    const alIntentarEditar = vi.fn();
+    const { container } = render(<EditorJava valor="x" soloLectura alIntentarEditar={alIntentarEditar} />);
+    for (const key of ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Tab', 'Escape', 'Home', 'End', 'PageUp', 'PageDown', ' ', 'Shift', 'F5']) {
+      fireEvent.keyDown(contenido(container), { key });
+    }
+    fireEvent.keyDown(contenido(container), { key: 'c', ctrlKey: true });
+    fireEvent.keyDown(contenido(container), { key: 'a', metaKey: true });
+    expect(alIntentarEditar).not.toHaveBeenCalled();
+  });
+
+  it('con AltGr (Ctrl+Alt) se escribe un símbolo de verdad —«@» en un teclado en español—: sí avisa', () => {
+    const alIntentarEditar = vi.fn();
+    const { container } = render(<EditorJava valor="x" soloLectura alIntentarEditar={alIntentarEditar} />);
+    fireEvent.keyDown(contenido(container), { key: '@', ctrlKey: true, altKey: true });
+    expect(alIntentarEditar).toHaveBeenCalledTimes(1);
+  });
+
+  it('con el editor editable teclear es editar: no avisa nada', () => {
+    const alIntentarEditar = vi.fn();
+    const { container } = render(<EditorJava valor="x" alIntentarEditar={alIntentarEditar} />);
+    fireEvent.keyDown(contenido(container), { key: 'a' });
+    expect(alIntentarEditar).not.toHaveBeenCalled();
+  });
+
+  it('al pasar de editable a solo lectura (se pulsó «Visualizar») empieza a avisar, sin recrear el editor', () => {
+    const alIntentarEditar = vi.fn();
+    const { container, rerender } = render(<EditorJava valor="x" alIntentarEditar={alIntentarEditar} />);
+    const antes = contenido(container);
+    rerender(<EditorJava valor="x" soloLectura alIntentarEditar={alIntentarEditar} />);
+    fireEvent.keyDown(contenido(container), { key: 'a' });
+    expect(contenido(container)).toBe(antes);
+    expect(alIntentarEditar).toHaveBeenCalledTimes(1);
+  });
+
+  it('sin la propiedad `alIntentarEditar` teclear en solo lectura no falla', () => {
+    const { container } = render(<EditorJava valor="x" soloLectura />);
+    expect(() => fireEvent.keyDown(contenido(container), { key: 'a' })).not.toThrow();
+  });
+});
+
+// R0.12 (REQ-PANT-005, REQ-AULA-004, ADR 017): el proyector parte las líneas largas en vez de desplazarlas (a 24 píxeles en 1024×768 una línea de 53 caracteres no cabe) y el celular centra la línea
+// actual en el 35 % de alto que le toca al código.
+describe('<EditorJava/> — ajuste de línea para el proyector', () => {
+  const LINEA_LARGA = 'System.out.println("Esta línea es larga y en proyector se parte en dos renglones");';
+
+  it('con `ajusteDeLinea` el editor parte las líneas largas (sin desplazamiento horizontal)', () => {
+    const { container } = render(<EditorJava valor={LINEA_LARGA} ajusteDeLinea />);
+    expect(container.querySelector('.cm-content')?.classList.contains('cm-lineWrapping')).toBe(true);
+  });
+
+  it('sin él, las líneas largas se desplazan como siempre', () => {
+    const { container } = render(<EditorJava valor={LINEA_LARGA} />);
+    expect(container.querySelector('.cm-content')?.classList.contains('cm-lineWrapping')).toBe(false);
+  });
+
+  it('se enciende y se apaga con el modo proyector sin recrear el editor ni perder el programa', () => {
+    const { container, rerender } = render(<EditorJava valor={LINEA_LARGA} />);
+    const antes = container.querySelector('.cm-content');
+
+    rerender(<EditorJava valor={LINEA_LARGA} ajusteDeLinea />);
+    expect(container.querySelector('.cm-content')).toBe(antes);
+    expect(antes?.classList.contains('cm-lineWrapping')).toBe(true);
+    expect(container.textContent).toContain('Esta línea es larga');
+
+    rerender(<EditorJava valor={LINEA_LARGA} />);
+    expect(container.querySelector('.cm-content')?.classList.contains('cm-lineWrapping')).toBe(false);
+  });
+});
+
+describe('<EditorJava/> — la línea actual en el celular', () => {
+  const original = window.matchMedia;
+  afterEach(() => {
+    window.matchMedia = original;
+    vi.restoreAllMocks();
+  });
+
+  const RESALTADOS = { lineaEjecutada: null, lineaSiguiente: 2, vueltas: [], ramaNoTomada: null } as const;
+  const PROGRAMA = 'linea uno\nlinea dos\nlinea tres';
+
+  function pantallaAngosta(angosta: boolean): void {
+    window.matchMedia = ((consulta: string) => ({ matches: angosta, media: consulta, addEventListener: () => undefined, removeEventListener: () => undefined })) as unknown as typeof window.matchMedia;
+  }
+
+  it('en un celular (pantalla angosta) deja la línea que se marca en el CENTRO del editor, no en el borde', () => {
+    pantallaAngosta(true);
+    const alDesplazar = vi.spyOn(EditorView, 'scrollIntoView');
+    render(<EditorJava valor={PROGRAMA} soloLectura resaltados={RESALTADOS} />);
+    expect(alDesplazar).toHaveBeenCalled();
+    expect(alDesplazar.mock.calls.at(-1)?.[1]).toMatchObject({ y: 'center' });
+  });
+
+  it('en una pantalla ancha solo la deja a la vista (lo más cerca posible, como siempre)', () => {
+    pantallaAngosta(false);
+    const alDesplazar = vi.spyOn(EditorView, 'scrollIntoView');
+    render(<EditorJava valor={PROGRAMA} soloLectura resaltados={RESALTADOS} />);
+    expect(alDesplazar.mock.calls.at(-1)?.[1]).toMatchObject({ y: 'nearest' });
+  });
+
+  it('sin `matchMedia` (jsdom) se comporta como en una pantalla ancha', () => {
+    // @ts-expect-error: jsdom no trae `matchMedia`; así se prueba la ausencia.
+    window.matchMedia = undefined;
+    const alDesplazar = vi.spyOn(EditorView, 'scrollIntoView');
+    render(<EditorJava valor={PROGRAMA} soloLectura resaltados={RESALTADOS} />);
+    expect(alDesplazar.mock.calls.at(-1)?.[1]).toMatchObject({ y: 'nearest' });
+  });
+});
+
+// R0.12: con el ajuste de línea una línea sangrada que no cabe se parte, y las filas de continuación deben seguir la sangría de SU línea (sangría colgante): sin ella las continuaciones arrancan en la columna 0
+// y parecen otra línea. Cada línea con sangría lleva su cuenta en `--sangria` (en columnas); la hoja de estilos la convierte en el margen de las filas siguientes.
+describe('<EditorJava/> — sangría colgante de las líneas partidas (proyector)', () => {
+  const PROGRAMA = ['class A {', '    void f() {', '        int x = 1;', '\tint y;', '}'].join('\n');
+
+  function sangriasDeLasLineas(contenedor: HTMLElement): (string | null)[] {
+    return Array.from(contenedor.querySelectorAll('.cm-line')).map((linea) => /--sangria:\s*(\d+)/.exec(linea.getAttribute('style') ?? '')?.[1] ?? null);
+  }
+
+  it('cada línea con sangría lleva su cuenta de columnas (los espacios); las que no, nada', () => {
+    const { container } = render(<EditorJava valor={PROGRAMA} ajusteDeLinea />);
+    expect(sangriasDeLasLineas(container)).toEqual([null, '4', '8', '4', null]);
+  });
+
+  it('sin ajuste de línea no se agrega nada: el modo normal no cambia', () => {
+    const { container } = render(<EditorJava valor={PROGRAMA} />);
+    expect(sangriasDeLasLineas(container)).toEqual([null, null, null, null, null]);
+  });
+
+  it('al encender el proyector las sangrías aparecen y al apagarlo se van, sin recrear el editor', () => {
+    const { container, rerender } = render(<EditorJava valor={PROGRAMA} />);
+    rerender(<EditorJava valor={PROGRAMA} ajusteDeLinea />);
+    expect(sangriasDeLasLineas(container)).toEqual([null, '4', '8', '4', null]);
+    rerender(<EditorJava valor={PROGRAMA} />);
+    expect(sangriasDeLasLineas(container)).toEqual([null, null, null, null, null]);
+  });
+
+  it('si el programa cambia, las sangrías se recalculan', () => {
+    const { container, rerender } = render(<EditorJava valor={'a\n  b'} ajusteDeLinea />);
+    expect(sangriasDeLasLineas(container)).toEqual([null, '2']);
+    rerender(<EditorJava valor={'      c\nd'} ajusteDeLinea />);
+    expect(sangriasDeLasLineas(container)).toEqual(['6', null]);
   });
 });

@@ -18,58 +18,58 @@
 **Objetivo:** un alumno nuevo sabe por dónde empezar; «Siguiente» está junto al robot; la pantalla cabe en celular y en proyector; los tres robots existen y habla uno a la vez; la galería ofrece los programas del curso; empiezan los borradores de U6.
 **Entrada:** hito 3 publicado y PR #3 fusionado (R-D4); `v0.3.1` publicada (R-D8). **Sesiones:** 3–4.
 
-**R0.1 El PO elige los tres robots** · proceso — REQ-PANT-008 · PQ-1
+**R0.1 El PO elige los tres robots** · proceso — REQ-PANT-008 · PQ-1 — ✅ hecha (2026-10-19: el PO aprobó la recomendación de PQ-1 sin cambios)
 - Maqueta en escala de grises de las tres siluetas, accesorios y nombres (design §3.1, recomendación de PQ-1); el PO aprueba o cambia nombres y apariencia. Se puede hacer en paralelo a R0.2–R0.4; bloquea R0.5.
 
-**R0.2 ADR 017 — Pantalla y tres robots** · documento
+**R0.2 ADR 017 — Pantalla y tres robots** · documento — ✅ hecha (2026-10-19)
 - `docs/adr/017-pantalla-y-tres-robots.md`: ranura de acciones, un hablante y su turno, puertas con destino, distribuciones y proyector (absorbe 5.5), galería curricular (adelanta parte de 5.2), `import.meta.glob` solo en `interfaz/datos`, PQ-6; alternativas: un robot con tres papeles, pantalla de inicio aparte, mini retrato en el globo.
 
-**R0.3 Voz «Java revisa…» y vocabulario** — REQ-PANT-010, REQ-PANT-004
+**R0.3 Voz «Java revisa…» y vocabulario** — REQ-PANT-010, REQ-PANT-004 — ✅ hecha (2026-10-19)
 - RED `textos/es-MX/voz.test.ts` (rechaza `Reviso`, `Guardo`, `verdadero`, `falso`, `es falso`, `iteración`, `revisión N` en el catálogo de los robots) + `textos/es-MX/explicaciones.test.ts` (T1 de la línea 72 de MaquinaSnacks y T2 con «Terminó la vuelta 2…», sin piezas todavía) + `robot.test.ts` (T3 del paso 0); fallan con los textos de hoy.
 - GREEN: `textos/es-MX/{explicaciones,robot}.ts` con las plantillas T1–T3 y menores del maestro (§4), `presentacion/robot.ts` pasa la sustitución completa que ya existe.
 - Verif: `textos/es-MX` · `presentacion/robot`
 
-**R0.4 Textos de la pantalla** — REQ-PANT-001, 002, 004, 006, 007
+**R0.4 Textos de la pantalla** — REQ-PANT-001, 002, 004, 006, 007 — ✅ hecha (2026-10-19)
 - RED `textos/es-MX/pantalla.test.ts`: saludo, tres puertas, navegación, consola vacía, aviso de edición durante la visualización, leyenda ▶/▷, «Paso N» con y sin total, «Ajustes de la clase» y sus estados en palabras, acciones del fin; sin marcadores; falla (módulo inexistente).
 - GREEN: `src/textos/es-MX/pantalla.ts` (borradores para la revisión del PO en R0.16).
 - Verif: `textos/es-MX/pantalla`
 
-**R0.5 Tres personajes** — REQ-PANT-008 · depende: R0.1
+**R0.5 Tres personajes** — REQ-PANT-008 · depende: R0.1 — ✅ hecha (2026-10-19)
 - RED `componentes/Robot.test.tsx`: `personaje` `paso-a-paso` | `revisor` | `libro` con `data-forma` y accesorio distintos, mismo `viewBox`, nombre visible y accesible del catálogo, cada ánimo en cada cabeza, sin animación con movimiento reducido; falla.
 - GREEN: `Robot.tsx` con las tres figuras aprobadas, `textos/es-MX/robot.ts` (nombres), estilos.
 - Verif: `interfaz/componentes/Robot`
 
-**R0.6 Un solo hablante** — REQ-PANT-009
+**R0.6 Un solo hablante** — REQ-PANT-009 — ✅ hecha (2026-10-19)
 - RED `presentacion/hablante.test.ts` (error de compilación, aviso y arranque → revisor; libro → libro; lo demás → paso a paso) + `componentes/Explicacion.test.tsx` (exactamente un `[data-personaje]` en la zona; al cambiar de hablante la región `aria-live` empieza con su nombre, y no lo repite si no cambió); falla.
 - GREEN: `presentacion/hablante.ts`, `ModeloVista.hablante`, `Explicacion.tsx` (fundido de 150 ms solo con `prefers-reduced-motion: no-preference`).
 - Verif: `presentacion/hablante` · `interfaz/componentes/Explicacion`
 
-**R0.7 Estado: secciones, saludo, ajustes y programas cargados** — REQ-PANT-001, 002, 006; REQ-AULA-001
+**R0.7 Estado: secciones, saludo, ajustes y programas cargados** — REQ-PANT-001, 002, 006; REQ-AULA-001 — ✅ hecha (2026-10-19)
 - RED `estado/reductor.test.ts`: `ir-a-seccion` no pierde programa ni paso; `saludo` hasta la primera acción; `cambiar-ajuste` (proyector, velocidad) sin perder el paso; `cargar-programa { codigo, entradaPreparada, origen }` guarda el programa anterior y `volver-a-mi-programa` lo restaura; `visualizar` usa `entradaPreparada`; falla.
 - GREEN: `estado/reductor.ts` (design §2.2), `contenedores/Visualizador.tsx` deja de fijar `entradaPreparada: ''`.
 - Verif: `interfaz/estado` · `interfaz/contenedores`
 
-**R0.8 Saludo con puertas, navegación y ajustes de la clase** — REQ-PANT-001, 002, 006 · PQ-2
+**R0.8 Saludo con puertas, navegación y ajustes de la clase** — REQ-PANT-001, 002, 006 · PQ-2 — ✅ hecha (2026-10-19)
 - RED `presentacion/ranura.test.ts` (puertas solo con destino: sin temas publicados no hay «Leer un tema») + `componentes/{Saludo,Navegacion,AjustesDeLaClase}.test.tsx` (foco en la primera puerta; «Probar mi programa» enfoca el editor; `aria-current="page"`; «Libro» oculto sin temas; ajustes con teclado y estado en palabras); falla.
 - GREEN: `presentacion/ranura.ts` (puertas), `Saludo.tsx`, `Navegacion.tsx`, `AjustesDeLaClase.tsx`; la velocidad sale de `BarraControles.tsx`; encabezado en `App.tsx`.
 - Verif: `presentacion/ranura` · `interfaz/componentes`
 
-**R0.9 Ranura bajo el globo y «Siguiente» primario** — REQ-PANT-003
+**R0.9 Ranura bajo el globo y «Siguiente» primario** — REQ-PANT-003 — ✅ hecha (2026-10-19)
 - RED `componentes/RanuraDeAcciones.test.tsx` + `contenedores/Visualizador.test.tsx`: en visualización la ranura tiene «◀ Anterior · Siguiente ▶» debajo del globo con `aria-keyshortcuts`; «Siguiente» es el primario y recibe el foco al visualizar; «Visualizar» deja de ser primario; flechas, Inicio, Fin y espacio siguen; la ranura nunca muestra dos cosas a la vez; falla.
 - GREEN: `RanuraDeAcciones.tsx`, `presentacion/ranura.ts` (`navegacion`), `BarraControles.tsx` conserva Inicio/Fin/Reproducir/deslizador.
 - Verif: `interfaz/componentes` · `interfaz/contenedores`
 
-**R0.10 Un dueño por dato, pistas y fin del recorrido** — REQ-PANT-004, REQ-PANT-007, REQ-PANT-001 (consola vacía)
+**R0.10 Un dueño por dato, pistas y fin del recorrido** — REQ-PANT-004, REQ-PANT-007, REQ-PANT-001 (consola vacía) — ✅ hecha (2026-10-19)
 - RED `presentacion/modelo-vista.test.ts` (`posicion.total` es `null` mientras calcula y en `u6-ciclo-infinito-demo` detenido; ranura `fin` con «Probar con otros datos» y «Modificar el programa») + `contenedores/Visualizador.test.tsx` (sin `ContadorVueltas` en la zona de explicación; leyenda ▶/▷; teclear en visualización muestra el aviso en `aria-live="polite"`; consola vacía con título y texto); falla.
 - GREEN: `modelo-vista.ts`, `ranura.ts` (`fin`), `Visualizador.tsx`, `Consola.tsx`, estilos de la línea siguiente.
 - Verif: `presentacion/modelo-vista` · `interfaz/contenedores`
 
-**R0.11 Galería «Ejemplos»** — REQ-AULA-001 (parte curricular de la 5.2)
+**R0.11 Galería «Ejemplos»** — REQ-AULA-001 (parte curricular de la 5.2) — ✅ hecha (2026-10-19)
 - RED `presentacion/galeria.test.ts` (secciones U3–U7 desde texto crudo de prueba; la máquina de snacks con 5 datos de ejemplo; entrada preparada idéntica al `.entrada.txt`) + `pruebas/arquitectura/galeria-completa.test.ts` (todo `.java` de `corpus/curso/` y `ejercicios-del-po/` tiene entrada en `textos/es-MX/galeria.ts`; toda `.entrada.txt` termina en `\n`) + `componentes/Galeria.test.tsx`; falla.
 - GREEN: `src/interfaz/datos/programas-crudos.ts` (diferido), `presentacion/galeria.ts`, `textos/es-MX/galeria.ts` (títulos, «Qué observar», demostraciones propuestas en design §2.5), `Galeria.tsx`.
 - Verif: `presentacion/galeria` · `arquitectura/galeria-completa` · `interfaz/componentes/Galeria`
 
-**R0.12 Distribuciones: escritorio, celular y proyector** — REQ-PANT-003, REQ-PANT-005, REQ-AULA-004 (absorbe 5.5)
+**R0.12 Distribuciones: escritorio, celular y proyector** — REQ-PANT-003, REQ-PANT-005, REQ-AULA-004 (absorbe 5.5) — ✅ hecha (2026-10-19)
 - RED `pruebas/e2e/pantalla.spec.ts` + `pruebas/e2e/proyector.spec.ts`: a 1366×768 robot, globo y ranura sin desplazar; a 390×844 y 320 px editor ≈ 35vh centrado en la línea actual, globo visible en el paso 0, barra inferior fija, sin desplazamiento horizontal; proyector a 1024×768 y 1280×720 con código ≥ 24 px, línea de 53 caracteres partida sin desplazamiento horizontal, variables sin «Tipo», consola con sus últimas líneas, nada encimado ni cortado; falla.
 - GREEN: `estilos/{aplicacion,proyector}.css` (áreas de cuadrícula y `data-proyector`), `EditorJava.tsx` (`Compartment` de tema y `lineWrapping` en proyector), `PanelVariables.tsx` (`compacto`), `Consola.tsx` (`ultimasLineas`).
 - Verif: `npm run e2e -- pantalla proyector`
@@ -84,7 +84,7 @@
 - GREEN: `textos/es-MX/libro/u6.ts` + `corpus/libro/u6-*/` + goldens. Estado borrador; el PO los recibe como texto en el chat.
 - Verif: `textos/es-MX/libro` · `diferencial/libro`
 
-**R0.15 E2E y accesibilidad de la pantalla** — REQ-PANT-001–REQ-PANT-009 (CR1, CR2, CR3)
+**R0.15 E2E y accesibilidad de la pantalla** — REQ-PANT-001–REQ-PANT-009 (CR1, CR2, CR3) — ✅ hecha (2026-10-19)
 - RED `pruebas/e2e/pantalla.spec.ts` ampliada: primera vez solo con teclado (saludo → «Ver un ejemplo paso a paso» → MaquinaSnacks → paso 1 en ≤ 3 acciones); error de compilación y su corrección con el hablante correcto; exactamente un robot en cada estado; axe sin graves ni críticas en saludo, visualización, error, galería y proyector; zoom al 200 %; galería sin red tras la primera visita (sobre el build real, regla 8); Chromium, Firefox y WebKit; falla.
 - GREEN: los huecos que destape.
 - Verif: `npm run e2e -- pantalla`

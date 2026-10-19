@@ -137,7 +137,7 @@ test.describe('problemas en pantalla: el texto real de cada problema, con su lí
     // Corrige la línea (el cursor ya está al inicio de ella: va al final y agrega el punto y coma).
     await page.keyboard.press('End');
     await page.keyboard.type(';');
-    await expect(page.getByTestId('globo-del-robot')).toContainText('Cambiaste el programa. Pulsa «Visualizar» y lo reviso otra vez.');
+    await expect(page.getByTestId('globo-del-robot')).toContainText('Cambiaste el programa. Pulsa «Visualizar» para que Java lo revise otra vez.');
     await expect(page.getByRole('alert')).toHaveCount(0);
     await expect(page.locator('.cm-problema-error')).toHaveCount(0);
     await expect(page.getByRole('img', { name: /robot/i })).toHaveAttribute('data-animo', 'normal');

@@ -7,10 +7,14 @@ import type { FinEjecucion, Paso, VistaPrograma } from '../motor/vista.ts';
 import { textoDelAvisoDeLimite, textoIntrigaDelLimite } from '../textos/es-MX/avisos-de-limite.ts';
 import { textoDeExplicacion } from '../textos/es-MX/explicaciones.ts';
 import type { TipoDeAviso } from '../textos/es-MX/paneles.ts';
+import { textosPantalla } from '../textos/es-MX/pantalla.ts';
 import { textosRobot, type AnimoDelRobot } from '../textos/es-MX/robot.ts';
 
 /** En qué va la ejecución, según lo que el trabajador ha mandado. */
 export type EstadoDeLaEjecucion =
+  /** Al abrir el visualizador, hasta la primera acción del alumno (REQ-PANT-001): el robot saluda y la ranura ofrece las puertas. */
+  | { readonly estado: 'saludo' }
+  /** El alumno escribe o pega su programa (ya pasó el saludo). */
   | { readonly estado: 'sin-ejecutar' }
   | { readonly estado: 'compilando' }
   /** El alumno editó el código después de un aviso: el aviso viejo ya no describe el programa que hay en el editor (C4 del panel 1). */
@@ -136,7 +140,8 @@ function notaDelUltimoPaso(entrada: EntradaDelRobot, ultimo: Paso): { readonly n
 
 export function derivarRobot(entrada: EntradaDelRobot): RobotVista {
   const { ejecucion, aplicados, total } = entrada;
-  if (ejecucion.estado === 'sin-ejecutar') return sinPaso(textosRobot.saludo());
+  if (ejecucion.estado === 'saludo') return sinPaso(textosPantalla.saludo.globo());
+  if (ejecucion.estado === 'sin-ejecutar') return sinPaso(textosRobot.sinEjecutar());
   if (ejecucion.estado === 'compilando') return sinPaso(textosRobot.compilando());
   if (ejecucion.estado === 'cambiado-tras-un-aviso') return sinPaso(textosRobot.programaCambiado());
 

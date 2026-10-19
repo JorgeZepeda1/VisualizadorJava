@@ -8,8 +8,12 @@
 export { segmentarCodigoEnLinea, type SegmentoDeTexto } from './segmentos-de-codigo.ts';
 export { textoDelArranque, textoDelProblema } from './texto-del-problema.ts';
 // Lote 4 (tareas 4.2 a 4.11): el modelo de vista que los componentes presentacionales reciben por `props` (design.md §6.1, ADR 013).
-export { derivarModeloVista, type EntradaModeloVista, type ModeloVista } from './modelo-vista.ts';
+export { derivarModeloVista, type ContextoDePantalla, type EntradaModeloVista, type ModeloVista, type PosicionVista } from './modelo-vista.ts';
+export { derivarRanura, puertasDelSaludo, type AccesorioDePuerta, type AccionDeFin, type IdDePuerta, type Puerta, type Ranura } from './ranura.ts';
 export type { EstadoDeLaEjecucion, RobotVista } from './robot.ts';
+export { derivarHablante, type EntradaDelHablante, type Hablante } from './hablante.ts';
+export { armarGaleria, etiquetaDeLaEntrada, type ArchivosCrudos, type GaleriaVista, type MuestraDeGaleria, type ProgramaDeGaleria, type SeccionDeGaleria } from './galeria.ts';
+export type { Seccion } from './secciones.ts';
 export type { VariableVista } from './variables.ts';
 export type { CondicionVista, Evaluacion, Rama } from './condicion.ts';
 export type { VueltaVista } from './vueltas.ts';

@@ -89,3 +89,34 @@ describe('<PanelVariables/> — variables nuevas, sin inicializar y fuera de alc
     expect(fila.textContent).not.toContain('sin inicializar');
   });
 });
+
+// R0.12 (REQ-AULA-004, ADR 017): en el modo proyector la tabla de variables no muestra la columna «Tipo» (el valor es lo que se mira desde el fondo del salón y la columna derecha tiene que dejar lugar para
+// la pregunta y las tres tarjetas del reto). El tipo sigue estando en el motor y vuelve al apagar el proyector.
+describe('<PanelVariables/> — compacto (modo proyector)', () => {
+  it('sin la columna «Tipo»: encabezados Nombre y Valor, y las filas no repiten el tipo', () => {
+    render(<PanelVariables compacto variables={[variable({ nombre: 'edad', valor: '17' }), variable({ nombre: 'nombre', tipo: 'String', valor: '"Ana"' })]} />);
+    expect(screen.getAllByRole('columnheader').map((c) => c.textContent)).toEqual(['Nombre', 'Valor']);
+    const edad = within(filaDe('edad'));
+    expect(edad.getByText('17')).toBeTruthy();
+    expect(edad.queryByText('int')).toBeNull();
+    expect(within(filaDe('nombre')).queryByText('String')).toBeNull();
+  });
+
+  it('el valor anterior, la palabra «nueva» y «sin inicializar» siguen diciéndose igual', () => {
+    render(
+      <PanelVariables
+        compacto
+        variables={[variable({ nombre: 'i', valor: '4', anterior: '3', estado: 'cambio' }), variable({ nombre: 'n', valor: '1', estado: 'nueva' }), variable({ nombre: 'z', valor: null })]}
+      />,
+    );
+    expect(within(filaDe('i')).getByText('4')).toBeTruthy();
+    expect(filaDe('i').textContent).toContain('3');
+    expect(within(filaDe('n')).getByText('nueva')).toBeTruthy();
+    expect(within(filaDe('z')).getByText('sin inicializar')).toBeTruthy();
+  });
+
+  it('sin `compacto` la columna «Tipo» sigue ahí (modo normal)', () => {
+    render(<PanelVariables variables={[variable({ nombre: 'edad', valor: '17' })]} />);
+    expect(screen.getAllByRole('columnheader').map((c) => c.textContent)).toEqual(['Nombre', 'Tipo', 'Valor']);
+  });
+});
