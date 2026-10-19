@@ -1,0 +1,30 @@
+# Panel R0, anexo: informe del experto en Java
+
+Resumen fiel del informe de `experto-java` en la verificación del hito R0 (2026-10-19). JDK `openjdk 17.0.18 (Temurin-17.0.18+8)` con `user.language=es`, `user.country=MX`. Programas en el directorio temporal de la sesión, `panel-r0/java/` (`n/p01` a `p30`). Motor del repositorio contra el JDK: stdout, stderr y código de salida idénticos en los 40 programas del corpus que se ejecutan y en los 30 propios (salvo `u6-ciclo-infinito-demo`, que se detiene por seguridad, como debe).
+
+## Antes de publicar (falso o engañoso)
+
+- **A1. `declaracion-varias` cambia un `String` con coma.** `explicaciones.ts` usa `.replace(/, ([^,]*)$/, ' y $1')`: con `String s = "x", t = "Hola, mundo";` narra «`t` (String) con "Hola y mundo"»; con `String w = "a", x = "b, c, d";`, «"b, c y d"». Viene del hito 2. Corrección: armar la lista sin expresión regular, como `enumerarSiempreValio` y `enumerarConO` en `avisos-de-limite.ts`, con prueba de un valor con comas.
+- **A2. `continue` en `while` y `do-while` dice «y sigue con la siguiente»**, pero `continue` salta a revisar la condición, que puede terminar el ciclo (`do { k++; continue; } while (k < 1);` y `while (w < 1) { w++; continue; }` no dan otra vuelta). Corrección: «… y pasa a revisar la condición» en `while` y `do-while`; en `for`, «sigue con su actualización» es exacta.
+- **A3. `nextDouble()` con un entero tecleado:** «Java lee lo que se escribió en el teclado con `teclado.nextDouble()`: 8.0.» cuando se tecleó `8` (`u6-acumulador-promedio-calificaciones`, `u5-switch-menu-calculadora`). Mismo error de fondo que C1. Corrección en `calculo()`: «Java lee con `teclado.nextDouble()` lo que se escribió y obtiene 8.0.»
+- **A4. Libro: errores de alcance con el mensaje «¿La declaraste antes? ¿Se te fue un error de dedo?»** (`u6-do-while/variable-del-bloque`, `u6-for/variable-fuera-del-for`), cuando la variable sí se declaró en un bloque que ya cerró. `problemas.ts` usa `variable-no-declarada` para los dos casos. O el motor distingue el caso («`i` solo existe dentro del `for`; aquí ya no se puede usar»), o el borrador no cita el mensaje hasta que exista. Mismo fondo que E2 del panel 1.
+- **A5. Libro: simplificaciones desmentidas.** (1) Tema 1: «Antes de cada vuelta, Java revisa una condición» dicho del ciclo en general (el `do-while` revisa al final) → «Con el `while`, antes de cada vuelta…». (2) Tema 1, resumen: «si no, el ciclo nunca termina» (un `break` o una excepción lo terminan) → «nunca da `false`», como el tema 2. (3) Tema 3: «Una bandera… empieza en `false`» (`boolean todosAprobaron = true;` es normal) → «suele empezar en `false`». (4) Tema 5: «`i++` suma 1 a `i`, igual que `i = i + 1`» (con `char c`, `c++;` compila y `c = c + 1;` no: `possible lossy conversion from int to char`) → «con un `int`» o «como instrucción».
+
+## Puede esperar
+
+- **B1.** Efectos dentro de condiciones y asignaciones encadenadas no se narran: `while (n > 0 && n-- > 1)`, `while (++i < 3)`, `if (i++ == 3)`, `(n = sc.nextInt()) != 0`, `a = b = 4`, `(a = 9) + b`. Es el riesgo R4.4 del panel 1 para el reto.
+- **B2.** `==`/`!=` con `String` muestra `"hola" == "hola"` → `false` sin explicarlo (E4 del panel 1; va con el revisor). Mitigación mínima: cuando `sustituida` compare dos literales entre comillas con `==` o `!=`, añadir «Con `String`, `==` compara si son el mismo objeto, no si dicen lo mismo». Ningún programa de la galería ni del libro usa `==` con `String`.
+- **B3.** `new Random()` da siempre lo mismo (`semilla: 0n` fija en `Visualizador.tsx`) y el narrador dice «sacará números aleatorios»; `proposal.md` §2.2 prometía semilla visible y nueva en cada ejecución. Ningún programa de la galería ni del libro usa `Random`.
+- **B4.** Paro por seguridad con `break` (`while (a <= 5) { k++; if (k == 50000) break; }`): «el ciclo no va a terminar» → «… no va a terminar solo por esa condición». Raro.
+- **B5.** `u3-area-rectangulo-valores-fijos`: «un `double` se imprime siempre con su punto decimal» (`Infinity`, `NaN`, `1.0E7`) → «un `double` entero se imprime con `.0`». `u5-escalera-else-if-correcta`: «salta las de 90» (es una sola condición). Libro: «Las llaves `{ }` marcan lo que se repite» es cierto para la forma mostrada; sin llaves solo se repite la primera instrucción.
+- **B6.** Libro, tema 5: «Hace el mismo trabajo que un `while`» salvo con `continue` (en `for` el cambio sí se ejecuta).
+
+## Confirmado
+
+Los 36 «Qué observar» y los 5 datos de la máquina de snacks dicen algo verdadero; las 20 entradas preparadas terminan en `\n` sin `\r` (`.gitattributes` con `corpus/** -text`); las 7 demostraciones y las preguntas del libro tienen la respuesta que da Java y no admiten otra lectura; las 10 soluciones de «Ahora hazlo tú» compilan y cumplen la consigna; los mensajes de javac citados coinciden byte a byte; el orden del `for`, el `do-while` al menos una vez, el alcance y el `;` de cuerpo son exactos; ningún programa sale del subconjunto. Voz nueva exacta en `if`/`else`/`else if`, ciclos anidados con `break` y `continue`, cortocircuito (solo sustituye lo que se evaluó), `switch` (caída sin revisar, `default` en medio, etiquetas apiladas), conversiones y compuestas (`x += 2.7`, `ch += 1.9`, `long`, `s +=`, `x += x++` = 10, `m += ++m` = 11), desbordamiento `100000 * 100000`, cinco excepciones, salidas y avisos de fuera del subconjunto.
+
+## Preguntas
+
+- Para el maestro: comentarios que se explican solos en cuatro demostraciones de la galería (regenerar goldens si se cambian); «Java calcula `c`… que da '\n'» al leer una variable y «guarda 97» sin decir de dónde sale (`int k = 'a'`); desbordamiento sin aviso; «Java detuvo el programa» cuando lo hace el visualizador; la salida del libro sin eco frente a la consola con eco; la consigna de `tabla-de-n` («con los valores en lugar de las letras» y la `x` literal).
+- Para el diseñador: cómo mostrar `"hola" == "hola"` → `false`; dónde va la aclaración cuando un paso tiene cálculo, conversión y efectos.
+- Para el PO: la semilla de `Random` (B3), en R1 o un aviso desde ya; A4 como corrección del motor o quitar la cita en los borradores.
