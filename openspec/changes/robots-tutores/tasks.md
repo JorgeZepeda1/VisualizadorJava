@@ -74,12 +74,12 @@
 - GREEN: `estilos/{aplicacion,proyector}.css` (áreas de cuadrícula y `data-proyector`), `EditorJava.tsx` (`Compartment` de tema y `lineWrapping` en proyector), `PanelVariables.tsx` (`compacto`), `Consola.tsx` (`ultimasLineas`).
 - Verif: `npm run e2e -- pantalla proyector`
 
-**R0.13 Modelo del libro y programas con el oráculo** — REQ-LIBRO-002, REQ-LIBRO-003, REQ-DIFF-009 (infraestructura de borradores)
+**R0.13 Modelo del libro y programas con el oráculo** — REQ-LIBRO-002, REQ-LIBRO-003, REQ-DIFF-009 (infraestructura de borradores) — ✅ hecha (2026-10-19)
 - RED `textos/es-MX/libro/indice.test.ts` (los 34 ids de design §5.2 con unidad, oleada y orden; un tema con contenido tiene las 8 secciones, 2–3 «Ponte a prueba», 2 tareas, ≤ 550 palabras, sin salidas escritas) + `herramientas/oraculo/generar-goldens.test.ts` (descubre `corpus/libro/`) + `pruebas/diferencial/libro.test.ts` (byte a byte o veredicto y línea; ningún aviso de fuera de alcance; entradas con `\n`), con un programa semilla `corpus/libro/u6-while/contar-del-1-al-5.java`; falla.
 - GREEN: `textos/es-MX/libro/{tipos,indice}.ts`, `generar-goldens.ts` recorre `libro`, el programa semilla y su `.meta.json`, goldens.
 - Verif: `textos/es-MX/libro` · `diferencial/libro` · `test:oraculo`
 
-**R0.14 Borradores U6, parte 1 (5 temas)** · contenido — REQ-LIBRO-002, 003, 004
+**R0.14 Borradores U6, parte 1 (5 temas)** · contenido — REQ-LIBRO-002, 003, 004 — ✅ hecha (2026-10-19)
 - RED `indice.test.ts` ampliada: `u6-que-es-un-ciclo`, `u6-while`, `u6-contador-acumulador-bandera`, `u6-do-while` y `u6-for` con contenido completo y programas verificados; falla (sin contenido).
 - GREEN: `textos/es-MX/libro/u6.ts` + `corpus/libro/u6-*/` + goldens. Estado borrador; el PO los recibe como texto en el chat.
 - Verif: `textos/es-MX/libro` · `diferencial/libro`

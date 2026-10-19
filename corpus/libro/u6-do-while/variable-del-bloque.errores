@@ -1,0 +1,11 @@
+VariableDelBloque.java:9: error: cannot find symbol
+        } while (edad < 1 || edad > 120);
+                 ^
+  symbol:   variable edad
+  location: class VariableDelBloque
+VariableDelBloque.java:9: error: cannot find symbol
+        } while (edad < 1 || edad > 120);
+                             ^
+  symbol:   variable edad
+  location: class VariableDelBloque
+2 errors
