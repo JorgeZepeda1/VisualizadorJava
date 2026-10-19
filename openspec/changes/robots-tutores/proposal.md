@@ -181,6 +181,16 @@ La de `visualizador-java` `proposal.md` §13, más: (a) los textos de los robots
 
 **Resueltas** con la recomendación del plan anterior y los ajustes del panel (`panel-1.md` §4–§5): **PR-1** el reto reemplaza la predicción Sí/No (D4 conserva «apagado por omisión», el interruptor y el enlace; al abrir por segunda vez un ejemplo del libro se sugiere encenderlo); **PR-2** forma (A) «consecuencia, porque razón» con balance y salida a (C); **PR-3** cada revisión + «Ya entendí este ciclo» con los tres ajustes de H2; **PR-4** pistas graduadas, espera con el reto y demostraciones en «después»; **PR-5** 34 temas en dos oleadas (ver PQ-3).
 
+**Respuestas del PO (2026-10-19):** «sigue las recomendaciones de cada pregunta».
+
+- **PQ-1:** nombres por tarea, «Robot paso a paso», «Robot revisor» y «Robot del libro», con la apariencia recomendada (paso a paso: cabeza cuadrada con antena, puntero ▶ y letrero «?» en el reto, azul; revisor: cabeza redonda tipo casco con lupa con «!», ámbar; del libro: cabeza ancha con lentes y libro abierto, verde). R0.1 queda cerrada con esta respuesta y R0.5 se desbloquea.
+- **PQ-2:** cada puerta aparece cuando su destino tiene contenido publicado; «Leer un tema» y «Libro» llegan con R2.
+- **PQ-3:** oleadas de 21 y 13 temas.
+- **PQ-4:** sin fecha de inicio de U6. Supuesto: U6 empieza pronto, así que R0 se publica en cuanto pase su verificación, sin esperar a R1, y R1 arranca enseguida. La prueba en papel (R1.0) la hace el PO en su primera clase de U5–U6, durante R0.
+- **PQ-5:** «Ahora hazlo tú» muestra solo la salida esperada; la solución queda en `corpus/libro/` para el docente.
+- **PQ-6:** la narración conserva la sustitución y el panel de condición da el detalle por pieza.
+- **Ejercicios:** «Ponte a prueba» y «Ahora hazlo tú» en todos los temas.
+
 ## 13. Conciliación pendiente en `openspec/changes/visualizador-java/tasks.md` (la hace el orquestador; este cambio no edita ese archivo)
 
 | Tarea | Qué cambia |
