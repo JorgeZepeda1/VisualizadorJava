@@ -54,13 +54,23 @@ describe('textosPaneles.condicion (REQ-VIS-006)', () => {
     expect(textosPaneles.condicion.noSeEjecuta()).toBe('no se ejecuta');
   });
 
-  it('las ramas de un if, de un ciclo y de un do-while', () => {
-    expect(textosPaneles.condicion.ramaIf()).toBe('Entra al `if`');
-    expect(textosPaneles.condicion.ramaElse()).toBe('Entra al `else`');
-    expect(textosPaneles.condicion.ramaElseIf()).toBe('Entra al `else if`');
-    expect(textosPaneles.condicion.ramaCicloEntra()).toBe('Entra al cuerpo del ciclo');
-    expect(textosPaneles.condicion.ramaCicloSale()).toBe('Sale del ciclo');
-    expect(textosPaneles.condicion.ramaCicloRepite()).toBe('Repite el ciclo');
+  it('las ramas de un if, de un ciclo y de un do-while, cuando corren', () => {
+    expect(textosPaneles.condicion.ramaIf(true)).toBe('Entra al `if`');
+    expect(textosPaneles.condicion.ramaElse(true)).toBe('Entra al `else`');
+    expect(textosPaneles.condicion.ramaElseIf(true)).toBe('Entra al `else if`');
+    expect(textosPaneles.condicion.ramaCicloEntra(true)).toBe('Entra al cuerpo del ciclo');
+    expect(textosPaneles.condicion.ramaCicloSale(true)).toBe('Sale del ciclo');
+    expect(textosPaneles.condicion.ramaCicloRepite(true)).toBe('Repite el ciclo');
+  });
+
+  // C6 del panel 1: «✗ Entra al `if`» se leía como «entra». La rama que NO corre lo dice con palabras («No entra…»), sin depender del lector de pantalla ni de la marca.
+  it('las mismas ramas, cuando NO corren, dicen «No entra…» / «No sale…» / «No repite…»', () => {
+    expect(textosPaneles.condicion.ramaIf(false)).toBe('No entra al `if`');
+    expect(textosPaneles.condicion.ramaElse(false)).toBe('No entra al `else`');
+    expect(textosPaneles.condicion.ramaElseIf(false)).toBe('No entra al `else if`');
+    expect(textosPaneles.condicion.ramaCicloEntra(false)).toBe('No entra al cuerpo del ciclo');
+    expect(textosPaneles.condicion.ramaCicloSale(false)).toBe('No sale del ciclo');
+    expect(textosPaneles.condicion.ramaCicloRepite(false)).toBe('No repite el ciclo');
   });
 
   it('la cadena de un else if se llama «condiciones revisadas, en orden»', () => {
@@ -116,8 +126,8 @@ describe('textosPaneles.consola (REQ-VIS-008, REQ-VIS-009)', () => {
   });
 
   it('la franja del búfer dice lo que queda pendiente, o que no queda nada', () => {
-    expect(textosPaneles.consola.bufer.pendiente('␣30⏎')).toBe('Pendiente: ␣30⏎');
-    expect(textosPaneles.consola.bufer.nada()).toBe('Pendiente: nada');
+    expect(textosPaneles.consola.bufer.pendiente('␣30⏎')).toBe('Sin leer todavía: ␣30⏎');
+    expect(textosPaneles.consola.bufer.nada()).toBe('Sin leer todavía: nada');
   });
 
   it('la franja explica sus símbolos (para el que pasa el ratón o usa lector de pantalla)', () => {

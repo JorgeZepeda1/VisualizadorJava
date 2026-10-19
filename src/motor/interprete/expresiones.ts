@@ -205,6 +205,7 @@ function asignacionCompuesta(expresion: AsignacionCompuestaIr, contexto: Context
     const tipoVariable = expresion.tipo as 'int' | 'long' | 'double' | 'char';
     const izquierdoPromovido = convertirNumero(leido as number | bigint, tipoVariable, expresion.tipoOperacion);
     const operado = operar(expresion.tipoOperacion, expresion.operador, izquierdoPromovido, derecho as number | bigint);
+    contexto.paso.sinRecortar.set(expresion.punto, operado); // lo que dio la operación, para que la explicación lo diga antes de recortarlo
     resultado = convertirNumero(operado, expresion.tipoOperacion, tipoVariable); // estrechamiento implícito de vuelta al tipo de x
   }
   asignar(contexto, expresion.ranura, expresion.nombre, resultado, expresion.punto);

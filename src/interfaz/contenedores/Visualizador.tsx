@@ -80,7 +80,8 @@ function avisoInterno(): AvisoDeEdicion {
 }
 
 function ejecucionParaElModelo(estado: EstadoApp): EstadoDeLaEjecucion {
-  if (estado.modo === 'edicion') return { estado: 'sin-ejecutar' };
+  // Tras un aviso, si el alumno ya editó el código, el aviso viejo no describe el programa de ahora (C4 del panel 1): el robot invita a revisar otra vez.
+  if (estado.modo === 'edicion') return estado.aviso?.caducado === true ? { estado: 'cambiado-tras-un-aviso' } : { estado: 'sin-ejecutar' };
   if (estado.modo === 'compilando') return { estado: 'compilando' };
   const { ejecucion } = estado;
   if (ejecucion.estado === 'esperando-entrada' && ejecucion.nodoEnEspera !== null) return { estado: 'esperando-entrada', nodo: ejecucion.nodoEnEspera };
@@ -100,6 +101,8 @@ export function Visualizador() {
   const focoInicialPendiente = useRef(false);
   const focoTrasDatoPendiente = useRef(false);
   const focoEnElEditorPendiente = useRef(false);
+  // Tras un aviso al revisar el programa, el foco va al editor (a la línea del error): el botón «Visualizar» se deshabilita mientras se revisa y el foco caía en `body` (panel 1, C4).
+  const focoEnElProblemaPendiente = useRef(false);
 
   // Suscribe el contenedor a la Traza (almacén externo, ADR 006/013): cualquier `agregar`/`reiniciar` fuerza un re-render, sin que React necesite saber qué cambió por dentro.
   useSyncExternalStore(traza.suscribir, traza.obtenerVersion);
@@ -122,12 +125,19 @@ export function Visualizador() {
   const problemaEnElCodigo = estado.modo === 'edicion' ? (estado.aviso?.resaltado ?? null) : null;
 
   // --- Lo que llega del trabajador ----------------------------------------------------------------------------------------------------------------
+  /** El programa no se pudo visualizar (error, aviso, `main` inválido o falla interna): vuelve a la edición con el aviso y pide llevar el foco al editor. */
+  function mostrarProblema(aviso: AvisoDeEdicion): void {
+    focoEnElProblemaPendiente.current = true;
+    despachar({ tipo: 'problema-al-revisar', aviso });
+  }
+
   function alMensaje(mensaje: MensajeTrabajadorAUi): void {
     // Un mensaje de una ejecución ya reemplazada se ignora: se compara con la ejecución VIGENTE (la `ref`), no con la del cliente que lo mandó —ese `id` siempre coincide con el suyo—.
     if (mensaje.id !== idEjecucionRef.current) return;
     switch (mensaje.tipo) {
       case 'compilado':
-        despachar(mensaje.ok ? { tipo: 'compilado-ok', vista: mensaje.vista } : { tipo: 'problema-al-revisar', aviso: avisoDelProblema(mensaje.problema, mensaje.adicionales) });
+        if (mensaje.ok) despachar({ tipo: 'compilado-ok', vista: mensaje.vista });
+        else mostrarProblema(avisoDelProblema(mensaje.problema, mensaje.adicionales));
         return;
       case 'pasos': {
         const totalAnterior = traza.total;
@@ -139,10 +149,11 @@ export function Visualizador() {
         despachar({ tipo: 'espera-entrada', nodo: mensaje.nodo });
         return;
       case 'fin':
-        despachar(mensaje.fin.arranque === undefined ? { tipo: 'fin', fin: mensaje.fin } : { tipo: 'problema-al-revisar', aviso: avisoDelArranque(mensaje.fin.arranque) });
+        if (mensaje.fin.arranque === undefined) despachar({ tipo: 'fin', fin: mensaje.fin });
+        else mostrarProblema(avisoDelArranque(mensaje.fin.arranque));
         return;
       case 'error-interno':
-        despachar({ tipo: 'problema-al-revisar', aviso: avisoInterno() });
+        mostrarProblema(avisoInterno());
         return;
       case 'detenido':
         // El acuse de `detener` (el cliente lo garantiza: el real, o el que fabrica a los 300 ms si el trabajador no contestó): la ejecución ya no sigue, así que la pantalla deja de esperar.
@@ -214,14 +225,21 @@ export function Visualizador() {
       focoEnElEditorPendiente.current = false;
       refEditor.current?.enfocar();
     }
+    // Un aviso al revisar el programa: el foco va al editor, a la línea del error (o solo al editor si el aviso no señala una línea).
+    if (focoEnElProblemaPendiente.current && estado.modo === 'edicion' && estado.aviso !== null) {
+      focoEnElProblemaPendiente.current = false;
+      focoInicialPendiente.current = false;
+      refEditor.current?.enfocar(estado.aviso.resaltado?.linea);
+    }
   });
 
   // Al desmontarse, el trabajador no se queda corriendo.
   useEffect(() => () => clienteRef.current?.terminar(), []);
 
   // --- Pantalla -----------------------------------------------------------------------------------------------------------------------------------
+  // Un aviso caducado (el alumno ya editó el código) no ocupa el globo: ahí el robot dice «Cambiaste el programa…».
   const problemaParaElGlobo =
-    estado.modo === 'edicion' && estado.aviso !== null
+    estado.modo === 'edicion' && estado.aviso !== null && estado.aviso.caducado !== true
       ? { tipo: estado.aviso.tipo, segmentos: estado.aviso.segmentos, adicionales: estado.aviso.adicionales }
       : null;
 

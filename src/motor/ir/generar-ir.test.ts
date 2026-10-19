@@ -159,6 +159,36 @@ describe('generarIr: conversiones implícitas visibles (promoción numérica y a
   });
 });
 
+// C1/C2 del panel 1: para decir «`25 / 3` da 8 y el 8.0 aparece al guardarlo», la explicación necesita saber CUÁL conversión envuelve la expresión completa (la de guardar, JLS 5.2, o la que promueve el lado
+// derecho de `x op= e`) y cuáles son partes de ella (la promoción de un operando, `+c`). La marca `delTotal` las distingue; el punto de su operando guarda el valor ANTES de convertir.
+describe('generarIr: la conversión que envuelve la expresión completa lleva la marca `delTotal`', () => {
+  const conversionRaiz = (ir: ProgramaIr, indice: number): ExpresionIr => raicesDe(ir.sentencias[indice])[0].expresion;
+
+  it('guardar en un `double` (`double d = n / 2;`), en un `char` (`char c = 65;`) y asignar (`g = n;`) marcan la conversión como del total', () => {
+    const ir = irDe('    int n = 5;\n    double d = n / 2;\n    char c = 65;\n    double g;\n    g = n;', puertoCon([], true));
+    expect(conversionRaiz(ir, 1)).toMatchObject({ forma: 'conversion', de: 'int', tipo: 'double', implicita: true, delTotal: true });
+    expect(conversionRaiz(ir, 2)).toMatchObject({ forma: 'conversion', de: 'int', tipo: 'char', implicita: true, delTotal: true });
+    const asignacion = conversionRaiz(ir, 4);
+    expect(asignacion).toMatchObject({ forma: 'asignacion', valor: { forma: 'conversion', delTotal: true } });
+  });
+
+  it('el lado derecho de `r += 2` con `double r` se promueve a la operación: esa conversión también es del total (`x += 2` con `int x` no tiene ninguna)', () => {
+    const ir = irDe('    int x = 1;\n    double r = 2;\n    x += 2;\n    r += 2;', puertoCon([], true));
+    expect(conversionRaiz(ir, 2)).toMatchObject({ forma: 'asignacion-compuesta', valor: { forma: 'constante' } });
+    expect(conversionRaiz(ir, 3)).toMatchObject({ forma: 'asignacion-compuesta', valor: { forma: 'conversion', de: 'int', tipo: 'double', delTotal: true } });
+  });
+
+  it('las conversiones DENTRO de la expresión (promoción de un operando, `+c`) y el cast que escribió el alumno NO son del total', () => {
+    const ir = irDe("    int n = 5;\n    char c = 'a';\n    double a = n / 2.0;\n    int u = +c;\n    int k = (int) 3.7;", puertoCon([], true));
+    expect(conversionRaiz(ir, 2)).toMatchObject({ forma: 'aritmetica', izquierda: { forma: 'conversion', de: 'int', tipo: 'double' } });
+    expect(JSON.stringify(conversionRaiz(ir, 2))).not.toContain('delTotal');
+    expect(conversionRaiz(ir, 3)).toMatchObject({ forma: 'conversion', de: 'char', tipo: 'int', implicita: true });
+    expect(conversionRaiz(ir, 3)).not.toHaveProperty('delTotal');
+    expect(conversionRaiz(ir, 4)).toMatchObject({ forma: 'conversion', implicita: false });
+    expect(conversionRaiz(ir, 4)).not.toHaveProperty('delTotal');
+  });
+});
+
 describe('generarIr: asignaciones, compuestas e incrementos', () => {
   it('`x = x + 1;` es un paso `asignacion` cuyo plan termina en el nodo de asignación', () => {
     const ir = irDe('    int x = 1;\n    x = x + 1;');

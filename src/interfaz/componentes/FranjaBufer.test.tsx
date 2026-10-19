@@ -1,17 +1,17 @@
-// RED de la tarea 4.7 (REQ-VIS-009): la franja del búfer del Scanner — «Pendiente: ␣30⏎», con los espacios y el salto de línea a la vista, visualmente distinta del texto ya consumido.
+// RED de la tarea 4.7 (REQ-VIS-009): la franja del búfer del Scanner — «Sin leer todavía: ␣30⏎», con los espacios y el salto de línea a la vista, visualmente distinta del texto ya consumido.
 import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { FranjaBufer } from './FranjaBufer.tsx';
 
 describe('<FranjaBufer/>', () => {
-  it('muestra lo pendiente con los símbolos visibles: «Pendiente: ␣30⏎»', () => {
+  it('muestra lo que falta por leer con los símbolos visibles: «Sin leer todavía: ␣30⏎» (C9 del panel 1: «Pendiente» no se entendía)', () => {
     render(<FranjaBufer bufer={{ visible: '␣30⏎' }} />);
-    expect(screen.getByTestId('franja-bufer').textContent).toBe('Pendiente: ␣30⏎');
+    expect(screen.getByTestId('franja-bufer').textContent).toBe('Sin leer todavía: ␣30⏎');
   });
 
-  it('tras nextInt() queda el salto de línea pendiente (⏎)', () => {
+  it('tras nextInt() queda el salto de línea sin leer (⏎)', () => {
     render(<FranjaBufer bufer={{ visible: '⏎' }} />);
-    expect(screen.getByTestId('franja-bufer').textContent).toBe('Pendiente: ⏎');
+    expect(screen.getByTestId('franja-bufer').textContent).toBe('Sin leer todavía: ⏎');
   });
 
   it('lo pendiente va en un elemento propio, para distinguirlo de lo ya consumido', () => {
@@ -21,7 +21,7 @@ describe('<FranjaBufer/>', () => {
 
   it('si el paso tocó el Scanner y no quedó nada, lo dice', () => {
     render(<FranjaBufer bufer={{ visible: '' }} />);
-    expect(screen.getByTestId('franja-bufer').textContent).toBe('Pendiente: nada');
+    expect(screen.getByTestId('franja-bufer').textContent).toBe('Sin leer todavía: nada');
   });
 
   it('explica sus símbolos al pasar el ratón y al lector de pantalla', () => {

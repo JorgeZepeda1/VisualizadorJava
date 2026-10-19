@@ -152,3 +152,26 @@ describe('problemas en español — cruce motor + catálogo es-MX (tarea 1.12: a
     expect(texto.length).toBeGreaterThan(0);
   });
 });
+
+// C3 del panel 1 (2026-10-17): el texto de «etiqueta-de-case-no-constante» decía «no una variable ni un cálculo», pero `final int K = 3; … case K + 1:` COMPILA (una variable `final` con valor fijo es
+// una constante, y un cálculo con constantes también). Lo que el robot afirma tiene que ser verdad en Java (D2): aquí se compara el texto con lo que el motor hace de verdad.
+describe('problemas en español — C3: el aviso de un `case` no constante no afirma nada falso', () => {
+  const programa = (cuerpo: string): string => `public class P {\n  public static void main(String[] args) {\n${cuerpo}\n  }\n}\n`;
+
+  it('lo que el texto deja de negar SÍ compila: una variable `final` con valor fijo y un cálculo con ella son etiquetas válidas', () => {
+    expect(compilar(programa('final int K = 3; int x = 4; switch (x) { case K + 1: break; default: break; }')).ok).toBe(true);
+    expect(compilar(programa('final int K = 3; int x = 3; switch (x) { case K: break; default: break; }')).ok).toBe(true);
+  });
+
+  it('una variable que puede cambiar SÍ es el error, y su texto habla de un valor que Java conoce antes de ejecutar (un literal o una `final` con valor fijo)', () => {
+    const resultado = compilar(programa('int v = 2; int x = 4; switch (x) { case v: break; default: break; }'));
+    expect(resultado.ok).toBe(false);
+    if (resultado.ok) return;
+    expect(resultado.problema.codigo).toBe('etiqueta-de-case-no-constante');
+    const texto = textoDe(resultado.problema.codigo as CodigoProblema, resultado.problema.datos);
+    expect(texto).toBe(
+      'Cada `case` necesita un valor que Java conozca antes de ejecutar: un literal o una variable `final` con valor fijo, no una variable que puede cambiar.',
+    );
+    expect(texto).not.toContain('ni un cálculo');
+  });
+});

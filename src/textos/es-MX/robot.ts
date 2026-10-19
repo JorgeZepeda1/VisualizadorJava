@@ -34,6 +34,8 @@ const RESUMENES_DEL_FIN: { readonly [K in CausaFin]: (datos: DatosDelResumen) =>
 export const textosRobot = {
   saludo: (): string => '¡Hola! Pega o escribe un programa de Java y pulsa «Visualizar». Yo te explico cada paso.',
   compilando: (): string => 'Estoy revisando tu programa…',
+  /** El alumno editó el código después de un aviso (error de compilación, «no disponible»…): el aviso viejo ya no describe el programa y el editor ya no lo marca (C4 del panel 1). */
+  programaCambiado: (): string => 'Cambiaste el programa. Pulsa «Visualizar» y lo reviso otra vez.',
   /** El paso 0: todavía no se ejecuta nada. `lineaSiguiente` es la del primer paso que el motor calculó (`null` si aún no hay ninguno). */
   alInicio: (lineaSiguiente: number | null): string =>
     lineaSiguiente === null

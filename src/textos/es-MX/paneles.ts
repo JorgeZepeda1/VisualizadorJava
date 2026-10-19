@@ -63,12 +63,13 @@ export const textosPaneles = {
     titulo: (): string => 'Condición',
     seEjecuta: (): string => 'se ejecuta',
     noSeEjecuta: (): string => 'no se ejecuta',
-    ramaIf: (): string => 'Entra al `if`',
-    ramaElse: (): string => 'Entra al `else`',
-    ramaElseIf: (): string => 'Entra al `else if`',
-    ramaCicloEntra: (): string => 'Entra al cuerpo del ciclo',
-    ramaCicloSale: (): string => 'Sale del ciclo',
-    ramaCicloRepite: (): string => 'Repite el ciclo',
+    // Cada rama dice con sus propias palabras si corre o no (panel 1, C6): «✗ Entra al `if`» se leía como «entra». `corre` es lo que el motor calculó para ESA rama.
+    ramaIf: (corre: boolean): string => `${corre ? 'Entra' : 'No entra'} al \`if\``,
+    ramaElse: (corre: boolean): string => `${corre ? 'Entra' : 'No entra'} al \`else\``,
+    ramaElseIf: (corre: boolean): string => `${corre ? 'Entra' : 'No entra'} al \`else if\``,
+    ramaCicloEntra: (corre: boolean): string => `${corre ? 'Entra' : 'No entra'} al cuerpo del ciclo`,
+    ramaCicloSale: (corre: boolean): string => `${corre ? 'Sale' : 'No sale'} del ciclo`,
+    ramaCicloRepite: (corre: boolean): string => `${corre ? 'Repite' : 'No repite'} el ciclo`,
     cadenaDeCondiciones: (): string => 'Condiciones revisadas, en orden',
     casoIgualado: (etiqueta: string): string => `Coincide con \`case ${etiqueta}\``,
     casoCae: (etiqueta: string | null): string =>
@@ -96,8 +97,9 @@ export const textosPaneles = {
     etiquetaDelCampo: (): string => 'Escribe tu dato y pulsa Enter',
     botonEnviar: (): string => 'Enviar',
     bufer: {
-      pendiente: (visible: string): string => `Pendiente: ${visible}`,
-      nada: (): string => 'Pendiente: nada',
+      // «Pendiente» no se entendía (panel 1, C9): «Sin leer todavía» dice lo que el Scanner aún no ha tomado del texto que llegó.
+      pendiente: (visible: string): string => `Sin leer todavía: ${visible}`,
+      nada: (): string => 'Sin leer todavía: nada',
       explicacion: (): string => 'Lo que el Scanner todavía no leyó. ␣ es un espacio y ⏎ es un salto de línea.',
     },
   },

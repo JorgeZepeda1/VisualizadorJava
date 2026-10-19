@@ -108,6 +108,149 @@ describe('textosExplicacion: una frase por clave', () => {
     ).toBe('`total += precio * 2`: el lado derecho es `25 * 2`, que da 50, y `total` valía 100. Guardo 150 en `total`.');
   });
 
+  // C1 del panel 1: el cálculo se dice en el tipo de la EXPRESIÓN («`25 / 3` da 8») y la conversión se dice al guardar («como `promedio` es `double`, guardo 8.0»). Antes decía «`25 / 3`, que da 8.0».
+  it('C1: declaración que convierte al guardar — el cálculo da 8 y el 8.0 aparece al guardarlo', () => {
+    expect(
+      frase({
+        clave: 'declaracion-con-valor',
+        datos: { nombre: 'promedio', tipo: 'double', expresion: 'suma / 3', sustituida: '25 / 3', valor: '8.0', conversion: { tipo: 'double', antes: '8' } },
+      }),
+    ).toBe('Calculo `suma / 3`: con los valores de ahora es `25 / 3`, que da 8. Creo la variable `promedio` de tipo double. Como `promedio` es `double`, guardo 8.0.');
+    expect(
+      frase({
+        clave: 'declaracion-con-valor',
+        datos: { nombre: 'mitad', tipo: 'double', expresion: 'cociente / 2', sustituida: '3 / 2', valor: '1.0', conversion: { tipo: 'double', antes: '1' } },
+      }),
+    ).toBe('Calculo `cociente / 2`: con los valores de ahora es `3 / 2`, que da 1. Creo la variable `mitad` de tipo double. Como `mitad` es `double`, guardo 1.0.');
+  });
+
+  it('C1: una constante o un carácter que se convierten no «calculan» nada: solo la conversión (`double d = 5`, `double e = \'a\'`, `char c = 65`)', () => {
+    expect(
+      frase({ clave: 'declaracion-con-valor', datos: { nombre: 'd', tipo: 'double', expresion: '5', sustituida: '5', valor: '5.0', conversion: { tipo: 'double', antes: '5' } } }),
+    ).toBe('Creo la variable `d` de tipo double. Como `d` es `double`, guardo 5.0.');
+    expect(
+      frase({ clave: 'declaracion-con-valor', datos: { nombre: 'e', tipo: 'double', expresion: "'a'", sustituida: "'a'", valor: '97.0', conversion: { tipo: 'double', antes: "'a'" } } }),
+    ).toBe('Creo la variable `e` de tipo double. Como `e` es `double`, guardo 97.0.');
+    expect(
+      frase({ clave: 'declaracion-con-valor', datos: { nombre: 'c', tipo: 'char', expresion: '65', sustituida: '65', valor: "'A'", conversion: { tipo: 'char', antes: '65' } } }),
+    ).toBe("Creo la variable `c` de tipo char. Como `c` es `char`, guardo 'A'.");
+  });
+
+  it('C1: `double f = Math.abs(a / b)` — `Math.abs(int)` da 3 y el 3.0 aparece al guardar', () => {
+    expect(
+      frase({
+        clave: 'declaracion-con-valor',
+        datos: { nombre: 'f', tipo: 'double', expresion: 'Math.abs(a / b)', sustituida: 'Math.abs(7 / 2)', valor: '3.0', conversion: { tipo: 'double', antes: '3' } },
+      }),
+    ).toBe('Calculo `Math.abs(a / b)`: con los valores de ahora es `Math.abs(7 / 2)`, que da 3. Creo la variable `f` de tipo double. Como `f` es `double`, guardo 3.0.');
+  });
+
+  it('C1: una lectura del teclado que se convierte dice lo que el usuario escribió (5), no el 5.0 de la variable', () => {
+    expect(
+      frase({
+        clave: 'declaracion-con-valor',
+        datos: { nombre: 'x', tipo: 'double', expresion: 'sc.nextInt()', sustituida: 'sc.nextInt()', valor: '5.0', leeDelTeclado: true, conversion: { tipo: 'double', antes: '5' } },
+      }),
+    ).toBe('Leo lo que escribiste en el teclado con `sc.nextInt()`: 5. Creo la variable `x` de tipo double. Como `x` es `double`, guardo 5.0.');
+  });
+
+  it('C1: una asignación que convierte (`g = a / b;`) dice el cálculo y luego lo que se guarda, con y sin valor anterior', () => {
+    expect(
+      frase({
+        clave: 'asignacion',
+        datos: { nombre: 'g', expresion: 'a / b', sustituida: '7 / 2', valor: '3.0', anterior: null, conversion: { tipo: 'double', antes: '3' } },
+      }),
+    ).toBe('Calculo `a / b`: con los valores de ahora es `7 / 2`, que da 3. Como `g` es `double`, guardo 3.0.');
+    expect(
+      frase({
+        clave: 'asignacion',
+        datos: { nombre: 'g', expresion: 'a / b', sustituida: '7 / 2', valor: '3.0', anterior: '2.0', conversion: { tipo: 'double', antes: '3' } },
+      }),
+    ).toBe('Calculo `a / b`: con los valores de ahora es `7 / 2`, que da 3. Como `g` es `double`, guardo 3.0; antes valía 2.0.');
+  });
+
+  // C2 del panel 1, primera parte: `x += 2.7;` con `int x = 10` guardaba 12 sin decir que la suma da 12.7 y que `int` se queda con 12.
+  it('C2: una asignación compuesta que recorta dice lo que dio la operación y por qué se queda con menos', () => {
+    expect(
+      frase({
+        clave: 'asignacion-compuesta',
+        datos: { nombre: 'x', operador: '+=', expresion: '2.7', sustituida: '2.7', derecho: '2.7', anterior: '10', valor: '12', recorte: { tipo: 'int', operado: '12.7' } },
+      }),
+    ).toBe('`x += 2.7`: el lado derecho vale 2.7 y `x` valía 10. `10 + 2.7` da 12.7 y, como `x` es `int`, se queda con 12. Guardo 12 en `x`.');
+    expect(
+      frase({
+        clave: 'asignacion-compuesta',
+        datos: { nombre: 'x', operador: '/=', expresion: 'k', sustituida: '2.5', derecho: '2.5', anterior: '10', valor: '4', recorte: { tipo: 'int', operado: '4.0' } },
+      }),
+    ).toBe('`x /= k`: el lado derecho vale 2.5 y `x` valía 10. `10 / 2.5` da 4.0 y, como `x` es `int`, se queda con 4. Guardo 4 en `x`.');
+    expect(
+      frase({
+        clave: 'asignacion-compuesta',
+        datos: { nombre: 'ch', operador: '+=', expresion: '1', sustituida: '1', derecho: '1', anterior: "'a'", valor: "'b'", recorte: { tipo: 'char', operado: '98' } },
+      }),
+    ).toBe("`ch += 1`: el lado derecho vale 1 y `ch` valía 'a'. `'a' + 1` da 98 y, como `ch` es `char`, se queda con 'b'. Guardo 'b' en `ch`.");
+  });
+
+  // C2, segunda parte: los `++`/`--` de adentro de una expresión.
+  it('C2: un `++` dentro de una expresión explica de dónde sale el valor que se ve (`int c = i++ + i;` con `i = 7`)', () => {
+    expect(
+      frase({
+        clave: 'declaracion-con-valor',
+        datos: {
+          nombre: 'c',
+          tipo: 'int',
+          expresion: 'i++ + i',
+          sustituida: 'i++ + 8',
+          valor: '15',
+          efectos: [{ expresion: 'i++', nombre: 'i', valor: '7', nuevo: '8' }],
+        },
+      }),
+    ).toBe('Calculo `i++ + i`: con los valores de ahora es `i++ + 8`, que da 15. `i++` vale 7 y deja `i` en 8. Creo la variable `c` de tipo int y le guardo 15.');
+  });
+
+  it('C2: `i = i++;` explica el «antes valía»: el `i++` ya había subido `i` antes de guardar', () => {
+    expect(
+      frase({
+        clave: 'asignacion',
+        datos: { nombre: 'i', expresion: 'i++', sustituida: 'i++', valor: '9', anterior: '10', efectos: [{ expresion: 'i++', nombre: 'i', valor: '9', nuevo: '10' }] },
+      }),
+    ).toBe('Calculo `i++`, que da 9. `i++` vale 9 y deja `i` en 10. Guardo 9 en `i`; antes valía 10.');
+  });
+
+  it('C2: varios efectos (uno por frase, en orden) y en una asignación compuesta', () => {
+    expect(
+      frase({
+        clave: 'declaracion-con-valor',
+        datos: {
+          nombre: 'r',
+          tipo: 'int',
+          expresion: 'a-- + b++',
+          sustituida: 'a-- + b++',
+          valor: '6',
+          efectos: [
+            { expresion: 'a--', nombre: 'a', valor: '5', nuevo: '4' },
+            { expresion: 'b++', nombre: 'b', valor: '1', nuevo: '2' },
+          ],
+        },
+      }),
+    ).toBe('Calculo `a-- + b++`, que da 6. `a--` vale 5 y deja `a` en 4. `b++` vale 1 y deja `b` en 2. Creo la variable `r` de tipo int y le guardo 6.');
+    expect(
+      frase({
+        clave: 'asignacion-compuesta',
+        datos: {
+          nombre: 's',
+          operador: '+=',
+          expresion: 'a++',
+          sustituida: 'a++',
+          derecho: '5',
+          anterior: '1',
+          valor: '6',
+          efectos: [{ expresion: 'a++', nombre: 'a', valor: '5', nuevo: '6' }],
+        },
+      }),
+    ).toBe('`s += a++`: el lado derecho vale 5 y `s` valía 1. `a++` vale 5 y deja `a` en 6. Guardo 6 en `s`.');
+  });
+
   it('incremento y decremento', () => {
     expect(frase({ clave: 'incremento', datos: { nombre: 'i', anterior: '3', valor: '4' } })).toBe('Sumo 1 a `i`: valía 3 y ahora vale 4.');
     expect(frase({ clave: 'decremento', datos: { nombre: 'i', anterior: '3', valor: '2' } })).toBe('Resto 1 a `i`: valía 3 y ahora vale 2.');
@@ -210,8 +353,16 @@ describe('textosExplicacion: una frase por clave', () => {
     expect(frase({ clave: 'switch-sin-coincidencia', datos: { expresion: 'opcion', valor: '9' } })).toBe(
       'El `switch` mira `opcion`, que vale 9. Ningún `case` coincide y no hay `default`: sigo con lo que viene después del `switch`.',
     );
-    expect(frase({ clave: 'switch-cae', datos: { etiqueta: '3' } })).toBe('Como no hubo `break`, la ejecución sigue de largo y entra al `case 3`.');
-    expect(frase({ clave: 'switch-cae', datos: { etiqueta: null } })).toBe('Como no hubo `break`, la ejecución sigue de largo y entra al `default`.');
+    // C8 del panel 1: lo que el alumno no sabe es que Java NO vuelve a comparar al caer; el texto lo dice.
+    expect(frase({ clave: 'switch-cae', datos: { etiqueta: '3' } })).toBe(
+      'El grupo de arriba no termina en `break`, así que Java sigue de largo y ejecuta también lo del `case 3`, sin revisar si coincide.',
+    );
+    expect(frase({ clave: 'switch-cae', datos: { etiqueta: '"b"' } })).toBe(
+      'El grupo de arriba no termina en `break`, así que Java sigue de largo y ejecuta también lo del `case "b"`, sin revisar si coincide.',
+    );
+    expect(frase({ clave: 'switch-cae', datos: { etiqueta: null } })).toBe(
+      'El grupo de arriba no termina en `break`, así que Java sigue de largo y ejecuta también lo del `default`.',
+    );
   });
 
   it('break, continue, return y sentencia vacía', () => {
@@ -232,23 +383,31 @@ describe('textosExplicacion: una frase por clave', () => {
     );
   });
 
+  // C7 del panel 1: el título del aviso ya dice «Se detuvo por seguridad»; el paso `detenido` no lo repite con «Paré el programa…», solo explica el motivo (un solo texto).
   it('detenido por el visualizador: una frase por causa', () => {
     expect(frase({ clave: 'detenido', datos: { causa: 'limite-pasos' } })).toBe(
-      'Paré el programa: ya llevaba demasiados pasos. ¿Será un ciclo que nunca termina?',
+      'El programa llevaba demasiados pasos y todavía no terminaba. ¿Será un ciclo que nunca termina?',
     );
-    expect(frase({ clave: 'detenido', datos: { causa: 'limite-caracteres' } })).toBe('Paré el programa: un texto creció demasiado.');
+    expect(frase({ clave: 'detenido', datos: { causa: 'limite-caracteres' } })).toBe(
+      'El programa escribió demasiado texto: una cadena o la consola pasaron del tamaño que el visualizador permite.',
+    );
     expect(frase({ clave: 'detenido', datos: { causa: 'no-disponible-en-ejecucion' } })).toBe('Paré aquí: esta parte todavía no sé ejecutarla.');
     expect(frase({ clave: 'detenido', datos: { causa: 'error-interno' } })).toBe('Algo falló dentro del visualizador y tuve que parar.');
-    expect(frase({ clave: 'detenido', datos: { causa: 'limite-tiempo' } })).toBe('Paré el programa: llevaba demasiado tiempo calculando.');
+    expect(frase({ clave: 'detenido', datos: { causa: 'limite-tiempo' } })).toBe('El programa llevaba demasiado tiempo calculando y todavía no terminaba.');
   });
 
-  it('detenido por pasos o por tiempo con la evidencia del ciclo (tarea 3.4): cita la variable que no cambió, no una pregunta genérica', () => {
+  it('detenido por pasos o por tiempo con la evidencia del ciclo (tarea 3.4): cita la variable que no cambió, no una pregunta genérica, y es el ÚNICO texto del final (C7)', () => {
     const diagnostico = { ciclo: 'while', linea: 5, condicion: 'contador <= 5', vueltas: 100, sinCambio: [{ nombre: 'contador', valor: '1' }] } as const;
+    const evidencia =
+      'En las últimas 100 vueltas del `while` de la línea 5, `contador` siempre valió 1, así que `contador <= 5` siempre dio `true`. Mientras nada dentro del ciclo cambie `contador`, el ciclo no va a terminar.';
+    expect(frase({ clave: 'detenido', datos: { causa: 'limite-pasos', diagnostico } })).toBe(evidencia);
+    expect(frase({ clave: 'detenido', datos: { causa: 'limite-tiempo', diagnostico } })).toBe(evidencia);
+  });
+
+  it('detenido en un ciclo sin variables que citar (`while (true) {}`): dice el motivo y que el ciclo seguía repitiéndose', () => {
+    const diagnostico = { ciclo: 'while', linea: 3, condicion: 'true', vueltas: 100, sinCambio: [] } as const;
     expect(frase({ clave: 'detenido', datos: { causa: 'limite-pasos', diagnostico } })).toBe(
-      'Paré el programa: ya llevaba demasiados pasos. En el ciclo `while` de la línea 5, `contador` siempre valió 1 en las últimas 100 vueltas, así que la condición `contador <= 5` nunca dejó de cumplirse.',
-    );
-    expect(frase({ clave: 'detenido', datos: { causa: 'limite-tiempo', diagnostico } })).toBe(
-      'Paré el programa: llevaba demasiado tiempo calculando. En el ciclo `while` de la línea 5, `contador` siempre valió 1 en las últimas 100 vueltas, así que la condición `contador <= 5` nunca dejó de cumplirse.',
+      'El programa llevaba demasiados pasos y todavía no terminaba. El ciclo `while` de la línea 3, con la condición `true`, seguía repitiéndose.',
     );
   });
 });
