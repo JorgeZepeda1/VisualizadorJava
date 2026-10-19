@@ -1,27 +1,27 @@
-// Controles de reproducción (tarea 4.12, REQ-VIS-012): reiniciar, atrás, adelante, fin, reproducir/pausa, velocidad ajustable y un deslizador «Paso X de Y». Operables solo con teclado: flechas
-// izquierda/derecha para atrás/adelante, Inicio/Fin para los extremos y espacio para reproducir o pausar — siempre que el foco NO esté en un campo de texto, un selector, un deslizador o un
-// botón (para no pisar lo que esos elementos ya hacen con esas teclas). Cada botón lleva el glifo Y la palabra, y anuncia su atajo con `aria-keyshortcuts`. Presentacional: recibe la posición
-// y emite acciones; el contenedor las convierte en cambios de estado.
-import { useEffect, useId, useRef, type Ref } from 'react';
-import { textosControles, type NivelDeVelocidad } from '../../textos/es-MX/controles.ts';
-import { textosInterfaz } from '../../textos/es-MX/interfaz.ts';
-
-const NIVELES_DE_VELOCIDAD: readonly NivelDeVelocidad[] = [1, 2, 3, 4, 5];
+// Controles de reproducción (tarea 4.12, REQ-VIS-012): reiniciar, fin, reproducir/pausa y un deslizador «Paso X de Y». Operables solo con teclado: flechas izquierda/derecha para atrás/adelante,
+// Inicio/Fin para los extremos y espacio para reproducir o pausar — siempre que el foco NO esté en un campo de texto, un selector, un deslizador o un botón (para no pisar lo que esos elementos ya
+// hacen con esas teclas). Cada botón lleva el glifo Y la palabra, y anuncia su atajo con `aria-keyshortcuts`. Presentacional: recibe la posición y emite acciones; el contenedor las convierte en
+// cambios de estado.
+//
+// Tareas R0.9 y R0.10 (REQ-PANT-003, REQ-PANT-004, ADR 017): «Anterior» y «Siguiente» viven ahora en la ranura bajo el globo (`RanuraDeAcciones`) —aquí quedan SOLO sus atajos de flechas— y la velocidad en
+// «Ajustes de la clase». El indicador «Paso N de M» dice el total únicamente cuando se conoce (si no, «Paso N»): el deslizador sigue llegando hasta el último paso ya calculado.
+import { useEffect, useId, useRef } from 'react';
+import { textosControles } from '../../textos/es-MX/controles.ts';
+import { textosPantalla } from '../../textos/es-MX/pantalla.ts';
 
 export interface PropiedadesBarraControles {
   readonly paso: number;
+  /** Cuántos pasos hay calculados: hasta ahí llega el deslizador y de ahí depende qué botones se apagan. */
   readonly total: number;
+  /** El total que se DICE («Paso 5 de 12»): `null` mientras no se conoce (el programa no terminó) y entonces solo se dice «Paso 5». */
+  readonly totalMostrado: number | null;
   readonly reproduciendo: boolean;
-  readonly velocidad: NivelDeVelocidad;
   readonly alReiniciar: () => void;
   readonly alAnterior: () => void;
   readonly alSiguiente: () => void;
   readonly alFin: () => void;
   readonly alReproducirOPausar: () => void;
   readonly alIrAlPaso: (paso: number) => void;
-  readonly alCambiarVelocidad: (velocidad: NivelDeVelocidad) => void;
-  /** Para que el contenedor pueda llevar el foco a «Siguiente» (al empezar y tras escribir un dato). */
-  readonly refSiguiente?: Ref<HTMLButtonElement>;
 }
 
 /** ¿Es un elemento donde las flechas, Inicio y Fin ya significan otra cosa (editar texto, mover un deslizador, elegir una opción)? */
@@ -73,37 +73,17 @@ function useAtajosDeTeclado(acciones: Pick<PropiedadesBarraControles, 'alReinici
   }, []);
 }
 
-export function BarraControles({
-  paso,
-  total,
-  reproduciendo,
-  velocidad,
-  alReiniciar,
-  alAnterior,
-  alSiguiente,
-  alFin,
-  alReproducirOPausar,
-  alIrAlPaso,
-  alCambiarVelocidad,
-  refSiguiente,
-}: PropiedadesBarraControles) {
+export function BarraControles({ paso, total, totalMostrado, reproduciendo, alReiniciar, alAnterior, alSiguiente, alFin, alReproducirOPausar, alIrAlPaso }: PropiedadesBarraControles) {
   useAtajosDeTeclado({ alReiniciar, alAnterior, alSiguiente, alFin, alReproducirOPausar });
-  const idDeVelocidad = useId();
   const idDeLaAyuda = useId();
   const alPrincipio = paso <= 0;
   const alFinal = paso >= total;
-  const textoDelPaso = textosControles.valorDelDeslizador(paso, total);
+  const textoDelPaso = textosPantalla.posicion.paso(paso, totalMostrado);
 
   return (
     <div className="barra-controles" role="group" aria-label={textosControles.etiquetaDelGrupo()} aria-describedby={idDeLaAyuda}>
       <button type="button" onClick={alReiniciar} disabled={alPrincipio} aria-keyshortcuts="Home">
         {textosControles.botonReiniciar()}
-      </button>
-      <button type="button" onClick={alAnterior} disabled={alPrincipio} aria-keyshortcuts="ArrowLeft">
-        {textosInterfaz.botonAnterior()}
-      </button>
-      <button type="button" ref={refSiguiente} onClick={alSiguiente} disabled={alFinal} aria-keyshortcuts="ArrowRight">
-        {textosInterfaz.botonSiguiente()}
       </button>
       <button type="button" onClick={alFin} disabled={alFinal} aria-keyshortcuts="End">
         {textosControles.botonFin()}
@@ -111,16 +91,6 @@ export function BarraControles({
       <button type="button" onClick={alReproducirOPausar} disabled={!reproduciendo && alFinal} aria-keyshortcuts="Space">
         {reproduciendo ? textosControles.botonPausar() : textosControles.botonReproducir()}
       </button>
-      <span className="selector-de-velocidad">
-        <label htmlFor={idDeVelocidad}>{textosControles.etiquetaDeVelocidad()}</label>{' '}
-        <select id={idDeVelocidad} value={velocidad} onChange={(evento) => alCambiarVelocidad(Number(evento.target.value) as NivelDeVelocidad)}>
-          {NIVELES_DE_VELOCIDAD.map((nivel) => (
-            <option key={nivel} value={nivel}>
-              {textosControles.nombreDeVelocidad(nivel)}
-            </option>
-          ))}
-        </select>
-      </span>
       <span className="posicion">
         <input
           type="range"

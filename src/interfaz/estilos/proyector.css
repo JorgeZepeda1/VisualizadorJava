@@ -1,0 +1,228 @@
+/*
+ * Modo proyector (tarea R0.12, REQ-AULA-004, ADR 017; absorbe la tarea 5.5 de `visualizador-java`). Se enciende desde «Ajustes de la clase» (o con el enlace) y pone `data-proyector="encendido"` en
+ * `.aplicacion` (`contenedores/Visualizador.tsx`). Es la distribución «reto proyectado» que midió el diseñador: el código al 58 % del ancho y a 24 px o más (con ajuste de línea: a 24 px una línea de
+ * 53 caracteres no cabe en 1024 px, así que se parte en dos renglones con su número de línea una sola vez, sin desplazamiento horizontal), la tabla de variables sin la columna «Tipo» (lo decide
+ * `PanelVariables compacto`) y la consola con sus últimas cuatro líneas, para que la columna derecha deje lugar al robot, a su ranura de acciones y —desde R1— a la pregunta y las tres tarjetas.
+ *
+ * Solo aplica a pantallas de escritorio o tableta (≥ 700 px): en un celular manda la distribución de celular. Nada de lo que hay aquí mueve, anima ni se apoya solo en el color.
+ */
+@media (min-width: 43.75rem) {
+  /* El código: ≥ 24 px (nunca menos, aunque el navegador tenga otra letra base) y las líneas respiran un poco más. */
+  .aplicacion[data-proyector='encendido'] .cm-editor {
+    font-size: max(24px, 1.5rem);
+    line-height: 1.35;
+  }
+
+  .aplicacion[data-proyector='encendido'] .cm-scroller {
+    min-height: 14rem;
+    max-height: 62vh;
+  }
+
+  /* Una línea que no cabe se parte en un espacio, o después de un `.` o un `(` (los puntos de corte que pone `editor/sangria-colgante.ts`); solo si una pieza sola no cabe en el renglón se parte dentro de ella
+     (`overflow-wrap: anywhere`, el último recurso: nunca hay desplazamiento horizontal). Las filas de continuación llevan la sangría de SU línea MÁS 2 columnas (`--sangria`, en columnas: la pone el mismo
+     archivo): se leen como la misma línea, no como otra, y se distinguen de ella (sangría colgante; panel R0, diseñador). El número de línea sale una sola vez. */
+  .aplicacion[data-proyector='encendido'] .cm-lineWrapping .cm-line {
+    padding-left: calc(6px + (var(--sangria, 0) + 2) * 1ch);
+    text-indent: calc((var(--sangria, 0) + 2) * -1ch);
+    overflow-wrap: anywhere;
+  }
+
+  /* Contenido generado, para no tocar el programa: tras la sangría de la línea, un «unidor de palabras» (no se corta justo después de ella y deja el renglón numerado vacío); tras un `.` o un `(`, un espacio de
+     ancho cero (ahí sí se puede cortar, en vez de partir una palabra por la mitad). */
+  .aplicacion[data-proyector='encendido'] .cm-sangria::after {
+    content: '\2060';
+  }
+
+  .aplicacion[data-proyector='encendido'] .cm-corte::after {
+    content: '\200B';
+  }
+
+  /* Las etiquetas de la línea («↻ vuelta 3», «✗ Java se salta este bloque») son píldoras: si no caben al final de la línea pasan ENTERAS al renglón siguiente, no se parten en dos pedazos. Como bloques en línea
+     heredarían la sangría negativa de la línea (`text-indent`), se la quitamos. */
+  .aplicacion[data-proyector='encendido'] .cm-etiqueta-de-vuelta,
+  .aplicacion[data-proyector='encendido'] .cm-etiqueta-rama-no-tomada {
+    display: inline-block;
+    font-size: 0.6em;
+    text-indent: 0;
+    white-space: nowrap;
+  }
+
+  /* Controles ampliados: ninguno baja de 44 px de alto (WCAG 2.5.5) y la letra se lee desde el fondo del salón. */
+  .aplicacion[data-proyector='encendido'] button,
+  .aplicacion[data-proyector='encendido'] select {
+    min-height: 2.75rem;
+    font-size: 1.1rem;
+  }
+
+  .aplicacion[data-proyector='encendido'] .ranura button {
+    min-height: 3.25rem;
+    font-size: 1.25rem;
+  }
+
+  /* El robot y su globo. */
+  .aplicacion[data-proyector='encendido'] .globo-contenido,
+  .aplicacion[data-proyector='encendido'] .globo > .aviso {
+    font-size: 1.3rem;
+  }
+
+  .aplicacion[data-proyector='encendido'] .leyenda-del-editor,
+  .aplicacion[data-proyector='encendido'] .ayuda-de-atajos {
+    font-size: 1.05rem;
+  }
+
+  /* Variables y condición: la letra más grande, sin la columna «Tipo». */
+  .aplicacion[data-proyector='encendido'] .panel {
+    font-size: 1.15rem;
+  }
+
+  /* La consola muestra sus últimas cuatro líneas (`Consola` siempre baja hasta lo último que se imprimió); la que se desborda se desplaza con el teclado. El margen de arriba es un borde (no se desplaza)
+     para que, con el registro al final, se vean cuatro renglones COMPLETOS y no un quinto cortado por la mitad. */
+  .aplicacion[data-proyector='encendido'] .consola {
+    min-height: 0;
+    padding: 0 1rem 0.75rem;
+    border-top: 0.6rem solid var(--consola-fondo);
+    max-height: calc(4 * 1.5em + 1.35rem);
+    font-size: 1.15rem;
+  }
+
+  .aplicacion[data-proyector='encendido'] .consola-vacia {
+    padding-top: 0.6rem;
+    font-size: 1.15rem;
+  }
+
+  /* Cuatro renglones de mínimo (no cinco): con la letra más grande cada renglón cuesta más alto de la ventana, que aquí es lo escaso. */
+  .aplicacion[data-proyector='encendido'] .globo-contenido {
+    min-height: calc(6em + 1.5rem + 6px);
+  }
+
+  /* El robot al lado del globo, pero más chico que en el modo normal: el globo necesita ancho (ver abajo). */
+  .aplicacion[data-proyector='encendido'] .robot {
+    width: 5.5rem;
+  }
+
+  .aplicacion[data-proyector='encendido'] .explicacion {
+    grid-template-columns: 5.5rem minmax(0, 1fr);
+  }
+
+  .aplicacion[data-proyector='encendido'] .robot-nombre {
+    font-size: 0.85rem;
+  }
+}
+
+/* Con menos de 75rem (1200 px) de ancho el robot va ENCIMA del globo, con su nombre al lado, y el globo con todo el ancho de la columna (panel R0, diseñador «Antes de publicar» 3): a 1024 px la columna derecha
+   mide ≈ 410 px y, con el robot al lado, al globo le quedaban ≈ 215 px de texto: una comparación como `cantidad < 1 || cantidad > 3` (28 caracteres) no cabía sin partirse. La colita del globo apunta hacia arriba, al
+   robot. De 75rem en adelante (1280 px) la columna mide ≈ 517 px, el globo conserva ≈ 380 px de texto con el robot al lado y no se gasta el alto de una fila. */
+@media (min-width: 43.75rem) and (max-width: 74.99rem) {
+  .aplicacion[data-proyector='encendido'] .explicacion {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.6rem;
+  }
+
+  .aplicacion[data-proyector='encendido'] .robot-figura {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .aplicacion[data-proyector='encendido'] .robot-nombre {
+    font-size: 1.1rem;
+    text-align: left;
+  }
+
+  .aplicacion[data-proyector='encendido'] .globo-contenido::before,
+  .aplicacion[data-proyector='encendido'] .globo > .aviso::before {
+    top: -0.85rem;
+    left: 2.4rem;
+    border-bottom: 0;
+    border-top: 3px solid var(--robot-trazo);
+  }
+}
+
+/* El proyector con dos columnas y una ventana de 42rem (672 px) o más de alto: la columna del código mide lo que la ventana (menos el encabezado) y el editor se queda con lo que sobra después de los controles y de
+   la consola. Así la consola, que va DEBAJO del código como la ventana «Output» de NetBeans, se ve completa en cada paso sin desplazar la página, y la columna se queda fija si la de la derecha la obliga a
+   desplazarse (panel R0, diseñador «Antes de publicar» 2). Con una ventana más baja el editor quedaría de dos renglones: ahí manda el diseño de siempre, con desplazamiento de la página. */
+@media (min-width: 60.0625rem) and (min-height: 42rem) {
+  .aplicacion[data-proyector='encendido'] .columna-codigo {
+    position: sticky;
+    top: 0.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    /* Alto de la ventana menos el encabezado (botones de 2.75rem), los márgenes de la página y el espacio entre ambos. */
+    height: calc(100vh - 5.8rem);
+  }
+
+  .aplicacion[data-proyector='encendido'] .zona-codigo {
+    display: flex;
+    flex: 1 1 0;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  .aplicacion[data-proyector='encendido'] .zona-codigo > [data-testid='editor-java'] {
+    display: flex;
+    flex: 1 1 0;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  .aplicacion[data-proyector='encendido'] .zona-codigo .cm-editor {
+    flex: 1 1 0;
+    min-height: 0;
+  }
+
+  .aplicacion[data-proyector='encendido'] .cm-scroller {
+    flex: 1 1 0;
+    height: auto;
+    min-height: 0;
+    max-height: none;
+  }
+
+  .aplicacion[data-proyector='encendido'] .columna-codigo > * {
+    flex: none;
+  }
+
+  .aplicacion[data-proyector='encendido'] .columna-codigo > .zona-codigo {
+    flex: 1 1 0;
+  }
+
+  .aplicacion[data-proyector='encendido'] .acciones {
+    margin-top: 0.4rem;
+  }
+
+  .aplicacion[data-proyector='encendido'] .leyenda-del-editor {
+    margin-top: 0.3rem;
+  }
+
+  .aplicacion[data-proyector='encendido'] .aviso-de-edicion {
+    min-height: 0;
+    margin-top: 0;
+  }
+
+  .aplicacion[data-proyector='encendido'] .consola-titulo {
+    margin-bottom: 0.2rem;
+  }
+
+  /* Cada renglón de la columna del código le quita alto al editor, que es lo que se proyecta. El recordatorio de atajos (2 renglones a esta letra) deja de verse —sigue ahí para el lector de pantalla, que lo
+     oye como descripción del grupo— y la barra de controles se compacta. */
+  .aplicacion[data-proyector='encendido'] .ayuda-de-atajos {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .aplicacion[data-proyector='encendido'] .barra-controles {
+    padding: 0.5rem 0.75rem;
+  }
+}
+
+/* El código al 58 % del ancho: solo cuando hay dos columnas (en una columna se apilan, como siempre). */
+@media (min-width: 60.0625rem) {
+  .aplicacion[data-proyector='encendido'] .visualizador {
+    grid-template-columns: minmax(0, 58fr) minmax(0, 42fr);
+  }
+}

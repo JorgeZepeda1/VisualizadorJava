@@ -138,14 +138,18 @@ test.describe('una versión nueva del sitio', () => {
     expect(resultado.violations.map((violacion) => `${violacion.id}: ${violacion.nodes.map((nodo) => nodo.target.join(' ')).join(' | ')}`)).toEqual([]);
   });
 
-  test('se acepta solo con teclado: lo primero que alcanza Tab es «Recargar ahora» y Enter cambia a la versión nueva', async ({ page, browserName }) => {
+  test('se acepta solo con teclado: el aviso va antes del título, así que Mayús+Tab desde el saludo lo alcanza, y Enter cambia a la versión nueva', async ({ page, browserName }) => {
     await abrirYQuedarBajoElControl(page);
     sitio.publicarVersion2();
     await page.reload();
     await expect(page.getByRole('status')).toContainText(AVISO);
 
-    await page.keyboard.press(teclaDeTabulador(browserName));
-    await expect(page.getByRole('button', { name: 'Recargar ahora' })).toBeFocused();
+    // El saludo deja el foco en su primera puerta (R0.8): el aviso queda ANTES en el orden de Tab, a unos pasos hacia atrás (el título no se enfoca; sí la navegación y «Ajustes de la clase»).
+    const botonDelAviso = page.getByRole('button', { name: 'Recargar ahora' });
+    for (let intento = 0; intento < 8 && !(await botonDelAviso.evaluate((boton) => boton === document.activeElement)); intento += 1) {
+      await page.keyboard.press(`Shift+${teclaDeTabulador(browserName)}`);
+    }
+    await expect(botonDelAviso).toBeFocused();
     await page.keyboard.press('Enter');
 
     await expect.poll(() => versionQueControlaSiLaPaginaYaEstable(page), { timeout: 15_000 }).toBe(2);

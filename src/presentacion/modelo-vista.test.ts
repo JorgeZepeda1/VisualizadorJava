@@ -132,7 +132,7 @@ describe('derivarModeloVista: una asignación', () => {
   });
 
   it('la explicación del robot se resuelve con la frase del catálogo, sin marcadores', () => {
-    expect(modelo.robot.texto).toBe('Calculo `total + precio`: con los valores de ahora es `100 + 25`, que da 125. Guardo 125 en `total`; antes valía 100.');
+    expect(modelo.robot.texto).toBe('Java calcula `total + precio`: con los valores de ahora es `100 + 25`, que da 125. Después guarda 125 en `total`; antes valía 100.');
     expect(modelo.robot.linea).toBe(5);
   });
 
@@ -163,7 +163,16 @@ describe('derivarModeloVista: el paso 0 y la espera de un dato', () => {
     expect(modelo.variables).toEqual([]);
     expect(modelo.condicion).toBeNull();
     expect(modelo.cadena).toBeNull();
-    expect(modelo.robot.texto).toBe('Todavía no se ejecuta nada. Pulsa «Siguiente» y te explico la línea 4.');
+    expect(modelo.robot.texto).toBe('Todavía no se ejecuta nada. Antes de empezar, lee el programa y anota qué crees que va a aparecer en la consola. Luego pulsa «Siguiente» y lo comprobamos desde la línea 4.');
+  });
+
+  // V7 del maestro (panel R0): los datos del paso 0 salen de la ENTRADA PREPARADA (renglones), nunca se inventan; una entrada vacía (el alumno escribe los suyos) no menciona ninguno.
+  it('V7: con una entrada preparada, el paso 0 nombra los datos que el programa va a leer', () => {
+    const base = { vista: VISTA, aplicados: [], siguiente: PASO_CONDICION, instantanea: instantanea({}), total: 2, ejecucion: { estado: 'calculando' } } as const;
+    expect(derivarModeloVista({ ...base, entradaPreparada: '-3\n0\n7\n' }).robot.texto).toContain('Este programa va a leer estos datos: -3, 0 y 7. Antes de empezar');
+    expect(derivarModeloVista({ ...base, entradaPreparada: 'Carlos\n' }).robot.texto).toContain('Este programa va a leer este dato: Carlos. Antes de empezar');
+    expect(derivarModeloVista({ ...base, entradaPreparada: '' }).robot.texto).not.toContain('va a leer');
+    expect(derivarModeloVista(base).robot.texto).not.toContain('va a leer');
   });
 
   it('en el último paso, con el programa esperando un dato, la línea siguiente es la de la lectura que espera', () => {
@@ -206,6 +215,92 @@ describe('derivarModeloVista: antes de ejecutar', () => {
     expect(modelo.variables).toEqual([]);
     expect(modelo.vueltas).toEqual([]);
     expect(modelo.lineas).toEqual({ ejecutada: null, siguiente: null });
-    expect(modelo.robot.texto).toContain('Pega o escribe un programa');
+    expect(modelo.robot.texto).toContain('Cuando esté listo, pulsa «Visualizar»');
+  });
+});
+
+// R0.6 (REQ-PANT-009, ADR 017): el modelo dice quién habla. Por omisión el robot paso a paso; el revisor cuando el globo lleva un problema vigente; el del libro en el libro.
+describe('derivarModeloVista: quién habla', () => {
+  const base = { vista: null, aplicados: [], siguiente: null, instantanea: instantanea({}), total: 0, ejecucion: { estado: 'sin-ejecutar' } } as const;
+
+  it('por omisión habla el robot paso a paso, antes y durante la visualización', () => {
+    expect(derivarModeloVista(base).hablante).toBe('paso-a-paso');
+    const enUnPaso = derivarModeloVista({ ...base, vista: VISTA, aplicados: [PASO_ASIGNACION], ejecucion: { estado: 'calculando' }, total: 1 });
+    expect(enUnPaso.hablante).toBe('paso-a-paso');
+  });
+
+  it('con un problema vigente en el globo (error de compilación, aviso o arranque) habla el revisor', () => {
+    expect(derivarModeloVista({ ...base, pantalla: { hayProblema: true } }).hablante).toBe('revisor');
+  });
+
+  it('en el libro habla el robot del libro, aunque haya un problema pendiente en el editor', () => {
+    expect(derivarModeloVista({ ...base, pantalla: { seccion: 'libro' } }).hablante).toBe('libro');
+    expect(derivarModeloVista({ ...base, pantalla: { seccion: 'libro', hayProblema: true } }).hablante).toBe('libro');
+  });
+});
+
+// R0.8 a R0.10 (REQ-PANT-001, 003, 004, 007): el modelo dice qué hay en la ranura de acciones y cómo se cuenta la posición. El total de pasos solo se muestra cuando el programa terminó (panel 1, H9): mientras el
+// motor calcula, espera un dato o se detuvo por seguridad, un total sería una cifra provisional (el ciclo desbocado mostraba «de 100001»).
+describe('derivarModeloVista: la ranura de acciones', () => {
+  const calculando = { vista: VISTA, aplicados: [], siguiente: PASO_CONDICION, instantanea: instantanea({}), total: 8, ejecucion: { estado: 'calculando' } } as const;
+
+  it('en el saludo la ranura son las puertas; sin temas publicados, «Leer un tema» no está', () => {
+    const modelo = derivarModeloVista({ ...calculando, vista: null, siguiente: null, total: 0, ejecucion: { estado: 'saludo' } });
+    expect(modelo.ranura).toMatchObject({ tipo: 'puertas' });
+    expect(modelo.ranura.tipo === 'puertas' && modelo.ranura.puertas.map((puerta) => puerta.id)).toEqual(['ver-un-ejemplo', 'probar-mi-programa']);
+    expect(modelo.robot.texto).toBe('¡Hola! Te muestro, paso a paso, qué hace Java con un programa. ¿Por dónde quieres empezar?');
+  });
+
+  it('con un tema publicado, la puerta «Leer un tema» aparece primero', () => {
+    const modelo = derivarModeloVista({ ...calculando, vista: null, siguiente: null, total: 0, ejecucion: { estado: 'saludo' }, pantalla: { hayTemasPublicados: true } });
+    expect(modelo.ranura.tipo === 'puertas' && modelo.ranura.puertas.map((puerta) => puerta.id)).toEqual(['leer-un-tema', 'ver-un-ejemplo', 'probar-mi-programa']);
+  });
+
+  it('durante la visualización es el par «Anterior · Siguiente», con los límites de lo ya calculado', () => {
+    expect(derivarModeloVista(calculando).ranura).toEqual({ tipo: 'navegacion', alPrincipio: true, alFinal: false });
+    const enMedio = derivarModeloVista({ ...calculando, aplicados: [PASO_CONDICION], siguiente: PASO_ASIGNACION, total: 3 });
+    expect(enMedio.ranura).toEqual({ tipo: 'navegacion', alPrincipio: false, alFinal: false });
+  });
+
+  it('en el último paso de un programa que NO lee datos la ranura ofrece volver atrás y modificar el programa (no hay otros datos que probar)', () => {
+    const modelo = derivarModeloVista({ ...calculando, aplicados: [PASO_CONDICION, PASO_ASIGNACION], siguiente: null, total: 2, ejecucion: { estado: 'terminada', fin: { causa: 'terminado' } } });
+    expect(modelo.ranura).toEqual({ tipo: 'fin', acciones: ['anterior', 'modificar-el-programa'], principal: 'modificar-el-programa' });
+  });
+
+  // Panel R0 (diseñador): el programa «lee datos» si algún paso consumió entrada (`Paso.entrada`), de la entrada preparada de un ejemplo o de lo que el alumno tecleó.
+  it('en el último paso de un programa que SÍ lee datos la ranura ofrece también «Probar con otros datos», como acción principal', () => {
+    const lectura: Paso = paso({ clase: 'asignacion', nodo: 2, linea: 5, explicacion: ASIGNACION, entrada: { cursor: 3 } });
+    const modelo = derivarModeloVista({ ...calculando, aplicados: [PASO_CONDICION, lectura], siguiente: null, total: 2, ejecucion: { estado: 'terminada', fin: { causa: 'terminado' } } });
+    expect(modelo.ranura).toEqual({ tipo: 'fin', acciones: ['anterior', 'probar-con-otros-datos', 'modificar-el-programa'], principal: 'probar-con-otros-datos' });
+  });
+
+  it('mientras el alumno escribe no hay nada en la ranura', () => {
+    const modelo = derivarModeloVista({ ...calculando, vista: null, siguiente: null, total: 0, ejecucion: { estado: 'sin-ejecutar' } });
+    expect(modelo.ranura).toEqual({ tipo: 'ninguna' });
+  });
+});
+
+describe('derivarModeloVista: la posición solo muestra el total cuando se conoce (REQ-PANT-004)', () => {
+  const base = { vista: VISTA, aplicados: [PASO_CONDICION], siguiente: PASO_ASIGNACION, instantanea: instantanea({}), total: 8 } as const;
+
+  it('mientras el motor aún calcula, solo el paso actual: el total sería una cifra provisional', () => {
+    expect(derivarModeloVista({ ...base, ejecucion: { estado: 'calculando' } }).posicion).toEqual({ paso: 1, total: null });
+  });
+
+  it('esperando un dato tampoco hay total: el programa seguirá cuando el alumno lo escriba', () => {
+    expect(derivarModeloVista({ ...base, ejecucion: { estado: 'esperando-entrada', nodo: 1 } }).posicion).toEqual({ paso: 1, total: null });
+  });
+
+  it('un programa que el visualizador detuvo por seguridad (un ciclo que no termina) no muestra un total, aunque ya haya 100 001 pasos', () => {
+    const ciclo = derivarModeloVista({ ...base, total: 100_001, ejecucion: { estado: 'terminada', fin: { causa: 'limite-pasos' } } });
+    expect(ciclo.posicion).toEqual({ paso: 1, total: null });
+    const porTiempo = derivarModeloVista({ ...base, ejecucion: { estado: 'terminada', fin: { causa: 'limite-tiempo' } } });
+    expect(porTiempo.posicion.total).toBeNull();
+    expect(derivarModeloVista({ ...base, ejecucion: { estado: 'detenida' } }).posicion.total).toBeNull();
+  });
+
+  it('un programa que terminó —bien o con una excepción— sí muestra su total', () => {
+    expect(derivarModeloVista({ ...base, ejecucion: { estado: 'terminada', fin: { causa: 'terminado' } } }).posicion).toEqual({ paso: 1, total: 8 });
+    expect(derivarModeloVista({ ...base, total: 5, ejecucion: { estado: 'terminada', fin: { causa: 'excepcion' } } }).posicion).toEqual({ paso: 1, total: 5 });
   });
 });

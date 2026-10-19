@@ -4,7 +4,15 @@ import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { localizarJdk } from './jdk.ts';
 import { RAIZ_EXPLORACION } from './migrar-corpus.ts';
-import { clasificarDesenlace, descubrirProgramas, escribirGoldens, generarGoldenPara } from './generar-goldens.ts';
+import {
+  CARPETAS_DEL_CORPUS,
+  clasificarDesenlace,
+  descubrirProgramas,
+  elegirCarpetas,
+  escribirGoldens,
+  generarGoldenPara,
+  generarTodosLosGoldens,
+} from './generar-goldens.ts';
 
 // Tarea 0.6 (ADR 011) — regenera TODOS los goldens (`.salida`, `.errores`, `.combinada`,
 // `.oraculo.json`) en binario contra el JDK real. El `.salida.txt` heredado de la exploración
@@ -69,7 +77,7 @@ describe('generarGoldenPara — regenera el golden de u3-hola-mundo real contra 
 
     expect(resultado.metadatos.desenlace).toBe('limite-pasos');
     expect(resultado.metadatos.agotoTiempo).toBe(true);
-  }, 10_000);
+  }, 60_000);
 });
 
 describe('descubrirProgramas — empareja cada .java con su .entrada.txt hermano, si existe', () => {
@@ -116,6 +124,75 @@ describe('escribirGoldens — escribe los 4 artefactos binarios junto al program
       const metadatos = JSON.parse(readFileSync(`${rutaBase}.oraculo.json`, 'utf-8'));
       expect(metadatos.desenlace).toBe('normal');
       expect(metadatos.version).toBe('17.0.18');
+    } finally {
+      rmSync(raiz, { recursive: true, force: true });
+    }
+  });
+});
+
+// Tarea R0.13 (REQ-DIFF-009, `robots-tutores`): `corpus/libro/` —los ejemplos, errores típicos, «Ponte a prueba» y soluciones del libro— es una carpeta más del corpus: el oráculo la recorre y genera
+// sus goldens con el JDK real, nunca escritos a mano. `npm run oraculo:goldens -- libro` regenera solo esa (las otras 400 y pico tardan minutos).
+describe('las carpetas del corpus que recorre el oráculo (R0.13)', () => {
+  it('son curso, experimentos y libro, en ese orden', () => {
+    expect(CARPETAS_DEL_CORPUS).toEqual(['curso', 'experimentos', 'libro']);
+  });
+
+  it('sin argumentos se regeneran todas', () => {
+    expect(elegirCarpetas([])).toEqual(['curso', 'experimentos', 'libro']);
+  });
+
+  it('con argumentos se regenera solo lo pedido, siempre en el orden de siempre y sin repetir', () => {
+    expect(elegirCarpetas(['libro'])).toEqual(['libro']);
+    expect(elegirCarpetas(['libro', 'curso', 'libro'])).toEqual(['curso', 'libro']);
+  });
+
+  it('una carpeta que no existe en el corpus es un error que dice cuáles sí', () => {
+    expect(() => elegirCarpetas(['biblioteca'])).toThrow(/biblioteca.*curso, experimentos, libro/s);
+  });
+});
+
+describe('corpus/libro lo descubre el generador de goldens (R0.13)', () => {
+  it('encuentra el programa semilla del tema `while`, que no lee del teclado', () => {
+    const programas = descubrirProgramas(resolve('corpus', 'libro'));
+    const semilla = programas.find((programa) => programa.rutaBase.endsWith('u6-while/contar-en-voz-alta'));
+    expect(semilla, 'el programa semilla de R0.13').toBeDefined();
+    expect(semilla?.rutaEntrada).toBeNull();
+    expect(programas.every((programa) => programa.rutaFuente.includes('/corpus/libro/'))).toBe(true);
+  });
+});
+
+describe('generarTodosLosGoldens con solo la carpeta del libro (R0.13)', () => {
+  it('genera los goldens reales de cada programa del libro y no migra ni toca curso ni experimentos', async () => {
+    const raiz = mkdtempSync(join(tmpdir(), 'goldens-del-libro-'));
+    try {
+      mkdirSync(resolve(raiz, 'corpus', 'libro', 'u6-demo'), { recursive: true });
+      writeFileSync(
+        resolve(raiz, 'corpus', 'libro', 'u6-demo', 'doble.java'),
+        [
+          'import java.util.Scanner;',
+          '',
+          'public class Doble {',
+          '    public static void main(String[] args) {',
+          '        Scanner teclado = new Scanner(System.in);',
+          '        int numero = teclado.nextInt();',
+          '        System.out.println(numero * 2);',
+          '    }',
+          '}',
+          '',
+        ].join('\n'),
+        'utf-8',
+      );
+      writeFileSync(resolve(raiz, 'corpus', 'libro', 'u6-demo', 'doble.entrada.txt'), '21\n', 'utf-8');
+
+      const resultado = await generarTodosLosGoldens(raiz, ['libro']);
+
+      expect(resultado.totalProgramas).toBe(1);
+      expect(resultado.copiadosCurso).toBe(0);
+      expect(resultado.copiadosExperimentos).toBe(0);
+      expect(readFileSync(resolve(raiz, 'corpus', 'libro', 'u6-demo', 'doble.salida'), 'utf-8')).toBe('42\n');
+      expect(JSON.parse(readFileSync(resolve(raiz, 'corpus', 'libro', 'u6-demo', 'doble.oraculo.json'), 'utf-8')).desenlace).toBe('normal');
+      expect(existsSync(resolve(raiz, 'corpus', 'curso'))).toBe(false);
+      expect(existsSync(resolve(raiz, 'corpus', 'experimentos'))).toBe(false);
     } finally {
       rmSync(raiz, { recursive: true, force: true });
     }

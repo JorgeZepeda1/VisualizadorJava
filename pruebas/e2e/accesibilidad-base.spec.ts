@@ -48,7 +48,7 @@ async function pegarYVisualizar(page: Page, fuente: string): Promise<void> {
 test.describe('axe: cero violaciones en cada estado de la pantalla', () => {
   test('la primera visita: el editor con el «Hola, mundo» y el robot que saluda', async ({ page }) => {
     await page.goto('/');
-    await expect(page.getByTestId('globo-del-robot')).toContainText('Pega o escribe un programa');
+    await expect(page.getByTestId('globo-del-robot')).toContainText('¿Por dónde quieres empezar?');
     expect(await violacionesDeAxe(page)).toEqual([]);
   });
 
@@ -114,7 +114,7 @@ test.describe('axe: cero violaciones en cada estado de la pantalla', () => {
     await expect(page.getByRole('alert')).toContainText('Error de compilación');
 
     await page.keyboard.type(';'); // el foco ya está en la línea del error: quien corrige solo teclea
-    await expect(globoDelRobot(page)).toContainText('Cambiaste el programa. Pulsa «Visualizar» y lo reviso otra vez.');
+    await expect(globoDelRobot(page)).toContainText('Cambiaste el programa. Pulsa «Visualizar» para que Java lo revise otra vez.');
     await expect(page.getByRole('alert')).toHaveCount(0);
     await expect(page.getByRole('img', { name: /robot/i })).toHaveAttribute('data-animo', 'normal');
     expect(await violacionesDeAxe(page)).toEqual([]);
@@ -144,7 +144,8 @@ test.describe('solo con teclado', () => {
     await page.keyboard.press('End');
     await expect(page.getByText('Paso 1 de 1').first()).toBeVisible();
 
-    // El foco siempre es visible: tras mover el foco con Tab, el elemento enfocado lleva un contorno (`:focus-visible`) con grosor.
+    // El foco siempre es visible: desde la barra de controles, tras mover el foco con Tab, el elemento enfocado lleva un contorno (`:focus-visible`) con grosor.
+    await page.getByRole('button', { name: /reiniciar/i }).focus();
     for (let tab = 0; tab < 3; tab += 1) {
       await page.keyboard.press(tabulador);
       const contorno = await page.evaluate(() => {
@@ -175,7 +176,7 @@ test.describe('solo con teclado', () => {
     await page.keyboard.press('ArrowLeft');
     await page.keyboard.press('Home');
     await expect(campo).toHaveValue('a1 ');
-    await expect(page.getByText('Paso 8 de 8').first()).toBeVisible();
+    await expect(page.getByText('Paso 8', { exact: true }).first()).toBeVisible();
 
     await page.keyboard.press('End');
     await page.keyboard.press('Backspace');

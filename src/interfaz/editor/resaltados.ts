@@ -40,7 +40,7 @@ class EtiquetaDeVueltaDelEditor extends WidgetType {
   }
 }
 
-/** La etiqueta en palabras que acompaña a la rama atenuada («✗ esta rama no se ejecuta»): el atenuado solo no basta, no se puede depender del color (REQ-PLAT-005). */
+/** La etiqueta en palabras que acompaña a la rama atenuada («✗ Java se salta este bloque»): el atenuado solo no basta, no se puede depender del color (REQ-PLAT-005). */
 class EtiquetaDeRamaNoTomada extends WidgetType {
   private readonly texto: string;
   constructor(texto: string) {

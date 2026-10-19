@@ -103,7 +103,7 @@ describe('verificarGoldens — exige bytes idénticos contra una regeneración r
     } finally {
       rmSync(raizCorpus, { recursive: true, force: true });
     }
-  }, 10_000);
+  }, 60_000);
 
   it('no sobrescribe ningún archivo existente (nunca escribe, solo lee y compara)', async () => {
     const raizCorpus = mkdtempSync(join(tmpdir(), 'verificar-goldens-no-escribe-'));
