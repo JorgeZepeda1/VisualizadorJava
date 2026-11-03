@@ -157,7 +157,8 @@ export async function problemasDelPartidoDeLineas(page: Page): Promise<{ readonl
       const ch = ((primerRenglon[ultimoMedido]?.izquierda ?? 0) - primero.izquierda) / ultimoMedido;
       const sangria = texto.length - texto.trimStart().length;
       for (const arriba of renglones.slice(1)) {
-        const inicioDelRenglon = caracteres.find((caracter) => caracter.arriba === arriba && caracter.letra.trim() !== '');
+        // El primer carácter del renglón cuenta aunque sea un espacio: una cadena con varios espacios seguidos («A1 Papas      $18») se parte entre ellos y los que sobran empiezan el renglón siguiente.
+        const inicioDelRenglon = caracteres.find((caracter) => caracter.arriba === arriba);
         if (inicioDelRenglon === undefined) continue;
         const esperado = primero.izquierda + (sangria + 2) * ch;
         if (Math.abs(inicioDelRenglon.izquierda - esperado) > 2) {
@@ -194,4 +195,33 @@ export async function renglonesDeTexto(elemento: Locator): Promise<number> {
     rango.selectNodeContents(nodo);
     return new Set(Array.from(rango.getClientRects(), (caja) => Math.round(caja.top))).size;
   });
+}
+
+/**
+ * Las dos «letras» con que se corren las pruebas de distribución (ADR 017, «Distribución tolerante a otras fuentes»). La habitual es la del equipo donde se prueba; la ancha simula las fuentes de otros
+ * equipos —DejaVu Sans en el Linux del CI y Segoe UI / Verdana en las laptops con Windows de un aula—, que miden 8 % a 15 % más de ancho por letra y por palabra, y rompen en más renglones el mismo texto.
+ * Una distribución que dependiera de las métricas de la fuente de quien la diseñó (restar un alto estimado, reservar un alto en renglones…) se pasa por unos píxeles con ellas.
+ */
+export const LETRAS = ['habitual', 'ancha'] as const;
+export type Letra = (typeof LETRAS)[number];
+
+// 0,07 em por letra y 0,25 em por palabra: con eso el encabezado a 1024 px pasa a dos renglones, igual que en el CI de Linux. El código (CodeMirror, la consola, `code`) es monoespaciado y se mide en `ch`:
+// ahí las fuentes cambian poco, así que no se toca.
+const CSS_DE_LETRA_ANCHA = [
+  '*, *::before, *::after { letter-spacing: 0.07em !important; word-spacing: 0.25em !important; }',
+  '.cm-editor, .cm-editor *, .cm-editor *::before, .cm-editor *::after, .consola, .consola *, code, code * { letter-spacing: normal !important; word-spacing: normal !important; }',
+].join(' ');
+
+/** Antes de abrir la página: inyecta en cada documento el CSS de la letra ancha (no hace nada con la habitual). Hay que llamarla antes de `page.goto`. */
+export async function prepararLetra(page: Page, letra: Letra): Promise<void> {
+  if (letra === 'habitual') return;
+  await page.addInitScript((css) => {
+    const poner = (): void => {
+      const estilo = document.createElement('style');
+      estilo.textContent = css;
+      document.head.appendChild(estilo);
+    };
+    if (document.head === null) document.addEventListener('DOMContentLoaded', poner, { once: true });
+    else poner();
+  }, CSS_DE_LETRA_ANCHA);
 }

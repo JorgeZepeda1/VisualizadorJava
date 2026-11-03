@@ -809,12 +809,14 @@ li.atenuada {
   line-height: 1.5;
 }
 
-/* Un alto mínimo de ≈ 4 a 5 renglones (panel R0, diseñador): «Siguiente» queda en su lugar de un paso a otro en vez de subir y bajar con el largo de cada frase. Son 5 renglones de 1.5 × la letra del globo
-   (el paso 0, que ahora nombra los datos que el programa va a leer, ocupa 5 a 1366 px; los demás pasos de la máquina de snacks, 4 o menos), más su relleno (0.75rem × 2) y su borde (3px × 2). En el proyector,
-   con la letra más grande, bastan 4: ahí cada renglón cuesta más alto de ventana. En el celular no hace falta: la ranura está en la barra fija de abajo. */
+/* El alto RESERVADO del globo (panel R0, diseñador; CI de Linux, ADR 017 «Distribución tolerante a otras fuentes»): «Siguiente» queda en su lugar de un paso a otro en vez de subir y bajar con el largo de cada
+   frase. Son 6 renglones de 1.5 × la letra del globo, más su relleno (0.75rem × 2) y su borde (3px × 2). A 1366 px de ancho el texto más largo de la máquina de snacks ocupa 5 renglones con la letra de macOS
+   y con una letra 10 % más ancha (la de Linux o Windows): el sexto renglón es la holgura que absorbe unos píxeles de más por renglón o una palabra que baja de línea; con la reserva justa (5), «Siguiente»
+   se movía de 2.6 a 5.1 px en Linux. Si algún texto pasa de la reserva (una columna más angosta o una letra mucho más grande), el globo crece antes que cortar la frase: el alto de una reserva no puede
+   ser infinito. En el proyector, con la letra más grande, bastan 4: ahí cada renglón cuesta más alto de ventana. En el celular no hace falta: la ranura está en la barra fija de abajo. */
 @media (min-width: 43.75rem) {
   .globo-contenido {
-    min-height: calc(7.5em + 1.5rem + 6px);
+    min-height: calc(9em + 1.5rem + 6px);
   }
 }
 
@@ -1010,11 +1012,14 @@ li.atenuada {
   background: var(--superficie);
 }
 
+/* `flex-wrap` y `min-width: 0`: con una letra más ancha el deslizador (8rem como mínimo) y «Paso 24 de 44» ya no caben juntos a 320 px y la página se desbordaba 8 px; ahora el número baja de renglón. */
 .posicion {
   display: inline-flex;
   flex: 1 1 14rem;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem;
+  min-width: 0;
 }
 
 .posicion input[type='range'] {
@@ -1192,11 +1197,13 @@ li.atenuada {
     order: 5;
   }
 
-  /* ≈ 35 % del alto de la ventana; si la ventana es baja, cede alto (hasta 7.5rem, unas seis líneas) para que el robot y su globo se vean en el paso 0 sin desplazar: lo demás de la pantalla (título,
-     navegación, botones, leyenda, el robot con su globo y la barra fija) mide ≈ 32.5rem a 320 px de ancho. */
+  /* ≈ 35 % del alto de la ventana; si la ventana es baja, cede alto hasta 6.2rem (≈ 5 líneas de código) para que el robot y su globo se vean en el paso 0 sin desplazar. Lo demás que va ARRIBA del globo
+     (título, navegación, botones, leyenda y el propio globo) mide ≈ 32.5rem a 320 px de ancho con la letra de macOS; el cálculo reserva 2rem más (34.5rem) para otra letra: un título que baja a dos renglones,
+     un globo con un renglón más. No se pudo expresar con flex sin mover el DOM: lo que sigue del globo (variables, consola) queda debajo del pliegue y consumiría el sobrante (ADR 017, «Distribución
+     tolerante a otras fuentes»). El editor es el único elástico: pierde hasta 5 renglones antes de que el globo se salga. */
   .cm-scroller {
     min-height: 0;
-    max-height: clamp(7.5rem, calc(100vh - 32.5rem), 35vh);
+    max-height: clamp(6.2rem, calc(100vh - 34.5rem), 35vh);
   }
 
   .explicacion {
@@ -1284,6 +1291,17 @@ li.atenuada {
   .globo-contenido,
   .globo > .aviso {
     padding: 0.5rem 0.6rem;
+    font-size: 0.95rem;
+  }
+
+  /* «Visualizar» y «Editar programa» comparten renglón aunque la letra sea más ancha (Linux, Windows): apilados costaban un renglón de botones más, alto que el globo necesita. */
+  .acciones {
+    gap: 0.4rem;
+  }
+
+  .acciones button {
+    flex: 1 1 auto;
+    padding-inline: 0.4rem;
     font-size: 0.95rem;
   }
 }
