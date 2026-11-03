@@ -1,0 +1,6 @@
+VariableFueraDelFor.java:6: error: cannot find symbol
+        System.out.println("Terminó en la vuelta " + i);
+                                                     ^
+  symbol:   variable i
+  location: class VariableFueraDelFor
+1 error

@@ -191,7 +191,7 @@ describe('<EditorJava/> — la rama del `if` que no se toma, atenuada y con etiq
   it('lleva una etiqueta en palabras, al final de la primera línea de la rama: no depende solo del color', () => {
     const { container } = render(<EditorJava valor={IF_ELSE} resaltados={resaltados({ ramaNoTomada: SINO })} />);
     const etiquetas = Array.from(container.querySelectorAll('.cm-etiqueta-rama-no-tomada'));
-    expect(etiquetas.map((e) => e.textContent)).toEqual(['✗ esta rama no se ejecuta']);
+    expect(etiquetas.map((e) => e.textContent)).toEqual(['✗ Java se salta este bloque']);
     expect(etiquetas[0]?.closest('.cm-line')?.textContent).toContain('} else {');
   });
 

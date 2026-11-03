@@ -167,10 +167,10 @@ describe('derivarCondicion: switch', () => {
     expect(derivarCondicion([pasoSwitch({ clave: 'switch-cae', datos: { etiqueta: '2' } }, 'caida-switch')])).toEqual({
       tipo: 'switch',
       cadena: null,
-      filas: [{ texto: 'Cae a `case 2` porque no hubo `break`', corre: true }],
+      filas: [{ texto: 'Sigue de largo a `case 2`: no hubo `break`', corre: true }],
     });
     expect(derivarCondicion([pasoSwitch({ clave: 'switch-cae', datos: { etiqueta: null } }, 'caida-switch')])).toMatchObject({
-      filas: [{ texto: 'Cae al `default` porque no hubo `break`', corre: true }],
+      filas: [{ texto: 'Sigue de largo al `default`: no hubo `break`', corre: true }],
     });
   });
 });

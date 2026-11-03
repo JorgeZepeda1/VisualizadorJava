@@ -1,5 +1,6 @@
-// RED de la tarea 4.12 (REQ-VIS-012): los controles de reproducción — reiniciar, atrás, adelante, fin, reproducir/pausa, velocidad ajustable y un deslizador «Paso X de Y» — operables solo con
-// teclado: flechas izquierda/derecha para atrás/adelante, Inicio/Fin para los extremos y espacio para reproducir o pausar (cuando el foco NO está en un campo de texto). Cada botón lleva su palabra.
+// RED de la tarea 4.12 (REQ-VIS-012): los controles de reproducción — reiniciar, fin, reproducir/pausa y un deslizador «Paso X de Y» — operables solo con teclado: flechas izquierda/derecha para atrás/adelante,
+// Inicio/Fin para los extremos y espacio para reproducir o pausar (cuando el foco NO está en un campo de texto). Cada botón lleva su palabra. En la tarea R0.9 (REQ-PANT-003) «Anterior» y «Siguiente» se
+// mudaron a la ranura bajo el globo (`RanuraDeAcciones`) y la velocidad a «Ajustes de la clase»: aquí quedan solo los ATAJOS de las flechas. En la R0.10 (REQ-PANT-004) el total solo se dice si se conoce.
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -9,25 +10,27 @@ function propiedades(parcial: Partial<PropiedadesBarraControles> = {}): Propieda
   return {
     paso: 5,
     total: 12,
+    totalMostrado: 12,
     reproduciendo: false,
-    velocidad: 3,
     alReiniciar: vi.fn(),
     alAnterior: vi.fn(),
     alSiguiente: vi.fn(),
     alFin: vi.fn(),
     alReproducirOPausar: vi.fn(),
     alIrAlPaso: vi.fn(),
-    alCambiarVelocidad: vi.fn(),
     ...parcial,
   };
 }
 
 describe('<BarraControles/> — botones', () => {
-  it('tiene los cinco botones, cada uno con su palabra', () => {
+  it('tiene los tres botones que quedan, cada uno con su palabra, y ya no repite Anterior ni Siguiente (están bajo el globo)', () => {
     render(<BarraControles {...propiedades()} />);
-    for (const nombre of [/reiniciar/i, /anterior/i, /siguiente/i, /fin/i, /reproducir/i]) {
+    for (const nombre of [/reiniciar/i, /fin/i, /reproducir/i]) {
       expect(screen.getByRole('button', { name: nombre })).toBeTruthy();
     }
+    expect(screen.queryByRole('button', { name: /anterior/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /siguiente/i })).toBeNull();
+    expect(screen.queryByRole('combobox', { name: 'Velocidad' })).toBeNull();
   });
 
   it('cada botón llama a su acción', async () => {
@@ -35,13 +38,9 @@ describe('<BarraControles/> — botones', () => {
     const usuario = userEvent.setup();
     render(<BarraControles {...p} />);
     await usuario.click(screen.getByRole('button', { name: /reiniciar/i }));
-    await usuario.click(screen.getByRole('button', { name: /anterior/i }));
-    await usuario.click(screen.getByRole('button', { name: /siguiente/i }));
     await usuario.click(screen.getByRole('button', { name: /fin/i }));
     await usuario.click(screen.getByRole('button', { name: /reproducir/i }));
     expect(p.alReiniciar).toHaveBeenCalledTimes(1);
-    expect(p.alAnterior).toHaveBeenCalledTimes(1);
-    expect(p.alSiguiente).toHaveBeenCalledTimes(1);
     expect(p.alFin).toHaveBeenCalledTimes(1);
     expect(p.alReproducirOPausar).toHaveBeenCalledTimes(1);
   });
@@ -52,25 +51,21 @@ describe('<BarraControles/> — botones', () => {
     expect(screen.queryByRole('button', { name: /reproducir/i })).toBeNull();
   });
 
-  it('en el paso 0 no se puede reiniciar ni retroceder', () => {
+  it('en el paso 0 no se puede reiniciar', () => {
     render(<BarraControles {...propiedades({ paso: 0 })} />);
     expect((screen.getByRole('button', { name: /reiniciar/i }) as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByRole('button', { name: /anterior/i }) as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByRole('button', { name: /siguiente/i }) as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByRole('button', { name: /fin/i }) as HTMLButtonElement).disabled).toBe(false);
   });
 
-  it('en el último paso no se puede avanzar, ir al fin ni reproducir', () => {
+  it('en el último paso no se puede ir al fin ni reproducir', () => {
     render(<BarraControles {...propiedades({ paso: 12 })} />);
-    expect((screen.getByRole('button', { name: /siguiente/i }) as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByRole('button', { name: /fin/i }) as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByRole('button', { name: /reproducir/i }) as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByRole('button', { name: /anterior/i }) as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByRole('button', { name: /reiniciar/i }) as HTMLButtonElement).disabled).toBe(false);
   });
 
   it('anuncia sus atajos de teclado', () => {
     render(<BarraControles {...propiedades()} />);
-    expect(screen.getByRole('button', { name: /anterior/i }).getAttribute('aria-keyshortcuts')).toBe('ArrowLeft');
-    expect(screen.getByRole('button', { name: /siguiente/i }).getAttribute('aria-keyshortcuts')).toBe('ArrowRight');
     expect(screen.getByRole('button', { name: /reiniciar/i }).getAttribute('aria-keyshortcuts')).toBe('Home');
     expect(screen.getByRole('button', { name: /fin/i }).getAttribute('aria-keyshortcuts')).toBe('End');
     expect(screen.getByRole('button', { name: /reproducir/i }).getAttribute('aria-keyshortcuts')).toBe('Space');
@@ -87,10 +82,20 @@ describe('<BarraControles/> — los atajos de teclado se ven (no solo en un tít
   });
 });
 
-describe('<BarraControles/> — posición y velocidad', () => {
-  it('muestra «Paso 5 de 12»', () => {
+describe('<BarraControles/> — la posición', () => {
+  it('muestra «Paso 5 de 12» cuando se conoce el total', () => {
     render(<BarraControles {...propiedades()} />);
     expect(screen.getAllByText('Paso 5 de 12').length).toBeGreaterThan(0);
+  });
+
+  // REQ-PANT-004 (panel 1, H9): mientras el motor calcula, espera un dato o se detuvo por seguridad el total sería una cifra provisional («de 100001»): solo se dice el paso actual.
+  it('si el total no se conoce, dice solo «Paso 5» y el deslizador conserva su rango para navegar lo ya calculado', () => {
+    render(<BarraControles {...propiedades({ totalMostrado: null })} />);
+    expect(screen.getAllByText('Paso 5').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Paso 5 de 12')).toBeNull();
+    const deslizador = screen.getByRole('slider', { name: 'Posición en el programa' }) as HTMLInputElement;
+    expect(deslizador.max).toBe('12');
+    expect(deslizador.getAttribute('aria-valuetext')).toBe('Paso 5');
   });
 
   it('el deslizador tiene nombre, rango 0..total y dice «Paso X de Y» a los lectores de pantalla', () => {
@@ -107,16 +112,6 @@ describe('<BarraControles/> — posición y velocidad', () => {
     render(<BarraControles {...p} />);
     fireEvent.change(screen.getByRole('slider'), { target: { value: '9' } });
     expect(p.alIrAlPaso).toHaveBeenCalledExactlyOnceWith(9);
-  });
-
-  it('la velocidad se elige entre cinco niveles con nombre', async () => {
-    const p = propiedades();
-    render(<BarraControles {...p} />);
-    const selector = screen.getByRole('combobox', { name: 'Velocidad' }) as HTMLSelectElement;
-    expect(Array.from(selector.options).map((o) => o.textContent)).toEqual(['Muy lenta', 'Lenta', 'Normal', 'Rápida', 'Muy rápida']);
-    expect(selector.value).toBe('3');
-    await userEvent.setup().selectOptions(selector, '5');
-    expect(p.alCambiarVelocidad).toHaveBeenCalledExactlyOnceWith(5);
   });
 });
 
@@ -170,9 +165,9 @@ describe('<BarraControles/> — atajos de teclado (REQ-VIS-012)', () => {
     const p = propiedades();
     const usuario = userEvent.setup();
     render(<BarraControles {...p} />);
-    screen.getByRole('button', { name: /siguiente/i }).focus();
+    screen.getByRole('button', { name: /reiniciar/i }).focus();
     await usuario.keyboard(' ');
-    expect(p.alSiguiente).toHaveBeenCalledTimes(1);
+    expect(p.alReiniciar).toHaveBeenCalledTimes(1);
     expect(p.alReproducirOPausar).not.toHaveBeenCalled();
   });
 

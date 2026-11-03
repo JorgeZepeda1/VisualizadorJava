@@ -7,7 +7,13 @@ import { nodo, paso, vistaDePrueba } from './ayudas-de-prueba.ts';
 import { derivarRobot, type EstadoDeLaEjecucion } from './robot.ts';
 
 const IMPRESION: ExplicacionPaso = { clave: 'impresion', datos: { texto: 'Hola', flujo: 'out', saltoDeLinea: true } };
-const FRASE_DE_IMPRESION = 'Imprimo en la consola: «Hola» y paso a la línea siguiente.';
+const FRASE_DE_IMPRESION = 'Java imprime en la consola: «Hola» y pasa a la línea siguiente.';
+
+// T3 del maestro: el paso 0 invita a predecir antes de pulsar «Siguiente».
+const PREDECIR = 'Todavía no se ejecuta nada. Antes de empezar, lee el programa y anota qué crees que va a aparecer en la consola.';
+const T3_LINEA_7 = `${PREDECIR} Luego pulsa «Siguiente» y lo comprobamos desde la línea 7.`;
+const T3_LINEA_4 = `${PREDECIR} Luego pulsa «Siguiente» y lo comprobamos desde la línea 4.`;
+const T3_SIN_LINEA = `${PREDECIR} Luego pulsa «Siguiente» para empezar.`;
 
 function pasoDeImpresion(linea: number): Paso {
   return paso({ clase: 'impresion', linea, explicacion: IMPRESION });
@@ -26,11 +32,23 @@ function terminada(causa: FinEjecucion['causa']): EstadoDeLaEjecucion {
 }
 
 describe('derivarRobot: antes de que haya pasos', () => {
-  it('sin ejecutar saluda y dice qué hacer', () => {
+  // REQ-PANT-001: al abrir el visualizador el robot paso a paso saluda y pregunta por dónde empezar; las puertas las pone la ranura.
+  it('en el saludo el robot paso a paso saluda con las puertas por delante', () => {
+    expect(derivarRobot({ ejecucion: { estado: 'saludo' }, aplicados: [], siguiente: null, total: 0, vista: null })).toEqual({
+      animo: 'normal',
+      linea: null,
+      texto: '¡Hola! Te muestro, paso a paso, qué hace Java con un programa. ¿Por dónde quieres empezar?',
+      nota: null,
+      aviso: null,
+      asertivo: false,
+    });
+  });
+
+  it('sin ejecutar dice qué hacer cuando el programa esté listo', () => {
     expect(derivarRobot({ ejecucion: { estado: 'sin-ejecutar' }, aplicados: [], siguiente: null, total: 0, vista: null })).toEqual({
       animo: 'normal',
       linea: null,
-      texto: '¡Hola! Pega o escribe un programa de Java y pulsa «Visualizar». Yo te explico cada paso.',
+      texto: 'Escribe o pega aquí tu programa (puedes copiarlo de NetBeans). Cuando esté listo, pulsa «Visualizar» y te muestro cómo lo ejecuta Java, paso a paso.',
       nota: null,
       aviso: null,
       asertivo: false,
@@ -39,7 +57,7 @@ describe('derivarRobot: antes de que haya pasos', () => {
 
   it('mientras se revisa el programa, lo dice', () => {
     expect(derivarRobot({ ejecucion: { estado: 'compilando' }, aplicados: [], siguiente: null, total: 0, vista: null }).texto).toBe(
-      'Estoy revisando tu programa…',
+      'Java está revisando tu programa…',
     );
   });
 });
@@ -50,7 +68,7 @@ describe('derivarRobot: el alumno cambió el programa después de un aviso (C4)'
     expect(derivarRobot({ ejecucion: { estado: 'cambiado-tras-un-aviso' }, aplicados: [], siguiente: null, total: 0, vista: null })).toEqual({
       animo: 'normal',
       linea: null,
-      texto: 'Cambiaste el programa. Pulsa «Visualizar» y lo reviso otra vez.',
+      texto: 'Cambiaste el programa. Pulsa «Visualizar» para que Java lo revise otra vez.',
       nota: null,
       aviso: null,
       asertivo: false,
@@ -61,14 +79,28 @@ describe('derivarRobot: el alumno cambió el programa después de un aviso (C4)'
 describe('derivarRobot: el paso 0', () => {
   it('dice que todavía no se ejecuta nada y la línea del primer paso', () => {
     const robot = derivarRobot({ ejecucion: { estado: 'calculando' }, aplicados: [], siguiente: pasoDeImpresion(7), total: 5, vista: VISTA });
-    expect(robot.texto).toBe('Todavía no se ejecuta nada. Pulsa «Siguiente» y te explico la línea 7.');
+    expect(robot.texto).toBe(T3_LINEA_7);
     expect(robot.linea).toBeNull();
     expect(robot.animo).toBe('normal');
   });
 
+  // V7 del maestro (panel R0): los datos salen de la entrada preparada que la presentación ya tiene (una lista de renglones); el robot nunca los inventa.
+  it('V7: si el programa trae datos preparados, el paso 0 dice cuáles va a leer', () => {
+    const robot = derivarRobot({ ejecucion: { estado: 'calculando' }, aplicados: [], siguiente: pasoDeImpresion(5), total: 5, vista: VISTA, datosPreparados: ['-3', '0', '7'] });
+    expect(robot.texto).toBe(
+      'Todavía no se ejecuta nada. Este programa va a leer estos datos: -3, 0 y 7. Antes de empezar, lee el programa y anota qué crees que va a aparecer en la consola. Luego pulsa «Siguiente» y lo comprobamos desde la línea 5.',
+    );
+  });
+
+  it('V7: sin datos preparados el paso 0 es el de siempre', () => {
+    const base = { ejecucion: { estado: 'calculando' } as const, aplicados: [], siguiente: pasoDeImpresion(7), total: 5, vista: VISTA };
+    expect(derivarRobot({ ...base, datosPreparados: [] }).texto).toBe(T3_LINEA_7);
+    expect(derivarRobot(base).texto).toBe(T3_LINEA_7);
+  });
+
   it('si el motor aún no calculó ningún paso, no inventa una línea', () => {
     const robot = derivarRobot({ ejecucion: { estado: 'calculando' }, aplicados: [], siguiente: null, total: 0, vista: VISTA });
-    expect(robot.texto).toBe('Todavía no se ejecuta nada. Pulsa «Siguiente» para empezar.');
+    expect(robot.texto).toBe(T3_SIN_LINEA);
   });
 
   it('si el programa empieza con una lectura, la línea que sigue es la del nodo que espera', () => {
@@ -110,7 +142,7 @@ describe('derivarRobot: una ejecución que el trabajador detuvo antes del final 
 
   it('en el paso 0 de una traza con pasos sigue invitando a navegar: lo ya calculado es navegable', () => {
     const robot = derivarRobot({ ejecucion: DETENIDA, aplicados: [], siguiente: pasoDeImpresion(7), total: 5, vista: VISTA });
-    expect(robot.texto).toBe('Todavía no se ejecuta nada. Pulsa «Siguiente» y te explico la línea 7.');
+    expect(robot.texto).toBe(T3_LINEA_7);
   });
 
   it('en un paso intermedio el robot solo explica ese paso', () => {
@@ -156,7 +188,7 @@ describe('derivarRobot: un programa que el visualizador detuvo por seguridad (hi
       total: 100_001,
       vista: VISTA,
     });
-    expect(robot.texto).toBe('Todavía no se ejecuta nada. Pulsa «Siguiente» y te explico la línea 4.');
+    expect(robot.texto).toBe(T3_LINEA_4);
     expect(robot.nota).toBe('Ojo: este programa no terminó solo. El visualizador lo detuvo por seguridad después de muchos pasos. Avanza y descubre por qué.');
     expect(robot.nota).not.toMatch(/contador|siempre valió/);
   });
@@ -211,12 +243,12 @@ describe('derivarRobot: un paso del programa', () => {
       vista: VISTA,
     });
     expect(robot.linea).toBe(3);
-    expect(robot.texto).toBe('`break`: salgo del ciclo ahora mismo.');
+    expect(robot.texto).toBe('`break`: Java sale del ciclo ahora mismo.');
   });
 
   it('en el último paso, mientras el motor aún calcula, no finge que el programa terminó', () => {
     const robot = derivarRobot({ ejecucion: { estado: 'calculando' }, aplicados: [pasoDeImpresion(10)], siguiente: null, total: 1, vista: VISTA });
-    expect(robot.nota).toBe('Sigo calculando los siguientes pasos…');
+    expect(robot.nota).toBe('Se siguen calculando los siguientes pasos…');
     expect(robot.animo).toBe('normal');
   });
 });
@@ -251,7 +283,9 @@ describe('derivarRobot: espera de un dato', () => {
 describe('derivarRobot: cómo terminó', () => {
   it('terminó bien: resume los pasos y está contento', () => {
     const robot = derivarRobot({ ejecucion: terminada('terminado'), aplicados: pasosHasta(26), siguiente: null, total: 26, vista: VISTA });
-    expect(robot.nota).toBe('Así terminó: sin errores, en 26 pasos.');
+    expect(robot.nota).toBe(
+      'Así terminó: sin errores, en 26 pasos. ¿La consola muestra lo que anotaste al principio? Si algo no coincide, regresa con «Anterior» al paso donde Java hizo otra cosa.',
+    );
     expect(robot.animo).toBe('feliz');
     expect(robot.aviso).toBeNull();
     expect(robot.asertivo).toBe(false);
@@ -271,8 +305,8 @@ describe('derivarRobot: cómo terminó', () => {
       fin: { causa: 'excepcion' },
     });
     const robot = derivarRobot({ ejecucion: terminada('excepcion'), aplicados: pasosHasta(9, pasoFinal), siguiente: null, total: 9, vista: VISTA });
-    expect(robot.texto).toBe('Java detuvo el programa con una excepción: `ArithmeticException` (/ by zero).');
-    expect(robot.nota).toBe('Así terminó: con un error (mira el mensaje en rojo en la consola).');
+    expect(robot.texto).toBe('Java detuvo el programa por un error mientras se ejecutaba (una excepción): `ArithmeticException` (/ by zero).');
+    expect(robot.nota).toBe('Así terminó: Java detuvo el programa por un error y lo que seguía ya no se ejecutó. Lee en la consola el mensaje marcado «Error»: dice qué pasó.');
     expect(robot.aviso).toBe('excepcion');
     expect(robot.asertivo).toBe(true);
     expect(robot.animo).toBe('preocupado');

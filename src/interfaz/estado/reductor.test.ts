@@ -1,5 +1,6 @@
-// RED de la tarea 4.13 (design.md §6.1, ADR 013): el reductor de `EstadoApp` — el estado de la pantalla (modo, código, cómo va la ejecución, a qué paso se mira, si reproduce y a qué velocidad). Es
-// una función pura: la `Traza` y el trabajador viven fuera de React; lo que llega del trabajador y lo que hace el alumno entran como acciones. La posición se acota con el `total` de la traza
+// RED de la tarea 4.13 (design.md §6.1, ADR 013): el reductor de `EstadoApp` — el estado de la pantalla (modo, código, cómo va la ejecución, a qué paso se mira, si reproduce). Ampliado en la tarea R0.7
+// (REQ-PANT-001, 002, 006; REQ-AULA-001; ADR 017): la sección, el saludo, los ajustes de la clase (proyector y velocidad), la entrada preparada, de dónde vino el programa y el programa del alumno guardado
+// mientras mira un ejemplo. Es una función pura: la `Traza` y el trabajador viven fuera de React; lo que llega del trabajador y lo que hace el alumno entran como acciones. La posición se acota con el `total` de la traza
 // que cada acción de navegación trae (la traza es la única fuente de verdad de cuántos pasos hay).
 import { describe, expect, it } from 'vitest';
 import type { VistaPrograma } from '../../motor/vista.ts';
@@ -25,7 +26,13 @@ describe('reductor: del código a la visualización', () => {
       codigo: 'programa',
       ejecucion: { id: 0, estado: 'calculando', nodoEnEspera: null, fin: null, vista: null },
       aviso: null,
-      navegacion: { paso: 0, reproduciendo: false, velocidad: 3, seguirAlLlegar: false },
+      navegacion: { paso: 0, reproduciendo: false, seguirAlLlegar: false },
+      seccion: 'paso-a-paso',
+      saludo: true,
+      ajustes: { proyector: false, velocidad: 3 },
+      entradaPreparada: '',
+      origen: { tipo: 'propio' },
+      programaGuardado: null,
     });
   });
 
@@ -94,8 +101,8 @@ describe('reductor: del código a la visualización', () => {
   });
 
   it('visualizar de nuevo conserva la velocidad que el alumno eligió', () => {
-    const estado = aplicar(visualizando({ velocidad: 5 }), { tipo: 'visualizar', id: 2 });
-    expect(estado.navegacion.velocidad).toBe(5);
+    const estado = aplicar(visualizando(), { tipo: 'cambiar-ajuste', ajuste: 'velocidad', valor: 5 }, { tipo: 'visualizar', id: 2 });
+    expect(estado.ajustes.velocidad).toBe(5);
     expect(estado.navegacion.paso).toBe(0);
   });
 });
@@ -202,8 +209,9 @@ describe('reductor: navegación', () => {
   });
 
   it('la velocidad se cambia sin mover la posición ni detener la reproducción', () => {
-    const estado = aplicar(visualizando({ paso: 3, reproduciendo: true }), { tipo: 'velocidad', velocidad: 5 });
-    expect(estado.navegacion).toMatchObject({ paso: 3, reproduciendo: true, velocidad: 5 });
+    const estado = aplicar(visualizando({ paso: 3, reproduciendo: true }), { tipo: 'cambiar-ajuste', ajuste: 'velocidad', valor: 5 });
+    expect(estado.navegacion).toMatchObject({ paso: 3, reproduciendo: true });
+    expect(estado.ajustes.velocidad).toBe(5);
   });
 });
 
@@ -248,5 +256,143 @@ describe('reductor: reproducción', () => {
   it('un tic con el programa terminado y ya en el último paso detiene la reproducción', () => {
     const terminado = aplicar(visualizando({ paso: 10, reproduciendo: true }), { tipo: 'fin', fin: { causa: 'terminado' } });
     expect(aplicar(terminado, { tipo: 'tic', total: 10 }).navegacion.reproduciendo).toBe(false);
+  });
+});
+
+// --- R0.7 (REQ-PANT-001, 002, 006; REQ-AULA-001; ADR 017) ---------------------------------------------------------------------------------------------------------------------------------------
+
+const EJEMPLO = 'public class Ejemplo { /* de la galería */ }';
+const ENTRADA = 'a1\n2\n50\n';
+const DE_LA_GALERIA = { tipo: 'galeria', id: 'maquina-snacks', demostracion: false } as const;
+
+describe('reductor: las secciones «Paso a paso · Libro · Ejemplos» (REQ-PANT-002)', () => {
+  it('ir a otra sección cambia solo la sección: ni el programa ni la posición de la traza se pierden', () => {
+    const mirando = aplicar(visualizando({ paso: 12 }), { tipo: 'ir-a-seccion', seccion: 'ejemplos' });
+    expect(mirando.seccion).toBe('ejemplos');
+    expect(mirando.codigo).toBe('programa');
+    expect(mirando.modo).toBe('visualizacion');
+    expect(mirando.navegacion.paso).toBe(12);
+    expect(mirando.ejecucion.vista).toBe(VISTA);
+  });
+
+  it('volver a «Paso a paso» sin elegir nada deja el mismo programa y la traza en el mismo paso (escenario de REQ-PANT-002)', () => {
+    const vuelta = aplicar(visualizando({ paso: 12 }), { tipo: 'ir-a-seccion', seccion: 'ejemplos' }, { tipo: 'ir-a-seccion', seccion: 'paso-a-paso' });
+    expect(vuelta.seccion).toBe('paso-a-paso');
+    expect(vuelta.codigo).toBe('programa');
+    expect(vuelta.navegacion.paso).toBe(12);
+  });
+
+  it('también se puede ir al libro y regresar sin tocar nada', () => {
+    const estado = aplicar(visualizando({ paso: 3 }), { tipo: 'ir-a-seccion', seccion: 'libro' });
+    expect(estado.seccion).toBe('libro');
+    expect(estado.navegacion.paso).toBe(3);
+  });
+});
+
+describe('reductor: el saludo dura hasta la primera acción del alumno (REQ-PANT-001)', () => {
+  it('empieza con saludo', () => {
+    expect(estadoInicial('a').saludo).toBe(true);
+  });
+
+  it('una puerta (ir a otra sección), una edición que de verdad cambia el código y visualizar lo terminan', () => {
+    expect(aplicar(estadoInicial('a'), { tipo: 'ir-a-seccion', seccion: 'ejemplos' }).saludo).toBe(false);
+    expect(aplicar(estadoInicial('a'), { tipo: 'editar', codigo: 'ab' }).saludo).toBe(false);
+    expect(aplicar(estadoInicial('a'), { tipo: 'visualizar', id: 1 }).saludo).toBe(false);
+  });
+
+  it('abrir un programa (ejemplo, tema o enlace) lo termina: un enlace abre el programa directo, sin saludo', () => {
+    expect(aplicar(estadoInicial('a'), { tipo: 'cargar-programa', codigo: EJEMPLO, entradaPreparada: '', origen: { tipo: 'enlace' } }).saludo).toBe(false);
+  });
+
+  it('lo que no es una acción del alumno no lo termina: «ir» a la sección en la que ya está, o un «editar» que deja el mismo código', () => {
+    expect(aplicar(estadoInicial('a'), { tipo: 'ir-a-seccion', seccion: 'paso-a-paso' }).saludo).toBe(true);
+    expect(aplicar(estadoInicial('a'), { tipo: 'editar', codigo: 'a' }).saludo).toBe(true);
+  });
+
+  it('«Probar mi programa» lo termina (terminar-saludo) sin tocar el código ni la sección', () => {
+    const estado = aplicar(estadoInicial('a'), { tipo: 'terminar-saludo' });
+    expect(estado.saludo).toBe(false);
+    expect(estado).toEqual({ ...estadoInicial('a'), saludo: false });
+  });
+
+  it('una vez terminado, no vuelve (volver a editar o a visualizar no lo trae de regreso)', () => {
+    const estado = aplicar(estadoInicial('a'), { tipo: 'editar', codigo: 'ab' }, { tipo: 'visualizar', id: 1 }, { tipo: 'volver-a-editar' });
+    expect(estado.saludo).toBe(false);
+  });
+});
+
+describe('reductor: «Ajustes de la clase» (REQ-PANT-006)', () => {
+  it('encender el proyector no pierde el paso ni la reproducción', () => {
+    const estado = aplicar(visualizando({ paso: 5, reproduciendo: true }), { tipo: 'cambiar-ajuste', ajuste: 'proyector', valor: true });
+    expect(estado.ajustes.proyector).toBe(true);
+    expect(estado.navegacion).toMatchObject({ paso: 5, reproduciendo: true });
+    expect(estado.modo).toBe('visualizacion');
+  });
+
+  it('apagarlo lo deja como estaba, sin tocar la velocidad', () => {
+    const encendido = aplicar(estadoInicial('a'), { tipo: 'cambiar-ajuste', ajuste: 'velocidad', valor: 4 }, { tipo: 'cambiar-ajuste', ajuste: 'proyector', valor: true });
+    expect(encendido.ajustes).toEqual({ proyector: true, velocidad: 4 });
+    expect(aplicar(encendido, { tipo: 'cambiar-ajuste', ajuste: 'proyector', valor: false }).ajustes).toEqual({ proyector: false, velocidad: 4 });
+  });
+
+  it('los ajustes sobreviven a volver a editar, a visualizar de nuevo y a abrir otro programa', () => {
+    const estado = aplicar(
+      visualizando(),
+      { tipo: 'cambiar-ajuste', ajuste: 'proyector', valor: true },
+      { tipo: 'volver-a-editar' },
+      { tipo: 'cargar-programa', codigo: EJEMPLO, entradaPreparada: ENTRADA, origen: DE_LA_GALERIA },
+      { tipo: 'visualizar', id: 9 },
+    );
+    expect(estado.ajustes.proyector).toBe(true);
+  });
+});
+
+describe('reductor: abrir un programa y volver al propio (REQ-AULA-001)', () => {
+  it('cargar-programa pone el código y su entrada preparada, anota de dónde vino y vuelve a «Paso a paso» en edición', () => {
+    const estado = aplicar(
+      visualizando({ paso: 4 }),
+      { tipo: 'ir-a-seccion', seccion: 'ejemplos' },
+      { tipo: 'cargar-programa', codigo: EJEMPLO, entradaPreparada: ENTRADA, origen: DE_LA_GALERIA },
+    );
+    expect(estado).toMatchObject({ codigo: EJEMPLO, entradaPreparada: ENTRADA, origen: DE_LA_GALERIA, seccion: 'paso-a-paso', modo: 'edicion', aviso: null });
+    expect(estado.navegacion).toMatchObject({ paso: 0, reproduciendo: false });
+    expect(estado.ejecucion.vista).toBeNull();
+  });
+
+  it('guarda el programa anterior del alumno para poder volver a él', () => {
+    const estado = aplicar(estadoInicial('mi programa'), { tipo: 'editar', codigo: 'mi programa con cambios' }, { tipo: 'cargar-programa', codigo: EJEMPLO, entradaPreparada: ENTRADA, origen: DE_LA_GALERIA });
+    expect(estado.programaGuardado).toEqual({ codigo: 'mi programa con cambios', entrada: '' });
+  });
+
+  it('abrir un segundo ejemplo NO pisa el programa del alumno con el primer ejemplo', () => {
+    const estado = aplicar(
+      estadoInicial('mi programa'),
+      { tipo: 'cargar-programa', codigo: EJEMPLO, entradaPreparada: ENTRADA, origen: DE_LA_GALERIA },
+      { tipo: 'cargar-programa', codigo: 'otro ejemplo', entradaPreparada: '', origen: { tipo: 'galeria', id: 'u3-hola-mundo', demostracion: false } },
+    );
+    expect(estado.codigo).toBe('otro ejemplo');
+    expect(estado.programaGuardado).toEqual({ codigo: 'mi programa', entrada: '' });
+  });
+
+  it('volver-a-mi-programa lo restaura, con su entrada, y ya no hay nada guardado', () => {
+    const conEjemplo = aplicar(estadoInicial('mi programa'), { tipo: 'cargar-programa', codigo: EJEMPLO, entradaPreparada: ENTRADA, origen: DE_LA_GALERIA });
+    const vuelto = aplicar(conEjemplo, { tipo: 'volver-a-mi-programa' });
+    expect(vuelto).toMatchObject({ codigo: 'mi programa', entradaPreparada: '', origen: { tipo: 'propio' }, programaGuardado: null, modo: 'edicion', seccion: 'paso-a-paso' });
+  });
+
+  it('sin programa guardado, volver-a-mi-programa no hace nada', () => {
+    const estado = estadoInicial('mi programa');
+    expect(aplicar(estado, { tipo: 'volver-a-mi-programa' })).toBe(estado);
+  });
+
+  it('visualizar conserva la entrada preparada del ejemplo (el oráculo la usó así) y puede cambiarla: «Probar con otros datos» la vacía', () => {
+    const conEjemplo = aplicar(estadoInicial('a'), { tipo: 'cargar-programa', codigo: EJEMPLO, entradaPreparada: ENTRADA, origen: DE_LA_GALERIA });
+    expect(aplicar(conEjemplo, { tipo: 'visualizar', id: 1 }).entradaPreparada).toBe(ENTRADA);
+    expect(aplicar(conEjemplo, { tipo: 'visualizar', id: 2, entradaPreparada: '' }).entradaPreparada).toBe('');
+  });
+
+  it('editar el código de un ejemplo no cambia de dónde vino ni su entrada preparada', () => {
+    const estado = aplicar(estadoInicial('a'), { tipo: 'cargar-programa', codigo: EJEMPLO, entradaPreparada: ENTRADA, origen: DE_LA_GALERIA }, { tipo: 'editar', codigo: `${EJEMPLO}\n` });
+    expect(estado).toMatchObject({ origen: DE_LA_GALERIA, entradaPreparada: ENTRADA });
   });
 });

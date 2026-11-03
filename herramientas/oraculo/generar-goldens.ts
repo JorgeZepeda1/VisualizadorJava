@@ -129,20 +129,39 @@ export interface ResultadoRegeneracion {
 }
 
 /**
- * Migra el corpus (si hace falta) y regenera TODOS los goldens del proyecto real. Operación
- * lenta (un `javac` + dos `java` por programa) — pensada para correr manualmente
- * (`npm run oraculo:goldens`) o en el job dedicado del oráculo (`oraculo.yml`, tarea 0.9), nunca
- * como parte de `npm test` (design.md §7.1: el oráculo corre "cambios en corpus/...; nocturno",
- * no "cada commit").
+ * Las carpetas de `corpus/` cuyos programas recorre el oráculo, en este orden: el curso, los experimentos y el libro (R0.13, `robots-tutores`: los ejemplos, errores típicos, «Ponte a prueba» y soluciones del
+ * libro también tienen golden del JDK real, nunca escrito a mano).
  */
-export async function generarTodosLosGoldens(raizProyecto: string = RAIZ_PROYECTO): Promise<ResultadoRegeneracion> {
+export const CARPETAS_DEL_CORPUS = ['curso', 'experimentos', 'libro'] as const;
+export type CarpetaDelCorpus = (typeof CARPETAS_DEL_CORPUS)[number];
+
+/** Pura: qué carpetas regenerar según los argumentos de la línea de comandos. Sin argumentos, todas; con argumentos, solo esas (en el orden de siempre y sin repetir). Un nombre desconocido es un error. */
+export function elegirCarpetas(argumentos: readonly string[]): readonly CarpetaDelCorpus[] {
+  if (argumentos.length === 0) return CARPETAS_DEL_CORPUS;
+  const desconocidas = argumentos.filter((argumento) => !CARPETAS_DEL_CORPUS.some((carpeta) => carpeta === argumento));
+  if (desconocidas.length > 0) {
+    throw new Error(`Carpeta del corpus desconocida: ${desconocidas.map((nombre) => `"${nombre}"`).join(', ')}. Las que hay: ${CARPETAS_DEL_CORPUS.join(', ')}.`);
+  }
+  return CARPETAS_DEL_CORPUS.filter((carpeta) => argumentos.includes(carpeta));
+}
+
+/**
+ * Migra el corpus (si hace falta) y regenera los goldens de `carpetas` (por omisión, TODOS los del proyecto real). Operación lenta (un `javac` + dos `java` por programa) — pensada para correr manualmente
+ * (`npm run oraculo:goldens`, o `npm run oraculo:goldens -- libro` para una sola carpeta) o en el job dedicado del oráculo (`oraculo.yml`, tarea 0.9), nunca como parte de `npm test` (design.md §7.1: el oráculo
+ * corre "cambios en corpus/...; nocturno", no "cada commit"). La migración de la exploración solo corre si entre las carpetas está `curso` o `experimentos`: regenerar el libro no toca el resto del corpus.
+ */
+export async function generarTodosLosGoldens(
+  raizProyecto: string = RAIZ_PROYECTO,
+  carpetas: readonly CarpetaDelCorpus[] = CARPETAS_DEL_CORPUS,
+): Promise<ResultadoRegeneracion> {
   const jdk = localizarJdk();
   const raizExploracion = resolve(raizProyecto, 'openspec', 'changes', 'visualizador-java', 'exploracion');
   const raizCorpus = resolve(raizProyecto, 'corpus');
 
-  const { copiadosCurso, copiadosExperimentos } = migrarCorpus({ raizExploracion, raizCorpusDestino: raizCorpus });
+  const migrar = carpetas.includes('curso') || carpetas.includes('experimentos');
+  const { copiadosCurso, copiadosExperimentos } = migrar ? migrarCorpus({ raizExploracion, raizCorpusDestino: raizCorpus }) : { copiadosCurso: 0, copiadosExperimentos: 0 };
 
-  const programas = [...descubrirProgramas(resolve(raizCorpus, 'curso')), ...descubrirProgramas(resolve(raizCorpus, 'experimentos'))];
+  const programas = carpetas.flatMap((carpeta) => descubrirProgramas(resolve(raizCorpus, carpeta)));
 
   const rutasRegeneradas: string[] = [];
   for (const programa of programas) {
@@ -157,7 +176,7 @@ export async function generarTodosLosGoldens(raizProyecto: string = RAIZ_PROYECT
 }
 
 function main(): void {
-  generarTodosLosGoldens(RAIZ_PROYECTO)
+  generarTodosLosGoldens(RAIZ_PROYECTO, elegirCarpetas(process.argv.slice(2)))
     .then((resultado) => {
       console.log(
         `Oráculo: ${resultado.copiadosCurso} archivos migrados a corpus/curso, ` +

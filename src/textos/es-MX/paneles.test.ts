@@ -79,8 +79,9 @@ describe('textosPaneles.condicion (REQ-VIS-006)', () => {
 
   it('el switch señala el case igualado, la caída sin break y el default', () => {
     expect(textosPaneles.condicion.casoIgualado('"A1"')).toBe('Coincide con `case "A1"`');
-    expect(textosPaneles.condicion.casoCae('2')).toBe('Cae a `case 2` porque no hubo `break`');
-    expect(textosPaneles.condicion.casoCae(null)).toBe('Cae al `default` porque no hubo `break`');
+    // V9 del maestro (panel R0): «Cae a…» sonaba a accidente; Java sigue de largo y la causa va después de los dos puntos.
+    expect(textosPaneles.condicion.casoCae('2')).toBe('Sigue de largo a `case 2`: no hubo `break`');
+    expect(textosPaneles.condicion.casoCae(null)).toBe('Sigue de largo al `default`: no hubo `break`');
     expect(textosPaneles.condicion.casoPorDefecto()).toBe('Ningún `case` coincide: va al `default`');
     expect(textosPaneles.condicion.sinCoincidencia()).toBe('Ningún `case` coincide y no hay `default`: sigue después del `switch`');
   });
@@ -118,7 +119,6 @@ describe('textosPaneles.vueltas (REQ-VIS-007)', () => {
 
 describe('textosPaneles.consola (REQ-VIS-008, REQ-VIS-009)', () => {
   it('nombra la consola, el error y el campo de entrada', () => {
-    expect(textosPaneles.consola.titulo()).toBe('Consola');
     expect(textosPaneles.consola.etiquetaDelError()).toBe('Error');
     expect(textosPaneles.consola.etiquetaDeLoTecleado()).toBe('Lo que tecleaste');
     expect(textosPaneles.consola.etiquetaDelCampo()).toBe('Escribe tu dato y pulsa Enter');
@@ -163,7 +163,8 @@ describe('textosPaneles.editor (REQ-VIS-001, REQ-VIS-004)', () => {
   });
 
   it('la rama del `if` que no se toma lleva una etiqueta en palabras (con ✗), para no depender solo del atenuado', () => {
-    expect(textosPaneles.editor.ramaNoTomada()).toBe('✗ esta rama no se ejecuta');
+    // V9 del maestro (panel R0): «rama» es vocabulario del programador; el alumno entiende «bloque».
+    expect(textosPaneles.editor.ramaNoTomada()).toBe('✗ Java se salta este bloque');
   });
 
   it('describe los caracteres invisibles que se pegan desde una página o un PDF', () => {

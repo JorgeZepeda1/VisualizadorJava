@@ -47,12 +47,12 @@ test.describe('ciclo desbocado: se detiene solo, la página sigue viva y el alum
     await expect(globoDelRobot(page)).toContainText('Todavía no se ejecuta nada');
     await expect(globoDelRobot(page)).toContainText('Ojo: este programa no terminó solo. El visualizador lo detuvo por seguridad después de muchos pasos. Avanza y descubre por qué.', { timeout: 60_000 });
     await expect(globoDelRobot(page)).not.toContainText('siempre valió');
-    await expect(page.getByText('Paso 0 de 100001').first()).toBeVisible();
+    await expect(page.getByText('Paso 0', { exact: true }).first()).toBeVisible();
     expect(await huecoMaximoEntreLatidos(page), 'el hilo principal se quedó sin latir').toBeLessThan(HUECO_MAXIMO_ENTRE_LATIDOS_MS);
 
     // En el último paso, el aviso con su título, UN solo texto con la evidencia (sin repetir «se detuvo») y el robot levantando la mano.
     await irAlFinal(page);
-    await expect(page.getByText('Paso 100001 de 100001').first()).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByText('Paso 100001', { exact: true }).first()).toBeVisible({ timeout: 60_000 });
     await expect(globoDelRobot(page)).toContainText('Se detuvo por seguridad');
     await expect(globoDelRobot(page)).toContainText('En las últimas 100 vueltas del while de la línea 5, contador siempre valió 1, así que contador <= 5 siempre dio true.');
     await expect(globoDelRobot(page)).toContainText('Mientras nada dentro del ciclo cambie contador, el ciclo no va a terminar.');
@@ -68,7 +68,7 @@ test.describe('ciclo desbocado: se detiene solo, la página sigue viva y el alum
     // Volver a visualizar termina al trabajador anterior y usa el de repuesto: la segunda ejecución llega igual de lejos y dice lo mismo.
     await visualizar(page);
     await expect(globoDelRobot(page)).toContainText('Ojo: este programa no terminó solo', { timeout: 60_000 });
-    await expect(page.getByText('Paso 0 de 100001').first()).toBeVisible();
+    await expect(page.getByText('Paso 0', { exact: true }).first()).toBeVisible();
   });
 
   test('while (true) {}: no congela la página y el aviso lo dice con lo que sí se sabe del ciclo', async ({ page }) => {
@@ -84,7 +84,7 @@ test.describe('ciclo desbocado: se detiene solo, la página sigue viva y el alum
 
     // La página sigue respondiendo a quien la usa: la traza ya calculada es navegable.
     await page.getByRole('button', { name: /siguiente/i }).click();
-    await expect(page.getByText('Paso 1 de 100001').first()).toBeVisible();
+    await expect(page.getByText('Paso 1', { exact: true }).first()).toBeVisible();
     await expect(globoDelRobot(page)).toContainText('Línea 3');
   });
 });

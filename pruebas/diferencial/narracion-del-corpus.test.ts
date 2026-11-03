@@ -48,14 +48,14 @@ describe('C1: el narrador separa el cálculo de la conversión al guardar, con u
 
   it('en la línea 9 el robot dice que `5 / 2` da 2 y que el 2.0 es lo que se guarda en el `double`', () => {
     const frase = frases.find((f) => f.linea === 9);
-    expect(frase?.texto).toBe('Calculo `5 / 2`, que da 2. Creo la variable `d` de tipo double. Como `d` es `double`, guardo 2.0.');
+    expect(frase?.texto).toBe('Java calcula `5 / 2`, que da 2. Después crea la variable `d` de tipo double. Como `d` es `double`, guarda 2.0.');
   });
 
   it('coincide con el JDK real: un `7 / 2` impreso da 3 (división entera, sin «.0») y la `d` que se guardó se imprime 2.0', () => {
     expect(salidaDelJdk[0]).toBe('3'); // System.out.println(7 / 2): Java divide como enteros y NO escribe «3.0»
     expect(salidaDelJdk[salidaDelJdk.length - 1]).toBe('2.0'); // System.out.println(d): lo guardado en el double
     const impresion = frases.filter((f) => f.linea === 4).map((f) => f.texto);
-    expect(impresion).toEqual(['Imprimo en la consola: «-3» y paso a la línea siguiente.']); // el robot también imprime -3, no -3.0
+    expect(impresion).toEqual(['Java imprime en la consola: «-3» y pasa a la línea siguiente.']); // el robot también imprime -3, no -3.0
   });
 });
 
@@ -64,7 +64,7 @@ describe('C1: `double suma = 0;` (acumulador del currículo, U6) guarda un 0 que
 
   it('el robot dice que se guarda 0.0 porque `suma` es `double`, no que el cálculo dé 0.0', () => {
     const paso = (pasosDe(id, fuente) ?? []).find((p) => p.linea === 6);
-    expect(paso && textoDeExplicacion(paso.explicacion)).toBe('Creo la variable `suma` de tipo double. Como `suma` es `double`, guardo 0.0.');
+    expect(paso && textoDeExplicacion(paso.explicacion)).toBe('Java crea la variable `suma` de tipo double. Como `suma` es `double`, guarda 0.0.');
   });
 });
 
@@ -80,7 +80,7 @@ describe('C2: los efectos de `++` y los recortes que cuenta el robot coinciden c
     const { salidaDelJdk } = delCorpus('experimentos/ejecucion/e09-orden-de-evaluacion.java');
     expect(salidaDelJdk[0]).toBe('i++ + ++i: r = 12 i = 7');
     expect(frasesDe('experimentos/ejecucion/e09-orden-de-evaluacion.java').find((f) => f.linea === 4)?.texto).toBe(
-      'Calculo `i++ + ++i`, que da 12. `i++` vale 5 y deja `i` en 6. `++i` vale 7 y deja `i` en 7. Creo la variable `r` de tipo int y le guardo 12.',
+      'Java calcula `i++ + ++i`, que da 12. `i++` vale 5 y deja `i` en 6. `++i` vale 7 y deja `i` en 7. Después crea la variable `r` de tipo int y le guarda 12.',
     );
   });
 
@@ -88,7 +88,7 @@ describe('C2: los efectos de `++` y los recortes que cuenta el robot coinciden c
     const { salidaDelJdk } = delCorpus('experimentos/ejecucion/e09-orden-de-evaluacion.java');
     expect(salidaDelJdk[1]).toBe('j = j++: 3');
     expect(frasesDe('experimentos/ejecucion/e09-orden-de-evaluacion.java').find((f) => f.linea === 7)?.texto).toBe(
-      'Calculo `j++`, que da 3. `j++` vale 3 y deja `j` en 4. Guardo 3 en `j`; antes valía 4.',
+      'Java calcula `j++`, que da 3. `j++` vale 3 y deja `j` en 4. Después guarda 3 en `j`; antes valía 4.',
     );
   });
 
@@ -96,7 +96,7 @@ describe('C2: los efectos de `++` y los recortes que cuenta el robot coinciden c
     const { salidaDelJdk } = delCorpus('experimentos/ejecucion/e09-orden-de-evaluacion.java');
     expect(salidaDelJdk[4]).toBe('y += y++: 8');
     expect(frasesDe('experimentos/ejecucion/e09-orden-de-evaluacion.java').find((f) => f.linea === 16)?.texto).toBe(
-      '`y += y++`: el lado derecho vale 4 y `y` valía 4. `y++` vale 4 y deja `y` en 5. Guardo 8 en `y`.',
+      '`y += y++`: el lado derecho vale 4 y `y` valía 4. `y++` vale 4 y deja `y` en 5. Java guarda 8 en `y`.',
     );
   });
 
@@ -104,7 +104,7 @@ describe('C2: los efectos de `++` y los recortes que cuenta el robot coinciden c
     const { salidaDelJdk } = delCorpus('experimentos/ejecucion/e10-asignacion-compuesta.java');
     expect(salidaDelJdk[7]).toBe('920784896');
     expect(frasesDe('experimentos/ejecucion/e10-asignacion-compuesta.java').find((f) => f.linea === 18)?.texto).toBe(
-      '`x *= 1000000000L`: el lado derecho vale 1000000000 y `x` valía 104. `104 * 1000000000` da 104000000000 y, como `x` es `int`, se queda con 920784896. Guardo 920784896 en `x`.',
+      '`x *= 1000000000L`: el lado derecho vale 1000000000 y `x` valía 104. `104 * 1000000000` da 104000000000 y, como `x` es `int`, se queda con 920784896. Java guarda 920784896 en `x`.',
     );
   });
 
@@ -112,7 +112,7 @@ describe('C2: los efectos de `++` y los recortes que cuenta el robot coinciden c
     const { salidaDelJdk } = delCorpus('experimentos/ejecucion/e04-char-aritmetica.java');
     expect(salidaDelJdk).toContain('d');
     expect(frasesDe('experimentos/ejecucion/e04-char-aritmetica.java').find((f) => f.linea === 15)?.texto).toBe(
-      "`d += 2`: el lado derecho vale 2 y `d` valía 'b'. `'b' + 2` da 100 y, como `d` es `char`, se queda con 'd'. Guardo 'd' en `d`.",
+      "`d += 2`: el lado derecho vale 2 y `d` valía 'b'. `'b' + 2` da 100 y, como `d` es `char`, se queda con 'd'. Java guarda 'd' en `d`.",
     );
   });
 });
@@ -128,7 +128,7 @@ describe('C1 y C2 sobre TODO el corpus que el motor ejecuta: cada conversión, r
     expect(con('efectos')).toBeGreaterThan(5);
   });
 
-  it('una conversión al guardar: el robot dice «Como `x` es `T`, guardo V» y NUNCA «que da V» con el valor ya convertido', () => {
+  it('una conversión al guardar: el robot dice «Como `x` es `T`, guarda V» y NUNCA «que da V» con el valor ya convertido', () => {
     const conConversion = todos.filter(({ paso }) => 'conversion' in paso.explicacion.datos);
     expect(conConversion.length).toBeGreaterThan(5);
     for (const { programa, paso } of conConversion) {
@@ -136,7 +136,7 @@ describe('C1 y C2 sobre TODO el corpus que el motor ejecuta: cada conversión, r
       const { nombre, valor, conversion } = paso.explicacion.datos;
       if (conversion === undefined) continue;
       const texto = textoDeExplicacion(paso.explicacion);
-      expect(texto, `${programa} L${paso.linea}`).toContain(`Como \`${nombre}\` es \`${conversion.tipo}\`, guardo ${valor}`);
+      expect(texto, `${programa} L${paso.linea}`).toContain(`Como \`${nombre}\` es \`${conversion.tipo}\`, guarda ${valor}`);
       expect(texto, `${programa} L${paso.linea}`).not.toContain(`que da ${valor}`);
       expect(conversion.antes, `${programa} L${paso.linea}`).not.toBe(valor);
     }

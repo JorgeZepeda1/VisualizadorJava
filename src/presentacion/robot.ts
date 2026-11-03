@@ -7,10 +7,14 @@ import type { FinEjecucion, Paso, VistaPrograma } from '../motor/vista.ts';
 import { textoDelAvisoDeLimite, textoIntrigaDelLimite } from '../textos/es-MX/avisos-de-limite.ts';
 import { textoDeExplicacion } from '../textos/es-MX/explicaciones.ts';
 import type { TipoDeAviso } from '../textos/es-MX/paneles.ts';
+import { textosPantalla } from '../textos/es-MX/pantalla.ts';
 import { textosRobot, type AnimoDelRobot } from '../textos/es-MX/robot.ts';
 
 /** En qué va la ejecución, según lo que el trabajador ha mandado. */
 export type EstadoDeLaEjecucion =
+  /** Al abrir el visualizador, hasta la primera acción del alumno (REQ-PANT-001): el robot saluda y la ranura ofrece las puertas. */
+  | { readonly estado: 'saludo' }
+  /** El alumno escribe o pega su programa (ya pasó el saludo). */
   | { readonly estado: 'sin-ejecutar' }
   | { readonly estado: 'compilando' }
   /** El alumno editó el código después de un aviso: el aviso viejo ya no describe el programa que hay en el editor (C4 del panel 1). */
@@ -42,6 +46,8 @@ export interface EntradaDelRobot {
   readonly siguiente: Paso | null;
   readonly total: number;
   readonly vista: VistaPrograma | null;
+  /** Los datos de la entrada preparada del programa abierto (V7, panel R0): el paso 0 los nombra. Vacía o ausente, no menciona ninguno. */
+  readonly datosPreparados?: readonly string[];
 }
 
 type CausaFin = FinEjecucion['causa'];
@@ -91,7 +97,7 @@ function sinPaso(texto: string, animo: AnimoDelRobot = 'normal', nota: string | 
   return { animo, linea: null, texto, nota, aviso: null, asertivo: false };
 }
 
-function alInicio({ ejecucion, siguiente, total, vista }: EntradaDelRobot): RobotVista {
+function alInicio({ ejecucion, siguiente, total, vista, datosPreparados }: EntradaDelRobot): RobotVista {
   if (ejecucion.estado === 'terminada' && total === 0) {
     return sinPaso(textosRobot.resumenDelFin[ejecucion.fin.causa]({ pasos: 0 }), animoDelFin(ejecucion.fin.causa));
   }
@@ -102,7 +108,7 @@ function alInicio({ ejecucion, siguiente, total, vista }: EntradaDelRobot): Robo
   const notaDeLaEspera = esperando && total === 0 && lineaDeLaLectura !== null ? textosRobot.esperandoUnDato(lineaDeLaLectura) : null;
   // Un programa que el visualizador detuvo por seguridad lo adelanta desde el paso 0, pero como intriga: dice QUE no terminó solo y deja el POR QUÉ (la evidencia del ciclo) para el final (C7 del panel 1).
   const notaDelLimite = ejecucion.estado === 'terminada' ? textoIntrigaDelLimite(ejecucion.fin.causa) : null;
-  return sinPaso(textosRobot.alInicio(lineaSiguiente), esperando && total === 0 ? 'esperando' : 'normal', notaDeLaEspera ?? notaDelLimite);
+  return sinPaso(textosRobot.alInicio(lineaSiguiente, datosPreparados), esperando && total === 0 ? 'esperando' : 'normal', notaDeLaEspera ?? notaDelLimite);
 }
 
 /**
@@ -136,7 +142,8 @@ function notaDelUltimoPaso(entrada: EntradaDelRobot, ultimo: Paso): { readonly n
 
 export function derivarRobot(entrada: EntradaDelRobot): RobotVista {
   const { ejecucion, aplicados, total } = entrada;
-  if (ejecucion.estado === 'sin-ejecutar') return sinPaso(textosRobot.saludo());
+  if (ejecucion.estado === 'saludo') return sinPaso(textosPantalla.saludo.globo());
+  if (ejecucion.estado === 'sin-ejecutar') return sinPaso(textosRobot.sinEjecutar());
   if (ejecucion.estado === 'compilando') return sinPaso(textosRobot.compilando());
   if (ejecucion.estado === 'cambiado-tras-un-aviso') return sinPaso(textosRobot.programaCambiado());
 

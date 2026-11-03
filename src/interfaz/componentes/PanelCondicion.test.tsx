@@ -149,9 +149,9 @@ describe('<PanelCondicion/> — switch', () => {
   });
 
   it('señala la caída sin break y el default', () => {
-    const caida: CondicionVista = { tipo: 'switch', cadena: null, filas: [{ texto: 'Cae a `case 2` porque no hubo `break`', corre: true }] };
+    const caida: CondicionVista = { tipo: 'switch', cadena: null, filas: [{ texto: 'Sigue de largo a `case 2`: no hubo `break`', corre: true }] };
     const { rerender } = render(<PanelCondicion condicion={caida} />);
-    expect(screen.getByRole('listitem').textContent).toContain('Cae a case 2 porque no hubo break');
+    expect(screen.getByRole('listitem').textContent).toContain('Sigue de largo a case 2: no hubo break');
     expect(screen.queryByTestId('cadena-de-sustitucion')).toBeNull();
 
     rerender(<PanelCondicion condicion={{ tipo: 'switch', cadena: ['n', '9'], filas: [{ texto: 'Ningún `case` coincide: va al `default`', corre: true }] }} />);

@@ -95,3 +95,133 @@ export async function verificarQueElRobotDiceAlgoEnCadaPaso(page: Page): Promise
 export function teclaDeTabulador(navegador: string): string {
   return navegador === 'webkit' && process.platform === 'darwin' ? 'Alt+Tab' : 'Tab';
 }
+
+/** Abre la máquina de snacks desde la galería: con los datos de ejemplo a1 · 2 · 50 o, con `conMisDatos`, con la entrada vacía para que el alumno teclee los suyos. */
+export async function abrirLaMaquinaDeSnacks(page: Page, opciones: { readonly conMisDatos?: boolean } = {}): Promise<void> {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Ver un ejemplo paso a paso' }).click();
+  if (opciones.conMisDatos === true) await page.getByRole('button', { name: 'Con mis datos: Máquina de snacks' }).click();
+  else await page.getByRole('button', { name: /a1 · 2 · 50/ }).click();
+  await expect(page.getByRole('button', { name: /siguiente/i })).toBeFocused();
+}
+
+/**
+ * Cómo se parten en renglones las líneas del editor que se ven AHORA (modo proyector, REQ-AULA-004, panel R0 del diseñador). Mide cada carácter con un `Range`, así que ve lo que ve el alumno. Devuelve los
+ * problemas, uno por línea y por regla; vacío si todo está bien:
+ *   - un renglón numerado vacío: una línea partida cuyo primer renglón es solo sangría (el texto arranca en el segundo);
+ *   - una palabra (letras, dígitos o `_`) partida entre dos renglones («Cantida|d»);
+ *   - una continuación que no lleva la sangría colgante de la línea MÁS 2 columnas.
+ */
+export async function problemasDelPartidoDeLineas(page: Page): Promise<{ readonly problemas: string[]; readonly lineasPartidas: string[] }> {
+  return page.evaluate(() => {
+    const problemas: string[] = [];
+    const lineasPartidas: string[] = [];
+    for (const linea of Array.from(document.querySelectorAll('.cm-content .cm-line'))) {
+      const caracteres: { letra: string; izquierda: number; ancho: number; arriba: number }[] = [];
+      const recorrer = (nodo: Node): void => {
+        if (nodo instanceof Element && (nodo.classList.contains('cm-widgetBuffer') || nodo.className.toString().includes('cm-etiqueta'))) return;
+        if (nodo.nodeType === Node.TEXT_NODE) {
+          const texto = nodo as Text;
+          const rango = document.createRange();
+          for (let indice = 0; indice < texto.length; indice += 1) {
+            rango.setStart(texto, indice);
+            rango.setEnd(texto, indice + 1);
+            const cajas = rango.getClientRects();
+            const caja = cajas[cajas.length - 1];
+            if (caja === undefined || (caja.width === 0 && caja.height === 0)) continue;
+            caracteres.push({ letra: texto.data.charAt(indice), izquierda: caja.left, ancho: caja.width, arriba: Math.round(caja.top) });
+          }
+        } else nodo.childNodes.forEach(recorrer);
+      };
+      recorrer(linea);
+      const nombre = caracteres.map((caracter) => caracter.letra).join('').trim().slice(0, 60);
+      const renglones = [...new Set(caracteres.map((caracter) => caracter.arriba))].sort((a, b) => a - b);
+      if (renglones.length < 2) continue;
+      lineasPartidas.push(nombre);
+
+      for (const arriba of renglones) {
+        if (!caracteres.some((caracter) => caracter.arriba === arriba && caracter.letra.trim() !== '')) problemas.push(`«${nombre}»: un renglón numerado queda vacío (solo sangría)`);
+      }
+      const texto = caracteres.map((caracter) => caracter.letra).join('');
+      for (const palabra of texto.matchAll(/[\p{L}\p{N}_$]+/gu)) {
+        const inicio = palabra.index ?? 0;
+        const filas = new Set(caracteres.slice(inicio, inicio + palabra[0].length).map((caracter) => caracter.arriba));
+        if (filas.size > 1) problemas.push(`«${nombre}»: la palabra «${palabra[0]}» se parte entre dos renglones`);
+      }
+      const primero = caracteres[0];
+      if (primero === undefined) continue;
+      // El ancho de una columna sale de la distancia entre los primeros caracteres del primer renglón (monoespaciado): WebKit redondea los rectángulos de cada carácter a píxeles enteros y un solo ancho no sirve.
+      const primerRenglon = caracteres.filter((caracter) => caracter.arriba === renglones[0]);
+      const ultimoMedido = Math.min(primerRenglon.length - 1, 12);
+      if (ultimoMedido < 1) continue;
+      const ch = ((primerRenglon[ultimoMedido]?.izquierda ?? 0) - primero.izquierda) / ultimoMedido;
+      const sangria = texto.length - texto.trimStart().length;
+      for (const arriba of renglones.slice(1)) {
+        // El primer carácter del renglón cuenta aunque sea un espacio: una cadena con varios espacios seguidos («A1 Papas      $18») se parte entre ellos y los que sobran empiezan el renglón siguiente.
+        const inicioDelRenglon = caracteres.find((caracter) => caracter.arriba === arriba);
+        if (inicioDelRenglon === undefined) continue;
+        const esperado = primero.izquierda + (sangria + 2) * ch;
+        if (Math.abs(inicioDelRenglon.izquierda - esperado) > 2) {
+          problemas.push(`«${nombre}»: la continuación arranca en ${(inicioDelRenglon.izquierda - primero.izquierda) / ch} columnas y debía arrancar en ${sangria + 2} (sangría ${sangria} + 2)`);
+        }
+      }
+    }
+    return { problemas, lineasPartidas };
+  });
+}
+
+/** Recorre el código del editor de arriba abajo y junta los problemas de partido de líneas de TODAS las líneas (CodeMirror solo dibuja las que están a la vista). */
+export async function problemasDelPartidoEnTodoElCodigo(page: Page): Promise<{ readonly problemas: string[]; readonly lineasPartidas: string[] }> {
+  const desplazador = page.locator('.cm-scroller');
+  const { alto, visible } = await desplazador.evaluate((elemento) => ({ alto: elemento.scrollHeight, visible: elemento.clientHeight }));
+  const problemas = new Set<string>();
+  const lineasPartidas = new Set<string>();
+  for (let desplazamiento = 0; desplazamiento < alto; desplazamiento += Math.max(visible / 2, 40)) {
+    await desplazador.evaluate((elemento, y) => {
+      elemento.scrollTop = y;
+    }, desplazamiento);
+    await page.waitForTimeout(40);
+    const medidas = await problemasDelPartidoDeLineas(page);
+    for (const problema of medidas.problemas) problemas.add(problema);
+    for (const linea of medidas.lineasPartidas) lineasPartidas.add(linea);
+  }
+  return { problemas: [...problemas], lineasPartidas: [...lineasPartidas] };
+}
+
+/** ¿En cuántos renglones se dibuja el texto de este elemento? Una pieza de código que se parte por dentro ocupa más de uno. */
+export async function renglonesDeTexto(elemento: Locator): Promise<number> {
+  return elemento.evaluate((nodo) => {
+    const rango = document.createRange();
+    rango.selectNodeContents(nodo);
+    return new Set(Array.from(rango.getClientRects(), (caja) => Math.round(caja.top))).size;
+  });
+}
+
+/**
+ * Las dos «letras» con que se corren las pruebas de distribución (ADR 017, «Distribución tolerante a otras fuentes»). La habitual es la del equipo donde se prueba; la ancha simula las fuentes de otros
+ * equipos —DejaVu Sans en el Linux del CI y Segoe UI / Verdana en las laptops con Windows de un aula—, que miden 8 % a 15 % más de ancho por letra y por palabra, y rompen en más renglones el mismo texto.
+ * Una distribución que dependiera de las métricas de la fuente de quien la diseñó (restar un alto estimado, reservar un alto en renglones…) se pasa por unos píxeles con ellas.
+ */
+export const LETRAS = ['habitual', 'ancha'] as const;
+export type Letra = (typeof LETRAS)[number];
+
+// 0,07 em por letra y 0,25 em por palabra: con eso el encabezado a 1024 px pasa a dos renglones, igual que en el CI de Linux. El código (CodeMirror, la consola, `code`) es monoespaciado y se mide en `ch`:
+// ahí las fuentes cambian poco, así que no se toca.
+const CSS_DE_LETRA_ANCHA = [
+  '*, *::before, *::after { letter-spacing: 0.07em !important; word-spacing: 0.25em !important; }',
+  '.cm-editor, .cm-editor *, .cm-editor *::before, .cm-editor *::after, .consola, .consola *, code, code * { letter-spacing: normal !important; word-spacing: normal !important; }',
+].join(' ');
+
+/** Antes de abrir la página: inyecta en cada documento el CSS de la letra ancha (no hace nada con la habitual). Hay que llamarla antes de `page.goto`. */
+export async function prepararLetra(page: Page, letra: Letra): Promise<void> {
+  if (letra === 'habitual') return;
+  await page.addInitScript((css) => {
+    const poner = (): void => {
+      const estilo = document.createElement('style');
+      estilo.textContent = css;
+      document.head.appendChild(estilo);
+    };
+    if (document.head === null) document.addEventListener('DOMContentLoaded', poner, { once: true });
+    else poner();
+  }, CSS_DE_LETRA_ANCHA);
+}

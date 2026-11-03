@@ -264,7 +264,7 @@ describe('<Visualizador/> — al editar después de un aviso, el globo deja de r
     corregirElPrograma();
 
     const globo = await screen.findByTestId('globo-del-robot');
-    expect(globo.textContent).toContain('Cambiaste el programa. Pulsa «Visualizar» y lo reviso otra vez.');
+    expect(globo.textContent).toContain('Cambiaste el programa. Pulsa «Visualizar» para que Java lo revise otra vez.');
     expect(screen.queryByRole('alert')).toBeNull();
     expect(document.body.textContent).not.toContain('Te falta un punto y coma');
     expect(screen.getByRole('img', { name: /robot/i }).getAttribute('data-animo')).toBe('normal');

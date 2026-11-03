@@ -1,7 +1,7 @@
 // Tarea 0.14 (Consola mínima) ampliada en la 4.7 (REQ-VIS-008): presentacional puro, recibe los segmentos ya resueltos por el contenedor (design.md §6.4: out/err/eco en el mismo <pre>). La
 // salida normal se ve como está; `System.err` lleva ícono y la palabra «Error» (no solo rojo); lo que el alumno teclea (eco) va con otro estilo Y subrayado, en el mismo renglón que el
 // mensaje del `print`; y no hay mensajes de IDE. El campo de entrada entra como hijo, al final del último renglón.
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { Consola } from './Consola.tsx';
 
@@ -140,5 +140,60 @@ describe('<Consola/> — el campo de entrada como hijo', () => {
     const consola = screen.getByTestId('consola');
     expect(consola.lastElementChild?.tagName).toBe('INPUT');
     expect(consola.textContent).toBe('Dinero: ');
+  });
+});
+
+// R0.10 (REQ-PANT-001, panel 1 H1): la consola vacía tiene título y dice dónde aparecerá lo que imprima el programa. El texto de ayuda va FUERA del registro (el `<pre>` sigue vacío: lo que el programa imprime y
+// lo que dice la pantalla no se mezclan). R0.12 (REQ-AULA-004): la consola muestra siempre sus ÚLTIMAS líneas (en proyector solo caben cuatro).
+describe('<Consola/> — título y ayuda de la consola vacía', () => {
+  it('tiene un título visible y el registro lleva ese nombre', () => {
+    render(<Consola segmentos={[]} />);
+    const titulo = screen.getByRole('heading', { name: 'Consola' });
+    expect(titulo.textContent).toBe('Consola');
+    expect(screen.getByRole('log', { name: 'Consola' })).toBe(screen.getByTestId('consola'));
+  });
+
+  it('vacía, dice dónde aparecerá lo que imprima el programa; el registro sigue vacío', () => {
+    render(<Consola segmentos={[]} />);
+    expect(screen.getByText('Aquí aparecerá lo que imprima tu programa')).toBeTruthy();
+    expect(screen.getByTestId('consola').textContent).toBe('');
+  });
+
+  it('en cuanto el programa imprime algo, la ayuda desaparece', () => {
+    render(<Consola segmentos={[{ flujo: 'out', texto: 'Hola\n' }]} />);
+    expect(screen.queryByText('Aquí aparecerá lo que imprima tu programa')).toBeNull();
+  });
+
+  it('si el programa espera un dato (hay campo de entrada) la consola no está vacía, aunque todavía no haya salida', () => {
+    render(
+      <Consola segmentos={[]}>
+        <input />
+      </Consola>,
+    );
+    expect(screen.queryByText('Aquí aparecerá lo que imprima tu programa')).toBeNull();
+  });
+});
+
+describe('<Consola/> — siempre muestra lo último que imprimió el programa', () => {
+  const original = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollHeight');
+  afterEach(() => {
+    if (original) Object.defineProperty(HTMLElement.prototype, 'scrollHeight', original);
+  });
+
+  it('al llegar salida nueva el registro baja hasta el final (en proyector solo caben las últimas líneas)', () => {
+    Object.defineProperty(HTMLElement.prototype, 'scrollHeight', { configurable: true, get: () => 480 });
+    const { rerender } = render(<Consola segmentos={[{ flujo: 'out', texto: 'uno\n' }]} />);
+    expect(screen.getByTestId('consola').scrollTop).toBe(480);
+
+    Object.defineProperty(HTMLElement.prototype, 'scrollHeight', { configurable: true, get: () => 900 });
+    rerender(
+      <Consola
+        segmentos={[
+          { flujo: 'out', texto: 'uno\n' },
+          { flujo: 'out', texto: 'dos\n' },
+        ]}
+      />,
+    );
+    expect(screen.getByTestId('consola').scrollTop).toBe(900);
   });
 });

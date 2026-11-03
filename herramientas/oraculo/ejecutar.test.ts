@@ -126,7 +126,7 @@ describe('ejecutar.ts — compila y ejecuta contra el JDK real (ADR 011, tarea 0
 
     expect(resultado.agotoTiempo).toBe(true);
     expect(resultado.compilo).toBe(true);
-  }, 10_000);
+  }, 60_000);
 
   it('acota la captura de un ciclo infinito real: nunca guarda megabytes de salida repetida', async () => {
     // Hallazgo real al regenerar el corpus completo (0.6 GREEN): sin tope, 5s de
@@ -146,7 +146,7 @@ describe('ejecutar.ts — compila y ejecuta contra el JDK real (ADR 011, tarea 0
     expect(resultado.combinada.length).toBeLessThanOrEqual(LIMITE_BYTES_CAPTURA_POR_OMISION);
     // Pero sí capturó ALGO real, no lo vació por completo — sigue siendo información útil.
     expect(resultado.stdout.length).toBeGreaterThan(0);
-  }, 10_000);
+  }, 60_000);
 
   it('"envAdicional" fija variables de entorno REALES del proceso hijo (LANG), sin perder el resto del entorno heredado', async () => {
     const fuente = [

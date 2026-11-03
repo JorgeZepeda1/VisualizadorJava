@@ -54,7 +54,7 @@ test.describe('MaquinaSnacks con entrada interactiva (el ejercicio del PO)', () 
     await expect(page.getByRole('img', { name: /robot/i })).toHaveAttribute('data-animo', 'esperando');
 
     await teclearYVerLaLectura(page, 'a1', 19);
-    await expect(globoDelRobot(page)).toContainText('Creo la variable codigo de tipo String y le guardo "A1".');
+    await expect(globoDelRobot(page)).toContainText('Después crea la variable codigo de tipo String y le guarda "A1".');
     await irAlFinal(page);
     await teclearYVerLaLectura(page, '2', 51);
     await irAlFinal(page);
@@ -113,13 +113,13 @@ test.describe('MaquinaSnacks con entrada interactiva (el ejercicio del PO)', () 
     // La rama que no corre está atenuada, nunca oculta.
     await expect(page.locator('li.atenuada')).toContainText('No entra al if');
     // En el editor, el bloque que el programa se salta («Cantidad no válida» + `return`) se atenúa Y lleva una etiqueta en palabras; al pasar a la sentencia siguiente, desaparece.
-    await expect(page.locator('.cm-etiqueta-rama-no-tomada')).toHaveText('✗ esta rama no se ejecuta');
+    await expect(page.locator('.cm-etiqueta-rama-no-tomada')).toHaveText('✗ Java se salta este bloque');
     expect((await page.locator('.cm-rama-no-tomada').allTextContents()).join('')).toContain('Cantidad no válida');
     // La línea recién ejecutada y la siguiente llevan DOS marcas distintas.
     await expect(page.locator('.cm-linea-ejecutada')).toHaveCount(1);
     await expect(page.locator('.cm-linea-siguiente')).toHaveCount(1);
-    await expect(page.locator('.cm-marca-ejecutada')).toHaveText('▶');
-    await expect(page.locator('.cm-marca-siguiente')).toHaveText('▷');
+    await expect(page.locator('.cm-editor .cm-marca-ejecutada')).toHaveText('▶');
+    await expect(page.locator('.cm-editor .cm-marca-siguiente')).toHaveText('▷');
 
     await page.getByRole('button', { name: /siguiente/i }).click();
     await expect(page.locator('.cm-rama-no-tomada')).toHaveCount(0);
@@ -158,37 +158,38 @@ test.describe('navegar con teclado y con mouse', () => {
     await expect(page.getByRole('button', { name: /siguiente/i })).toBeFocused();
 
     await page.keyboard.press('ArrowRight');
-    await expect(page.getByText('Paso 1 de 8').first()).toBeVisible();
+    await expect(page.getByText('Paso 1', { exact: true }).first()).toBeVisible();
     await page.keyboard.press('ArrowRight');
     await page.keyboard.press('ArrowLeft');
-    await expect(page.getByText('Paso 1 de 8').first()).toBeVisible();
+    await expect(page.getByText('Paso 1', { exact: true }).first()).toBeVisible();
     await page.keyboard.press('Home');
-    await expect(page.getByText('Paso 0 de 8').first()).toBeVisible();
+    await expect(page.getByText('Paso 0', { exact: true }).first()).toBeVisible();
 
     await page.getByRole('slider', { name: /posición/i }).fill('5');
-    await expect(page.getByText('Paso 5 de 8').first()).toBeVisible();
+    await expect(page.getByText('Paso 5', { exact: true }).first()).toBeVisible();
     await expect(globoDelRobot(page)).toContainText('Línea 13');
 
     // Fin va al último paso; ahí el programa espera un dato y el campo de la consola toma el foco (las teclas pasan a ser del campo).
     await page.keyboard.press('End');
-    await expect(page.getByText('Paso 8 de 8').first()).toBeVisible();
+    await expect(page.getByText('Paso 8', { exact: true }).first()).toBeVisible();
     await expect(page.getByRole('textbox', { name: /dato/i })).toBeFocused();
   });
 
   test('«Reproducir» avanza solo hasta el dato que el programa espera y ahí se detiene, con el campo en foco', async ({ page }) => {
     await pegarYVisualizar(page, MAQUINA_DE_SNACKS);
+    await page.getByRole('button', { name: 'Ajustes de la clase' }).click();
     await page.getByRole('combobox', { name: 'Velocidad' }).selectOption('5');
     await page.getByRole('button', { name: /reproducir/i }).click();
 
     await expect(page.getByRole('textbox', { name: /dato/i })).toBeFocused({ timeout: 10_000 });
-    await expect(page.getByText('Paso 8 de 8').first()).toBeVisible();
+    await expect(page.getByText('Paso 8', { exact: true }).first()).toBeVisible();
     await expect(page.getByRole('button', { name: /reproducir/i })).toBeDisabled();
   });
 
   test('«Editar programa» devuelve el editor; se corrige y se vuelve a visualizar', async ({ page }) => {
     await pegarYVisualizar(page, MAQUINA_DE_SNACKS);
     await page.getByRole('button', { name: /editar programa/i }).click();
-    await expect(page.locator('.cm-content')).toHaveAttribute('contenteditable', 'true');
+    await expect(page.locator('.cm-content')).toBeEditable(); // «contenteditable» vacío también es editable (HTML): no se compara el texto del atributo
     await expect(page.locator('.cm-content')).toBeFocused();
     await expect(page.getByRole('button', { name: /siguiente/i })).toHaveCount(0);
   });
@@ -203,8 +204,8 @@ test.describe('cómo termina un programa', () => {
     await irAlFinal(page);
 
     await expect(globoDelRobot(page)).toContainText('El programa se detuvo por un error');
-    await expect(globoDelRobot(page)).toContainText('Java detuvo el programa con una excepción: ArithmeticException (/ by zero).');
-    await expect(globoDelRobot(page)).toContainText('Así terminó: con un error');
+    await expect(globoDelRobot(page)).toContainText('Java detuvo el programa por un error mientras se ejecutaba (una excepción): ArithmeticException (/ by zero).');
+    await expect(globoDelRobot(page)).toContainText('Así terminó: Java detuvo el programa por un error');
     await expect(globoDelRobot(page)).toHaveAttribute('aria-live', 'assertive');
     await expect(page.getByRole('img', { name: /robot/i })).toHaveAttribute('data-animo', 'preocupado');
     expect(await salidaDelPrograma(page)).toContain('Exception in thread "main" java.lang.ArithmeticException: / by zero');

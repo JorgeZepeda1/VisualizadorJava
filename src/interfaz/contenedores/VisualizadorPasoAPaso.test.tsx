@@ -77,15 +77,16 @@ describe('<Visualizador/> — Visualizar lleva al paso 0', () => {
 
   it('antes de visualizar el robot saluda y no hay controles de reproducción', () => {
     render(<Visualizador />);
-    expect(globo()).toContain('Pega o escribe un programa de Java');
+    expect(globo()).toContain('¿Por dónde quieres empezar?');
     expect(screen.queryByRole('button', { name: /siguiente/i })).toBeNull();
+    expect(screen.queryByRole('group', { name: 'Controles de reproducción' })).toBeNull();
   });
 
   it('al visualizar queda en el paso 0: «Todavía no se ejecuta nada», la consola vacía y la línea siguiente nombrada', async () => {
     render(<Visualizador />);
     await pulsar(/visualizar/i);
 
-    expect(globo()).toContain('Todavía no se ejecuta nada. Pulsa «Siguiente» y te explico la línea 3.');
+    expect(globo()).toContain('Todavía no se ejecuta nada. Antes de empezar, lee el programa y anota qué crees que va a aparecer en la consola. Luego pulsa «Siguiente» y lo comprobamos desde la línea 3.');
     expect(screen.getByTestId('consola').textContent).toBe('');
     expect(screen.getAllByText('Paso 0 de 2').length).toBeGreaterThan(0);
   });
@@ -121,7 +122,7 @@ describe('<Visualizador/> — el robot explica cada paso', () => {
     await pulsar(/siguiente/i);
 
     expect(globo()).toContain('Línea 3');
-    expect(globo()).toContain('Creo la variable edad de tipo int y le guardo 17.');
+    expect(globo()).toContain('Java crea la variable edad de tipo int y le guarda 17.');
     const fila = screen.getByRole('row', { name: /^edad\b/ });
     expect(within(fila).getByText('17')).toBeTruthy();
     expect(fila.textContent).toContain('nueva');
@@ -135,7 +136,7 @@ describe('<Visualizador/> — el robot explica cada paso', () => {
 
     expect(screen.getByTestId('consola').textContent).toContain('Hola');
     expect(globo()).toContain('Línea 4');
-    expect(globo()).toContain('Imprimo en la consola: «Hola» y paso a la línea siguiente.');
+    expect(globo()).toContain('Java imprime en la consola: «Hola» y pasa a la línea siguiente.');
   });
 
   it('en el último paso, con el programa terminado, el robot resume cómo terminó', async () => {
@@ -143,7 +144,7 @@ describe('<Visualizador/> — el robot explica cada paso', () => {
     await pulsar(/visualizar/i);
     await pulsar(/fin/i);
 
-    expect(screen.getByTestId('globo-del-robot').querySelector('.globo-nota')?.textContent).toBe('Así terminó: sin errores, en 2 pasos.');
+    expect(screen.getByTestId('globo-del-robot').querySelector('.globo-nota')?.textContent).toMatch(/^Así terminó: sin errores, en 2 pasos\. ¿La consola muestra lo que anotaste al principio\?/);
     expect(screen.getByRole('img').getAttribute('data-animo')).toBe('feliz');
   });
 
@@ -240,12 +241,12 @@ describe('<Visualizador/> — el programa espera un dato (REQ-VIS-009)', () => {
     await pulsar(/visualizar/i);
     await pulsar(/fin/i);
     await usuario.type(screen.getByRole('textbox', { name: /dato/i }), '12{ArrowLeft}{ArrowLeft}');
-    expect(screen.getAllByText('Paso 2 de 2').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Paso 2').length).toBeGreaterThan(0);
   });
 });
 
 describe('<Visualizador/> — el acuse `detenido` del trabajador (hito 2C)', () => {
-  it('con el programa calculando, el acuse cierra la ejecución: el robot ya no dice «Sigo calculando» y lo ya calculado sigue navegable', async () => {
+  it('con el programa calculando, el acuse cierra la ejecución: el robot ya no dice «Se siguen calculando» y lo ya calculado sigue navegable', async () => {
     trabajadorQueResponde((id) => [compilado(id), { tipo: 'pasos', id, desde: 0, pasos: [DECLARACION, IMPRESION] }, { tipo: 'detenido', id }]);
     render(<Visualizador />);
     await pulsar(/visualizar/i);
@@ -254,10 +255,11 @@ describe('<Visualizador/> — el acuse `detenido` del trabajador (hito 2C)', () 
     expect(screen.getByTestId('globo-del-robot').querySelector('.globo-nota')?.textContent).toBe(
       'Así terminó: la ejecución se detuvo antes de llegar al final del programa.',
     );
-    expect(screen.getByTestId('globo-del-robot').textContent).not.toContain('Sigo calculando');
-    expect(screen.getAllByText('Paso 2 de 2').length).toBeGreaterThan(0);
+    expect(screen.getByTestId('globo-del-robot').textContent).not.toContain('Se siguen calculando');
+    // El programa no terminó (lo detuvieron): no se sabe cuántos pasos habría tenido, así que solo se dice el actual.
+    expect(screen.getAllByText('Paso 2').length).toBeGreaterThan(0);
     await pulsar(/anterior/i);
-    expect(globo()).toContain('Creo la variable edad de tipo int y le guardo 17.');
+    expect(globo()).toContain('Java crea la variable edad de tipo int y le guarda 17.');
   });
 
   it('con el programa esperando un dato, el acuse quita el campo de la consola: ya no hay a quién entregarle el dato', async () => {
@@ -297,7 +299,7 @@ describe('<Visualizador/> — el acuse `detenido` del trabajador (hito 2C)', () 
       entregas[0]?.({ tipo: 'detenido', id: 1 });
     });
     await pulsar(/fin/i);
-    expect(screen.getByTestId('globo-del-robot').querySelector('.globo-nota')?.textContent).toBe('Sigo calculando los siguientes pasos…');
+    expect(screen.getByTestId('globo-del-robot').querySelector('.globo-nota')?.textContent).toBe('Se siguen calculando los siguientes pasos…');
 
     await act(async () => {
       entregas[1]?.({ tipo: 'detenido', id: 2 });
@@ -324,7 +326,7 @@ describe('<Visualizador/> — volver a editar', () => {
     expect(document.querySelector('.cm-content')?.getAttribute('contenteditable')).toBe('true');
     expect(screen.queryByRole('button', { name: /siguiente/i })).toBeNull();
     expect(screen.queryByRole('button', { name: /editar programa/i })).toBeNull();
-    expect(globo()).toContain('Pega o escribe un programa');
+    expect(globo()).toContain('Cuando esté listo, pulsa «Visualizar»');
   });
 
   it('no ofrece «Editar programa» cuando todavía no se visualiza nada', () => {
@@ -362,6 +364,7 @@ describe('<Visualizador/> — reproducción automática', () => {
     const usuario = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     render(<Visualizador />);
     await usuario.click(screen.getByRole('button', { name: /visualizar/i }));
+    await usuario.click(screen.getByRole('button', { name: 'Ajustes de la clase' }));
     await usuario.selectOptions(screen.getByRole('combobox', { name: 'Velocidad' }), '5');
     await usuario.click(screen.getByRole('button', { name: /reproducir/i }));
     await dejarPasar(500);

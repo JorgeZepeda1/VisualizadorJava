@@ -1,0 +1,4 @@
+FaltaElPuntoYComa.java:7: error: ';' expected
+        } while (numero <= 3)
+                             ^
+1 error

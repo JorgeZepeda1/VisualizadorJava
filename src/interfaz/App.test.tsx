@@ -78,14 +78,14 @@ describe('<App/> — el programa dorado', () => {
     expect(screen.getByTestId('consola').textContent).toContain('Hola, mundo');
   });
 
-  it('el robot explica el paso: «Línea 3: Imprimo en la consola: «Hola, mundo»…»', async () => {
+  it('el robot explica el paso: «Línea 3: Java imprime en la consola: «Hola, mundo»…»', async () => {
     render(<App />);
     await pulsar(/visualizar/i);
     expect(globo()).toContain('Todavía no se ejecuta nada');
 
     await pulsar(/siguiente/i);
 
-    expect(globo()).toContain('Línea 3: Imprimo en la consola: «Hola, mundo» y paso a la línea siguiente.');
+    expect(globo()).toContain('Línea 3: Java imprime en la consola: «Hola, mundo» y pasa a la línea siguiente.');
     expect(globo()).toContain('Así terminó: sin errores, en 1 paso.');
   });
 });
@@ -144,7 +144,7 @@ describe('<App/> — MaquinaSnacks con entrada interactiva (el ejercicio del PO)
     await usuario.type(await screen.findByRole('textbox', { name: /dato/i }), 'a1{Enter}');
 
     expect(globo()).toContain('Línea 19');
-    expect(globo()).toContain('Creo la variable codigo de tipo String y le guardo "A1".');
+    expect(globo()).toContain('Después crea la variable codigo de tipo String y le guarda "A1".');
     expect(textoVisibleDeLaConsola()).toContain('Código: a1\n');
     // y el foco vuelve a los controles para seguir con el teclado
     expect(document.activeElement).toBe(screen.getByRole('button', { name: /siguiente/i }));
@@ -165,7 +165,8 @@ describe('<App/> — MaquinaSnacks con entrada interactiva (el ejercicio del PO)
     await visualizarYTeclear(['a1', '2', '50']);
     await pulsar(/reiniciar/i);
     const textos: string[] = [];
-    for (let i = 0; i < 40 && screen.getByRole('button', { name: /siguiente/i }).hasAttribute('disabled') === false; i += 1) {
+    // En el último paso «Siguiente» desaparece: la ranura ofrece qué sigue (REQ-PANT-007).
+    for (let i = 0; i < 40 && screen.queryByRole('button', { name: /siguiente/i })?.hasAttribute('disabled') === false; i += 1) {
       await pulsar(/siguiente/i);
       textos.push(globo());
     }
@@ -211,13 +212,13 @@ describe('<App/> — la rama del `if` que no se toma, con el motor real (hito 2C
     await pulsar(/siguiente/i);
     expect(atenuado()).toBe('');
 
-    await pulsar(/siguiente/i); // `n > 10` es falso: el programa se salta el bloque de «grande»
-    expect(globo()).toContain('Reviso n > 10');
+    await pulsar(/siguiente/i); // `n > 10` da `false`: el programa se salta el bloque de «grande»
+    expect(globo()).toContain('Java revisa n > 10');
     expect(atenuado()).toBe('{\n            System.out.println("grande");\n        }');
     expect(document.querySelectorAll('.cm-etiqueta-rama-no-tomada')).toHaveLength(1);
 
-    await pulsar(/siguiente/i); // `n > 3` es verdadero: se salta el `else` final
-    expect(globo()).toContain('Reviso n > 3');
+    await pulsar(/siguiente/i); // `n > 3` da `true`: se salta el `else` final
+    expect(globo()).toContain('Java revisa n > 3');
     expect(atenuado()).toBe('{\n            System.out.println("chico");\n        }');
 
     await pulsar(/siguiente/i); // ya no es una condición
@@ -230,7 +231,7 @@ describe('<App/> — la rama del `if` que no se toma, con el motor real (hito 2C
     escribirPrograma(PROGRAMA.replace('int n = 5;', 'int n = 50;'));
     await pulsar(/visualizar/i);
     await pulsar(/siguiente/i);
-    await pulsar(/siguiente/i); // `n > 10` es verdadero
+    await pulsar(/siguiente/i); // `n > 10` da `true`
     expect(atenuado()).toBe(
       ['if (n > 3) {', '            System.out.println("medio");', '        } else {', '            System.out.println("chico");', '        }'].join('\n'),
     );
@@ -249,10 +250,13 @@ describe('<App/> — un ciclo que no termina, con el motor real (hito 2C)', () =
     expect(globo()).toContain('Todavía no se ejecuta nada');
     expect(globo()).toContain('Ojo: este programa no terminó solo. El visualizador lo detuvo por seguridad después de muchos pasos. Avanza y descubre por qué.');
     expect(globo()).not.toContain('siempre valió');
-    expect(screen.getAllByText('Paso 0 de 100001').length).toBeGreaterThan(0);
+    // El motor ya calculó 100 001 pasos, pero el programa no terminó solo: un total sería una cifra provisional (REQ-PANT-004).
+    expect(screen.getAllByText('Paso 0').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Paso 0 de 100001')).toBeNull();
 
     await pulsar(/fin/i);
-    expect(screen.getAllByText('Paso 100001 de 100001').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Paso 100001').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Paso 100001 de 100001')).toBeNull();
     expect(globo()).toContain('Se detuvo por seguridad');
     expect(globo()).toContain('En las últimas 100 vueltas del while de la línea 5, contador siempre valió 1, así que contador <= 5 siempre dio true.');
     expect(globo()).toContain('Mientras nada dentro del ciclo cambie contador, el ciclo no va a terminar.');

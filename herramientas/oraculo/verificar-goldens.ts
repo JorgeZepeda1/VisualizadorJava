@@ -7,7 +7,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { localizarJdk } from './jdk.ts';
-import { type GoldenGenerado, descubrirProgramas, generarGoldenPara } from './generar-goldens.ts';
+import { type GoldenGenerado, descubrirProgramas, elegirCarpetas, generarGoldenPara } from './generar-goldens.ts';
 
 const AQUI = dirname(fileURLToPath(import.meta.url));
 const RAIZ_PROYECTO = resolve(AQUI, '..', '..');
@@ -92,10 +92,13 @@ function formatearDiferencias(diferencias: readonly DiferenciaGolden[]): string 
 
 async function main(): Promise<void> {
   const raizCorpus = resolve(RAIZ_PROYECTO, 'corpus');
-  const resultadoCurso = await verificarGoldens(resolve(raizCorpus, 'curso'));
-  const resultadoExperimentos = await verificarGoldens(resolve(raizCorpus, 'experimentos'));
-  const totalProgramas = resultadoCurso.totalProgramas + resultadoExperimentos.totalProgramas;
-  const diferencias = [...resultadoCurso.diferencias, ...resultadoExperimentos.diferencias];
+  // Sin argumentos verifica todas las carpetas del corpus (curso, experimentos y libro); `npm run oraculo:verificar -- libro` solo las que se nombran.
+  const resultados = [];
+  for (const carpeta of elegirCarpetas(process.argv.slice(2))) {
+    resultados.push(await verificarGoldens(resolve(raizCorpus, carpeta)));
+  }
+  const totalProgramas = resultados.reduce((total, resultado) => total + resultado.totalProgramas, 0);
+  const diferencias = resultados.flatMap((resultado) => resultado.diferencias);
 
   if (diferencias.length > 0) {
     console.error(`oraculo:verificar — ${diferencias.length} diferencia(s) contra el JDK real:\n${formatearDiferencias(diferencias)}`);
@@ -108,5 +111,8 @@ async function main(): Promise<void> {
 
 const esEjecutadoDirectamente = process.argv[1] === fileURLToPath(import.meta.url);
 if (esEjecutadoDirectamente) {
-  void main();
+  main().catch((error: unknown) => {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  });
 }

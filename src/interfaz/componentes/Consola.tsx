@@ -2,8 +2,12 @@
 // normal se ve como está; `System.err` lleva un ícono y la palabra «Error» (no solo rojo); lo que el alumno teclea (eco) va con otro estilo Y subrayado (en la hoja de estilos), en el mismo
 // renglón que el mensaje del `print`; y NO hay mensajes propios de un IDE (`run:`, `BUILD SUCCESSFUL`). El campo de entrada entra como hijo, al final del último renglón. Es un `log` con
 // `aria-live="off"`: el que narra cada paso es el robot, y la consola no repite lo que él ya dice.
-import type { ReactNode } from 'react';
+//
+// Hito R0 (REQ-PANT-001, REQ-AULA-004): la consola lleva un TÍTULO visible y, mientras está vacía, dice dónde aparecerá lo que imprima el programa (el texto va FUERA del registro: lo que imprime el
+// programa y lo que dice la pantalla no se mezclan). Siempre baja hasta lo último que se imprimió: en el modo proyector solo caben las últimas líneas.
+import { useEffect, useId, useRef, type ReactNode } from 'react';
 import type { Segmento } from '../../motor/vista.ts';
+import { textosPantalla } from '../../textos/es-MX/pantalla.ts';
 import { textosPaneles } from '../../textos/es-MX/paneles.ts';
 
 export interface PropiedadesConsola {
@@ -46,14 +50,31 @@ function SegmentoDeConsola({ segmento, previo }: { readonly segmento: Segmento; 
 }
 
 export function Consola({ segmentos, children }: PropiedadesConsola) {
+  const idDelTitulo = useId();
+  const registroRef = useRef<HTMLPreElement | null>(null);
+  // Un programa que espera un dato (hay campo de entrada) no tiene la consola vacía, aunque todavía no haya imprimido nada.
+  const vacia = segmentos.length === 0 && !children;
+
+  // Lo último que se imprimió siempre queda a la vista (en proyector la consola solo muestra sus últimas líneas).
+  useEffect(() => {
+    const registro = registroRef.current;
+    if (registro !== null) registro.scrollTop = registro.scrollHeight;
+  }, [segmentos]);
+
   return (
-    // `tabIndex=0`: la consola puede desbordarse y quien usa solo teclado debe poder desplazarla.
-    <pre data-testid="consola" className="consola" role="log" aria-live="off" aria-label={textosPaneles.consola.titulo()} tabIndex={0}>
-      {segmentos.map((segmento, indice) => (
-        // El índice basta como key: los segmentos de una consola no se reordenan, solo se acumulan (design.md §3.4 "índice acumulado por paso").
-        <SegmentoDeConsola key={indice} segmento={segmento} previo={segmentos[indice - 1]} />
-      ))}
-      {children}
-    </pre>
+    <div className="consola-caja">
+      <h2 id={idDelTitulo} className="consola-titulo">
+        {textosPantalla.consola.titulo()}
+      </h2>
+      {/* `tabIndex=0`: la consola puede desbordarse y quien usa solo teclado debe poder desplazarla. */}
+      <pre ref={registroRef} data-testid="consola" className="consola" role="log" aria-live="off" aria-labelledby={idDelTitulo} tabIndex={0}>
+        {segmentos.map((segmento, indice) => (
+          // El índice basta como key: los segmentos de una consola no se reordenan, solo se acumulan (design.md §3.4 "índice acumulado por paso").
+          <SegmentoDeConsola key={indice} segmento={segmento} previo={segmentos[indice - 1]} />
+        ))}
+        {children}
+      </pre>
+      {vacia && <p className="consola-vacia">{textosPantalla.consola.vacia()}</p>}
+    </div>
   );
 }
